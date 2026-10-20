@@ -14,9 +14,11 @@ a second transcript, and it does not require Workflow.
 
 ## Status
 
-This package is **private** (`"private": true`) and **UNLICENSED**. It is not
-published to npm and carries no open-source license grant. The repository is
-the distribution channel.
+The package sets npm's `private: true` flag, so `npm publish` is refused: the
+package is not published to npm. That flag is only a publish guard and says
+nothing about repository visibility — this repository is public. The package is
+**UNLICENSED**: it carries no open-source license grant. The repository is the
+distribution channel.
 
 ## What is implemented
 
@@ -70,10 +72,19 @@ export default app;
 
 ```ts
 // convex/agents.ts
-import { Agent, registerAgevex, type TurnArgs } from "agevex";
-import type { FunctionReference, RegisteredAction } from "convex/server";
+import {
+  Agent,
+  registerAgevex,
+  type CoordinateArgs,
+  type CoordinateResult,
+  type TurnArgs,
+} from "agevex";
+import type { FunctionReference, RegisteredAction, RegisteredMutation } from "convex/server";
 import { components, internal } from "./_generated/api.js";
 
+// Host-owned placeholders, defined by the host and not by this package:
+// `yourHostOwnedModel` is the host's model, `hostPolicy` and
+// `hostExecutionPolicy` are the host's two authorization callbacks.
 const main = new Agent(components.agent, {
   name: "Main",
   languageModel: yourHostOwnedModel,
@@ -93,10 +104,17 @@ const runtime = registerAgevex(components.agevex, {
   authorizeExecution: hostExecutionPolicy,
 });
 
+// Explicit annotations break the generated-reference inference cycle.
 export const runTurn: RegisteredAction<"internal", TurnArgs, null> =
   runtime.internalFunctions().runTurn;
+export const coordinate: RegisteredMutation<"internal", CoordinateArgs, CoordinateResult> =
+  runtime.internalFunctions().coordinate;
 export const { open, send, messages, activity, delegations } = runtime.authorizedEndpoints();
 ```
+
+Both internal functions must be exported: `refs.runTurn` and `refs.coordinate`
+point at these two exports, and `coordinate` is the single host entry point the
+runtime uses for `launch`, `settle` and `notify`.
 
 `Agent` adds exactly one thing to the native Agent: `subagents`. It declares
 the delegation graph as **real `Agent` objects**, not names, and the runtime
