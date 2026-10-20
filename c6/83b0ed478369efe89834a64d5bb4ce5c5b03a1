@@ -1,0 +1,100 @@
+.gitignore
+  h_51b7a781d7f2c3 1-17
+.prettierignore
+  h_51b7a781d7f2c3 1-4
+README.md
+  h_51b7a781d7f2c3 1-183
+bun.lock
+  h_51b7a781d7f2c3 1-615
+docs/public-api-proposal.md
+  h_51b7a781d7f2c3 1-446
+package.json
+  h_51b7a781d7f2c3 1-79
+scripts/check-convex-lint.ts
+  h_51b7a781d7f2c3 1-75
+scripts/fixtures/convex-invalid-query.ts.txt
+  h_51b7a781d7f2c3 1-3
+scripts/fixtures/convex-valid-query.ts.txt
+  h_51b7a781d7f2c3 1-8
+src/client/agent.ts
+  h_51b7a781d7f2c3 1-58
+src/client/endpoints.ts
+  h_51b7a781d7f2c3 1-203
+src/client/index.ts
+  h_51b7a781d7f2c3 1-16
+src/client/runtime.ts
+  h_51b7a781d7f2c3 1-660
+src/client/types.ts
+  h_51b7a781d7f2c3 1-199
+src/component/README.md
+  h_51b7a781d7f2c3 1-132
+src/component/_generated/api.ts
+  h_51b7a781d7f2c3 1-58
+src/component/_generated/component.ts
+  h_51b7a781d7f2c3 1-335
+src/component/_generated/dataModel.ts
+  h_51b7a781d7f2c3 1-60
+src/component/_generated/server.ts
+  h_51b7a781d7f2c3 1-169
+src/component/convex.config.ts
+  h_51b7a781d7f2c3 1-13
+src/component/limits.ts
+  h_51b7a781d7f2c3 1-67
+src/component/queue.ts
+  h_51b7a781d7f2c3 1-489
+src/component/schema.ts
+  h_51b7a781d7f2c3 1-407
+src/component/subagents.ts
+  h_51b7a781d7f2c3 1-733
+src/component/worker.ts
+  h_51b7a781d7f2c3 1-46
+src/test.ts
+  h_51b7a781d7f2c3 1-18
+tests/authorization.test.ts
+  h_51b7a781d7f2c3 1-63
+tests/delegation.test.ts
+  h_51b7a781d7f2c3 1-1478
+tests/fixture/_generated/api.js
+  h_51b7a781d7f2c3 1-23
+tests/fixture/api.ts
+  h_51b7a781d7f2c3 1-67
+tests/fixture/schema.ts
+  h_51b7a781d7f2c3 1-7
+tests/host-bridge.test.ts
+  h_51b7a781d7f2c3 1-37
+tests/host.ts
+  h_51b7a781d7f2c3 1-233
+tests/managed-bounds.test.ts
+  h_51b7a781d7f2c3 1-114
+tests/managed-turn.test.ts
+  h_51b7a781d7f2c3 1-159
+tests/native-fidelity.test-d.ts
+  h_51b7a781d7f2c3 1-59
+tests/native-readers.test.ts
+  h_51b7a781d7f2c3 1-48
+tests/registration.test.ts
+  h_51b7a781d7f2c3 1-146
+tests/setup.ts
+  h_51b7a781d7f2c3 1-282
+tests/tsconfig.json
+  h_51b7a781d7f2c3 1-16
+tests/unit-setup.ts
+  h_51b7a781d7f2c3 1-66
+tests/watchdog-backlog.test.ts
+  h_51b7a781d7f2c3 1-89
+tsconfig.json
+  h_51b7a781d7f2c3 1-17
+vite.config.ts
+  h_51b7a781d7f2c3 1-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c683b0ed478369efe89834a64d5bb4ce5c5b03a1",
+  "prompts": {},
+  "humans": {
+    "h_51b7a781d7f2c3": {
+      "author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
