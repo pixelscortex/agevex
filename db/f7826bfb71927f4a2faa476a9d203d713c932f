@@ -1,0 +1,14 @@
+README.md
+  h_51b7a781d7f2c3 17-21,75-82,85-87,107,110-111,115-118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dbf7826bfb71927f4a2faa476a9d203d713c932f",
+  "prompts": {},
+  "humans": {
+    "h_51b7a781d7f2c3": {
+      "author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
