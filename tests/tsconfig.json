@@ -1,0 +1,16 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "..",
+    "noEmit": true,
+    // The tests are Vite sources: they use `import.meta.glob` and the fixture's
+    // copied `_generated/api.js`, neither of which is valid under the root
+    // library's NodeNext settings. The library's own sources stay strictly
+    // NodeNext-checked through `bun run typecheck`.
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["vite/client"],
+    "allowJs": true
+  },
+  "include": ["./**/*.ts", "./**/*.js", "../src/**/*"]
+}

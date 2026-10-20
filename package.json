@@ -1,0 +1,79 @@
+{
+  "name": "agevex",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A Convex component package: a Workpool-backed managed agent runtime with bounded, native-compatible delegation.",
+  "keywords": [
+    "agent",
+    "component",
+    "convex",
+    "delegation"
+  ],
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pixelscortex/agevex.git"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "type": "module",
+  "types": "./dist/client/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/client/index.d.ts",
+      "default": "./dist/client/index.js"
+    },
+    "./convex.config": {
+      "types": "./dist/component/convex.config.d.ts",
+      "default": "./dist/component/convex.config.js"
+    },
+    "./_generated/component.js": {
+      "types": "./dist/component/_generated/component.d.ts"
+    },
+    "./test": "./src/test.ts"
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "typecheck": "tsc --noEmit --project tsconfig.json",
+    "typecheck:tests": "tsc --noEmit --project tests/tsconfig.json",
+    "codegen": "convex codegen --component-dir ./src/component",
+    "fmt": "vp fmt . --ignore-path .prettierignore",
+    "fmt:check": "vp fmt . --check --ignore-path .prettierignore",
+    "lint": "vp lint . --deny-warnings",
+    "lint:convex:check": "bun run scripts/check-convex-lint.ts",
+    "check": "vp check . && bun run lint:convex:check"
+  },
+  "dependencies": {
+    "@convex-dev/workpool": "0.4.14"
+  },
+  "devDependencies": {
+    "@ai-sdk/provider": "4.0.29",
+    "@ai-sdk/provider-utils": "5.0.62",
+    "@convex-dev/agent": "0.7.7",
+    "@convex-dev/eslint-plugin": "5.0.0",
+    "@edge-runtime/vm": "5.0.0",
+    "ai": "7.0.143",
+    "convex": "1.47.0",
+    "convex-helpers": "0.1.128",
+    "convex-test": "0.0.61",
+    "typescript": "5.9.3",
+    "vite-plus": "1.2.0",
+    "zod": "4.6.7"
+  },
+  "peerDependencies": {
+    "@ai-sdk/provider": "^4.0.29",
+    "@ai-sdk/provider-utils": "^5.0.62",
+    "@convex-dev/agent": "^0.7.7",
+    "ai": "^7.0.143",
+    "convex": "^1.47.0",
+    "convex-helpers": "^0.1.128"
+  },
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0",
+    "vitest": "5.0.4"
+  },
+  "packageManager": "bun@1.4.3"
+}

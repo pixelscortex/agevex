@@ -1,0 +1,282 @@
+/// <reference types="vite/client" />
+import { convexTest } from "convex-test";
+import { mutationGeneric } from "convex/server";
+import agent from "@convex-dev/agent/test";
+import workpool from "@convex-dev/workpool/test";
+import agevex from "../src/test.js";
+import schema from "./fixture/schema.js";
+import type { MutationCtx } from "../src/component/_generated/server.js";
+import type { Id } from "../src/component/_generated/dataModel.js";
+import { state } from "./host.js";
+
+// The fixture app mirrors a real Convex host app: its `_generated` directory
+// marks the functions root, and its `agents` module is the deterministic test
+// registration in `tests/host.ts` rather than a separate app module.
+const modules = import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]);
+
+/**
+ * Injected component fault points.
+ *
+ * Each replaces one real component function with one that fails at exactly one
+ * boundary, so the tested path is the real one up to that point.
+ */
+export type Fault =
+  | "save"
+  | "accept"
+  | "finish"
+  | "attach"
+  | "deliver"
+  | "settle"
+  | "notificationSave"
+  | "childFinish"
+  | "acceptedDelivery"
+  | "legacyAllowance";
+
+/** Shape of the `addMessages` argument the notification fault inspects. */
+type AddMessagesArgs = {
+  agentName?: string;
+  messages: { message: { role: string } }[];
+};
+
+/** The registered Agent message mutation the fault wraps, by its handler. */
+type NativeAddMessages = {
+  _args: unknown;
+  _returns: unknown;
+  _handler: (ctx: MutationCtx, args: AddMessagesArgs) => Promise<unknown>;
+};
+
+/**
+ * Agent-component fault: refuse the one native save that is a named agent's
+ * user-role message.
+ *
+ * In this registration that is exactly the delivered parent notification, which
+ * is saved as a user message carrying the delegated child's `agentName`. Task
+ * prompts are user messages without an `agentName` and generated output is an
+ * assistant message, so failing only that save models a delivery attempt that
+ * cannot commit its native parent message while leaving the separate,
+ * metadata-only failure record able to.
+ *
+ * The wrapper reuses the real mutation's own validators and handler, so every
+ * other save on the path is the real one; only the boundary between them is
+ * asserted.
+ */
+function notificationSaveFault(native: NativeAddMessages) {
+  return mutationGeneric({
+    args: native._args as never,
+    returns: native._returns as never,
+    handler: async (ctx, args) => {
+      const nativeArgs = args as unknown as AddMessagesArgs;
+      const isNotification =
+        nativeArgs.agentName !== undefined &&
+        nativeArgs.messages.some((entry) => entry.message.role === "user");
+      if (isNotification) throw new Error("injected notification save failure");
+      return (await native._handler(ctx as unknown as MutationCtx, nativeArgs)) as never;
+    },
+  });
+}
+
+/** The registered Agevex component mutation a conditional fault wraps. */
+type AgevexMutation = {
+  _handler: (ctx: unknown, args: unknown) => Promise<unknown>;
+};
+
+/** Arguments of `queue.finish`, the only conditional-fault boundary on a turn. */
+type FinishArgs = { assignmentId: string; turnToken: string; errorCode: string | null };
+
+/**
+ * Queue fault: refuse the finalization of a delegated child turn only.
+ *
+ * A child turn is identified by the run it owns on its assignment, read from
+ * the same table `queue.finish` itself reads, so a root turn finalizes through
+ * the real handler and only the child's release of its run fails. This is what
+ * a child-only finalization fault looks like; the blanket `finish` fault is not
+ * the same boundary.
+ */
+function childFinishFault(real: AgevexMutation) {
+  return mutationGeneric({
+    handler: async (ctx, args) => {
+      const finishArgs = args as FinishArgs;
+      const row = await (ctx as MutationCtx).db.get(
+        "assignments",
+        finishArgs.assignmentId as Id<"assignments">,
+      );
+      if (row?.runId) throw new Error("injected child finish failure");
+      return (await real._handler(ctx, finishArgs)) as never;
+    },
+  });
+}
+
+/** Arguments of the one-shot `subagents.deliver` transition. */
+type DeliverArgs = {
+  runId: string;
+  deliveryToken: string;
+  deliveryStatus: "accepted" | "failed" | "blocked";
+};
+
+/**
+ * Reservation arguments whose root row carries the per-prompt launch pair.
+ */
+type ReserveArgs = { assignmentId: string; turnToken: string };
+
+/** Root assignments already downgraded once by {@link legacyAllowanceFault}. */
+const legacyDowngraded = new Set<string>();
+
+/**
+ * Allowance fault: make one root look like a row written before the persisted
+ * per-prompt launch count existed.
+ *
+ * `subagents.reserve` treats a matching `delegatedTurnToken` with no
+ * `delegatedTurnCount` as one already spent. There is no public way to produce
+ * such a row now, so the first reservation from an already-served turn strips
+ * the count just before the real handler reads it. Only that one transition is
+ * rewritten: every other reservation, and the whole rest of the launch, stays
+ * real, so the legacy reading is proven against the real decision rather than a
+ * replica of it.
+ */
+function legacyAllowanceFault(real: AgevexMutation) {
+  return mutationGeneric({
+    args: (real as unknown as { _args: unknown })._args as never,
+    returns: (real as unknown as { _returns: unknown })._returns as never,
+    handler: async (ctx, args) => {
+      const reserveArgs = args as ReserveArgs;
+      const db = (ctx as MutationCtx).db;
+      const id = reserveArgs.assignmentId as Id<"assignments">;
+      const row = await db.get(id);
+      if (row?.delegatedTurnToken === reserveArgs.turnToken && !legacyDowngraded.has(id)) {
+        legacyDowngraded.add(id);
+        await db.patch(id, { delegatedTurnCount: undefined });
+      }
+      return (await real._handler(ctx, args)) as never;
+    },
+  });
+}
+
+/**
+ * Delivery fault: refuse the queue acceptance of a delivered result only.
+ *
+ * `attemptDelivery` saves the native parent message and then accepts it into the
+ * component queue in the same transaction, so throwing on the accepted record
+ * rolls that parent message back with it and leaves the separate, metadata-only
+ * `failed` record — which this fault lets through — able to commit. Every other
+ * `deliver` call, including the fallback failure record, is the real one.
+ */
+function acceptedDeliveryFault(real: AgevexMutation) {
+  return mutationGeneric({
+    handler: async (ctx, args) => {
+      const deliverArgs = args as DeliverArgs;
+      if (deliverArgs.deliveryStatus === "accepted")
+        throw new Error("injected queue acceptance failure");
+      return (await real._handler(ctx, deliverArgs)) as never;
+    },
+  });
+}
+
+export function setup(fault?: Fault) {
+  legacyDowngraded.clear();
+  state.calls.length = 0;
+  state.offers.length = 0;
+  state.fail = false;
+  state.revoke = false;
+  state.hang = false;
+  state.tools = false;
+  state.delegate = false;
+  state.delegateFanout = 1;
+  state.delegateAgent = "Researcher";
+  state.delegateTask = "research the bounded question";
+  state.denyDelegate = false;
+  state.denyDeliver = false;
+  state.revokeChild = false;
+  state.childText = "RESEARCHER deterministic native result";
+  state.childFail = false;
+  state.childDelayMs = 0;
+  state.delayMs = 0;
+  state.gate = undefined;
+  state.release = undefined;
+  state.childGate = undefined;
+  state.childRelease = undefined;
+  const t = convexTest(schema, {
+    ...modules,
+    "./fixture/agents.ts": () => import("./host.js"),
+  });
+  const failure = mutationGeneric({
+    handler: async () => {
+      throw new Error("injected failure");
+    },
+  });
+  if (fault === "save") {
+    t.registerComponent("agent", agent.schema, {
+      ...agent.modules,
+      "./component/messages.ts": async () => ({
+        ...((await agent.modules["./component/messages.ts"]()) as Record<string, unknown>),
+        addMessages: failure,
+      }),
+    });
+  } else if (fault === "notificationSave") {
+    t.registerComponent("agent", agent.schema, {
+      ...agent.modules,
+      "./component/messages.ts": async () => {
+        const real = (await agent.modules["./component/messages.ts"]()) as {
+          addMessages: NativeAddMessages;
+        };
+        return { ...real, addMessages: notificationSaveFault(real.addMessages) };
+      },
+    });
+  } else agent.register(t);
+  const queueFault = fault === "accept" || fault === "finish" ? fault : undefined;
+  const conditionalFault =
+    fault === "childFinish"
+      ? { module: "./component/queue.ts", name: "finish" as const }
+      : fault === "acceptedDelivery"
+        ? { module: "./component/subagents.ts", name: "deliver" as const }
+        : fault === "legacyAllowance"
+          ? { module: "./component/subagents.ts", name: "reserve" as const }
+          : undefined;
+  const subagentFault =
+    fault === "attach" || fault === "deliver" || fault === "settle" ? fault : undefined;
+  if (queueFault || conditionalFault || subagentFault) {
+    // A conditional fault wraps one real component mutation instead of replacing
+    // it, so every other call on the same path stays real.
+    const conditionalOverride = conditionalFault
+      ? {
+          [conditionalFault.module]: async () => {
+            const real = (await agevex.modules[conditionalFault.module]()) as Record<
+              string,
+              AgevexMutation
+            >;
+            const wrap =
+              conditionalFault.name === "finish"
+                ? childFinishFault
+                : conditionalFault.name === "reserve"
+                  ? legacyAllowanceFault
+                  : acceptedDeliveryFault;
+            return { ...real, [conditionalFault.name]: wrap(real[conditionalFault.name]) };
+          },
+        }
+      : {};
+    t.registerComponent("agevex", agevex.schema, {
+      ...agevex.modules,
+      ...(queueFault
+        ? {
+            "./component/queue.ts": async () => ({
+              ...((await agevex.modules["./component/queue.ts"]()) as Record<string, unknown>),
+              [queueFault]: failure,
+            }),
+          }
+        : {}),
+      ...conditionalOverride,
+      ...(subagentFault
+        ? {
+            "./component/subagents.ts": async () => ({
+              ...((await agevex.modules["./component/subagents.ts"]()) as Record<string, unknown>),
+              [subagentFault]: failure,
+            }),
+          }
+        : {}),
+    });
+    // Preserve the real nested bridge even for failure injection.
+    workpool.register(t, "agevex/workpool");
+  } else agevex.register(t);
+  return t;
+}
+export { api, internal, components } from "./fixture/api.js";
+export { state };
