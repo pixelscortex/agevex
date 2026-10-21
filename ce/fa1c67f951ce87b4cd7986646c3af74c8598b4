@@ -1,0 +1,14 @@
+package.json
+  h_51b7a781d7f2c3 47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cefa1c67f951ce87b4cd7986646c3af74c8598b4",
+  "prompts": {},
+  "humans": {
+    "h_51b7a781d7f2c3": {
+      "author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
