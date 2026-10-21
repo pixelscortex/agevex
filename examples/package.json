@@ -7,7 +7,7 @@
     "dev": "convex dev",
     "dev:all": "bun run scripts/dev-all.mjs",
     "dev:playground": "vite",
-    "build": "tsc --noEmit && vite build"
+    "build": "tsc --noEmit --project tsconfig.json && vite build"
   },
   "dependencies": {
     "@convex-dev/agent": "0.7.7",
