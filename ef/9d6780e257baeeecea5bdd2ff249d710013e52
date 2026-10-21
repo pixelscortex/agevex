@@ -1,0 +1,20 @@
+examples/.gitignore
+  h_51b7a781d7f2c3 1-5
+examples/bun.lock
+  h_51b7a781d7f2c3 25,348-349,704-705
+examples/convex/tsconfig.json
+  h_51b7a781d7f2c3 13-14
+examples/package.json
+  h_51b7a781d7f2c3 29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ef9d6780e257baeeecea5bdd2ff249d710013e52",
+  "prompts": {},
+  "humans": {
+    "h_51b7a781d7f2c3": {
+      "author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
