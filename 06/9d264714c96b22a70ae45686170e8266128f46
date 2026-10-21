@@ -1,0 +1,36 @@
+README.md
+  h_51b7a781d7f2c3 165-167
+docs/observability.md
+  h_51b7a781d7f2c3 23-24,47-51
+examples/README.md
+  h_51b7a781d7f2c3 27
+examples/convex/bun.lock
+  h_51b7a781d7f2c3 9
+examples/convex/convex/tsconfig.json
+  h_51b7a781d7f2c3 4-7,13,15-16
+examples/convex/package.json
+  h_51b7a781d7f2c3 11
+examples/playground/src/chat-playground.tsx
+  h_51b7a781d7f2c3 33-34,40
+examples/playground/src/index.css
+  h_51b7a781d7f2c3 16,33
+src/client/endpoints.ts
+  h_51b7a781d7f2c3 25,31,112,138,162,186
+src/client/runtime.ts
+  h_51b7a781d7f2c3 198,200,202,282,305,325,354,372,378,485,508,574,691,716,722,733,756,761-762
+src/client/types.ts
+  h_51b7a781d7f2c3 153
+tests/host.ts
+  h_51b7a781d7f2c3 200
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "069d264714c96b22a70ae45686170e8266128f46",
+  "prompts": {},
+  "humans": {
+    "h_51b7a781d7f2c3": {
+      "author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
