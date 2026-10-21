@@ -1,0 +1,44 @@
+.gitignore
+  h_51b7a781d7f2c3 14-15
+README.md
+  h_51b7a781d7f2c3 162-167
+docs/observability.md
+  h_51b7a781d7f2c3 23-25,32,36,40-44,48-53
+examples/README.md
+  h_51b7a781d7f2c3 25,27-28,42,46-49
+examples/convex/.env.example
+  h_51b7a781d7f2c3 3
+examples/convex/bun.lock
+  h_51b7a781d7f2c3 15-17
+examples/convex/convex/agents.ts
+  h_51b7a781d7f2c3 35-36
+examples/convex/convex/tsconfig.json
+  h_51b7a781d7f2c3 1-12
+examples/convex/package.json
+  h_51b7a781d7f2c3 16-18
+examples/playground/bun.lock
+  h_51b7a781d7f2c3 9-12,14-17,20-26,287
+examples/playground/package.json
+  h_51b7a781d7f2c3 11-14,16-19,22-28
+examples/playground/src/chat-playground.tsx
+  h_51b7a781d7f2c3 17,32-33,40-41,106
+src/client/endpoints.ts
+  h_51b7a781d7f2c3 25,31-32,34,112-122,139,145,162-172,187,193
+src/client/runtime.ts
+  h_51b7a781d7f2c3 198,200-201,203,283,289-290,306,312-313,326,332-333,355,361-362,373,379-380,485-492,494,509,514,575,581-582,692,699,717,723,733-742,756,761-764
+src/client/types.ts
+  h_51b7a781d7f2c3 104-112,120-121,129-131,138-145,153,161-162
+tests/observability.test.ts
+  h_51b7a781d7f2c3 16-22,27,36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cd6c98d4fafbde4c9711ebecb5c37665cb681e37",
+  "prompts": {},
+  "humans": {
+    "h_51b7a781d7f2c3": {
+      "author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
