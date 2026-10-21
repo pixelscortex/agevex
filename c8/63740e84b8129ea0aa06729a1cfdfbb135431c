@@ -1,0 +1,21 @@
+examples/src/chat-playground.tsx
+  s_0fc1e41c0ec113::t_40f9ed385df5d3 3-16,29-32,41-51,74-79,81-110,112-137,140-171,174,176-214,216-228,230-256,258-259
+examples/tsconfig.json
+  s_0fc1e41c0ec113::t_68db29e1d537f8 14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c863740e84b8129ea0aa06729a1cfdfbb135431c",
+  "prompts": {},
+  "sessions": {
+    "s_0fc1e41c0ec113": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "919ac70c-9049-45f0-9d58-54f90387e59a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
