@@ -1,7 +1,16 @@
+import { mkdirSync } from "node:fs";
+
 const root = process.cwd();
+const convexTmpDir = process.env.CONVEX_TMPDIR ?? `${root}/.convex-tmp`;
+mkdirSync(convexTmpDir, { recursive: true });
+const environment = {
+  ...process.env,
+  CONVEX_TMPDIR: convexTmpDir,
+};
 const children = [
   Bun.spawn(["bun", "run", "dev"], {
     cwd: root,
+    env: environment,
     stdin: "inherit",
     stdout: "inherit",
     stderr: "inherit",
