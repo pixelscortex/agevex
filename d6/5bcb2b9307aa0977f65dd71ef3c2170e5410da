@@ -1,0 +1,16 @@
+examples/src/components/shadcn-space/blocks/chat-application-01/chat-listing.tsx
+  h_51b7a781d7f2c3 75
+examples/src/components/shadcn-space/blocks/chat-application-01/chatinside-sidebar.tsx
+  h_51b7a781d7f2c3 15-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d65bcb2b9307aa0977f65dd71ef3c2170e5410da",
+  "prompts": {},
+  "humans": {
+    "h_51b7a781d7f2c3": {
+      "author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
