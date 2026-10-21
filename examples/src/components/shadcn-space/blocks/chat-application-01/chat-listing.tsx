@@ -72,7 +72,7 @@ const ChatListing = ({
     setMounted(true);
   }, []);
 
-  const lastActivity = (chat: Chat) => last(chat.messages)?.createdAt;
+  const lastActivity = (chat: Chat) => last(chat.messages)?.createdAt ?? new Date();
 
   const getDetails = (conversation: Chat) => {
     let displayText = "";

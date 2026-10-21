@@ -12,9 +12,11 @@ const ChatInsideSidebar = ({ selectedChat }: Props) => {
   const totalAttachment = uniq(
     flatten(selectedChat?.messages.map((item) => item.attachment)),
   ).length;
-  const totalMedia =
-    uniq(flatten(selectedChat?.messages.map((item) => (item?.type === "image" ? item.msg : null))))
-      .length - 1;
+  const totalMedia = uniq(
+    flatten(
+      selectedChat?.messages.map((item) => (item?.type === "image" ? item.msg : null)),
+    ).filter((item): item is string => Boolean(item)),
+  ).length;
 
   return (
     <>
