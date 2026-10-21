@@ -37,6 +37,7 @@ export function ChatPlayground() {
     initialNumItems: 50,
     stream: true,
   });
+  const recoveryRequired = activity?.turnStatus === "recovery_required";
 
   useEffect(() => {
     document.documentElement.classList.toggle("light", !dark);
@@ -108,6 +109,20 @@ export function ChatPlayground() {
         <section className="flex min-h-[calc(100vh-4rem)] min-w-0 flex-col">
           <ScrollArea className="flex-1">
             <div className="mx-auto flex w-full max-w-3xl flex-col px-5 pb-40 pt-10">
+              {recoveryRequired ? (
+                <div className="mb-8 flex items-start justify-between gap-4 rounded-2xl border border-amber-400/25 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">
+                  <div>
+                    <div className="font-medium">This session needs recovery</div>
+                    <div className="mt-1 text-xs text-amber-100/70">
+                      {activity?.errorCode ?? "The managed turn did not finish."} Start a new
+                      session after fixing the deployment configuration.
+                    </div>
+                  </div>
+                  <Button className="shrink-0" size="sm" variant="outline" onClick={resetSession}>
+                    New session
+                  </Button>
+                </div>
+              ) : null}
               {messages.results.length === 0 ? (
                 <div className="flex flex-1 flex-col justify-center py-20">
                   <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary">
@@ -141,7 +156,10 @@ export function ChatPlayground() {
                   {messages.results.map((message) => {
                     const isUser = message.role === "user";
                     return (
-                      <div className={`flex gap-3 ${isUser ? "justify-end" : ""}`} key={message.key}>
+                      <div
+                        className={`flex gap-3 ${isUser ? "justify-end" : ""}`}
+                        key={message.key}
+                      >
                         {!isUser ? (
                           <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                             <Bot className="h-3.5 w-3.5" />
@@ -194,7 +212,9 @@ export function ChatPlayground() {
                     <Button className="h-8 w-8" size="icon" variant="ghost" onClick={resetSession}>
                       <CirclePlus className="h-4 w-4" />
                     </Button>
-                    <span className="hidden sm:inline">Enter to send · Shift + Enter for a new line</span>
+                    <span className="hidden sm:inline">
+                      Enter to send · Shift + Enter for a new line
+                    </span>
                   </div>
                   <Button
                     aria-label="Send message"
@@ -203,7 +223,11 @@ export function ChatPlayground() {
                     size="icon"
                     onClick={() => void submit()}
                   >
-                    {sending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
+                    {sending ? (
+                      <LoaderCircle className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <ArrowUp className="h-4 w-4" />
+                    )}
                   </Button>
                 </div>
               </div>
@@ -233,7 +257,10 @@ export function ChatPlayground() {
                 ["Queued", String(activity?.queuedMessages ?? 0)],
                 ["Child runs", String(activity?.subagents.total ?? 0)],
               ].map(([label, value]) => (
-                <div className="flex items-center justify-between rounded-xl border border-border/60 bg-background/60 px-3 py-2.5 text-xs" key={label}>
+                <div
+                  className="flex items-center justify-between rounded-xl border border-border/60 bg-background/60 px-3 py-2.5 text-xs"
+                  key={label}
+                >
                   <span className="text-muted-foreground">{label}</span>
                   <span className="max-w-28 truncate font-medium">{value}</span>
                 </div>
@@ -245,14 +272,16 @@ export function ChatPlayground() {
                 What this tests
               </div>
               <ul className="space-y-2 text-xs leading-5 text-muted-foreground">
-                {["Native transcript streaming", "Durable request receipts", "Queue and delegation state"].map(
-                  (item) => (
-                    <li className="flex items-start gap-2" key={item}>
-                      <Check className="mt-1 h-3 w-3 shrink-0 text-emerald-400" />
-                      {item}
-                    </li>
-                  ),
-                )}
+                {[
+                  "Native transcript streaming",
+                  "Durable request receipts",
+                  "Queue and delegation state",
+                ].map((item) => (
+                  <li className="flex items-start gap-2" key={item}>
+                    <Check className="mt-1 h-3 w-3 shrink-0 text-emerald-400" />
+                    {item}
+                  </li>
+                ))}
               </ul>
             </div>
           </div>
