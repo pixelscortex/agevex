@@ -35,6 +35,12 @@ This builds the local `agevex` package, installs the example dependencies, then
 starts `convex dev` and Vite together. The Convex process creates
 `convex/_generated/` and keeps the backend running.
 
+If port `5173` is already occupied by another Vite app, use:
+
+```bash
+EXAMPLE_PORT=4174 bun run examples:dev
+```
+
 `OPENROUTER_API_KEY` is read only by the Convex deployment. Do not put it in
 the playground's browser environment.
 

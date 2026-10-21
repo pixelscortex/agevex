@@ -7,6 +7,9 @@ const environment = {
   ...process.env,
   CONVEX_TMPDIR: convexTmpDir,
 };
+const playgroundArgs = process.env.EXAMPLE_PORT
+  ? ["--", "--host", "127.0.0.1", "--port", process.env.EXAMPLE_PORT]
+  : [];
 const children = [
   Bun.spawn(["bun", "run", "dev"], {
     cwd: root,
@@ -15,7 +18,7 @@ const children = [
     stdout: "inherit",
     stderr: "inherit",
   }),
-  Bun.spawn(["bun", "run", "dev:playground"], {
+  Bun.spawn(["bun", "run", "dev:playground", ...playgroundArgs], {
     cwd: root,
     stdin: "inherit",
     stdout: "inherit",
