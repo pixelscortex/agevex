@@ -1,0 +1,60 @@
+examples/README.md
+  h_51b7a781d7f2c3 1-47
+examples/convex/.env.example
+  h_51b7a781d7f2c3 1-2
+examples/convex/bun.lock
+  h_51b7a781d7f2c3 1-632
+examples/convex/convex/agents.ts
+  h_51b7a781d7f2c3 1-59
+examples/convex/convex/convex.config.ts
+  h_51b7a781d7f2c3 1-10
+examples/convex/package.json
+  h_51b7a781d7f2c3 1-15
+examples/playground/bun.lock
+  h_51b7a781d7f2c3 1-466
+examples/playground/index.html
+  h_51b7a781d7f2c3 1-12
+examples/playground/package.json
+  h_51b7a781d7f2c3 1-31
+examples/playground/src/chat-playground.tsx
+  h_51b7a781d7f2c3 1-130
+examples/playground/src/components/ui/badge.tsx
+  h_51b7a781d7f2c3 1-15
+examples/playground/src/components/ui/button.tsx
+  h_51b7a781d7f2c3 1-37
+examples/playground/src/components/ui/card.tsx
+  h_51b7a781d7f2c3 1-28
+examples/playground/src/components/ui/scroll-area.tsx
+  h_51b7a781d7f2c3 1-7
+examples/playground/src/components/ui/textarea.tsx
+  h_51b7a781d7f2c3 1-15
+examples/playground/src/convex-api.ts
+  h_51b7a781d7f2c3 1
+examples/playground/src/index.css
+  h_51b7a781d7f2c3 1-44
+examples/playground/src/lib/utils.ts
+  h_51b7a781d7f2c3 1-6
+examples/playground/src/main.tsx
+  h_51b7a781d7f2c3 1-23
+examples/playground/src/router.tsx
+  h_51b7a781d7f2c3 1-21
+examples/playground/tsconfig.json
+  h_51b7a781d7f2c3 1-21
+examples/playground/vite.config.ts
+  h_51b7a781d7f2c3 1-12
+src/client/runtime.ts
+  h_51b7a781d7f2c3 198
+tests/observability.test.ts
+  h_51b7a781d7f2c3 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "764a0c70e7646d95c3a8f169ec60188a0b948822",
+  "prompts": {},
+  "humans": {
+    "h_51b7a781d7f2c3": {
+      "author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
