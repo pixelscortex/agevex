@@ -1,0 +1,22 @@
+examples/convex/_generated/api.d.ts
+  h_51b7a781d7f2c3 1-52
+examples/convex/_generated/api.js
+  h_51b7a781d7f2c3 1-23
+examples/convex/_generated/dataModel.d.ts
+  h_51b7a781d7f2c3 1-58
+examples/convex/_generated/server.d.ts
+  h_51b7a781d7f2c3 1-162
+examples/convex/_generated/server.js
+  h_51b7a781d7f2c3 1-9,11-19,21-29,31-39,41-49,51-59,61-72,74-80,82-93,95-101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ba38f8498b60d078e8480ba3e74d81b13f8341fc",
+  "prompts": {},
+  "humans": {
+    "h_51b7a781d7f2c3": {
+      "author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
