@@ -1,0 +1,30 @@
+README.md
+  h_51b7a781d7f2c3 145-168
+docs/observability.md
+  h_51b7a781d7f2c3 1-55
+src/client/endpoints.ts
+  h_51b7a781d7f2c3 16,23-35,119,128-135,156,165-172
+src/client/index.ts
+  h_51b7a781d7f2c3 16-17
+src/client/runtime.ts
+  h_51b7a781d7f2c3 42,198-208,285-291,306-312,324-330,351-357,367-373,493-498,558-564,673-680,697-703,725-732
+src/client/types.ts
+  h_51b7a781d7f2c3 89-144,255-262
+tests/host.ts
+  h_51b7a781d7f2c3 18,42-43,198-201
+tests/observability.test.ts
+  h_51b7a781d7f2c3 1-38
+tests/setup.ts
+  h_51b7a781d7f2c3 178-179
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9f4b0695e9db69384c19bca778924cee0e6e148b",
+  "prompts": {},
+  "humans": {
+    "h_51b7a781d7f2c3": {
+      "author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
