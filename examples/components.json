@@ -21,5 +21,7 @@
   },
   "menuColor": "default",
   "menuAccent": "bold",
-  "registries": {}
+  "registries": {
+    "@shadcn-space": "https://shadcnspace.com/r/{name}.json"
+  }
 }
