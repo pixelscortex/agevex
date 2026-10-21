@@ -1,0 +1,32 @@
+.gitignore
+  h_51b7a781d7f2c3 6-8
+README.md
+  h_51b7a781d7f2c3 28,77,94,192
+docs/public-api-proposal.md
+  h_51b7a781d7f2c3 34,92,96
+src/client/agent.ts
+  h_51b7a781d7f2c3 14
+src/client/index.ts
+  h_51b7a781d7f2c3 2
+src/client/runtime.ts
+  h_51b7a781d7f2c3 185-192
+src/component/subagents.ts
+  h_51b7a781d7f2c3 18
+tests/host.ts
+  h_51b7a781d7f2c3 17,164
+tests/native-fidelity.test-d.ts
+  h_51b7a781d7f2c3 4,45,47
+tests/registration.test.ts
+  h_51b7a781d7f2c3 5,41,50,74,81,90,104,124,133,143
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "21c6be02c8902e10a9decd0244e27725fc56154f",
+  "prompts": {},
+  "humans": {
+    "h_51b7a781d7f2c3": {
+      "author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
