@@ -1,0 +1,16 @@
+examples/README.md
+  h_51b7a781d7f2c3 38-43
+examples/scripts/dev-all.mjs
+  h_51b7a781d7f2c3 10-12,21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bce2984579f5b73eb8484590020ee20ebeb54593",
+  "prompts": {},
+  "humans": {
+    "h_51b7a781d7f2c3": {
+      "author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
