@@ -1,12 +1,10 @@
-# Agevex examples
+# Agevex example app
 
-The examples are intentionally split into two small, independently runnable
-projects:
+This is one standalone app:
 
-- `convex/` — a host application that mounts native Agent and Agevex, defines a
-  real OpenRouter-backed agent, and exports the managed endpoints.
-- `playground/` — a TanStack Router React client that consumes those endpoints
-  through Convex and uses locally owned shadcn/ui components.
+- `convex/` — the Convex backend that mounts native Agent and Agevex.
+- `src/` — the TanStack Router React client with locally owned shadcn/ui
+  components.
 
 ## Run the playground
 
@@ -17,31 +15,39 @@ bun install --frozen-lockfile
 bun run build
 ```
 
-In `examples/convex`, install the example backend dependencies and provide the
-deployment values:
+Install the example dependencies and prepare local deployment values:
 
 ```bash
-cd examples/convex
+cd examples
 bun install --frozen-lockfile
 cp .env.example .env.local
 # For this private local demo, edit .env.local and set AGEVEX_ALLOW_ANONYMOUS=true.
-# `.env.local` is read by the CLI only; upload deployment values explicitly:
-npx convex env set --from-file .env.local
+```
+
+Start the local Convex deployment in terminal 1:
+
+```bash
 bun run dev
 ```
 
-The first `convex dev` run creates `convex/_generated/`. Run it before building
-the playground because the client imports the generated host API.
+The local `convex dev` process creates `convex/_generated/`. Keep it running
+because it also hosts the local backend.
 
 `OPENROUTER_API_KEY` is read only by the Convex deployment. Do not put it in
 the playground's browser environment.
 
-In another terminal, install and start the client:
+In terminal 2, upload the local deployment variables:
 
 ```bash
-cd examples/playground
-bun install --frozen-lockfile
-VITE_CONVEX_URL=https://<your-deployment>.convex.cloud bun run dev
+cd examples
+npx convex env set --from-file .env.local
+```
+
+In terminal 3, start the client:
+
+```bash
+cd examples
+VITE_CONVEX_URL=http://127.0.0.1:3210 bun run dev:playground
 ```
 
 The demo fallback is disabled by default. To use it locally, set
