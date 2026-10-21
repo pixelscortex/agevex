@@ -1,0 +1,20 @@
+examples/README.md
+  h_51b7a781d7f2c3 27,30-31,34-36,41-42,49
+examples/package.json
+  h_51b7a781d7f2c3 8
+examples/scripts/dev-all.mjs
+  h_51b7a781d7f2c3 1-29
+package.json
+  h_51b7a781d7f2c3 47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0be2d4acb199f3a99bfc21e40d31711f5c44fa77",
+  "prompts": {},
+  "humans": {
+    "h_51b7a781d7f2c3": {
+      "author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
