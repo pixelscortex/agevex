@@ -1,0 +1,16 @@
+examples/convex/bun.lock
+  h_51b7a781d7f2c3 11,13
+examples/convex/package.json
+  h_51b7a781d7f2c3 13-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a934c928f13cee73fefb0180a1d8379047138aba",
+  "prompts": {},
+  "humans": {
+    "h_51b7a781d7f2c3": {
+      "author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
