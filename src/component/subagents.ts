@@ -15,7 +15,7 @@
 //
 // Depth is 1 by construction: only a root assignment without `runId` may launch,
 // so a child can never recurse and no cycle detection is needed at runtime.
-// `registerAgevex` rejects deeper graphs before any of this is reachable.
+// `registerAgent` rejects deeper graphs before any of this is reachable.
 //
 // Ownership validation happens before authorization on the host side
 // (`subagents.delegateContext` / `settlementContext` / `deliveryContext`), and

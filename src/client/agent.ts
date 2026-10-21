@@ -11,7 +11,7 @@ type AgentOptions<Tools extends ToolSet> = Config & {
   stopWhen?: StopCondition<NoInfer<Tools>> | StopCondition<NoInfer<Tools>>[];
   /**
    * Agents this one may delegate to through the managed `agevex_delegate` tool.
-   * Must be real `Agent` objects, not names: `registerAgevex` resolves the
+   * Must be real `Agent` objects, not names: `registerAgent` resolves the
    * executable child through this list. Managed depth is 1, so a child declares
    * `subagents: []`.
    */

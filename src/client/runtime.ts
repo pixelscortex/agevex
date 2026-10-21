@@ -182,8 +182,14 @@ const delegationResult = v.union(
   v.object({ status: v.literal("denied"), code: denialCode }),
 );
 
-/** Register a managed, bounded turn runner. Direct native methods remain unmanaged. */
-export function registerAgevex(component: ComponentApi, config: Registration) {
+/**
+ * Register one managed, bounded agent graph with the Agevex Convex runtime.
+ *
+ * The agent instances define native behavior; registration connects their graph
+ * to the component, dispatch references, and host authorization policy. Direct
+ * native methods remain unmanaged.
+ */
+export function registerAgent(component: ComponentApi, config: Registration) {
   const graph = resolveGraph(config);
   const collaboration = [...graph.edges.values()].some((allowed) => allowed.size > 0);
   if (collaboration && !config.refs.coordinate) throw new Error("COORDINATE_REF_REQUIRED");

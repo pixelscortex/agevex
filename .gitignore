@@ -3,6 +3,9 @@ dist
 *.tsbuildinfo
 *.log
 *.local
+.env
+.env.*
+!.env.example
 .DS_Store
 
 # Anonymous local Convex CLI state (deployment URL, admin key material path).

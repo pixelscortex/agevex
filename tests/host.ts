@@ -14,7 +14,7 @@
 
 import {
   Agent,
-  registerAgevex,
+  registerAgent,
   type CoordinateArgs,
   type CoordinateResult,
   type TurnArgs,
@@ -161,7 +161,7 @@ const runTurnRef = makeFunctionReference<"action", TurnArgs, null>(
   "agents:runTurn",
 ) as unknown as FunctionReference<"action", "internal", TurnArgs, null>;
 
-const runtime = registerAgevex(components.agevex, {
+const runtime = registerAgent(components.agevex, {
   agents: [main],
   refs: {
     runTurn: () => runTurnRef,
