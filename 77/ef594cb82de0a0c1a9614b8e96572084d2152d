@@ -1,0 +1,84 @@
+examples/.env.example
+  h_51b7a781d7f2c3 1-3
+examples/.gitignore
+  h_51b7a781d7f2c3 1-6
+examples/README.md
+  h_51b7a781d7f2c3 1-60
+examples/bun.lock
+  h_51b7a781d7f2c3 1-1351
+examples/components.json
+  h_51b7a781d7f2c3 1-27
+examples/convex/agents.ts
+  h_51b7a781d7f2c3 1-60
+examples/convex/convex.config.ts
+  h_51b7a781d7f2c3 1-10
+examples/convex/tsconfig.json
+  h_51b7a781d7f2c3 1-18
+examples/index.html
+  h_51b7a781d7f2c3 1-12
+examples/package.json
+  h_51b7a781d7f2c3 1-43
+examples/public/agent-avatar.svg
+  h_51b7a781d7f2c3 1-10
+examples/scripts/dev-all.mjs
+  h_51b7a781d7f2c3 1-41
+examples/src/chat-playground.tsx
+  h_51b7a781d7f2c3 1-120
+examples/src/components/shadcn-space/blocks/chat-application-01/chat-content.tsx
+  h_51b7a781d7f2c3 1-207
+examples/src/components/shadcn-space/blocks/chat-application-01/chat-listing.tsx
+  h_51b7a781d7f2c3 1-229
+examples/src/components/shadcn-space/blocks/chat-application-01/chat-msgsent.tsx
+  h_51b7a781d7f2c3 1-71
+examples/src/components/shadcn-space/blocks/chat-application-01/chatinside-sidebar.tsx
+  h_51b7a781d7f2c3 1-88
+examples/src/components/shadcn-space/blocks/chat-application-01/data.ts
+  h_51b7a781d7f2c3 1-599
+examples/src/components/shadcn-space/blocks/chat-application-01/index.tsx
+  h_51b7a781d7f2c3 1-119
+examples/src/components/shadcn-space/blocks/chat-application-01/types.ts
+  h_51b7a781d7f2c3 1-28
+examples/src/components/ui/badge.tsx
+  h_51b7a781d7f2c3 1-49
+examples/src/components/ui/button.tsx
+  h_51b7a781d7f2c3 1-55
+examples/src/components/ui/card.tsx
+  h_51b7a781d7f2c3 1-84
+examples/src/components/ui/dropdown-menu.tsx
+  h_51b7a781d7f2c3 1-254
+examples/src/components/ui/input.tsx
+  h_51b7a781d7f2c3 1-19
+examples/src/components/ui/scroll-area.tsx
+  h_51b7a781d7f2c3 1-48
+examples/src/components/ui/separator.tsx
+  h_51b7a781d7f2c3 1-18
+examples/src/components/ui/sheet.tsx
+  h_51b7a781d7f2c3 1-125
+examples/src/components/ui/textarea.tsx
+  h_51b7a781d7f2c3 1-17
+examples/src/convex-api.ts
+  h_51b7a781d7f2c3 1
+examples/src/index.css
+  h_51b7a781d7f2c3 1-167
+examples/src/lib/utils.ts
+  h_51b7a781d7f2c3 1
+examples/src/main.tsx
+  h_51b7a781d7f2c3 1-23
+examples/src/router.tsx
+  h_51b7a781d7f2c3 1-21
+examples/tsconfig.json
+  h_51b7a781d7f2c3 1-25
+examples/vite.config.ts
+  h_51b7a781d7f2c3 1-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "77ef594cb82de0a0c1a9614b8e96572084d2152d",
+  "prompts": {},
+  "humans": {
+    "h_51b7a781d7f2c3": {
+      "author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
