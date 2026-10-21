@@ -5,6 +5,7 @@
   "scripts": {
     "codegen": "convex codegen",
     "dev": "convex dev",
+    "dev:all": "bun run scripts/dev-all.mjs",
     "dev:playground": "vite",
     "build": "tsc --noEmit && vite build"
   },

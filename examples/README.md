@@ -24,31 +24,29 @@ cp .env.example .env.local
 # For this private local demo, edit .env.local and set AGEVEX_ALLOW_ANONYMOUS=true.
 ```
 
-Start the local Convex deployment in terminal 1:
+Start both Convex and the playground together from the repository root:
 
 ```bash
-bun run dev
+cd ..
+bun run examples:dev
 ```
 
-The local `convex dev` process creates `convex/_generated/`. Keep it running
-because it also hosts the local backend.
+This builds the local `agevex` package, installs the example dependencies, then
+starts `convex dev` and Vite together. The Convex process creates
+`convex/_generated/` and keeps the backend running.
 
 `OPENROUTER_API_KEY` is read only by the Convex deployment. Do not put it in
 the playground's browser environment.
 
-In terminal 2, upload the local deployment variables:
+In a second terminal, after Convex has printed its deployment URL, upload the
+deployment variables:
 
 ```bash
 cd examples
 npx convex env set --from-file .env.local
 ```
 
-In terminal 3, start the client:
-
-```bash
-cd examples
-VITE_CONVEX_URL=http://127.0.0.1:3210 bun run dev:playground
-```
+Vite reads `VITE_CONVEX_URL` from the generated `examples/.env.local`.
 
 The demo fallback is disabled by default. To use it locally, set
 `AGEVEX_ALLOW_ANONYMOUS=true` in the deployment and keep the deployment
