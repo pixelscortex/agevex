@@ -22,14 +22,13 @@ import type { ComponentApi } from "../component/_generated/component.js";
 import { activity, receipt, subagentRun, vPaginationResult } from "../component/schema.js";
 import type { AgentEvent, Registration } from "./types.js";
 
-function observe(
+async function observe(
   ctx: GenericMutationCtx<GenericDataModel>,
   config: Registration,
   event: AgentEvent,
 ) {
   try {
-    const result = config.observe?.(ctx, event);
-    if (result && typeof result.then === "function") void result.catch(() => {});
+    await config.observe?.(ctx, event);
   } catch {
     // Observability is best effort and must never block or change the request.
   }
@@ -110,7 +109,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           fingerprint: hash,
         });
         if (duplicate) {
-          observe(ctx, config, {
+          await observe(ctx, config, {
             type: "request.replayed",
             operation: "open",
             assignmentId: duplicate.assignmentId,
@@ -136,7 +135,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           promptMessageId: messageId,
           runTurn,
         });
-        observe(ctx, config, {
+        await observe(ctx, config, {
           type: "request.accepted",
           operation: "open",
           assignmentId: accepted.assignmentId,
@@ -160,7 +159,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           fingerprint: hash,
         });
         if (duplicate) {
-          observe(ctx, config, {
+          await observe(ctx, config, {
             type: "request.replayed",
             operation: "send",
             assignmentId: duplicate.assignmentId,
@@ -184,7 +183,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           promptMessageId: messageId,
           runTurn: await createFunctionHandle(config.refs.runTurn()),
         });
-        observe(ctx, config, {
+        await observe(ctx, config, {
           type: "request.accepted",
           operation: "send",
           assignmentId: accepted.assignmentId,

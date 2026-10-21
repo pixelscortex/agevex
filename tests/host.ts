@@ -197,6 +197,7 @@ const runtime = registerAgent(components.agevex, {
   },
   observe: async (_ctx, event) => {
     if (state.observerFails) throw new Error("observer failure");
+    await Promise.resolve();
     state.events.push(event);
   },
 });

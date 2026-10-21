@@ -24,6 +24,7 @@ deployment values:
 cd examples/convex
 bun install --frozen-lockfile
 cp .env.example .env.local
+# For this private local demo, edit .env.local and set AGEVEX_ALLOW_ANONYMOUS=true.
 # `.env.local` is read by the CLI only; upload deployment values explicitly:
 npx convex env set --from-file .env.local
 bun run dev

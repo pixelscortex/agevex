@@ -162,9 +162,9 @@ const runtime = registerAgent(components.agevex, {
 Events cover accepted/replayed requests, claimed and finished turns, and child
 delegation queue/replay/settlement/delivery. They contain opaque ownership
 identifiers and statuses, not prompt text, tool inputs, results, or execution
-capabilities. Observation is not awaited: hosts should synchronously enqueue
-persistence from the callback and keep provider-specific exporters outside the
-Agevex core.
+capabilities. Observation is awaited but best effort: hosts should keep the
+callback bounded and enqueue persistence from it, while provider-specific
+exporters stay outside the Agevex core.
 
 ## Asynchronous semantics
 

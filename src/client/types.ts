@@ -150,6 +150,7 @@ export type AgentEvent =
       rootAssignmentId: string;
       agent: string;
       outcome: "completed" | "failed";
+      errorCode: RunErrorCode;
       subject: string;
     }
   | {

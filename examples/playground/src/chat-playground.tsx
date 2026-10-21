@@ -28,16 +28,16 @@ export function ChatPlayground() {
     if (!text || sending) return;
 
     setSending(true);
-    setDraft("");
     setError(undefined);
-    const requestKey = crypto.randomUUID();
-
     try {
+      const requestKey = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+      setDraft("");
       const receipt = threadId
         ? await send({ threadId, text, requestKey })
         : await open({ agent: "main", prompt: text, requestKey });
       setThreadId(receipt.threadId);
     } catch (cause) {
+      setDraft(text);
       setError(cause instanceof Error ? cause.message : "The message could not be sent.");
     } finally {
       setSending(false);

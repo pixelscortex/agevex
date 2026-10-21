@@ -6,7 +6,7 @@
       "name": "agevex-example-convex",
       "dependencies": {
         "@convex-dev/agent": "0.7.7",
-        "@openrouter/ai-sdk-provider": "latest",
+        "@openrouter/ai-sdk-provider": "3.1.0",
         "agevex": "file:../..",
         "ai": "7.0.143",
         "convex": "1.47.0",

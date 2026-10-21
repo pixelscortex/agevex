@@ -20,9 +20,8 @@ const runtime = registerAgent(components.agevex, {
 ```
 
 The host callback runs in the same Convex function context as the operation that
-produced the event. Keep it synchronous and enqueue durable recording with a
-host scheduler. Do not perform network I/O or await a long-running operation in
-the callback.
+produced the event. Keep it short and enqueue durable recording from the
+callback. Do not perform network I/O or await a long-running operation there.
 
 ## Event contract
 
@@ -45,12 +44,11 @@ tokens.
 
 ## Failure semantics
 
-Observation is best effort and is not awaited by Agevex. If the host callback
-throws or its returned promise rejects, Agevex swallows that failure and
-continues the managed request, generation, delegation, or delivery. A callback
-must schedule its own durable write synchronously; it must not hold the Convex
-transaction open. This prevents an analytics outage from replaying paid work or
-changing the execution result.
+Observation is best effort. Agevex awaits the callback so a host can enqueue a
+durable write in the same Convex operation, but catches callback failures and
+continues the managed request, generation, delegation, or delivery. Keep the
+callback bounded: an analytics outage must not hold a transaction open long
+enough to affect the managed operation.
 
 ## External analytics
 
