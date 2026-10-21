@@ -44,7 +44,6 @@
     "fmt:check": "vp fmt . --check --ignore-path .prettierignore",
     "lint": "vp lint . --deny-warnings",
     "lint:convex:check": "bun run scripts/check-convex-lint.ts",
-    "examples:dev": "bun run build && rm -rf examples/node_modules/agevex && cd examples && bun install --frozen-lockfile && bun run dev:all",
     "check": "vp check . && bun run lint:convex:check"
   },
   "dependencies": {
