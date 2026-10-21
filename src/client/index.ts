@@ -13,4 +13,6 @@ export type {
   TurnArgs,
   TurnOrigin,
   ManagedAgent,
+  AgentEvent,
+  ObserveAgentEvent,
 } from "./types.js";

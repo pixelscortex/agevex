@@ -175,6 +175,8 @@ export function setup(fault?: Fault) {
   legacyDowngraded.clear();
   state.calls.length = 0;
   state.offers.length = 0;
+  state.events.length = 0;
+  state.observerFails = false;
   state.fail = false;
   state.revoke = false;
   state.hang = false;

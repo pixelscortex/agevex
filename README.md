@@ -142,6 +142,30 @@ The host supplies two callbacks, and both are required:
 `subagents: []` with only `refs.runTurn` remains a supported root-only
 registration.
 
+## Optional lifecycle observation
+
+Hosts may provide an `observe` callback to receive metadata-only lifecycle
+events for analytics or tracing:
+
+```ts
+const runtime = registerAgent(components.agevex, {
+  agents: [main],
+  refs,
+  authorize,
+  authorizeExecution,
+  observe: async (ctx, event) => {
+    await ctx.runMutation(internal.analytics.recordAgentEvent, { event });
+  },
+});
+```
+
+Events cover accepted requests, claimed and finished turns, and child
+delegation queue/settlement/delivery. They contain identifiers and statuses, not
+prompt text, tool inputs, results, or execution capabilities. Observation is
+best effort: a failing callback never changes the managed operation. Hosts
+should enqueue persistence from the callback and keep provider-specific
+exporters outside the Agevex core.
+
 ## Asynchronous semantics
 
 - `open` and `send` return an **acceptance receipt** immediately. The client
