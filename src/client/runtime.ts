@@ -195,10 +195,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
   const collaboration = [...graph.edges.values()].some((allowed) => allowed.size > 0);
   if (collaboration && !config.refs.coordinate) throw new Error("COORDINATE_REF_REQUIRED");
 
-  async function observe(
-    ctx: CoordinatorCtx | RunnerCtx,
-    event: AgentEvent,
-  ): Promise<void> {
+  async function observe(ctx: CoordinatorCtx | RunnerCtx, event: AgentEvent): Promise<void> {
     try {
       await config.observe?.(ctx, event);
     } catch {

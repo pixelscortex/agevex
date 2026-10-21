@@ -3,8 +3,7 @@ import { expect, it } from "vite-plus/test";
 import { api, setup } from "./setup.js";
 import { state } from "./host.js";
 
-const drain = (t: ReturnType<typeof setup>) =>
-  t.finishAllScheduledFunctions(() => {});
+const drain = (t: ReturnType<typeof setup>) => t.finishAllScheduledFunctions(() => {});
 
 it("emits metadata-only lifecycle events without changing execution", async () => {
   const t = setup();

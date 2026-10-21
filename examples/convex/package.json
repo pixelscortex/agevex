@@ -1,0 +1,15 @@
+{
+  "name": "agevex-example-convex",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "codegen": "convex codegen",
+    "dev": "convex dev"
+  },
+  "dependencies": {
+    "@convex-dev/agent": "0.7.7",
+    "@openrouter/ai-sdk-provider": "latest",
+    "agevex": "file:../..",
+    "convex": "1.47.0"
+  }
+}
