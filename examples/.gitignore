@@ -1,0 +1,6 @@
+
+.env.local
+.convex
+.convex-tmp
+convex/_generated
+convex/README.md
