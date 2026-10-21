@@ -14,7 +14,7 @@ const openrouter = createOpenRouter({
   apiKey: process.env.OPENROUTER_API_KEY,
 });
 
-const model = openrouter("openai/gpt-4o-mini");
+const model = openrouter("minimax/minimax-m3.1-flash:free");
 
 const specialist = new Agent(components.agent, {
   name: "specialist",
