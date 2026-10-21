@@ -13,10 +13,18 @@ it("emits metadata-only lifecycle events without changing execution", async () =
     prompt: "observe this request",
     requestKey: "observe-1",
   });
+  expect(
+    await alice.mutation(api.agents.open, {
+      agent: "Main",
+      prompt: "observe this request",
+      requestKey: "observe-1",
+    }),
+  ).toEqual(receipt);
 
   await drain(t);
   expect(state.events.map((event) => event.type)).toEqual([
     "request.accepted",
+    "request.replayed",
     "turn.claimed",
     "turn.finished",
   ]);
@@ -25,6 +33,7 @@ it("emits metadata-only lifecycle events without changing execution", async () =
     operation: "open",
     threadId: receipt.threadId,
     agent: "Main",
+    subject: "alice",
   });
 
   state.observerFails = true;

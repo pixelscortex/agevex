@@ -22,15 +22,16 @@ import type { ComponentApi } from "../component/_generated/component.js";
 import { activity, receipt, subagentRun, vPaginationResult } from "../component/schema.js";
 import type { AgentEvent, Registration } from "./types.js";
 
-async function observe(
+function observe(
   ctx: GenericMutationCtx<GenericDataModel>,
   config: Registration,
   event: AgentEvent,
 ) {
   try {
-    await config.observe?.(ctx, event);
+    const result = config.observe?.(ctx, event);
+    if (result && typeof result.then === "function") void result.catch(() => {});
   } catch {
-    // Observability is best effort and must never change the request outcome.
+    // Observability is best effort and must never block or change the request.
   }
 }
 
@@ -108,7 +109,17 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           requestKey: args.requestKey,
           fingerprint: hash,
         });
-        if (duplicate) return duplicate;
+        if (duplicate) {
+          observe(ctx, config, {
+            type: "request.replayed",
+            operation: "open",
+            assignmentId: duplicate.assignmentId,
+            threadId: duplicate.threadId,
+            agent: args.agent,
+            subject,
+          });
+          return duplicate;
+        }
         const runTurn = await createFunctionHandle(config.refs.runTurn());
         const threadId = await createThread(ctx, native.component, { userId: subject });
         const { messageId } = await saveMessage(ctx, native.component, {
@@ -125,12 +136,13 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           promptMessageId: messageId,
           runTurn,
         });
-        await observe(ctx, config, {
+        observe(ctx, config, {
           type: "request.accepted",
           operation: "open",
           assignmentId: accepted.assignmentId,
           threadId: accepted.threadId,
           agent: args.agent,
+          subject,
         });
         return accepted;
       },
@@ -147,7 +159,17 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           requestKey: args.requestKey,
           fingerprint: hash,
         });
-        if (duplicate) return duplicate;
+        if (duplicate) {
+          observe(ctx, config, {
+            type: "request.replayed",
+            operation: "send",
+            assignmentId: duplicate.assignmentId,
+            threadId: duplicate.threadId,
+            agent: row.agent,
+            subject: row.subject,
+          });
+          return duplicate;
+        }
         const { messageId } = await saveMessage(ctx, row.native.component, {
           threadId: args.threadId,
           prompt: args.text,
@@ -162,12 +184,13 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           promptMessageId: messageId,
           runTurn: await createFunctionHandle(config.refs.runTurn()),
         });
-        await observe(ctx, config, {
+        observe(ctx, config, {
           type: "request.accepted",
           operation: "send",
           assignmentId: accepted.assignmentId,
           threadId: accepted.threadId,
           agent: row.agent,
+          subject: row.subject,
         });
         return accepted;
       },

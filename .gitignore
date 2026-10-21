@@ -11,6 +11,8 @@ dist
 # Anonymous local Convex CLI state (deployment URL, admin key material path).
 # Never shared, never committed.
 .convex
+examples/convex/convex/_generated
+examples/convex/convex/README.md
 
 # Checkout-local Vite+/Vitest caches. Managed worktrees resolve dependencies
 # read-only, so nothing may be written into node_modules.

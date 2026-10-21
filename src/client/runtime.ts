@@ -195,11 +195,12 @@ export function registerAgent(component: ComponentApi, config: Registration) {
   const collaboration = [...graph.edges.values()].some((allowed) => allowed.size > 0);
   if (collaboration && !config.refs.coordinate) throw new Error("COORDINATE_REF_REQUIRED");
 
-  async function observe(ctx: CoordinatorCtx | RunnerCtx, event: AgentEvent): Promise<void> {
+  function observe(ctx: CoordinatorCtx | RunnerCtx, event: AgentEvent): void {
     try {
-      await config.observe?.(ctx, event);
+      const result = config.observe?.(ctx, event);
+      if (result && typeof result.then === "function") void result.catch(() => {});
     } catch {
-      // Observability is best effort and must never change managed execution.
+      // Observability is best effort and must never block or change execution.
     }
   }
 
@@ -279,12 +280,14 @@ export function registerAgent(component: ComponentApi, config: Registration) {
       });
     if (!context.rootAvailable) {
       await record("blocked", "ROOT_UNAVAILABLE");
-      await observe(ctx, {
+      observe(ctx, {
         type: "delegation.delivered",
         runId: context.runId,
         rootAssignmentId: context.rootAssignmentId,
         agent: context.agent,
         outcome: "blocked",
+        errorCode: "ROOT_UNAVAILABLE",
+        subject: context.subject,
       });
       return null;
     }
@@ -300,12 +303,14 @@ export function registerAgent(component: ComponentApi, config: Registration) {
         : null;
       if (!verified) {
         await record("failed", "RESULT_UNVERIFIED");
-        await observe(ctx, {
+        observe(ctx, {
           type: "delegation.delivered",
           runId: context.runId,
           rootAssignmentId: context.rootAssignmentId,
           agent: context.agent,
           outcome: "failed",
+          errorCode: "RESULT_UNVERIFIED",
+          subject: context.subject,
         });
         return null;
       }
@@ -318,12 +323,14 @@ export function registerAgent(component: ComponentApi, config: Registration) {
     const root = graph.byName.get(context.rootAgent);
     if (!root) {
       await record("blocked", "ROOT_UNAVAILABLE");
-      await observe(ctx, {
+      observe(ctx, {
         type: "delegation.delivered",
         runId: context.runId,
         rootAssignmentId: context.rootAssignmentId,
         agent: context.agent,
         outcome: "blocked",
+        errorCode: "ROOT_UNAVAILABLE",
+        subject: context.subject,
       });
       return null;
     }
@@ -345,12 +352,14 @@ export function registerAgent(component: ComponentApi, config: Registration) {
     }
     if (!subject || subject !== context.subject) {
       await record("blocked", "AUTHORIZATION_DENIED");
-      await observe(ctx, {
+      observe(ctx, {
         type: "delegation.delivered",
         runId: context.runId,
         rootAssignmentId: context.rootAssignmentId,
         agent: context.agent,
         outcome: "blocked",
+        errorCode: "AUTHORIZATION_DENIED",
+        subject: context.subject,
       });
       return null;
     }
@@ -361,12 +370,14 @@ export function registerAgent(component: ComponentApi, config: Registration) {
       agentName: context.agent,
     });
     await record("accepted", null, messageId);
-    await observe(ctx, {
+    observe(ctx, {
       type: "delegation.delivered",
       runId: context.runId,
       rootAssignmentId: context.rootAssignmentId,
       agent: context.agent,
       outcome: "accepted",
+      errorCode: null,
+      subject: context.subject,
     });
     return null;
   }
@@ -471,8 +482,16 @@ export function registerAgent(component: ComponentApi, config: Registration) {
               if (reservation.kind === "denied") {
                 return { status: "denied" as const, code: reservation.code };
               }
-              if (reservation.kind === "replay")
+              if (reservation.kind === "replay") {
+                observe(ctx, {
+                  type: "delegation.replayed",
+                  runId: reservation.runId,
+                  rootAssignmentId: owned.rootAssignmentId,
+                  agent: args.agent,
+                  subject: owned.subject,
+                });
                 return { status: "queued" as const, runId: reservation.runId, agent: args.agent };
+              }
               // Only a fresh reservation reaches the native writes, so a replay
               // can never create a second child thread. Everything below runs in
               // this same transaction as `reserve`.
@@ -487,11 +506,12 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 childThreadId: threadId,
                 promptMessageId: messageId,
               });
-              await observe(ctx, {
+              observe(ctx, {
                 type: "delegation.queued",
                 runId: reservation.runId,
                 rootAssignmentId: owned.rootAssignmentId,
                 agent: args.agent,
+                subject: owned.subject,
               });
               return { status: "queued" as const, runId: reservation.runId, agent: args.agent };
             }
@@ -552,12 +572,14 @@ export function registerAgent(component: ComponentApi, config: Registration) {
           const claimed = await ctx.runMutation(component.queue.claim, args);
           if (!claimed) return null;
           const child = claimed.subagent;
-          await observe(ctx, {
+          observe(ctx, {
             type: "turn.claimed",
             assignmentId: claimed.assignmentId,
             threadId: claimed.threadId,
             agent: claimed.agent,
             turnOrigin: claimed.turnOrigin,
+            subject: claimed.subject,
+            ...(child ? { runId: child.runId } : {}),
           });
           let errorCode: Activity["errorCode"] = null;
           try {
@@ -667,13 +689,14 @@ export function registerAgent(component: ComponentApi, config: Registration) {
           if (!child) {
             // A root turn owns nothing but its own queue state.
             await ctx.runMutation(component.queue.finish, { ...args, errorCode });
-            await observe(ctx, {
+            observe(ctx, {
               type: "turn.finished",
               assignmentId: claimed.assignmentId,
               threadId: claimed.threadId,
               agent: claimed.agent,
               outcome: errorCode ? "failure" : "success",
               errorCode,
+              subject: claimed.subject,
             });
             return null;
           }
@@ -691,12 +714,13 @@ export function registerAgent(component: ComponentApi, config: Registration) {
               ...(childResultMessageId ? { resultMessageId: childResultMessageId } : {}),
               errorCode: childError,
             });
-            await observe(ctx, {
+            observe(ctx, {
               type: "delegation.settled",
               runId: child.runId,
               rootAssignmentId: child.rootAssignmentId,
               agent: child.agent,
               outcome: childError ? "failed" : "completed",
+              subject: claimed.subject,
             });
           } catch {
             // The outcome could not be recorded, so this failure propagates on
@@ -706,6 +730,16 @@ export function registerAgent(component: ComponentApi, config: Registration) {
             // thrown action and calls `queue.ambiguous`, which fails the turn
             // and escalates the run exactly once; nothing replays the
             // generation.
+            observe(ctx, {
+              type: "turn.finished",
+              assignmentId: claimed.assignmentId,
+              threadId: claimed.threadId,
+              agent: claimed.agent,
+              outcome: "failure",
+              errorCode: "EXECUTION_AMBIGUOUS",
+              subject: claimed.subject,
+              runId: child.runId,
+            });
             throw new Error("EXECUTION_AMBIGUOUS");
           }
           // Delivery is attempted here, after the outcome is committed and
@@ -719,13 +753,15 @@ export function registerAgent(component: ComponentApi, config: Registration) {
           // `pending`, so the ambiguity path cannot replay it.
           await deliverTerminalRun(ctx, child.runId, child.deliveryToken);
           await ctx.runMutation(component.queue.finish, { ...args, errorCode });
-          await observe(ctx, {
+          observe(ctx, {
             type: "turn.finished",
             assignmentId: claimed.assignmentId,
             threadId: claimed.threadId,
             agent: claimed.agent,
-            outcome: errorCode ? "failure" : "success",
-            errorCode,
+            outcome: childError ? "failure" : "success",
+            errorCode: childError,
+            subject: claimed.subject,
+            runId: child.runId,
           });
           return null;
         },

@@ -32,7 +32,8 @@ const main = new Agent(components.agent, {
   subagents: [specialist],
 });
 
-const demoSubject = process.env.AGEVEX_DEMO_SUBJECT;
+const allowAnonymous = process.env.AGEVEX_ALLOW_ANONYMOUS === "true";
+const demoSubject = allowAnonymous ? process.env.AGEVEX_DEMO_SUBJECT : undefined;
 
 const runtime = registerAgent(components.agevex, {
   agents: [main],

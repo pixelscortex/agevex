@@ -20,31 +20,37 @@ const runtime = registerAgent(components.agevex, {
 ```
 
 The host callback runs in the same Convex function context as the operation that
-produced the event. Keep it short and enqueue durable recording with a host
-mutation or scheduler. Do not perform network I/O in a mutation callback.
+produced the event. Keep it synchronous and enqueue durable recording with a
+host scheduler. Do not perform network I/O or await a long-running operation in
+the callback.
 
 ## Event contract
 
 The public `AgentEvent` union currently includes:
 
 - `request.accepted`
+- `request.replayed`
 - `turn.claimed`
 - `turn.finished`
 - `delegation.queued`
+- `delegation.replayed`
 - `delegation.settled`
 - `delegation.delivered`
 
-Events contain operational metadata such as assignment, thread, agent, run,
-operation, outcome, and sanitized error codes. They intentionally do not
-contain prompt text, model output, tool arguments, result bodies, capabilities,
-or delivery tokens.
+See the exported `AgentEvent` union for the exact shape. Events contain
+operational metadata such as subject, assignment, thread, agent, run, operation,
+outcome, and sanitized error codes. They intentionally do not contain prompt
+text, model output, tool arguments, result bodies, capabilities, or delivery
+tokens.
 
 ## Failure semantics
 
-Observation is best effort. If the host callback throws, Agevex swallows that
-failure and continues the managed request, generation, delegation, or delivery.
-This prevents an analytics outage from replaying paid work or changing the
-execution result.
+Observation is best effort and is not awaited by Agevex. If the host callback
+throws or its returned promise rejects, Agevex swallows that failure and
+continues the managed request, generation, delegation, or delivery. A callback
+must schedule its own durable write synchronously; it must not hold the Convex
+transaction open. This prevents an analytics outage from replaying paid work or
+changing the execution result.
 
 ## External analytics
 

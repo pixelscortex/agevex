@@ -101,6 +101,15 @@ export type AgentEvent =
       assignmentId: string;
       threadId: string;
       agent: string;
+      subject: string;
+    }
+  | {
+      type: "request.replayed";
+      operation: "open" | "send";
+      assignmentId: string;
+      threadId: string;
+      agent: string;
+      subject: string;
     }
   | {
       type: "turn.claimed";
@@ -108,6 +117,8 @@ export type AgentEvent =
       threadId: string;
       agent: string;
       turnOrigin: TurnOrigin;
+      subject: string;
+      runId?: string;
     }
   | {
       type: "turn.finished";
@@ -115,13 +126,23 @@ export type AgentEvent =
       threadId: string;
       agent: string;
       outcome: "success" | "failure";
-      errorCode: Activity["errorCode"];
+      errorCode: RunErrorCode;
+      subject: string;
+      runId?: string;
     }
   | {
       type: "delegation.queued";
       runId: string;
       rootAssignmentId: string;
       agent: string;
+      subject: string;
+    }
+  | {
+      type: "delegation.replayed";
+      runId: string;
+      rootAssignmentId: string;
+      agent: string;
+      subject: string;
     }
   | {
       type: "delegation.settled";
@@ -129,6 +150,7 @@ export type AgentEvent =
       rootAssignmentId: string;
       agent: string;
       outcome: "completed" | "failed";
+      subject: string;
     }
   | {
       type: "delegation.delivered";
@@ -136,6 +158,8 @@ export type AgentEvent =
       rootAssignmentId: string;
       agent: string;
       outcome: "accepted" | "failed" | "blocked";
+      errorCode: RunErrorCode;
+      subject: string;
     };
 
 export type ObserveAgentEvent = (

@@ -159,12 +159,12 @@ const runtime = registerAgent(components.agevex, {
 });
 ```
 
-Events cover accepted requests, claimed and finished turns, and child
-delegation queue/settlement/delivery. They contain identifiers and statuses, not
-prompt text, tool inputs, results, or execution capabilities. Observation is
-best effort: a failing callback never changes the managed operation. Hosts
-should enqueue persistence from the callback and keep provider-specific
-exporters outside the Agevex core.
+Events cover accepted/replayed requests, claimed and finished turns, and child
+delegation queue/replay/settlement/delivery. They contain opaque ownership
+identifiers and statuses, not prompt text, tool inputs, results, or execution
+capabilities. Observation is not awaited: hosts should synchronously enqueue
+persistence from the callback and keep provider-specific exporters outside the
+Agevex core.
 
 ## Asynchronous semantics
 

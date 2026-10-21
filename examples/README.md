@@ -22,9 +22,10 @@ deployment values:
 
 ```bash
 cd examples/convex
-bun install
+bun install --frozen-lockfile
 cp .env.example .env.local
-# Set the values in .env.local, or use `npx convex env set`.
+# `.env.local` is read by the CLI only; upload deployment values explicitly:
+npx convex env set --from-file .env.local
 bun run dev
 ```
 
@@ -38,10 +39,11 @@ In another terminal, install and start the client:
 
 ```bash
 cd examples/playground
-bun install
+bun install --frozen-lockfile
 VITE_CONVEX_URL=https://<your-deployment>.convex.cloud bun run dev
 ```
 
-The demo uses `AGEVEX_DEMO_SUBJECT=playground` when no authenticated Convex
-identity is present. That fallback is only for local development; replace it
-with the host's real authorization policy before deploying an application.
+The demo fallback is disabled by default. To use it locally, set
+`AGEVEX_ALLOW_ANONYMOUS=true` in the deployment and keep the deployment
+private. Replace it with the host's real authorization policy before deploying
+an application.

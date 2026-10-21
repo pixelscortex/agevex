@@ -13,8 +13,8 @@ import { Textarea } from "./components/ui/textarea";
 export function ChatPlayground() {
   const [threadId, setThreadId] = useState<string>();
   const [draft, setDraft] = useState("");
-  const [requestNumber, setRequestNumber] = useState(0);
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string>();
   const open = useMutation(api.agents.open);
   const send = useMutation(api.agents.send);
   const activity = useQuery(api.agents.activity, threadId ? { threadId } : "skip");
@@ -29,14 +29,16 @@ export function ChatPlayground() {
 
     setSending(true);
     setDraft("");
-    const requestKey = `playground-${requestNumber + 1}`;
-    setRequestNumber((value) => value + 1);
+    setError(undefined);
+    const requestKey = crypto.randomUUID();
 
     try {
       const receipt = threadId
         ? await send({ threadId, text, requestKey })
         : await open({ agent: "main", prompt: text, requestKey });
       setThreadId(receipt.threadId);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The message could not be sent.");
     } finally {
       setSending(false);
     }
@@ -101,6 +103,7 @@ export function ChatPlayground() {
                 {sending ? <LoaderCircle className="animate-spin" /> : <Send />}
               </Button>
             </div>
+            {error ? <p className="text-sm text-destructive">{error}</p> : null}
           </CardContent>
         </Card>
 
