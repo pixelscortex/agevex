@@ -1,0 +1,126 @@
+docs/site/app/global.css
+  s_02879a972a1ca6::t_cd831cf4c29692 1-12
+  s_02879a972a1ca6::t_657ade4fee7324 13-29
+docs/site/app/layout.tsx
+  s_02879a972a1ca6::t_657ade4fee7324 1,3,6,8-11,15-16
+  s_02879a972a1ca6::t_07544be4bd03d4 7
+  s_02879a972a1ca6::t_cd831cf4c29692 2,4-5,12-14,17-21
+docs/site/public/r/registry.json
+  s_02879a972a1ca6::t_cfc07642bef699 1-24
+docs/site/registry.json
+  s_02879a972a1ca6::t_657ade4fee7324 1-10,15-24
+  s_02879a972a1ca6::t_cfc07642bef699 11-14
+docs/site/app/llms-full.txt/route.ts
+  s_02879a972a1ca6::t_cd831cf4c29692 1-7
+docs/site/lib/layout.shared.tsx
+  s_02879a972a1ca6::t_657ade4fee7324 2,6-7
+  s_02879a972a1ca6::t_cd831cf4c29692 1,3-5,8-9
+docs/site/tsconfig.json
+  s_02879a972a1ca6::t_cd831cf4c29692 1-3,9-21,25-29,34-42,46
+  s_02879a972a1ca6::t_59331200a0c2a2 4-8,22-24,30-33,43-45
+docs/site/lib/shared.ts
+  s_02879a972a1ca6::t_657ade4fee7324 1,4
+  s_02879a972a1ca6::t_cd831cf4c29692 2-3,5-23
+docs/site/app/llms.mdx/docs/[[...slug]]/route.ts
+  s_02879a972a1ca6::t_cd831cf4c29692 1-24
+docs/site/app/llms.txt/route.ts
+  s_02879a972a1ca6::t_cd831cf4c29692 1-7
+docs/site/README.md
+  s_02879a972a1ca6::t_cd831cf4c29692 10-11,20-28,55
+  s_02879a972a1ca6::t_9cd28b54aa2e41 1-9,12-19,29-54
+docs/site/content/docs/index.mdx
+  s_02879a972a1ca6::t_cd831cf4c29692 1,5-13
+  s_02879a972a1ca6::t_b63f344671dbcd 2-4,14-67
+docs/site/app/page.tsx
+  s_02879a972a1ca6::t_657ade4fee7324 1-5
+docs/site/app/docs/[[...slug]]/page.tsx
+  s_02879a972a1ca6::t_cd831cf4c29692 1-12,14-24,31-33,35-64
+  s_02879a972a1ca6::t_657ade4fee7324 13,25-30,34
+vite.config.ts
+  s_02879a972a1ca6::t_cfc07642bef699 11-17
+docs/site/app/api/search/route.ts
+  s_02879a972a1ca6::t_cd831cf4c29692 1-4
+docs/site/registry/todo-tool/todo-tool.ts
+  s_02879a972a1ca6::t_657ade4fee7324 1-36
+docs/site/lib/source.ts
+  s_02879a972a1ca6::t_cd831cf4c29692 1-2,4-5,7-10,14-32,35-36
+  s_02879a972a1ca6::t_38836f4b28cdce 33-34
+  s_02879a972a1ca6::t_657ade4fee7324 3,6,11-13
+docs/site/next.config.mjs
+  s_02879a972a1ca6::t_cd831cf4c29692 2-8,12-14
+  s_02879a972a1ca6::t_59331200a0c2a2 1,10-11
+  s_02879a972a1ca6::t_94686bbe9fba81 9
+.prettierignore
+  s_02879a972a1ca6::t_657ade4fee7324 5
+docs/site/scripts/build-registry.ts
+  s_02879a972a1ca6::t_657ade4fee7324 1-16
+docs/site/proxy.ts
+  s_02879a972a1ca6::t_cd831cf4c29692 1-32
+docs/site/app/og/docs/[...slug]/route.tsx
+  s_02879a972a1ca6::t_cd831cf4c29692 1-25
+docs/site/components/setup-examples.tsx
+  s_02879a972a1ca6::t_657ade4fee7324 1-33
+docs/site/components/mdx.tsx
+  s_02879a972a1ca6::t_cd831cf4c29692 1-15
+docs/site/app/docs/layout.tsx
+  s_02879a972a1ca6::t_cd831cf4c29692 1-11
+docs/site/.gitignore
+  s_02879a972a1ca6::t_cd831cf4c29692 1-26
+docs/site/lib/cn.ts
+  s_02879a972a1ca6::t_cd831cf4c29692 1
+docs/site/package.json
+  s_02879a972a1ca6::t_cd831cf4c29692 1,4-5,11-15,17,19,23-31,35
+  s_02879a972a1ca6::t_657ade4fee7324 2-3,6-10,16,18,20-22,32-34,36
+docs/site/postcss.config.mjs
+  s_02879a972a1ca6::t_cd831cf4c29692 1-7
+docs/site/site.config.ts
+  s_02879a972a1ca6::t_657ade4fee7324 1-10
+docs/site/public/r/todo-tool.json
+  s_02879a972a1ca6::t_cfc07642bef699 1-19
+docs/site/bun.lock
+  s_02879a972a1ca6::t_743e810b93426e 1-1420
+docs/site/content/docs/concepts/delegation.mdx
+  s_02879a972a1ca6::t_e54a944823d408 1-57
+docs/site/content/docs/concepts/idempotency.mdx
+  s_02879a972a1ca6::t_e87d1422e3eb05 1-52
+docs/site/content/docs/concepts/limits.mdx
+  s_02879a972a1ca6::t_6afc96aaa1c062 1-44
+docs/site/content/docs/concepts/meta.json
+  s_02879a972a1ca6::t_92778699dc3950 1-4
+docs/site/content/docs/concepts/runtime.mdx
+  s_02879a972a1ca6::t_2ebd4194a3974e 1-87
+docs/site/content/docs/getting-started.mdx
+  s_02879a972a1ca6::t_de5777e0973290 1-58
+docs/site/content/docs/meta.json
+  s_02879a972a1ca6::t_9f77cb21c00e64 1-5
+docs/site/content/docs/modules/extract.mdx
+  s_02879a972a1ca6::t_51e712d8d9a463 1-81
+docs/site/content/docs/modules/meta.json
+  s_02879a972a1ca6::t_75af3d25836ea4 1-4
+docs/site/content/docs/modules/meter.mdx
+  s_02879a972a1ca6::t_02d826f672432e 1-58
+docs/site/content/docs/modules/sandbox.mdx
+  s_02879a972a1ca6::t_515bf2e4216fa6 1-56
+docs/site/content/docs/modules/tools.mdx
+  s_02879a972a1ca6::t_2203bf2ca58830 1-30
+docs/site/content/docs/registry.mdx
+  s_02879a972a1ca6::t_7e6ec2002dcd08 1-52
+docs/site/content/docs/testing.mdx
+  s_02879a972a1ca6::t_0a0f0f69c34402 1-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3a2f78c37b7b5fb0ddcf1eaacec91978ac4236d5",
+  "prompts": {},
+  "sessions": {
+    "s_02879a972a1ca6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16efd-ee39-7013-b6a7-b473b1149e04",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
