@@ -39,3 +39,12 @@ export const recoveryJobs = internalQueryGeneric({
     };
   },
 });
+
+/** Inspect the bounded regression fixture after cancellation commits. */
+export const queuedWork = internalQueryGeneric({
+  args: {},
+  handler: async (ctx) => ({
+    inbox: await ctx.db.query("inbox").collect(),
+    runs: await ctx.db.query("runs").collect(),
+  }),
+});

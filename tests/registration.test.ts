@@ -5,6 +5,7 @@ import { Agent as NativeAgent, mockModel } from "@convex-dev/agent";
 import { Agent, registerAgent } from "../src/client/index.js";
 import { components, internal } from "./setup.js";
 import { main, researcher } from "./host.js";
+import { HOST_LIMITS } from "../src/component/limits.js";
 
 const coordinator = () =>
   makeFunctionReference<"mutation">("agents:coordinate") as unknown as FunctionReference<
@@ -172,3 +173,16 @@ it("registration rejects invalid tunable limits and platform overrides synchrono
       registerAgent(components.agevex, { ...policy, agents: [main], limits } as never),
     ).toThrow("INVALID_LIMITS");
 });
+
+it.each(Object.entries(HOST_LIMITS))(
+  "registration rejects %s above its hard maximum",
+  (key, { max }) => {
+    expect(() =>
+      registerAgent(components.agevex, {
+        ...policy,
+        agents: [main],
+        limits: { [key]: max + 1 },
+      }),
+    ).toThrow(`INVALID_LIMITS: ${key} exceeds maximum ${max}`);
+  },
+);

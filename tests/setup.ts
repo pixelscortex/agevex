@@ -137,7 +137,11 @@ function acceptedDeliveryFault(real: AgevexMutation) {
   });
 }
 
-export function setup(fault?: Fault, limits?: Registration["limits"], transactionLimits = false) {
+export function setup(
+  fault?: Fault,
+  limits?: Registration["limits"],
+  transactionLimits: NonNullable<Parameters<typeof convexTest>[0]>["transactionLimits"] = false,
+) {
   state.dropPing = false;
   state.nestedCalls = 0;
   state.nativeNested = false;
