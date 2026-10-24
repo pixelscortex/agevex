@@ -2,11 +2,10 @@
 // These tests use the registered host endpoints and deterministic mock models;
 // no provider, key or network is involved.
 import { it, expect, vi, afterEach, beforeEach } from "vite-plus/test";
-import { createFunctionHandle } from "convex/server";
 import type { Infer } from "convex/values";
 import type { subagentRun } from "../src/component/schema.js";
-import { setup, api, components, state } from "./setup.js";
-import { delegationsQuery, coordinateReference, runTurnReference } from "./host.js";
+import { setup, api, state } from "./setup.js";
+import { delegationsQuery } from "./host.js";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
@@ -91,6 +90,37 @@ it("activity on a child thread is FORBIDDEN", async () => {
   ).rejects.toThrow(/FORBIDDEN/);
 });
 
+it("open rejects an agent registered only as a child", async () => {
+  const t = setup();
+  await expect(
+    t.withIdentity({ subject: "alice" }).mutation(api.agents.open, {
+      agent: "Researcher",
+      prompt: "bypass delegation",
+      requestKey: "child-open",
+    }),
+  ).rejects.toThrow("UNKNOWN_AGENT");
+});
+
+it("send stays FORBIDDEN for an old child thread after its agent is registered as a root", async () => {
+  const t = setup();
+  const { childThreadId } = await delegated(t);
+  await expect(
+    t.withIdentity({ subject: "alice" }).mutation(api.promoted.send, {
+      threadId: childThreadId,
+      text: "start another child turn",
+      requestKey: "promoted-child-send",
+    }),
+  ).rejects.toThrow("FORBIDDEN");
+});
+
+it("activity stays FORBIDDEN for an old child thread after its agent is registered as a root", async () => {
+  const t = setup();
+  const { childThreadId } = await delegated(t);
+  await expect(
+    t.withIdentity({ subject: "alice" }).query(api.promoted.activity, { threadId: childThreadId }),
+  ).rejects.toThrow("FORBIDDEN");
+});
+
 it("delegations returns the run's childThreadId for reading its transcript through messages", async () => {
   const t = setup();
   const { threadId, childThreadId, run } = await delegated(t);
@@ -104,39 +134,4 @@ it("delegations returns the run's childThreadId for reading its transcript throu
       "RESEARCHER deterministic native result",
     ]),
   );
-});
-
-it("a queued run without an attached child has childThreadId null", async () => {
-  const t = setup();
-  state.delegate = true;
-  const { assignmentId, threadId } = await t
-    .withIdentity({ subject: "alice" })
-    .mutation(api.agents.open, { agent: "Main", prompt: "research this", requestKey: "r1" });
-  // The coordinator normally reserves and attaches within one transaction, and
-  // the fixture's child gate pauses generation after attachment. To observe the
-  // promised pre-attach shape, reserve through the real component boundary and
-  // read its public projection before draining any scheduled work. No table
-  // rows or query results are fabricated for this queued state.
-  const rootTurn = { assignmentId, turnToken: `${assignmentId}:0` };
-  expect(await t.mutation(components.agevex.queue.claim, rootTurn)).not.toBeNull();
-  const reserved = await t.run(async (ctx) =>
-    ctx.runMutation(components.agevex.subagents.reserve, {
-      ...rootTurn,
-      toolCallId: "not-attached-yet",
-      agent: "Researcher",
-      payloadFingerprint: "one-thread-reader-queued-task",
-      coordinateHandle: await createFunctionHandle(coordinateReference()),
-      runTurn: await createFunctionHandle(runTurnReference()),
-    }),
-  );
-  if (reserved.kind !== "reserved") throw new Error("RESERVATION_REFUSED");
-  const listed = await runs(t, threadId);
-  expect(listed).toHaveLength(1);
-  expect(listed[0]).toMatchObject({
-    runId: reserved.runId,
-    status: "queued",
-    childThreadId: null,
-  });
-  await t.mutation(components.agevex.queue.finish, { ...rootTurn, errorCode: null });
-  await drain(t);
 });

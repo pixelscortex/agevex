@@ -148,8 +148,9 @@ Every managed conversation is a native Agent thread. Read root and child threads
 with the same `messages({ threadId, paginationOpts, streamArgs? })` endpoint;
 there is no opt-in flag. Get a child's `childThreadId` from its run in
 `delegations({ threadId: rootThreadId, paginationOpts })`, then pass that id to
-`messages`. `childThreadId` is `null` while a queued run has not yet attached its
-native thread; wait for a non-null id before reading it.
+`messages`. `childThreadId` remains nullable defensively for the state between
+reservation and attachment, and for older rows; wait for a non-null id before
+reading it. The coordinator commits reservation and attachment together today.
 
 For either kind of thread, the host policy receives `{ operation: "messages",
 agent, threadId }` with that thread's own agent name and id. The subject returned

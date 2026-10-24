@@ -52,6 +52,17 @@ it("registers a Main -> Researcher graph and rejects an unusable one", () => {
   );
 });
 
+it("registering the same Agent object as both a root and a child throws ROOT_AS_CHILD", () => {
+  const parent = new Agent(components.agent, {
+    name: "Parent",
+    languageModel: mockModel(),
+    subagents: [child],
+  });
+  expect(() => registerAgent(components.agevex, { ...policy, agents: [parent, child] })).toThrow(
+    "ROOT_AS_CHILD",
+  );
+});
+
 it("rejects an invalid delegation graph instead of pretending collaboration exists", () => {
   const parent = new Agent(components.agent, {
     name: "Parent",

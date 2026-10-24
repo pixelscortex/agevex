@@ -200,9 +200,11 @@ export const scope = v.object({
 export const subagentRun = v.object({
   runId: v.string(),
   /**
-   * Native child thread to read through `messages`. A reservation precedes
-   * native thread creation and `attach`, so null means no thread exists yet;
-   * clients must wait for attachment rather than inventing a thread id.
+   * Native child thread to read through `messages`. Null defensively represents
+   * the state between reservation and attachment, and older rows without this
+   * field. The public coordinator commits reserve and attach together today,
+   * so that intermediate state is not publicly observable in its lifecycle.
+   * Callers must wait for a non-null id before reading the child transcript.
    */
   childThreadId: v.union(v.string(), v.null()),
   agent: v.string(),

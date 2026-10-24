@@ -112,8 +112,12 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
     // settlement path; accepting a public send could start another child turn
     // outside that path. Keep send and coordination reads (activity/delegations)
     // root-only, while messages uses the same ownership check for every thread.
-    if (operation !== "messages" && !config.agents.some((root) => root.name === row.agent))
-      throw new Error("FORBIDDEN");
+    // The role must come from the persisted assignment, not today's root names:
+    // a later deployment can register a former child agent as a root without
+    // changing the role of any existing child thread. A name-based check would
+    // grant send/activity access to those old threads (and previously also let
+    // a shared Agent object registered as both root and child bypass the guard).
+    if (operation !== "messages" && row.root === false) throw new Error("FORBIDDEN");
     const native = managedAgents.get(row.agent);
     if (!native) throw new Error("UNKNOWN_AGENT");
     return { ...row, native };

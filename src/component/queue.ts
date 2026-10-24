@@ -92,19 +92,34 @@ export const lookupReceipt = query({
 /**
  * Ownership projection of an existing assignment, or `null` for an unknown thread.
  *
- * Deliberately unauthenticated: it exposes only stored identity fields, and the
- * host endpoint compares the returned `subject` with its own authorization
+ * Deliberately unauthenticated: it exposes only stored identity and role fields.
+ * The host endpoint compares the returned `subject` with its own authorization
  * decision before returning anything to a caller.
  */
 export const assignment = query({
   args: { threadId: v.string() },
-  returns: v.union(v.null(), scope),
+  returns: v.union(v.null(), v.object({ ...scope.fields, root: v.boolean() })),
   handler: async (ctx, { threadId }) => {
     const row = await ctx.db
       .query("assignments")
       .withIndex("by_thread", (q) => q.eq("threadId", threadId))
       .unique();
-    return row ? { assignmentId: row._id, threadId, subject: row.subject, agent: row.agent } : null;
+    // The assignment's role is fixed by how it was created: a delegated child
+    // carries its runId, while a public root does not. Never infer this from
+    // the current registration's root names. A host could later promote a
+    // former child agent name to a root; that must not promote its old child
+    // threads or permit public sends outside the coordinator's lifecycle.
+    // Keep this extra projection local to assignment so claim's execution
+    // scope and its root/child turn payload remain unchanged.
+    return row
+      ? {
+          assignmentId: row._id,
+          threadId,
+          subject: row.subject,
+          agent: row.agent,
+          root: row.runId === undefined,
+        }
+      : null;
   },
 });
 

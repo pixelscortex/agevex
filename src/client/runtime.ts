@@ -135,9 +135,10 @@ function resolveGraph(config: Registration): Graph {
       seen.add(child);
       // A public root that somebody else also declares as a child is reported as
       // exactly that, before the generic duplicate-name check, because the graph
-      // cannot be resolved at all.
-      if (roots.has(child.name) && byName.get(child.name) !== child)
-        throw new Error("ROOT_AS_CHILD");
+      // cannot be resolved at all. Object identity does not make these roles
+      // compatible: listing the very same child object among the roots would
+      // otherwise expose a coordinator-owned agent as a public entry point.
+      if (roots.has(child.name)) throw new Error("ROOT_AS_CHILD");
       const existing = byName.get(child.name) ?? children.get(child.name);
       if (existing && existing !== child) throw new Error("DUPLICATE_AGENT_NAME");
       if (child.subagents.length) throw new Error("SUBAGENT_DEPTH");
