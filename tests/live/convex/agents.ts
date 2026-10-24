@@ -15,6 +15,9 @@ import { LIVE_LIMITS } from "../config.js";
 declare const process: { env: Record<string, string | undefined> };
 export const live = {
   delegation: false,
+  depth: false,
+  builderCalls: 0,
+  reviewerCalls: 0,
   rootCalls: 0,
   childCalls: 0,
   requests: 0,
@@ -75,7 +78,7 @@ rootModel.doStream = (args) => {
     ...args,
     maxOutputTokens: LIVE_LIMITS.outputTokens,
     toolChoice:
-      live.delegation && call < 2
+      (live.depth && call === 0) || (live.delegation && call < 2)
         ? { type: "tool", toolName: "agevex_delegate" }
         : { type: "none" },
   });
@@ -100,12 +103,47 @@ const child = new Agent(native, {
   instructions: "Answer the task in one short sentence. Do not call tools.",
   usageHandler,
 });
+const reviewerModel = provider.chat(modelId);
+const reviewerStream = reviewerModel.doStream.bind(reviewerModel);
+reviewerModel.doStream = (args) => {
+  live.reviewerCalls++;
+  return reviewerStream({
+    ...args,
+    maxOutputTokens: LIVE_LIMITS.outputTokens,
+    toolChoice: { type: "none" },
+  });
+};
+const reviewer = new Agent(native, {
+  name: "Reviewer",
+  languageModel: reviewerModel,
+  subagents: [],
+  usageHandler,
+  instructions: "Review the task in one short sentence. Do not call tools.",
+});
+const builderModel = provider.chat(modelId);
+const builderStream = builderModel.doStream.bind(builderModel);
+builderModel.doStream = (args) => {
+  const call = live.builderCalls++;
+  return builderStream({
+    ...args,
+    maxOutputTokens: LIVE_LIMITS.outputTokens,
+    toolChoice: call === 0 ? { type: "tool", toolName: "agevex_delegate" } : { type: "none" },
+  });
+};
+const builder = new Agent(native, {
+  name: "Builder",
+  languageModel: builderModel,
+  subagents: [reviewer],
+  usageHandler,
+  instructions:
+    "First delegate one very short task to Reviewer. When its result arrives, reply in one short sentence. Never delegate to any other agent.",
+});
 const main = new Agent(native, {
   name: "Main",
   languageModel: rootModel,
-  subagents: [child],
+  subagents: [child, builder],
   instructions:
-    "Use Researcher when required to delegate. Use a very short factual task. After the second Researcher result, reply in one short sentence. Never delegate to any other agent.",
+    "For a depth-two task delegate exactly once to Builder, then give a short final answer after its result. For other tasks use Researcher when required to delegate. Use a very short factual task. After the second Researcher result, reply in one short sentence. Never delegate to any other agent.",
   usageHandler,
 });
 const runtime = registerAgent(agevex, {
@@ -134,5 +172,5 @@ const runtime = registerAgent(agevex, {
   },
 });
 export const { runTurn, coordinate } = runtime.internalFunctions();
-export const { open, send, cancel, messages, activity, delegations } =
+export const { open, send, cancel, messages, activity, delegations, runTree } =
   runtime.authorizedEndpoints();
