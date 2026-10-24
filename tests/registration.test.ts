@@ -47,6 +47,7 @@ it("registers a Main -> Researcher graph and rejects an unusable one", () => {
     "delegations",
     "messages",
     "open",
+    "respond",
     "send",
   ]);
   expect(() => registerAgent(components.agevex, { ...policy, agents: [main, main] })).toThrow(

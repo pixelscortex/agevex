@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { makeFunctionReference, mutationGeneric } from "convex/server";
+import { makeFunctionReference, mutationGeneric, queryGeneric } from "convex/server";
 import workflow from "@convex-dev/workflow/test";
 import { type Registration } from "../src/client/types.js";
 import agent from "@convex-dev/agent/test";
@@ -24,6 +24,7 @@ const modules = import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]);
  * boundary, so the tested path is the real one up to that point.
  */
 export type Fault =
+  | "transcriptReads"
   | "lostPing"
   | "delayedWait"
   | "save"
@@ -143,6 +144,8 @@ export function setup(
   transactionLimits: NonNullable<Parameters<typeof convexTest>[0]>["transactionLimits"] = false,
 ) {
   state.dropPing = false;
+  state.forbidTranscriptReads = false;
+  state.transcriptReads = 0;
   state.nestedCalls = 0;
   state.nativeNested = false;
   state.nestedAfterCancel = false;
@@ -162,6 +165,7 @@ export function setup(
   state.hang = false;
   state.tools = false;
   state.approval = false;
+  state.childApproval = false;
   state.once = false;
   state.onceCalls = 0;
   state.onceContext = undefined;
@@ -216,6 +220,34 @@ export function setup(
           addMessages: NativeAddMessages;
         };
         return { ...real, addMessages: notificationSaveFault(real.addMessages) };
+      },
+    });
+  } else if (fault === "transcriptReads") {
+    t.registerComponent("agent", agent.schema, {
+      ...agent.modules,
+      "./component/messages.ts": async () => {
+        const real = (await agent.modules["./component/messages.ts"]()) as Record<
+          string,
+          NativeAddMessages
+        >;
+        const wrapped = Object.fromEntries(
+          ["getMessagesByIds", "listMessagesByThreadId"].map((name) => [
+            name,
+            queryGeneric({
+              args: real[name]._args as never,
+              returns: real[name]._returns as never,
+              handler: async (ctx, args) => {
+                state.transcriptReads++;
+                if (state.forbidTranscriptReads) throw new Error("TRANSCRIPT_READ_FORBIDDEN");
+                return (await real[name]._handler(
+                  ctx as unknown as MutationCtx,
+                  args as AddMessagesArgs,
+                )) as never;
+              },
+            }),
+          ]),
+        );
+        return { ...real, ...wrapped };
       },
     });
   } else agent.register(t);

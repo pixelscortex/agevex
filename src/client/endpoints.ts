@@ -2,11 +2,11 @@ import {
   createThread,
   listUIMessages,
   saveMessage,
-  syncStreams,
   vStreamArgs,
   vStreamMessagesReturnValue,
   type UIMessage,
 } from "@convex-dev/agent";
+import type { StreamArgs, StreamDelta, StreamMessage } from "@convex-dev/agent/validators";
 import {
   createFunctionHandle,
   mutationGeneric,
@@ -17,7 +17,7 @@ import {
   type GenericQueryCtx,
   type PaginationResult,
 } from "convex/server";
-import { v, type Validator } from "convex/values";
+import { ConvexError, v, type Validator } from "convex/values";
 import { fingerprint } from "./once.js";
 import { LIMITS, resolveLimits } from "../component/limits.js";
 import type { ComponentApi } from "../component/_generated/component.js";
@@ -100,23 +100,24 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
   async function owned(
     ctx: GenericQueryCtx<GenericDataModel>,
     threadId: string,
-    operation: "send" | "cancel" | "messages" | "activity",
+    operation: "send" | "respond" | "cancel" | "messages" | "activity",
   ) {
     const row = await ctx.runQuery(component.queue.assignment, { threadId });
     if (!row) throw new Error("FORBIDDEN");
     const trusted = await config.authorize(ctx, { operation, agent: row.agent, threadId });
     if (!trusted.subject || trusted.subject !== row.subject) throw new Error("FORBIDDEN");
-    // Ownership permits reading a child's transcript, not driving its managed
-    // lifecycle. Child turns belong to the coordinator's bounded delegation and
+    // Ownership permits reading a child's transcript and resolving its recorded
+    // approvals. Child turns belong to the coordinator's bounded delegation and
     // settlement path; accepting a public send could start another child turn
     // outside that path. Keep send and coordination reads (activity/delegations)
-    // root-only, while messages uses the same ownership check for every thread.
+    // root-only; messages/respond use the same ownership check for every thread.
     // The role must come from the persisted assignment, not today's root names:
     // a later deployment can register a former child agent as a root without
     // changing the role of any existing child thread. A name-based check would
     // grant send/activity access to those old threads (and previously also let
     // a shared Agent object registered as both root and child bypass the guard).
-    if (operation !== "messages" && row.root === false) throw new Error("FORBIDDEN");
+    if (operation !== "messages" && operation !== "respond" && row.root === false)
+      throw new Error("FORBIDDEN");
     const native = managedAgents.get(row.agent);
     if (!native) throw new Error("UNKNOWN_AGENT");
     return { ...row, native };
@@ -202,6 +203,26 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
         return accepted;
       },
     }),
+    respond: mutationGeneric({
+      args: {
+        threadId: v.string(),
+        approvalId: v.string(),
+        approved: v.boolean(),
+        reason: v.optional(v.string()),
+      },
+      returns: v.object({ messageId: v.string() }),
+      handler: async (ctx, args) => {
+        const row = await owned(ctx, args.threadId, "respond");
+        return ctx.runMutation(component.queue.respond, {
+          assignmentId: row.assignmentId,
+          subject: row.subject,
+          approvalId: args.approvalId,
+          approved: args.approved,
+          ...(args.reason !== undefined ? { reason: args.reason } : {}),
+          addMessages: await createFunctionHandle(row.native.component.messages.addMessages),
+        });
+      },
+    }),
     cancel: mutationGeneric({
       args: { threadId: v.string() },
       returns: v.null(),
@@ -225,10 +246,15 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
         const row = await owned(ctx, args.threadId, "messages");
         // Clamp the client's page to the server's count and byte bounds (see
         // LIMITS.messagePage); a smaller page only means one more cursor hop.
-        const { numItems, maximumBytesRead } = args.paginationOpts;
+        const { numItems, maximumBytesRead, maximumRowsRead } = args.paginationOpts;
+        for (const value of [numItems, maximumBytesRead, maximumRowsRead]) {
+          if (value !== undefined && (!Number.isSafeInteger(value) || value < 0))
+            throw new ConvexError({ code: "INVALID_PAGINATION" });
+        }
         const paginationOpts = {
           ...args.paginationOpts,
           numItems: Math.min(numItems, LIMITS.messagePage),
+          maximumRowsRead: Math.min(maximumRowsRead ?? LIMITS.messagePage, LIMITS.messagePage),
           maximumBytesRead: Math.min(
             maximumBytesRead ?? LIMITS.messagePageBytes,
             LIMITS.messagePageBytes,
@@ -238,7 +264,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           ...args,
           paginationOpts,
         });
-        const streams = await syncStreams(ctx, row.native.component, args);
+        const streams = await boundedStreams(ctx, component, row, args.streamArgs);
         return { ...page, streams };
       },
     }),
@@ -281,4 +307,46 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
       },
     }),
   };
+}
+
+async function boundedStreams(
+  ctx: GenericQueryCtx<GenericDataModel>,
+  component: ComponentApi,
+  row: { assignmentId: string; threadId: string; native: ManagedAgent },
+  args?: StreamArgs,
+) {
+  if (!args) return undefined;
+  if (args.kind === "list") {
+    const execution = await ctx.runQuery(component.queue.execution, {
+      assignmentId: row.assignmentId,
+    });
+    const id = execution?.cancelled ? undefined : execution?.pendingGeneration?.stream?.id;
+    const stream = id
+      ? await ctx.runQuery(component.queue.stream, {
+          assignmentId: row.assignmentId,
+          streamId: id,
+        })
+      : null;
+    const messages: StreamMessage[] =
+      stream?.status === "streaming" && stream.order >= (args.startOrder ?? 0) ? [stream] : [];
+    return { kind: "list" as const, messages };
+  }
+  // A thread has one active generation. Deduplicate by id (including cursors
+  // at different offsets) and keep the earliest offset so data isn't skipped.
+  const cursors = new Map<string, number>();
+  for (const { streamId, cursor } of args.cursors) {
+    if (!Number.isSafeInteger(cursor) || cursor < 0)
+      throw new ConvexError({ code: "INVALID_STREAM_CURSOR" });
+    cursors.set(streamId, Math.min(cursors.get(streamId) ?? cursor, cursor));
+  }
+  const deltas: StreamDelta[] = [];
+  for (const [streamId, cursor] of [...cursors].slice(0, LIMITS.streamCursors)) {
+    const page = await ctx.runQuery(component.queue.streamDeltas, {
+      assignmentId: row.assignmentId,
+      streamId,
+      cursor,
+    });
+    deltas.push(...page);
+  }
+  return { kind: "deltas" as const, deltas };
 }

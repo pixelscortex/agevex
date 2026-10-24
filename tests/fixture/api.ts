@@ -26,6 +26,7 @@ import type {
   open,
   runTurn,
   send,
+  respond,
 } from "../host.js";
 import type * as promoted from "./promoted.js";
 import {
@@ -58,6 +59,7 @@ export const api = generatedApi as unknown as {
   agents: {
     open: ReferenceOf<typeof open>;
     send: ReferenceOf<typeof send>;
+    respond: ReferenceOf<typeof respond>;
     cancel: ReferenceOf<typeof cancel>;
     messages: ReferenceOf<typeof messages>;
     activity: ReferenceOf<typeof activity>;

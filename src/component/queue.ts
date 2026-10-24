@@ -1,3 +1,7 @@
+import type { MessageDoc } from "@convex-dev/agent";
+import type { StreamMessage, StreamDelta } from "@convex-dev/agent/validators";
+import { paginator } from "convex-helpers/server/pagination";
+import schema from "./schema.js";
 import type { FunctionHandle } from "convex/server";
 import type { WorkflowId } from "@convex-dev/workflow";
 import { rootLane, childLane, laneManager } from "./workflows.js";
@@ -272,8 +276,7 @@ export const accept = mutation({
     await ctx.db.patch("receipts", receiptId, {
       result: { assignmentId: row._id, threadId: args.threadId, receiptId, status: "accepted" },
     });
-    await ctx.db.patch("assignments", row._id, { approvalBlocked: false });
-    await wake(ctx, { ...row, approvalBlocked: false, queuedMessages: row.queuedMessages + 1 });
+    await wake(ctx, { ...row, queuedMessages: row.queuedMessages + 1 });
     return {
       assignmentId: row._id,
       threadId: args.threadId,
@@ -323,7 +326,7 @@ export const claim = mutation({
   ),
   handler: async (ctx, { assignmentId, turnToken, sliceId }) => {
     const row = await ctx.db.get("assignments", assignmentId);
-    if (!row || row.cancelled || row.turnToken !== turnToken) return null;
+    if (!row || row.cancelled || row.approvalBlocked || row.turnToken !== turnToken) return null;
     const first = row.turnStatus === "queued";
     if (
       !first &&
@@ -355,6 +358,7 @@ export const claim = mutation({
       turnStatus: "running",
       continueSlice: false,
       approvalRequestMessageId: undefined,
+      approvalRequestId: undefined,
       lastSlice: sliceId,
       inboxId: undefined,
     });
@@ -566,6 +570,44 @@ export const execution = query({
   handler: (ctx, args) => ctx.db.get("assignments", args.assignmentId),
 });
 
+/** Read a single creation projection by exact native id, with ownership. */
+export const stream = query({
+  args: { assignmentId: v.id("assignments"), streamId: v.string() },
+  handler: async (ctx, args): Promise<StreamMessage | null> => {
+    const row = await ctx.db
+      .query("nativeStreams")
+      .withIndex("by_stream", (q) => q.eq("streamId", args.streamId))
+      .unique();
+    return row?.assignmentId === args.assignmentId ? row.message : null;
+  },
+});
+
+export const streamDeltas = query({
+  args: { assignmentId: v.id("assignments"), streamId: v.string(), cursor: v.number() },
+  handler: async (ctx, args): Promise<StreamDelta[]> => {
+    const stream = await ctx.db
+      .query("nativeStreams")
+      .withIndex("by_stream", (q) => q.eq("streamId", args.streamId))
+      .unique();
+    if (stream?.assignmentId !== args.assignmentId)
+      throw new ConvexError({ code: "FORBIDDEN_STREAM" });
+    // Reserve metadata AND a full boundary document before reading any deltas.
+    const maximumBytesRead = LIMITS.streamPageBytes - 2 * LIMITS.nativeDocumentBytes;
+    const { page } = await paginator(ctx.db, schema)
+      .query("nativeStreamDeltas")
+      .withIndex("by_stream_start", (q) =>
+        q.eq("streamId", args.streamId).gte("start", args.cursor),
+      )
+      .paginate({
+        cursor: null,
+        numItems: LIMITS.streamDeltaPage,
+        maximumRowsRead: LIMITS.streamDeltaPage,
+        maximumBytesRead,
+      });
+    return page.map(({ streamId, start, end, parts }) => ({ streamId, start, end, parts }));
+  },
+});
+
 export const next = internalMutation({
   args: { assignmentId: v.id("assignments") },
   returns: v.union(v.string(), v.null()),
@@ -606,6 +648,8 @@ export const write = mutation({
     args: v.any(),
     rejectStale: v.optional(v.boolean()),
     nativeStream: v.optional(v.string()),
+    nativeStreamFinished: v.optional(v.boolean()),
+    nativeDelta: v.optional(v.boolean()),
     nativeMessages: v.optional(
       v.object({
         getMessages: v.string(),
@@ -641,11 +685,33 @@ export const write = mutation({
       return null; // Agent's asynchronous void abort listeners must resolve.
     }
     const result = await ctx.runMutation(args.handle as FunctionHandle<"mutation">, args.args);
+    const finalDelta =
+      args.nativeStreamFinished || row.pendingGeneration?.stream?.abort === args.handle
+        ? args.args.finalDelta
+        : undefined;
+    const delta = args.nativeDelta && result === true ? args.args : finalDelta;
+    if (delta) {
+      const { streamId, start, end, parts } = delta;
+      await ctx.db.insert("nativeStreamDeltas", { streamId, start, end, parts });
+    }
+    if (args.nativeStreamFinished || row.pendingGeneration?.stream?.abort === args.handle) {
+      const stream = await ctx.db
+        .query("nativeStreams")
+        .withIndex("by_stream", (q) => q.eq("streamId", args.args.streamId))
+        .unique();
+      if (stream?.assignmentId === row._id)
+        await ctx.db.patch("nativeStreams", stream._id, {
+          message: {
+            ...stream.message,
+            status: args.nativeStreamFinished ? "finished" : "aborted",
+          },
+        });
+    }
     if (args.nativeMessages) {
       // Agent 0.7.7 addMessages returns the actual pending document, including
       // its id (vercel/client/saveInputMessages.ts). Record only coordination
       // metadata in the SAME transaction as the native placeholder creation.
-      const messages = (result as { messages: { _id: string; status: string }[] }).messages;
+      const messages = (result as { messages: MessageDoc[] }).messages;
       const pending = messages.filter((message) => message.status === "pending");
       if (pending.length > 1) throw new Error("MULTIPLE_PENDING_GENERATIONS");
       if (pending.length)
@@ -659,6 +725,63 @@ export const write = mutation({
         });
       else if (row.pendingGeneration?.messageId === args.args?.pendingMessageId)
         await ctx.db.patch("assignments", row._id, { pendingGeneration: undefined });
+      for (const message of messages) {
+        if (message.message?.role !== "assistant" || !Array.isArray(message.message.content))
+          continue;
+        const content = message.message.content;
+        const approvals = content.flatMap((part) =>
+          part.type === "tool-approval-request"
+            ? [
+                {
+                  approvalId: part.approvalId,
+                  toolCallId: part.toolCallId,
+                  providerExecuted: content.some(
+                    (call) =>
+                      call.type === "tool-call" &&
+                      call.toolCallId === part.toolCallId &&
+                      call.providerExecuted === true,
+                  ),
+                },
+              ]
+            : [],
+        );
+        if (!approvals.length) continue;
+        if (row.approvalBlocked) throw new Error("APPROVAL_ALREADY_PENDING");
+        // The response continuation must precede unrelated queued sends.
+        const head = await ctx.db
+          .query("inbox")
+          .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
+          .first();
+        const inboxId = await ctx.db.insert("inbox", {
+          assignmentId: row._id,
+          runId: row.runId!,
+          messageId: message._id,
+          sequence: head ? head.sequence - 1 : row.nextSequence,
+          kind: row.turnOrigin === "subagent_result" ? "result" : "user",
+        });
+        const approvalRequestId = await ctx.db.insert("approvalRequests", {
+          assignmentId: row._id,
+          messageId: message._id,
+          inboxId,
+          approvals,
+        });
+        await disarmSlice(ctx, row);
+        await disarmRecovery(ctx, row);
+        // Commit the block with the native request, even if the action dies
+        // immediately after this mutation. No later action owns this fact.
+        await ctx.db.patch("assignments", row._id, {
+          approvalBlocked: true,
+          approvalRequestId,
+          approvalRequestMessageId: message._id,
+          turnStatus: "idle",
+          turnToken: undefined,
+          promptMessageId: undefined,
+          inboxId: undefined,
+          continueSlice: false,
+          queuedMessages: row.queuedMessages + 1,
+          nextSequence: row.nextSequence + 1,
+        });
+      }
     }
     if (args.nativeStream) {
       const pending = row.pendingGeneration;
@@ -674,8 +797,76 @@ export const write = mutation({
           stream: { id: result as string, abort: args.nativeStream },
         },
       });
+      const { threadId: _threadId, ...metadata } = args.args;
+      await ctx.db.insert("nativeStreams", {
+        streamId: result as string,
+        assignmentId: row._id,
+        message: { ...metadata, streamId: result as string, status: "streaming" },
+      });
     }
     return result;
+  },
+});
+
+/** Approval responses MUST go through the authorized respond endpoint. A
+ * response saved directly through Agent is not seen by this runtime.
+ */
+export const respond = mutation({
+  args: {
+    assignmentId: v.id("assignments"),
+    subject: v.string(),
+    approvalId: v.string(),
+    approved: v.boolean(),
+    reason: v.optional(v.string()),
+    addMessages: v.string(),
+  },
+  returns: v.object({ messageId: v.string() }),
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get("assignments", args.assignmentId);
+    if (!row || row.subject !== args.subject) throw new ConvexError({ code: "FORBIDDEN" });
+    const request = row.approvalRequestId
+      ? await ctx.db.get("approvalRequests", row.approvalRequestId)
+      : null;
+    const decision = request?.approvals.find((a) => a.approvalId === args.approvalId);
+    if (!row.approvalBlocked || row.cancelled || !request || !decision)
+      throw new ConvexError({ code: "APPROVAL_NOT_FOUND" });
+    if (decision.responseMessageId) throw new ConvexError({ code: "APPROVAL_ALREADY_RESOLVED" });
+    // Agent 0.7.7 approveToolCall / denyToolCall call respondToToolCallApprovals.
+    // Its planner scans history; use its exact addMessages protocol instead,
+    // anchored to our atomically recorded request and provider-executed flag.
+    const saved = (await ctx.runMutation(args.addMessages as FunctionHandle<"mutation">, {
+      threadId: row.threadId,
+      agentName: row.agent,
+      promptMessageId: request.messageId,
+      failPendingSteps: false,
+      messages: [
+        {
+          message: {
+            role: "tool",
+            content: [
+              {
+                type: "tool-approval-response",
+                approvalId: args.approvalId,
+                approved: args.approved,
+                ...(args.reason !== undefined ? { reason: args.reason } : {}),
+                ...(decision.providerExecuted ? { providerExecuted: true } : {}),
+              },
+            ],
+          },
+        },
+      ],
+    })) as { messages: { _id: string }[] };
+    const messageId = saved.messages[0]._id;
+    const approvals = request.approvals.map((a) =>
+      a.approvalId === args.approvalId ? { ...a, responseMessageId: messageId } : a,
+    );
+    await ctx.db.patch("approvalRequests", request._id, { approvals });
+    if (approvals.every((a) => a.responseMessageId)) {
+      await ctx.db.patch("inbox", request.inboxId, { messageId });
+      await ctx.db.patch("assignments", row._id, { approvalBlocked: false });
+      await wake(ctx, { ...row, approvalBlocked: false });
+    }
+    return { messageId };
   },
 });
 
@@ -842,6 +1033,8 @@ export const cancel = mutation({
         queuedMessages: 0,
         continueSlice: false,
         approvalBlocked: false,
+        approvalRequestId: undefined,
+        approvalRequestMessageId: undefined,
       });
       const inbox = await ctx.db
         .query("inbox")

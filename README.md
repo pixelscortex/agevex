@@ -45,7 +45,7 @@ const runtime = registerAgent(components.agevex, {
   authorizeExecution: hostExecutionPolicy,
 });
 export const { runTurn, coordinate } = runtime.internalFunctions();
-export const { open, send, cancel, messages, activity, delegations } =
+export const { open, send, respond, cancel, messages, activity, delegations } =
   runtime.authorizedEndpoints();
 ```
 
@@ -100,7 +100,7 @@ accepted by a provider still depend on that provider's abort behavior.
 
 Pending native tool approvals block generation and leave the inbox row
 waiting, avoiding Agent 0.7.7's automatic denial on a new generation.
-Approval UX and managed approval resumption are Phase 1b.
+Approval responses must go through `respond({ threadId, approvalId, approved, reason? })`; a response saved directly through the Agent component is not seen by the runtime.
 
 ## Effects that must run once
 

@@ -45,6 +45,8 @@ const toolNames = (tools: unknown): string[] =>
 
 export const state = {
   dropPing: false,
+  forbidTranscriptReads: false,
+  transcriptReads: 0,
   nestedCalls: 0,
   nestedAfterCancel: false,
   nativeNested: false,
@@ -65,6 +67,7 @@ export const state = {
   hang: false,
   tools: false,
   approval: false,
+  childApproval: false,
   once: false,
   onceCalls: 0,
   onceContext: undefined as ToolContext | undefined,
@@ -217,9 +220,10 @@ childModel.doStream = async (args) => {
   if (state.childGate) await state.childGate;
   if (state.childFail) throw new Error("private child provider error must not leak");
   if (
-    state.childToolSlices > 0 &&
+    (state.childApproval || state.childToolSlices > 0) &&
     JSON.stringify(args.prompt).includes("keep slicing") &&
-    state.offers.filter((offer) => offer.agent === "Researcher").length <= state.childToolSlices
+    state.offers.filter((offer) => offer.agent === "Researcher").length <=
+      (state.childApproval ? 1 : state.childToolSlices)
   )
     return scriptedModel([
       [
@@ -242,8 +246,14 @@ export const researcher = new Agent(components.agent, {
 // Opt-in fixture tools preserve the tool-less child promised by existing tests.
 Object.defineProperty(researcher, "declaredTools", {
   get: () =>
-    state.childToolSlices > 0
-      ? { echo: tool({ inputSchema: z.object({ text: z.string() }), execute: ({ text }) => text }) }
+    state.childApproval || state.childToolSlices > 0
+      ? {
+          echo: tool({
+            inputSchema: z.object({ text: z.string() }),
+            needsApproval: () => state.childApproval,
+            execute: ({ text }) => text,
+          }),
+        }
       : {},
 });
 export const main = new Agent(components.agent, {
@@ -371,7 +381,7 @@ export const nestedMutation: RegisteredMutation<"internal", {}, null> = internal
 });
 const { runTurn, coordinate } = runtime.internalFunctions();
 export { runTurn, coordinate };
-export const { open, send, cancel, messages, activity, delegations } =
+export const { open, send, respond, cancel, messages, activity, delegations } =
   runtime.authorizedEndpoints();
 
 /**

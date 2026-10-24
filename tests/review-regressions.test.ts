@@ -141,39 +141,10 @@ it("40 large tool results allow a turn to start, block on recorded approval, and
   await drain(t);
   expect(state.calls).toHaveLength(1);
   expect(await execution()).toMatchObject({ approvalBlocked: true, queuedMessages: 2 });
-  // Save the native protocol response at the recorded request's order. Agent's
-  // own approveToolCall helper also scans 100 messages without a byte cap, so
-  // use its supported save API to exercise our guard independently of that bug.
-  await t.run(async (ctx) => {
-    const response = await saveMessage(ctx, components.agent, {
-      threadId: receipt.threadId,
-      promptMessageId: request!._id,
-      message: {
-        role: "tool",
-        content: [
-          {
-            type: "tool-approval-response",
-            approvalId: part.approvalId,
-            approved: true,
-          },
-        ],
-      },
-    });
-    await saveMessage(ctx, components.agent, {
-      threadId: receipt.threadId,
-      promptMessageId: response.messageId,
-      message: {
-        role: "tool",
-        content: [
-          {
-            type: "tool-result",
-            toolCallId: part.toolCallId,
-            toolName: "echo",
-            output: { type: "text", value: "echoed" },
-          },
-        ],
-      },
-    });
+  await alice.mutation(api.agents.respond, {
+    threadId: receipt.threadId,
+    approvalId: part.approvalId,
+    approved: true,
   });
   state.approval = false;
   await alice.mutation(api.agents.send, {
@@ -622,13 +593,6 @@ it("cancel commits a full approval-blocked backlog with maximum limits, children
       threadId: receipt.threadId,
       text: "😀".repeat(LIMITS.messageLength / 2),
       requestKey: "max-backlog-" + i,
-    });
-    const queued = await t.query(components.agevex.queue.execution, {
-      assignmentId: receipt.assignmentId,
-    });
-    await t.mutation(components.agevex.queue.pauseApproval, {
-      assignmentId: receipt.assignmentId,
-      executionId: queued!.turnToken!,
     });
   }
   expect(
@@ -1269,27 +1233,12 @@ it("an approval response followed by a fresh send completes the approval-blocked
   await drain(t);
   expect(state.calls).toHaveLength(1);
   expect(await activity(t, receipt.threadId)).toMatchObject({ queuedMessages: 2 });
-  // Native approval responses share the request's order, even when user
-  // messages were queued meanwhile. A plain append would create an invalid
-  // protocol fixture that the Agent SDK cannot resume from the older prompt.
-  const approval = await t.run((ctx) =>
-    main.approveToolCall(ctx, {
-      threadId: receipt.threadId,
-      approvalId: part.approvalId,
-    }),
-  );
-  // Phase 1a leaves approval continuation to the host's native Agent API. Save
-  // the approved tool's result before unrelated queued prompts can be generated.
-  await t.action(async (ctx) => {
-    await main.generateText(
-      ctx,
-      { threadId: receipt.threadId },
-      {
-        promptMessageId: approval.messageId,
-        stopWhen: () => true,
-      },
-    );
+  await alice.mutation(api.agents.respond, {
+    threadId: receipt.threadId,
+    approvalId: part.approvalId,
+    approved: true,
   });
+  await drain(t);
   const beforeSend = state.calls.length;
   await alice.mutation(api.agents.send, {
     threadId: receipt.threadId,
@@ -1297,7 +1246,7 @@ it("an approval response followed by a fresh send completes the approval-blocked
     requestKey: "approved",
   });
   await drain(t);
-  expect(state.calls).toHaveLength(beforeSend + 3);
+  expect(state.calls).toHaveLength(beforeSend + 1);
   expect(await activity(t, receipt.threadId)).toMatchObject({
     turnStatus: "idle",
     queuedMessages: 0,

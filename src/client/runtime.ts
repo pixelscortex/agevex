@@ -1,4 +1,4 @@
-import { createThread, getThreadMetadata, listMessages, saveMessage } from "@convex-dev/agent";
+import { createThread, getThreadMetadata, saveMessage } from "@convex-dev/agent";
 import {
   createFunctionHandle,
   getFunctionAddress,
@@ -541,15 +541,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
           // Agent 0.7.7 auto-denies unresolved approvals at generation start.
           // Only our recorded request can block a managed turn. Native history
           // is never searched to discover requests.
-          if (
-            await hasPendingApproval(ctx, managed, queued.threadId, queued.approvalRequestMessageId)
-          ) {
-            await ctx.runMutation(component.queue.pauseApproval, {
-              assignmentId: args.assignmentId,
-              executionId: args.turnToken,
-            });
-            return null;
-          }
+          if (queued.approvalBlocked) return null;
           const claimed = await ctx.runMutation(component.queue.claim, args);
           if (!claimed) return null;
           const child = claimed.subagent;
@@ -686,6 +678,14 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                     args: payload,
                     rejectStale: true,
                     ...(JSON.stringify(getFunctionAddress(ref)) ===
+                    JSON.stringify(getFunctionAddress(managed.component.streams.addDelta))
+                      ? { nativeDelta: true }
+                      : {}),
+                    ...(JSON.stringify(getFunctionAddress(ref)) ===
+                    JSON.stringify(getFunctionAddress(managed.component.streams.finish))
+                      ? { nativeStreamFinished: true }
+                      : {}),
+                    ...(JSON.stringify(getFunctionAddress(ref)) ===
                     JSON.stringify(getFunctionAddress(managed.component.streams.create))
                       ? {
                           nativeStream: await createFunctionHandle(managed.component.streams.abort),
@@ -794,23 +794,6 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 snapshot.cancellationEpoch !== claimed.cancellationEpoch
               )
                 return null;
-              // One model step saves one assistant request message. Keep its
-              // exact id, rather than copying potentially large provider ids
-              // onto assignment metadata (also read by bounded cancellation).
-              const approvalRequest = result.savedMessages?.find(
-                (message) =>
-                  message.message?.role === "assistant" &&
-                  Array.isArray(message.message.content) &&
-                  message.message.content.some((part) => part.type === "tool-approval-request"),
-              );
-              if (approvalRequest) {
-                await ctx.runMutation(component.queue.pauseApproval, {
-                  assignmentId: args.assignmentId,
-                  executionId: args.turnToken,
-                  approvalRequestMessageId: String(approvalRequest._id),
-                });
-                return null;
-              }
               if (reason === "tool-calls" && !delegated) {
                 const last = result.savedMessages?.[result.savedMessages.length - 1];
                 if (last) {
@@ -944,53 +927,4 @@ export function registerAgent(component: ComponentApi, config: Registration) {
       return { runTurn, coordinate };
     },
   };
-}
-
-/** Native approvals remain native; only an exact recorded request is consulted. */
-async function hasPendingApproval(
-  ctx: RunnerCtx,
-  agent: ManagedAgent,
-  threadId: string,
-  requestMessageId?: string,
-) {
-  if (!requestMessageId) return false;
-  // One document, bounded by Convex's 1 MiB document ceiling. Keeping the id
-  // also preserves the cancel metadata budget regardless of request size.
-  const [request] = await ctx.runQuery(agent.component.messages.getMessagesByIds, {
-    messageIds: [requestMessageId],
-  });
-  if (!request || request.threadId !== threadId || request.message?.role !== "assistant")
-    return true;
-  const content = request.message.content;
-  const unresolved = new Set(
-    Array.isArray(content)
-      ? content.flatMap((part) => (part.type === "tool-approval-request" ? [part.approvalId] : []))
-      : [],
-  );
-  if (!unresolved.size) return false;
-  // Agent 0.7.7 approvals.ts stores responses as separate tool messages; its
-  // messages API has no approval-id/tool-call-id response lookup. This fallback
-  // continues byte-bounded pages and stops as soon as our recorded ids resolve.
-  let cursor: string | null = null;
-  for (;;) {
-    const page = await listMessages(ctx, agent.component, {
-      threadId,
-      statuses: ["success"],
-      paginationOpts: {
-        cursor,
-        numItems: LIMITS.approvalPage,
-        maximumBytesRead: LIMITS.approvalPageBytes,
-      },
-    });
-    for (const message of page.page) {
-      const content = message.message?.content;
-      if (!Array.isArray(content)) continue;
-      for (const part of content) {
-        if (part.type === "tool-approval-response") unresolved.delete(part.approvalId);
-      }
-    }
-    if (!unresolved.size) return false;
-    if (page.isDone) return true;
-    cursor = page.continueCursor;
-  }
 }
