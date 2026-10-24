@@ -1,0 +1,31 @@
+src/client/runtime.ts
+  s_ea4bd22130069e::t_b854439263cc53 4,648-657,665-666,729
+src/component/queue.ts
+  s_ea4bd22130069e::t_c2393164290c43 127-135,512-517,519,749-754,757,759-784
+src/component/schema.ts
+  s_ea4bd22130069e::t_75e2f4cf11eb9b 130
+src/testing/bridge.ts
+  s_ea4bd22130069e::t_fb317a842d6c8c 27-41
+tests/host.ts
+  s_ea4bd22130069e::t_84d8f994a66b05 27,50,148-155,239-258
+tests/review-regressions.test.ts
+  s_ea4bd22130069e::t_21967553a384a7 5-7,54-61,64,370-473
+tests/setup.ts
+  s_ea4bd22130069e::t_51a42c77fc730a 141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d014a7fec08ff81c94e4b7aa3a3d8cbb26d79361",
+  "prompts": {},
+  "sessions": {
+    "s_ea4bd22130069e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16fb0-956e-7b40-940b-e69b4981d330",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
