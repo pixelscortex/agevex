@@ -1,0 +1,95 @@
+bun.lock
+  s_14762e0b2e0132::t_2a0808b110495a 8,12-14,18-19,42,44,46-48,68-69,276-277,360,372-373,592-593
+package.json
+  s_14762e0b2e0132::t_c46c770b852a0d 5,47-49,52,56-58,62-63,72-73,75
+src/client/agent.ts
+  s_14762e0b2e0132::t_3c83ecf6d398bb 6-9
+src/client/endpoints.ts
+  s_14762e0b2e0132::t_74e2dce254e8d6 4,22-23,73-75,103,203-240
+src/client/index.ts
+  s_14762e0b2e0132::t_0487fc85a09fd4 19-22
+src/client/once.ts
+  s_14762e0b2e0132::t_a5980c95259f7a 1-111
+src/client/runtime.ts
+  s_14762e0b2e0132::t_4606662ea68077 17-18,210,408,524,527-542,580-594,596-666,668,672-674,676,681,692,695-723,744,748-757,760-764,816-820,846-869
+src/client/types.ts
+  s_14762e0b2e0132::t_55eb20b77a0ada 21,43,145,155-156
+src/component/_generated/api.ts
+  s_14762e0b2e0132::t_c3e093e16e2370 14-15,27-28,61-62
+src/component/_generated/component.ts
+  s_14762e0b2e0132::t_ac56ab6b51b7e2 3-7,9-13,15-21,23-40
+src/component/convex.config.ts
+  s_14762e0b2e0132::t_bf68010ab64793 2,5-6
+src/component/ledger.ts
+  s_14762e0b2e0132::t_852c3fda0999fa 1-146
+src/component/limits.ts
+  s_14762e0b2e0132::t_e81b6a767f55f9 2-7,9-46
+src/component/queue.ts
+  s_14762e0b2e0132::t_6ca1bc7df6682d 1-4,6,22,30,32-37,56,68,75-80,82-118,150-151,157-169,173-174,180-183,185-186,188-191,193-197,208-213,216-220,226-227,245,247-279,281-286,294-295,307,316-321,328-329,351-352,372-373,381,406,442-664
+src/component/schema.ts
+  s_14762e0b2e0132::t_72cc416d32330a 33,115-116,122-127,136-139,144,148-155,157-165,167-168,170-182,185-186,214-215
+src/component/subagents.ts
+  s_14762e0b2e0132::t_0d83f9791cbf9f 14,16,52,97,110-114,131,143,145-159,165-166,194-197,211,213-217,219-220,222-227,233,265-267,310-313,328,331,411,435-440,449-458,464-466,470-471,497
+src/component/worker.ts
+  s_14762e0b2e0132::t_7149f1967149a8 2,6-8,10-12,14-21,24-25
+src/component/workflows.ts
+  s_14762e0b2e0132::t_494c010a924783 1-127
+src/test.ts
+  s_14762e0b2e0132::t_09a25a2832680b 4,8-11,13,19-20,24-69
+src/testing/bridge.ts
+  s_14762e0b2e0132::t_460deee529f45c 1-26
+src/testing/expect-journal.ts
+  s_14762e0b2e0132::t_82729faaefabd9 1-126
+src/testing/journal.ts
+  s_14762e0b2e0132::t_923d2c22743531 1-91
+tests/delegation.test.ts
+  s_14762e0b2e0132::t_31aae140b837f6 11,275-276,282-283,286,289-295,332,340-345,364-366,368,378,454-455,509-514,547-552,671,690,959,964,1015,1018,1050-1053,1059,1061,1063,1066,1070,1078,1086,1102-1104,1118-1119,1307-1308,1311,1349,1351-1353,1357,1359,1368-1369,1394
+tests/durable-core.test.ts
+  s_14762e0b2e0132::t_874c386570d236 1-314
+tests/fixture/api.ts
+  s_14762e0b2e0132::t_97d7a3a0fed9e5 20-29,61
+tests/fixtures/workflow-journals.json
+  s_14762e0b2e0132::t_36fd50eace7d46 1-414
+tests/host-bridge.test.ts
+  s_14762e0b2e0132::t_c8387556e328e3 9
+tests/host.ts
+  s_14762e0b2e0132::t_d500fd0456e409 9,18-19,25,51-53,64-66,91-94,102-110,125-151,185-194,245-246
+tests/live/convex/_generated/api.js
+  s_14762e0b2e0132::t_05e1190039d681 1-23
+tests/live/convex/agents.ts
+  s_14762e0b2e0132::t_5c510f236e6bb6 1-137
+tests/live/runtime.live.ts
+  s_14762e0b2e0132::t_99cee3fb53d091 1-98
+tests/managed-bounds.test.ts
+  s_14762e0b2e0132::t_c3cc9bd42ae018 14-15,21
+tests/managed-turn.test.ts
+  s_14762e0b2e0132::t_8ffa9a5d22c48c 14,21,27,30
+tests/observability.test.ts
+  s_14762e0b2e0132::t_30b8ea91d69e56 2,6-11,14
+tests/registration.test.ts
+  s_14762e0b2e0132::t_f35259458bdc4d 45
+tests/setup.ts
+  s_14762e0b2e0132::t_b15b123bfbb36e 5,32,102,144-146,149-151,199,213,239-240
+tests/tsconfig.json
+  s_14762e0b2e0132::t_a47c35ae41da3c 12
+tests/watchdog-backlog.test.ts
+  s_14762e0b2e0132::t_0b8f63420c2009 11,24-25
+vite.live.config.ts
+  s_14762e0b2e0132::t_1525183333fc2d 1-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9201e17ce5cd4d63c5c36f0e27a927fc2e0debb8",
+  "prompts": {},
+  "sessions": {
+    "s_14762e0b2e0132": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16f81-ca68-7f92-ab89-1d35a9e6d90e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
