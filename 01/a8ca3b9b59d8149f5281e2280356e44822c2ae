@@ -1,0 +1,61 @@
+README.md
+  s_bd9cb3642f779e::t_d7946cb318f3e5 69-71,88-89,97,147-152
+src/client/endpoints.ts
+  s_bd9cb3642f779e::t_f6b0d9caf00d92 23,79,156,194
+src/client/index.ts
+  s_bd9cb3642f779e::t_14d614fcf2d2f6 20-21
+src/client/once.ts
+  s_bd9cb3642f779e::t_da0f2fc3551fd6 70,85
+src/client/runtime.ts
+  s_bd9cb3642f779e::t_d79935a000bda2 12,17,169,409,606,625-670,692,716
+src/client/types.ts
+  s_bd9cb3642f779e::t_799095fa157cb9 232-233,235-236
+src/component/limits.ts
+  s_bd9cb3642f779e::t_cd341f93f25151 9-15,21-23,47-48,54-87
+src/component/queue.ts
+  s_bd9cb3642f779e::t_fe94fd45ca9b1a 1-2,5,7,24,107,112-118,122,126,128-129,141,152-154,160,173,227-228,277,297-301,304-309,334-335,379,381,398-415,431-432,444-448,453-459,464-465,510-512,517-519,535,545-546,548,572,602-603,608,627,632-635,648,674,689,699-700,708,737-783
+src/component/schema.ts
+  s_bd9cb3642f779e::t_e9b200b431c38f 4-5,16,23,127-131,152-154
+src/component/subagents.ts
+  s_bd9cb3642f779e::t_b1f3916cd0b2d6 143,151-152,206,212,348,353-359,472-474
+src/component/workflows.ts
+  s_bd9cb3642f779e::t_5c2d3063fb5c8f 7,27-46,65,110-114,125,128-134,138,142-145
+src/testing/journal.ts
+  s_bd9cb3642f779e::t_98793d0cd1b113 92-102
+tests/durable-core.test.ts
+  s_bd9cb3642f779e::t_c5dafdb340c880 275
+tests/host.ts
+  s_bd9cb3642f779e::t_8d33f351c97e5f 24,31-32,35-36,47-55,121-127,145-148,197-211,220-226,231-251,274-317,319-323
+tests/limits.test.ts
+  s_bd9cb3642f779e::t_f0f962e149fc59 1-18
+tests/live/config.ts
+  s_bd9cb3642f779e::t_181f5c25b73089 1-2
+tests/live/convex/agents.ts
+  s_bd9cb3642f779e::t_83cda2dafb125f 13-14,29,35,76,87
+tests/live/runtime.live.ts
+  s_bd9cb3642f779e::t_540eee7894c856 6,83
+tests/managed-bounds.test.ts
+  s_bd9cb3642f779e::t_662b0bc258f01d 102-103
+tests/registration.test.ts
+  s_bd9cb3642f779e::t_45d25df38f0e17 159-174
+tests/review-regressions.test.ts
+  s_bd9cb3642f779e::t_83a6496b3eb4ca 1-361
+tests/setup.ts
+  s_bd9cb3642f779e::t_e7a121fdc51cf5 4-5,12,26,138-147,179-183,258-293
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "01a8ca3b9b59d8149f5281e2280356e44822c2ae",
+  "prompts": {},
+  "sessions": {
+    "s_bd9cb3642f779e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16fa0-ba4e-7250-b0ae-60697d3695c3",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
