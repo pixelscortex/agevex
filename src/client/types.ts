@@ -86,6 +86,62 @@ export type ExecutionScope = {
     childAgent: string;
   };
 };
+
+/**
+ * Metadata-only lifecycle event for host analytics and tracing.
+ *
+ * Events deliberately contain no prompt, result, tool input, or capability.
+ * Hosts can attach their own execution identity and schedule persistence from
+ * the callback without making observability part of the managed state machine.
+ */
+export type AgentEvent =
+  | {
+      type: "request.accepted";
+      operation: "open" | "send";
+      assignmentId: string;
+      threadId: string;
+      agent: string;
+    }
+  | {
+      type: "turn.claimed";
+      assignmentId: string;
+      threadId: string;
+      agent: string;
+      turnOrigin: TurnOrigin;
+    }
+  | {
+      type: "turn.finished";
+      assignmentId: string;
+      threadId: string;
+      agent: string;
+      outcome: "success" | "failure";
+      errorCode: Activity["errorCode"];
+    }
+  | {
+      type: "delegation.queued";
+      runId: string;
+      rootAssignmentId: string;
+      agent: string;
+    }
+  | {
+      type: "delegation.settled";
+      runId: string;
+      rootAssignmentId: string;
+      agent: string;
+      outcome: "completed" | "failed";
+    }
+  | {
+      type: "delegation.delivered";
+      runId: string;
+      rootAssignmentId: string;
+      agent: string;
+      outcome: "accepted" | "failed" | "blocked";
+    };
+
+export type ObserveAgentEvent = (
+  ctx: GenericActionCtx<GenericDataModel> | GenericMutationCtx<GenericDataModel>,
+  event: AgentEvent,
+) => Promise<void> | void;
 export type TurnArgs = { assignmentId: string; turnToken: string };
 /** Result of a managed `agevex_delegate` call. A denial is a tool result, not a failure. */
 export type DelegationResult =
@@ -196,4 +252,12 @@ export type Registration = {
     ctx: GenericActionCtx<GenericDataModel>,
     scope: ExecutionScope,
   ) => Promise<void>;
+  /**
+   * Optional metadata-only lifecycle hook for host tracing and analytics.
+   *
+   * The callback is best effort: a callback failure is swallowed and never
+   * changes acceptance, generation, delivery, or settlement. Hosts should
+   * enqueue persistence from this callback rather than perform external I/O.
+   */
+  observe?: ObserveAgentEvent;
 };

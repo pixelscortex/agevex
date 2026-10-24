@@ -14,7 +14,8 @@
 
 import {
   Agent,
-  registerAgevex,
+  registerAgent,
+  type AgentEvent,
   type CoordinateArgs,
   type CoordinateResult,
   type TurnArgs,
@@ -38,6 +39,8 @@ export const state = {
   calls: [] as Parameters<ReturnType<typeof mockModel>["doStream"]>[0][],
   /** Tool names offered on each model call, in call order. */
   offers: [] as OfferedCall[],
+  events: [] as AgentEvent[],
+  observerFails: false,
   fail: false,
   revoke: false,
   hang: false,
@@ -161,7 +164,7 @@ const runTurnRef = makeFunctionReference<"action", TurnArgs, null>(
   "agents:runTurn",
 ) as unknown as FunctionReference<"action", "internal", TurnArgs, null>;
 
-const runtime = registerAgevex(components.agevex, {
+const runtime = registerAgent(components.agevex, {
   agents: [main],
   refs: {
     runTurn: () => runTurnRef,
@@ -191,6 +194,10 @@ const runtime = registerAgevex(components.agevex, {
   authorizeExecution: async (_ctx, scope) => {
     if (state.revoke || scope.subject !== "alice") throw new Error("REVOKED");
     if (scope.child && state.revokeChild) throw new Error("REVOKED_CHILD");
+  },
+  observe: async (_ctx, event) => {
+    if (state.observerFails) throw new Error("observer failure");
+    state.events.push(event);
   },
 });
 const { runTurn, coordinate } = runtime.internalFunctions();

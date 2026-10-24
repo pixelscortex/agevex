@@ -25,7 +25,7 @@ distribution channel.
 | Surface                          | What it is                                                                    |
 | -------------------------------- | ----------------------------------------------------------------------------- |
 | `Agent`                          | Additive subclass of the native Agent. Native behavior is unchanged.          |
-| `registerAgevex`                 | One host registration: the managed runtime and its two internal entry points. |
+| `registerAgent`                  | One host registration: the managed runtime and its two internal entry points. |
 | `open` / `send`                  | Authorized acceptance of work. They return a receipt, never generated text.   |
 | `messages`                       | Authorized wrapper preserving native pagination and native stream sync.       |
 | `activity`                       | Authorized read of one thread's coordination state.                           |
@@ -74,7 +74,7 @@ export default app;
 // convex/agents.ts
 import {
   Agent,
-  registerAgevex,
+  registerAgent,
   type CoordinateArgs,
   type CoordinateResult,
   type TurnArgs,
@@ -91,7 +91,7 @@ const main = new Agent(components.agent, {
   subagents: [],
 });
 
-const runtime = registerAgevex(components.agevex, {
+const runtime = registerAgent(components.agevex, {
   // Only roots are public. A child is resolved through its root's `subagents`.
   agents: [main],
   refs: {
@@ -142,6 +142,30 @@ The host supplies two callbacks, and both are required:
 `subagents: []` with only `refs.runTurn` remains a supported root-only
 registration.
 
+## Optional lifecycle observation
+
+Hosts may provide an `observe` callback to receive metadata-only lifecycle
+events for analytics or tracing:
+
+```ts
+const runtime = registerAgent(components.agevex, {
+  agents: [main],
+  refs,
+  authorize,
+  authorizeExecution,
+  observe: async (ctx, event) => {
+    await ctx.runMutation(internal.analytics.recordAgentEvent, { event });
+  },
+});
+```
+
+Events cover accepted requests, claimed and finished turns, and child
+delegation queue/settlement/delivery. They contain identifiers and statuses, not
+prompt text, tool inputs, results, or execution capabilities. Observation is
+best effort: a failing callback never changes the managed operation. Hosts
+should enqueue persistence from the callback and keep provider-specific
+exporters outside the Agevex core.
+
 ## Asynchronous semantics
 
 - `open` and `send` return an **acceptance receipt** immediately. The client
@@ -189,7 +213,7 @@ bun run check              # format + lint + the Convex rule probe
 bun run codegen            # regenerate src/component/_generated (needs a Convex project)
 ```
 
-`src/client` exports `Agent`, `registerAgevex` and the public types.
+`src/client` exports `Agent`, `registerAgent` and the public types.
 `src/component` owns the receipt, assignment, pending and `subagentRuns` state
 and mounts Workpool. `tests/` holds the component tests and the deterministic
 host fixture they run against; no provider, key or network is involved.

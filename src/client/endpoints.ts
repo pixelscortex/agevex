@@ -13,13 +13,26 @@ import {
   queryGeneric,
   paginationOptsValidator,
   type GenericDataModel,
+  type GenericMutationCtx,
   type GenericQueryCtx,
   type PaginationResult,
 } from "convex/server";
 import { v, type Validator } from "convex/values";
 import type { ComponentApi } from "../component/_generated/component.js";
 import { activity, receipt, subagentRun, vPaginationResult } from "../component/schema.js";
-import type { Registration } from "./types.js";
+import type { AgentEvent, Registration } from "./types.js";
+
+async function observe(
+  ctx: GenericMutationCtx<GenericDataModel>,
+  config: Registration,
+  event: AgentEvent,
+) {
+  try {
+    await config.observe?.(ctx, event);
+  } catch {
+    // Observability is best effort and must never change the request outcome.
+  }
+}
 
 // UI parts are upstream AI SDK extensible unions. Preserve them unchanged and
 // validate the envelope; reuse native stream validators rather than raw MessageDoc.
@@ -103,7 +116,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           prompt: args.prompt,
           userId: subject,
         });
-        return ctx.runMutation(component.queue.accept, {
+        const accepted = await ctx.runMutation(component.queue.accept, {
           subject,
           agent: args.agent,
           threadId,
@@ -112,6 +125,14 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           promptMessageId: messageId,
           runTurn,
         });
+        await observe(ctx, config, {
+          type: "request.accepted",
+          operation: "open",
+          assignmentId: accepted.assignmentId,
+          threadId: accepted.threadId,
+          agent: args.agent,
+        });
+        return accepted;
       },
     }),
     send: mutationGeneric({
@@ -132,7 +153,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           prompt: args.text,
           userId: row.subject,
         });
-        return ctx.runMutation(component.queue.accept, {
+        const accepted = await ctx.runMutation(component.queue.accept, {
           subject: row.subject,
           agent: row.agent,
           threadId: args.threadId,
@@ -141,6 +162,14 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           promptMessageId: messageId,
           runTurn: await createFunctionHandle(config.refs.runTurn()),
         });
+        await observe(ctx, config, {
+          type: "request.accepted",
+          operation: "send",
+          assignmentId: accepted.assignmentId,
+          threadId: accepted.threadId,
+          agent: row.agent,
+        });
+        return accepted;
       },
     }),
     messages: queryGeneric({

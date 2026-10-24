@@ -2,7 +2,7 @@
 import { it, expect } from "vite-plus/test";
 import { makeFunctionReference, type FunctionReference } from "convex/server";
 import { Agent as NativeAgent, mockModel } from "@convex-dev/agent";
-import { Agent, registerAgevex } from "../src/client/index.js";
+import { Agent, registerAgent } from "../src/client/index.js";
 import { components, internal } from "./setup.js";
 import { main, researcher } from "./host.js";
 
@@ -38,7 +38,7 @@ it("is genuinely additive to the native Agent", () => {
 it("registers a Main -> Researcher graph and rejects an unusable one", () => {
   // A shared child definition is resolved through the root's `subagents` and
   // does not have to be a public root itself.
-  const runtime = registerAgevex(components.agevex, { ...policy, agents: [main] });
+  const runtime = registerAgent(components.agevex, { ...policy, agents: [main] });
   expect(Object.keys(runtime.internalFunctions()).sort()).toEqual(["coordinate", "runTurn"]);
   expect(Object.keys(runtime.authorizedEndpoints()).sort()).toEqual([
     "activity",
@@ -47,7 +47,7 @@ it("registers a Main -> Researcher graph and rejects an unusable one", () => {
     "open",
     "send",
   ]);
-  expect(() => registerAgevex(components.agevex, { ...policy, agents: [main, main] })).toThrow(
+  expect(() => registerAgent(components.agevex, { ...policy, agents: [main, main] })).toThrow(
     "DUPLICATE_AGENT_NAME",
   );
 });
@@ -71,14 +71,14 @@ it("rejects an invalid delegation graph instead of pretending collaboration exis
   });
   // Collaboration without a coordinator reference.
   expect(() =>
-    registerAgevex(components.agevex, {
+    registerAgent(components.agevex, {
       ...policy,
       refs: { runTurn: policy.refs.runTurn },
       agents: [parent],
     }),
   ).toThrow("COORDINATE_REF_REQUIRED");
   // Depth greater than 1.
-  expect(() => registerAgevex(components.agevex, { ...policy, agents: [deep] })).toThrow(
+  expect(() => registerAgent(components.agevex, { ...policy, agents: [deep] })).toThrow(
     "SUBAGENT_DEPTH",
   );
   // A name-only entry is not an executable agent.
@@ -87,7 +87,7 @@ it("rejects an invalid delegation graph instead of pretending collaboration exis
     languageModel: mockModel(),
     subagents: [{ name: "Researcher" } as never],
   });
-  expect(() => registerAgevex(components.agevex, { ...policy, agents: [nameOnly] })).toThrow(
+  expect(() => registerAgent(components.agevex, { ...policy, agents: [nameOnly] })).toThrow(
     "UNKNOWN_SUBAGENT",
   );
   // The same child name bound to two different objects.
@@ -101,7 +101,7 @@ it("rejects an invalid delegation graph instead of pretending collaboration exis
     languageModel: mockModel(),
     subagents: [child, otherChild],
   });
-  expect(() => registerAgevex(components.agevex, { ...policy, agents: [conflicting] })).toThrow(
+  expect(() => registerAgent(components.agevex, { ...policy, agents: [conflicting] })).toThrow(
     "DUPLICATE_AGENT_NAME",
   );
   // A root is also declared as somebody's child.
@@ -121,7 +121,7 @@ it("rejects an invalid delegation graph instead of pretending collaboration exis
     subagents: [impostor],
   });
   expect(() =>
-    registerAgevex(components.agevex, { ...policy, agents: [parentOfHostRoot, hostRoot] }),
+    registerAgent(components.agevex, { ...policy, agents: [parentOfHostRoot, hostRoot] }),
   ).toThrow("ROOT_AS_CHILD");
   // A self-referencing declaration is a cycle, not a graph.
   const looping = new Agent(components.agent, {
@@ -130,7 +130,7 @@ it("rejects an invalid delegation graph instead of pretending collaboration exis
     subagents: [],
   });
   (looping as unknown as { subagents: unknown[] }).subagents = [looping];
-  expect(() => registerAgevex(components.agevex, { ...policy, agents: [looping] })).toThrow(
+  expect(() => registerAgent(components.agevex, { ...policy, agents: [looping] })).toThrow(
     "SUBAGENT_CYCLE",
   );
   // A host tool may not impersonate the reserved delegation tool.
@@ -140,7 +140,7 @@ it("rejects an invalid delegation graph instead of pretending collaboration exis
     tools: { agevex_delegate: {} as never },
     subagents: [],
   });
-  expect(() => registerAgevex(components.agevex, { ...policy, agents: [reserved] })).toThrow(
+  expect(() => registerAgent(components.agevex, { ...policy, agents: [reserved] })).toThrow(
     "RESERVED_TOOL_NAME",
   );
 });

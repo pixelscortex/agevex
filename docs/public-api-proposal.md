@@ -31,7 +31,7 @@ asynchronous child execution; it does not become a second conversation layer.
 | Native `generateText` / `streamText` return types                     | Unchanged upstream types                                              |
 | Native `useUIMessages`                                                | Existing upstream hook; preserve its query contract                   |
 | `Agent` extension with `subagents: []`                                | Implemented additive subclass                                         |
-| `registerAgevex` over a WORKPOOL-backed component                     | Implemented; one registration, one host action                        |
+| `registerAgent` over a WORKPOOL-backed component                      | Implemented; one registration, one host action                        |
 | Managed `open` / `send` receipts                                      | Implemented Agevex behavior                                           |
 | `messages` query                                                      | Implemented authorized wrapper preserving native pagination + streams |
 | `activity` query                                                      | Implemented additive query, not a replacement message protocol        |
@@ -89,11 +89,11 @@ export const main = new Agent(components.agent, {
 
 ```ts
 // convex/agents.ts (explicit action typing breaks generated-reference cycles)
-import { registerAgevex, type TurnArgs } from "agevex";
+import { registerAgent, type TurnArgs } from "agevex";
 import type { FunctionReference, RegisteredAction } from "convex/server";
 import { components, internal } from "./_generated/api.js";
 
-const runtime = registerAgevex(components.agevex, {
+const runtime = registerAgent(components.agevex, {
   agents: [main],
   refs: {
     runTurn: (): FunctionReference<"action", "internal", TurnArgs, null> => internal.agents.runTurn,

@@ -1,7 +1,7 @@
 import { Agent as NativeAgent, mockModel } from "@convex-dev/agent";
 import { tool } from "ai";
 import { z } from "zod";
-import { Agent, registerAgevex } from "../src/client/index.js";
+import { Agent, registerAgent } from "../src/client/index.js";
 import type { ComponentApi } from "../src/component/_generated/component.js";
 import type { Registration } from "../src/client/types.js";
 import type { AgentComponent } from "@convex-dev/agent";
@@ -42,9 +42,9 @@ const unsupported: Agent<object> = custom;
 void unsupported;
 declare const agevex: ComponentApi;
 declare const policy: Omit<Registration, "agents">;
-registerAgevex(agevex, { ...policy, agents: [additive] });
+registerAgent(agevex, { ...policy, agents: [additive] });
 // @ts-expect-error Managed turns cannot synthesize organization context.
-registerAgevex(agevex, { ...policy, agents: [custom] });
+registerAgent(agevex, { ...policy, agents: [custom] });
 const gateway = new Agent(component, {
   name: "gateway",
   languageModel: "openai/gpt-4o",
