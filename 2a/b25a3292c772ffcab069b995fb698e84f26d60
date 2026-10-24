@@ -1,0 +1,67 @@
+src/component/queue.ts
+  s_148be80a43f5fa::t_ac66296eedcd26 573-578,580-582,747-752
+  s_148be80a43f5fa::t_c99e7b95a826fd 279,329,361,690-709,714,728-732,743,745,756-784,811-812,815,819,821-822,830-831,835,847-848,850-851,854,859,861-862
+  s_148be80a43f5fa::t_ffd7240bb51076 1-4,579,583-599
+  s_148be80a43f5fa::t_74f033f6a89530 600-610,651-652,688-689,733-742,744,746,753-755,800-805,813-814,816-818,820,823-829,832-834,836-846,849,852-853,855-858,860,863-872,1036-1037
+src/client/endpoints.ts
+  s_148be80a43f5fa::t_ac66296eedcd26 267,311-319,323,332-343,348-351
+  s_148be80a43f5fa::t_297cd56f39ffde 109-110,113,119-120,208-210,217-220,320-322,324-331,345-347
+  s_148be80a43f5fa::t_ffd7240bb51076 9,20,344
+  s_148be80a43f5fa::t_c99e7b95a826fd 103,206-207,211-216,221-225,249-253,257
+  s_148be80a43f5fa::t_4e715973ea7081 352
+src/client/runtime.ts
+  s_148be80a43f5fa::t_ffd7240bb51076 681-683,686
+  s_148be80a43f5fa::t_ac66296eedcd26 1,544,684-685
+  s_148be80a43f5fa::t_beeabf1987fc1d 687-688
+tests/setup.ts
+  s_148be80a43f5fa::t_5d1e28f60b4168 3,27,147-148,168,225-250
+  s_a267419a543688::t_72bbd5d1428161 251-252
+src/component/schema.ts
+  s_148be80a43f5fa::t_db15c3c1d0df0c 162,171-182,197
+  s_148be80a43f5fa::t_ac66296eedcd26 183-187,189,196
+  s_148be80a43f5fa::t_ffd7240bb51076 3,188,190-194
+  s_148be80a43f5fa::t_644783e4ea0edf 195,198-199
+tests/host.ts
+  s_148be80a43f5fa::t_5d1e28f60b4168 48-49,70,223,225-226,249
+  s_148be80a43f5fa::t_87bcb1f0a533ef 250-256,384
+src/component/limits.ts
+  s_148be80a43f5fa::t_ac66296eedcd26 91,94
+  s_148be80a43f5fa::t_ffd7240bb51076 89-90,92-93
+  s_148be80a43f5fa::t_297cd56f39ffde 98-101
+README.md
+  s_148be80a43f5fa::t_4d8fe674cdba17 48,103
+src/client/types.ts
+  s_148be80a43f5fa::t_377fcbd8dacb61 43-47
+tests/fixture/api.ts
+  s_148be80a43f5fa::t_5d04832e9e1b07 29,62
+tests/registration.test.ts
+  s_148be80a43f5fa::t_116379da0c963e 50
+tests/review-regressions.test.ts
+  s_148be80a43f5fa::t_b1b8396fe2849b 144-147,1236-1239,1241,1249
+tests/round8.test.ts
+  s_148be80a43f5fa::t_ed6dce0082539b 1-436
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2ab25a3292c772ffcab069b995fb698e84f26d60",
+  "prompts": {},
+  "sessions": {
+    "s_148be80a43f5fa": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16ff8-deeb-7023-b373-478f7fac7e35",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_a267419a543688": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16fbc-a1b9-7ec1-8c86-771907660fdd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
