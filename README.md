@@ -7,6 +7,100 @@ run budgets and idempotency.
 
 Git-only, private package, **UNLICENSED**.
 
+## Optional sandboxes
+
+`agevex/sandbox` binds a provider sandbox to trusted thread, run or subject
+facts. Models never supply sandbox IDs. Mount `agevex/sandbox/convex.config`
+separately; core does not import it.
+
+```ts
+// convex/convex.config.ts — in addition to Agent and agevex
+import sandbox from "agevex/sandbox/convex.config";
+import daytona from "@daytona/convex/convex.config";
+// Declare DAYTONA_API_KEY in defineApp({ env: { DAYTONA_API_KEY: v.string() } }).
+app.use(sandbox);
+app.use(daytona, { env: { DAYTONA_API_KEY: app.env.DAYTONA_API_KEY } });
+```
+
+```ts
+import { defineSandbox, daytona } from "agevex/sandbox";
+
+const sandbox = defineSandbox({
+  component: components.sandbox,
+  provider: daytona(components.daytona, { autoStopInterval: 0 }),
+  scope: "thread",
+  agent: components.agent, // native Agent storeFile for exports
+  authorize: hostSandboxPolicy,
+  refs: {
+    poll: () => internal.sandboxes.poll,
+    settle: () => internal.sandboxes.settle,
+    cleanup: () => internal.sandboxes.cleanup,
+  },
+  onComplete: async (ctx, event) => {
+    // Record a host event or workflow.sendEvent here, in this mutation.
+    await hostJobCompleted(ctx, event);
+  },
+  usage: { record: hostSandboxObservation }, // optional; estimate-only
+});
+export const { poll, settle, cleanup } = sandbox.internalFunctions();
+const tools = sandbox.tools();
+```
+
+`hostSandboxPolicy(ctx, request)` must check current host policy and return
+`{ subject }`. Requests name `use`, `export`, `stop`, `delete`, `poll` or
+`cleanup`; scheduled operations have no end-user identity. A supplied subject
+must match the policy result. Expose host endpoints that call these helpers,
+not raw component references. For inference cycles, annotate exported host
+functions with `RegisteredAction`/`RegisteredMutation` using exported
+`PollArgs`, `SettleArgs` and `Record<string, never>` cleanup args.
+
+The five tools are `sandbox_exec`, `sandbox_read_file`, `sandbox_write_file`,
+`sandbox_list`, and `sandbox_run_background`. Effects use core's existing
+`defineOnceTool` receipt binding. Pure reads take a trusted `ToolContext` in AI
+SDK 7's `context`, or from `sandbox.tools(tc)` in a host-bound tool factory.
+File contents do not enter core's 64 KiB receipts. Automatic core sandbox-slot
+and event-wait wiring is a separate integration step.
+
+Defaults: commands ≤180 seconds; total action work ≤540 seconds; shared
+stdout/stderr tail ≤6,000 characters; text read/write ≤160,000 characters;
+directory listing ≤100 entries; binary export ≤512 KiB; 16 active jobs per
+sandbox; idle TTL 24 hours. Host overrides are validated against hard maxima.
+Daytona snapshots must include `python3` for bounded command output and reads.
+Configure Daytona's component environment key for background execution, and
+use `autoStopInterval: 0` when jobs must outlive the idle interval.
+
+`sandbox.export(ctx, { threadId, path })` returns
+`{ fileId, storageId, bytes, sha256 }` through native Agent `storeFile`.
+Run-scoped exports require `resolveThread(ctx, threadId)` returning trusted
+`{ subject, threadId, runId }` from host state. Export never creates a sandbox
+for a missing binding. Read failures retain the existing filesystem.
+
+Background completion produces one atomic host callback with
+`{ type: "sandbox.job.completed", jobId, providerJobId?, scopeKey, subject,
+threadId, runId, state: "done" | "failed" | "unknown", exitCode?, logTail? }`.
+The provider job ID is persisted; polls back off and stop at completion or a
+bounded deadline. A lost launch response or poll failure becomes `unknown`;
+paid work is never replayed. A watchdog handles interrupted launch/poll
+actions. Successful callbacks and terminal state commit together, so callbacks
+must perform transactional writes rather than external effects. Callback
+failures are retried only until the job deadline; then the job becomes `unknown`
+and `sandbox.job(ctx, { jobId })` exposes its bounded reconciliation snapshot.
+Revoked background authority also stops polling and records `unknown` without
+calling the provider or the host callback.
+
+Provider auto-delete is disabled. `sandbox.stop(tc)` preserves files and
+resumes on next use, including stopped, archived and recoverable error states.
+The host explicitly calls `sandbox.cleanup(ctx)` to schedule a finite TTL
+sweep. Active jobs protect their filesystem; action leases conservatively
+delay idle cleanup by up to nine minutes. Uncertain deletes are not retried;
+deleted bindings remain tombstones. Lost creates retain an unknown reservation
+for operator reconciliation instead of risking a duplicate resource.
+
+`agevex/test` exports `fakeSandboxProvider`; `agevex/sandbox/test` registers the
+optional component with convex-test. `bun run test` is offline. The sandbox
+live suite is included in `bun run test:live`, gated by `DAYTONA_API_KEY`, and
+always deletes its sandbox in `finally`.
+
 ## Setup
 
 ```ts

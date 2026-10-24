@@ -33,7 +33,19 @@
     "./_generated/component.js": {
       "types": "./dist/component/_generated/component.d.ts"
     },
-    "./test": "./src/test.ts"
+    "./test": "./src/testing/test.ts",
+    "./sandbox": {
+      "types": "./dist/sandbox/index.d.ts",
+      "default": "./dist/sandbox/index.js"
+    },
+    "./sandbox/convex.config": {
+      "types": "./dist/sandbox/component/convex.config.d.ts",
+      "default": "./dist/sandbox/component/convex.config.js"
+    },
+    "./sandbox/test": "./src/sandbox/test.ts",
+    "./sandbox/_generated/component.js": {
+      "types": "./dist/sandbox/component/_generated/component.d.ts"
+    }
   },
   "scripts": {
     "build": "tsc --project tsconfig.json",
@@ -46,11 +58,12 @@
     "lint:convex:check": "bun run scripts/check-convex-lint.ts",
     "check": "vp check . && bun run lint:convex:check",
     "test": "vp test --run",
-    "test:live": "vp test --run --config vite.live.config.ts"
+    "test:live": "vp test --run --config vite.live.config.ts && vp test --run --config tests/sandbox/vite.live.config.ts"
   },
   "dependencies": {
     "@convex-dev/workflow": "0.4.10",
-    "@convex-dev/workpool": "0.4.14"
+    "@convex-dev/workpool": "0.4.14",
+    "@daytona/convex": "2.1.0"
   },
   "devDependencies": {
     "@ai-sdk/openai": "4.0.102",
