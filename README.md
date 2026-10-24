@@ -437,3 +437,58 @@ only hashed call ids and exact message references.
 A fresh send reopens a cancelled thread, preserving the existing cancellation
 contract. Failed cancellation cleanup blocks reopening with a typed `CANCELLED`
 receipt until a subsequent cancel successfully settles the recorded work.
+
+## Optional file extraction
+
+Mount `agevex/extract/convex.config` alongside the native Agent component. Core
+integration is separate; this module works independently.
+
+```ts
+// convex/files.ts
+import { defineExtract, directText, firecrawlParse, visionOcr } from "agevex/extract";
+import { components, internal } from "./_generated/api.js";
+
+const extract = defineExtract(components.agevexExtract, {
+  agent: components.agent,
+  worker: internal.files.execute,
+  storageMetadata: internal.files.storageMetadata,
+  authorize: authorizeFileInThread,
+  backends: [
+    directText(),
+    firecrawlParse({ apiKey: () => process.env.FIRECRAWL_API_KEY! }),
+    visionOcr({ model: visionModel }),
+  ],
+});
+export const { execute, storageMetadata } = extract.internalFunctions();
+// Inside an authorized host action:
+// const job = await extract.run(ctx, { threadId, fileId });
+// const fileTools = extract.tools({ ctx, threadId });
+```
+
+The host must verify both access to `threadId` and the exact `fileId` attachment,
+including background `execute` calls with no user session. Keep an exact attachment
+reference; never scan messages. `fromUrl` returns a native Agent file that the host
+must attach before extraction. No public Convex endpoints are generated; host
+wrappers call the authorized helpers.
+
+Artifacts reuse `(fileId, backend, version, optionsHash)`. Failed, released, and
+unknown outcomes never rerun automatically. `release` fences late output; reported
+paid usage survives. Change a backend version or explicitly supply a different
+SHA-256 `optionsHash` only when intentionally requesting new work.
+
+Text cursors are UTF-8 byte offsets. `readText` and `readPages` return at most
+1 MiB text; pages also cap at 100. Resume pages with their `next` object. File
+tools return at most 64 KiB and references; full JSON stays in storage (32 MiB).
+
+RAG is off by default. Pass `rag: { component, embedding, embeddingDimension,
+chunk?: { maxBytes } }` and mount `@convex-dev/rag` separately to enable
+`index`, `search`, and `search_files`. Use a dedicated mount/namespace for these
+bounded chunks. The host authorizes namespaces; tools use `threadId` as the
+namespace and recheck each result's attachment. Index text caps at 1 MiB;
+chunks are 1–8 KiB. Embedding models must be instantiated AI SDK v3/v4 models.
+
+`bun run test:live:extract` loads keys from the main checkout's `.env.local` and
+makes two Firecrawl requests plus one `openrouter/free` OCR request. Explicit
+empty key environment values skip those paid probes. See
+[src/extract/IMPLEMENTATION.md](src/extract/IMPLEMENTATION.md) for bounds and
+upstream decisions.

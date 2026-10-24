@@ -33,7 +33,18 @@
     "./_generated/component.js": {
       "types": "./dist/component/_generated/component.d.ts"
     },
-    "./test": "./src/test.ts"
+    "./test": "./src/test.ts",
+    "./extract": {
+      "types": "./dist/extract/index.d.ts",
+      "default": "./dist/extract/index.js"
+    },
+    "./extract/convex.config": {
+      "types": "./dist/extract/component/convex.config.d.ts",
+      "default": "./dist/extract/component/convex.config.js"
+    },
+    "./extract/_generated/component.js": {
+      "types": "./dist/extract/component/_generated/component.d.ts"
+    }
   },
   "scripts": {
     "build": "tsc --project tsconfig.json",
@@ -46,9 +57,11 @@
     "lint:convex:check": "bun run scripts/check-convex-lint.ts",
     "check": "vp check . && bun run lint:convex:check",
     "test": "vp test --run",
-    "test:live": "vp test --run --config vite.live.config.ts"
+    "test:live": "vp test --run --config vite.live.config.ts && bun run test:live:extract",
+    "test:live:extract": "vp test --run --config tests/extract/vite.live.config.ts"
   },
   "dependencies": {
+    "@convex-dev/rag": "0.7.8",
     "@convex-dev/workflow": "0.4.10",
     "@convex-dev/workpool": "0.4.14"
   },
