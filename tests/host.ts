@@ -54,6 +54,7 @@ export const state = {
   nestedRelease: undefined as undefined | (() => void),
   nestedGate: undefined as undefined | Promise<void>,
   childToolSlices: 0,
+  modelStarted: undefined as undefined | (() => void),
   calls: [] as Parameters<ReturnType<typeof mockModel>["doStream"]>[0][],
   /** Tool names offered on each model call, in call order. */
   offers: [] as OfferedCall[],
@@ -133,6 +134,7 @@ const delegateReply = () =>
 const offersDelegation = (tools: unknown) => toolNames(tools).includes("agevex_delegate");
 model.doStream = async (args) => {
   state.calls.push(args);
+  state.modelStarted?.();
   state.offers.push({ agent: "Main", tools: toolNames(args.tools) });
   if (state.delayMs > 0) await new Promise((resolve) => setTimeout(resolve, state.delayMs));
   if (state.hang)

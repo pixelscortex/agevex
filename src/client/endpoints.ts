@@ -1,7 +1,6 @@
 import {
   createThread,
   listUIMessages,
-  listMessages,
   saveMessage,
   syncStreams,
   vStreamArgs,
@@ -208,46 +207,10 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
       returns: v.null(),
       handler: async (ctx, args) => {
         const row = await owned(ctx, args.threadId, "cancel");
-        const affected = await ctx.runMutation(component.queue.cancel, {
+        await ctx.runMutation(component.queue.cancel, {
           assignmentId: row.assignmentId,
           subject: row.subject,
         });
-        // Abort streams after fencing running actions, but yield placeholder
-        // finalization to bounded scheduled transactions. Capture each native
-        // cutoff now: a later send clears cancelled and may immediately create
-        // a new placeholder that this cancellation must never finalize.
-        const targets = [];
-        for (const thread of affected) {
-          const native = managedAgents.get(thread.agent);
-          if (!native) continue;
-          const streams = await ctx.runQuery(native.component.streams.list, {
-            threadId: thread.threadId,
-            statuses: ["streaming"],
-          });
-          for (const stream of streams)
-            await ctx.runMutation(native.component.streams.abort, {
-              streamId: stream.streamId,
-              reason: "CANCELLED",
-            });
-          const pending = await listMessages(ctx, native.component, {
-            threadId: thread.threadId,
-            statuses: ["pending"],
-            paginationOpts: { cursor: null, numItems: LIMITS.cancelSnapshotPage },
-          });
-          const newest = pending.page[0];
-          if (newest)
-            targets.push({
-              threadId: thread.threadId,
-              listMessages: await createFunctionHandle(
-                native.component.messages.listMessagesByThreadId,
-              ),
-              finalizeMessage: await createFunctionHandle(
-                native.component.messages.finalizeMessage,
-              ),
-              cutoff: { messageId: newest._id, order: newest.order, stepOrder: newest.stepOrder },
-            });
-        }
-        await ctx.runMutation(component.cancellation.scheduleCleanup, { targets });
         return null;
       },
     }),

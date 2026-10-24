@@ -149,6 +149,7 @@ export function setup(fault?: Fault, limits?: Registration["limits"], transactio
   state.nestedRelease = undefined;
   state.childToolSlices = 0;
   state.calls.length = 0;
+  state.modelStarted = undefined;
   state.offers.length = 0;
   state.events.length = 0;
   state.observerFails = false;

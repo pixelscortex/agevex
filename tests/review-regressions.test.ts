@@ -1,6 +1,6 @@
 // @vitest-environment edge-runtime
 import { it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { setup, api, components, state } from "./setup.js";
+import { setup, api, internal, components, state } from "./setup.js";
 import { workflowCall } from "../src/testing/expect-journal.js";
 import { componentsGeneric, createFunctionHandle, type FunctionReference } from "convex/server";
 import { createThread, listMessages, saveMessage } from "@convex-dev/agent";
@@ -98,6 +98,17 @@ it("cancel closes the active pending placeholder behind a full inbox", async () 
     );
   const placeholder = (await pending()).page;
   expect(placeholder).toHaveLength(1);
+  expect(
+    (
+      await t.query(components.agevex.queue.execution, {
+        assignmentId: receipt.assignmentId,
+      })
+    )?.pendingGeneration,
+  ).toMatchObject({
+    messageId: placeholder[0]._id,
+    epoch: 0,
+    executionId: receipt.assignmentId + ":0",
+  });
   const alice = t.withIdentity({ subject: "alice" });
   for (let i = 0; i < LIMITS.queueLength; i++)
     await alice.mutation(api.agents.send, {
@@ -119,132 +130,273 @@ it("cancel closes the active pending placeholder behind a full inbox", async () 
   expect(state.calls).toHaveLength(1);
 });
 
-it("cancel finalizes every page of native pending placeholders", async () => {
+// Simulate an action killed after its native save: use the same transactional
+// save wrapper as runtime, but leave the placeholder for scheduled cleanup.
+async function savePending(
+  t: ReturnType<typeof setup>,
+  turn: { assignmentId: string; turnToken: string },
+  threadId: string,
+  epoch = 0,
+  text = "",
+  order?: number,
+) {
+  return t.run(async (ctx) => {
+    const saved = (await ctx.runMutation(components.agevex.queue.write, {
+      assignmentId: turn.assignmentId,
+      executionId: turn.turnToken,
+      cancellationEpoch: epoch,
+      handle: await createFunctionHandle(components.agent.messages.addMessages),
+      nativeMessages: {
+        getMessages: await createFunctionHandle(components.agent.messages.getMessagesByIds),
+        finalizeMessage: await createFunctionHandle(components.agent.messages.finalizeMessage),
+      },
+      args: {
+        threadId,
+        failPendingSteps: false,
+        ...(order === undefined ? {} : { order }),
+        messages: [
+          {
+            message: { role: "assistant", content: text ? [{ type: "text", text }] : [] },
+            status: "pending",
+          },
+        ],
+      },
+    })) as { messages: { _id: string; order: number }[] };
+    return saved.messages[0];
+  });
+}
+
+it("a cancelled execution can only fail its own recorded placeholder before scheduled cleanup", async () => {
   const t = setup();
   const receipt = await open(t);
-  await drain(t);
-  // Native hosts may have pending messages beyond the managed generation's
-  // single placeholder. Cleanup must exhaust the filtered cursor even while
-  // finalization removes earlier pages from the pending-status index.
-  const placeholders = await t.mutation(components.agent.messages.addMessages, {
-    threadId: receipt.threadId,
-    failPendingSteps: false,
-    messages: Array.from({ length: LIMITS.verificationPage * 2 + 1 }, () => ({
-      message: { role: "assistant" as const, content: [] },
-      status: "pending" as const,
-    })),
-  });
-  await t.withIdentity({ subject: "alice" }).mutation(api.agents.cancel, {
-    threadId: receipt.threadId,
-  });
-  await drain(t);
-  const messages = await t.query(components.agent.messages.getMessagesByIds, {
-    messageIds: placeholders.messages.map((message) => message._id),
-  });
-  expect(messages).toHaveLength(LIMITS.verificationPage * 2 + 1);
-  expect(
-    messages.every((message) => message?.status === "failed" && message.error === "CANCELLED"),
-  ).toBe(true);
-});
-
-it("cancel commits its fence before bounded cleanup drains 300 large pending messages", async () => {
-  const t = setup(undefined, undefined, true);
-  const receipt = await open(t);
-  await drain(t);
-  const messageIds: string[] = [];
-  // Separate native writes fit the platform's transaction budget individually;
-  // their combined 19 MiB cannot be read by a single cancel transaction.
-  for (let i = 0; i < 300; i++) {
-    const saved = await t.mutation(components.agent.messages.addMessages, {
-      threadId: receipt.threadId,
-      failPendingSteps: false,
-      messages: [
-        {
-          message: { role: "assistant", content: [{ type: "text", text: "x".repeat(64 << 10) }] },
-          status: "pending",
-        },
-      ],
-    });
-    messageIds.push(saved.messages[0]._id);
-  }
-  await t.withIdentity({ subject: "alice" }).mutation(api.agents.cancel, {
-    threadId: receipt.threadId,
-  });
-  expect(
-    await t.query(components.agevex.queue.execution, {
-      assignmentId: receipt.assignmentId,
-    }),
-  ).toMatchObject({ cancelled: true, cancellationEpoch: 1 });
-  // Cancellation must yield to scheduled transactions before exhausting native
-  // cleanup, even though the durable fence is already observable.
-  const pending = () =>
-    t.run((ctx) =>
-      listMessages(ctx, components.agent, {
-        threadId: receipt.threadId,
-        statuses: ["pending"],
-        paginationOpts: { cursor: null, numItems: 1 },
-      }),
-    );
-  expect((await pending()).page).toHaveLength(1);
-  await drain(t);
-  expect((await pending()).page).toEqual([]);
-  for (const messageId of messageIds) {
-    expect(
-      await t.query(components.agent.messages.getMessagesByIds, {
-        messageIds: [messageId],
-      }),
-    ).toMatchObject([{ status: "failed", error: "CANCELLED" }]);
-  }
-}, 30_000);
-
-it("cancel cleanup preserves a pending placeholder from a later send", async () => {
-  const t = setup();
-  const receipt = await open(t);
-  await drain(t);
-  const old = await t.mutation(components.agent.messages.addMessages, {
-    threadId: receipt.threadId,
-    failPendingSteps: false,
-    messages: Array.from({ length: LIMITS.verificationPage * 2 + 1 }, () => ({
-      message: { role: "assistant" as const, content: [] },
-      status: "pending" as const,
-    })),
-  });
-  const alice = t.withIdentity({ subject: "alice" });
-  await alice.mutation(api.agents.cancel, { threadId: receipt.threadId });
-  expect(
-    await t.query(components.agent.messages.getMessagesByIds, {
-      messageIds: [old.messages[0]._id],
-    }),
-  ).toMatchObject([{ status: "pending" }]);
-  await alice.mutation(api.agents.send, {
-    threadId: receipt.threadId,
-    text: "new epoch",
-    requestKey: "after-cleanup-cutoff",
-  });
-  const turn = { assignmentId: receipt.assignmentId, turnToken: `${receipt.assignmentId}:1` };
+  const turn = { assignmentId: receipt.assignmentId, turnToken: receipt.assignmentId + ":0" };
   expect(await t.mutation(components.agevex.queue.claim, turn)).not.toBeNull();
-  // Drive the native placeholder save for the claimed send directly, before
-  // advancing the scheduler. The same clock tick is intentional: timestamp
-  // rounding must not let cleanup close a later order's placeholder.
-  const fresh = await t.mutation(components.agent.messages.addMessages, {
+  const own = await savePending(t, turn, receipt.threadId);
+  const other = await t.mutation(components.agent.messages.addMessages, {
     threadId: receipt.threadId,
     failPendingSteps: false,
     messages: [{ message: { role: "assistant", content: [] }, status: "pending" }],
   });
-  await t.mutation(components.agevex.queue.finish, { ...turn, errorCode: null });
-  await drain(t);
-  expect(
-    await t.query(components.agent.messages.getMessagesByIds, {
-      messageIds: [fresh.messages[0]._id],
-    }),
-  ).toMatchObject([{ status: "pending" }]);
+  const handle = await t.run(() => createFunctionHandle(components.agent.messages.finalizeMessage));
+  await t
+    .withIdentity({ subject: "alice" })
+    .mutation(api.agents.cancel, { threadId: receipt.threadId });
+  const finalize = (messageId: string, status: "success" | "failed", cancellationEpoch = 0) =>
+    t.mutation(components.agevex.queue.write, {
+      assignmentId: receipt.assignmentId,
+      executionId: turn.turnToken,
+      cancellationEpoch,
+      handle,
+      args: {
+        messageId,
+        result: status === "failed" ? { status, error: "abortSignal" } : { status },
+      },
+    });
+  await finalize(other.messages[0]._id, "failed");
+  await finalize(own._id, "success");
+  await finalize(own._id, "failed", 1);
   expect(
     (
       await t.query(components.agent.messages.getMessagesByIds, {
-        messageIds: old.messages.map((message) => message._id),
+        messageIds: [own._id, other.messages[0]._id],
       })
-    ).every((message) => message?.status === "failed" && message.error === "CANCELLED"),
-  ).toBe(true);
+    ).map((message) => message?.status),
+  ).toEqual(["pending", "pending"]);
+  await finalize(own._id, "failed");
+  expect(
+    await t.query(components.agent.messages.getMessagesByIds, { messageIds: [own._id] }),
+  ).toMatchObject([{ status: "failed", error: "CANCELLED" }]);
+  await drain(t);
+  expect(
+    await t.query(components.agent.messages.getMessagesByIds, {
+      messageIds: [other.messages[0]._id],
+    }),
+  ).toMatchObject([{ status: "pending" }]);
+});
+
+it("cancel cleanup leaves a recorded placeholder alone if it is already terminal", async () => {
+  const t = setup();
+  const receipt = await open(t);
+  const turn = { assignmentId: receipt.assignmentId, turnToken: receipt.assignmentId + ":0" };
+  expect(await t.mutation(components.agevex.queue.claim, turn)).not.toBeNull();
+  const own = await savePending(t, turn, receipt.threadId);
+  await t
+    .withIdentity({ subject: "alice" })
+    .mutation(api.agents.cancel, { threadId: receipt.threadId });
+  await t.mutation(components.agent.messages.finalizeMessage, {
+    messageId: own._id,
+    result: { status: "success" },
+  });
+  await drain(t);
+  expect(
+    await t.query(components.agent.messages.getMessagesByIds, { messageIds: [own._id] }),
+  ).toMatchObject([{ status: "success" }]);
+});
+
+it("cancel leaves unrelated native pending placeholders untouched", async () => {
+  const t = setup();
+  const receipt = await open(t);
+  const turn = { assignmentId: receipt.assignmentId, turnToken: receipt.assignmentId + ":0" };
+  expect(await t.mutation(components.agevex.queue.claim, turn)).not.toBeNull();
+  const managed = await savePending(t, turn, receipt.threadId);
+  // Round 4 adaptation: native-only placeholders have no managed owner, so
+  // cancellation must leave them alone instead of exhausting transcript pages.
+  const unrelated = await t.mutation(components.agent.messages.addMessages, {
+    threadId: receipt.threadId,
+    failPendingSteps: false,
+    messages: Array.from({ length: LIMITS.verificationPage * 2 + 1 }, () => ({
+      message: { role: "assistant" as const, content: [] },
+      status: "pending" as const,
+    })),
+  });
+  await t.withIdentity({ subject: "alice" }).mutation(api.agents.cancel, {
+    threadId: receipt.threadId,
+  });
+  await drain(t);
+  expect(
+    await t.query(components.agent.messages.getMessagesByIds, {
+      messageIds: [managed._id],
+    }),
+  ).toMatchObject([{ status: "failed", error: "CANCELLED" }]);
+  const messages = await t.query(components.agent.messages.getMessagesByIds, {
+    messageIds: unrelated.messages.map((message) => message._id),
+  });
+  expect(messages.every((message) => message?.status === "pending")).toBe(true);
+});
+
+it("cancel commits with 20 children and 980 KiB pending documents under transaction limits", async () => {
+  const t = setup(undefined, { activeChildrenPerRoot: 20, runLaunches: 20 }, true);
+  const receipt = await open(t);
+  const root = { assignmentId: receipt.assignmentId, turnToken: receipt.assignmentId + ":0" };
+  expect(await t.mutation(components.agevex.queue.claim, root)).not.toBeNull();
+  const turns = [{ ...root, threadId: receipt.threadId }];
+  for (let i = 0; i < 20; i++) {
+    const child = await t.run(async (ctx) => {
+      const reserved = await ctx.runMutation(components.agevex.subagents.reserve, {
+        ...root,
+        toolCallId: "large-child-" + i,
+        agent: "Researcher",
+        payloadFingerprint: "large-child-" + i,
+        coordinateHandle: await createFunctionHandle(coordinateReference()),
+        runTurn: await createFunctionHandle(runTurnReference()),
+      });
+      if (reserved.kind !== "reserved") throw new Error("RESERVATION_FAILED");
+      const threadId = await createThread(ctx, components.agent, { userId: "alice" });
+      const { messageId } = await saveMessage(ctx, components.agent, { threadId, prompt: "task" });
+      await ctx.runMutation(components.agevex.subagents.attach, {
+        runId: reserved.runId,
+        childThreadId: threadId,
+        promptMessageId: messageId,
+      });
+      const assignment = await ctx.runQuery(components.agevex.queue.assignment, { threadId });
+      if (!assignment) throw new Error("CHILD_MISSING");
+      return {
+        assignmentId: assignment.assignmentId,
+        turnToken: assignment.assignmentId + ":0",
+        threadId,
+      };
+    });
+    expect(
+      await t.mutation(components.agevex.queue.claim, {
+        assignmentId: child.assignmentId,
+        turnToken: child.turnToken,
+      }),
+    ).not.toBeNull();
+    turns.push(child);
+  }
+  // Round 4 adaptation: size coverage now uses recorded placeholders across
+  // affected assignments; transcript-wide native pending rows are not ours.
+  const messageIds: string[] = [];
+  for (const turn of turns) {
+    // Agent stores text both in message.content and its text projection.
+    const pending = await savePending(t, turn, turn.threadId, 0, "x".repeat(490 << 10));
+    messageIds.push(pending._id);
+  }
+  await t
+    .withIdentity({ subject: "alice" })
+    .mutation(api.agents.cancel, { threadId: receipt.threadId });
+  for (const turn of turns)
+    expect(
+      await t.query(components.agevex.queue.execution, { assignmentId: turn.assignmentId }),
+    ).toMatchObject({ cancelled: true, cancellationEpoch: 1 });
+  expect(
+    await t.query(components.agent.messages.getMessagesByIds, { messageIds: [messageIds[0]] }),
+  ).toMatchObject([{ status: "pending" }]);
+  await drain(t);
+  for (const messageId of messageIds)
+    expect(
+      await t.query(components.agent.messages.getMessagesByIds, { messageIds: [messageId] }),
+    ).toMatchObject([{ status: "failed", error: "CANCELLED" }]);
+}, 30_000);
+
+it("cancel cleanup preserves a fresh generation after native deletion reuses order 6", async () => {
+  const t = setup();
+  const receipt = await open(t);
+  const root = { assignmentId: receipt.assignmentId, turnToken: receipt.assignmentId + ":0" };
+  expect(await t.mutation(components.agevex.queue.claim, root)).not.toBeNull();
+  await t.mutation(components.agent.messages.addMessages, {
+    threadId: receipt.threadId,
+    order: 5,
+    failPendingSteps: false,
+    messages: [{ message: { role: "assistant", content: [] }, status: "success" }],
+  });
+  const old = await savePending(t, root, receipt.threadId, 0, "", 10);
+  expect(old.order).toBe(10);
+  const alice = t.withIdentity({ subject: "alice" });
+  await alice.mutation(api.agents.cancel, { threadId: receipt.threadId });
+  // Round 4 adaptation: exact native ids, rather than an order cutoff, must
+  // protect a later send even when deletion lets its order move backwards.
+  await t.mutation(components.agent.messages.deleteByOrder, {
+    threadId: receipt.threadId,
+    startOrder: 6,
+    endOrder: 11,
+  });
+  await alice.mutation(api.agents.send, {
+    threadId: receipt.threadId,
+    text: "new epoch",
+    requestKey: "after-native-deletion",
+  });
+  state.gate = new Promise((resolve) => {
+    state.release = resolve;
+  });
+  const started = new Promise<void>((resolve) => {
+    state.modelStarted = resolve;
+  });
+  // Start the actual generation without advancing scheduled cleanup yet.
+  const generation = t.action(internal.agents.runTurn, {
+    assignmentId: receipt.assignmentId,
+    turnToken: receipt.assignmentId + ":1",
+  });
+  await Promise.race([
+    started,
+    generation.then(() => {
+      throw new Error("GENERATION_EXITED_BEFORE_MODEL");
+    }),
+  ]);
+  const fresh = await t.run((ctx) =>
+    listMessages(ctx, components.agent, {
+      threadId: receipt.threadId,
+      statuses: ["pending"],
+      paginationOpts: { cursor: null, numItems: 1 },
+    }),
+  );
+  const freshId = fresh.page[0]._id;
+  expect(fresh.page[0].order).toBe(6);
+  // Drain just zero-delay jobs while the fresh model remains held open.
+  await tick(t, 100);
+  expect(
+    await t.query(components.agent.messages.getMessagesByIds, { messageIds: [freshId] }),
+  ).toMatchObject([{ status: "pending" }]);
+  state.release!();
+  state.gate = undefined;
+  await Promise.all([generation, drain(t)]);
+  expect(
+    await t.query(components.agent.messages.getMessagesByIds, { messageIds: [freshId] }),
+  ).toMatchObject([{ status: "success" }]);
+  expect(await activity(t, receipt.threadId)).toMatchObject({
+    turnStatus: "idle",
+    errorCode: null,
+  });
 });
 
 it.each(["failed", "blocked"] as const)(

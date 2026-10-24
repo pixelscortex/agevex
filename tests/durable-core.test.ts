@@ -13,6 +13,11 @@ afterEach(() => {
 });
 const drain = (t: ReturnType<typeof setup>) =>
   t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100), 2000);
+// Abort listeners now close recorded placeholders, so fake-time callbacks need syscall scope.
+const tick = (t: ReturnType<typeof setup>, ms: number) =>
+  t.action(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
 const open = (t: ReturnType<typeof setup>, requestKey = "durable") =>
   t
     .withIdentity({ subject: "alice" })
@@ -88,7 +93,7 @@ it("cancel stops a running turn and drops its late writes", async () => {
   const receipt = await open(t);
   await expect
     .poll(async () => {
-      await vi.advanceTimersByTimeAsync(100);
+      await tick(t, 100);
       return state.calls.length;
     })
     .toBe(1);
@@ -99,7 +104,7 @@ it("cancel stops a running turn and drops its late writes", async () => {
       .mutation(api.agents.cancel, { threadId: receipt.threadId }),
   ).rejects.toThrow("FORBIDDEN");
   await alice.mutation(api.agents.cancel, { threadId: receipt.threadId });
-  await vi.advanceTimersByTimeAsync(1_100);
+  await tick(t, 1_100);
   expect(state.calls[0].abortSignal?.aborted).toBe(true);
   state.release!();
   state.gate = undefined;
@@ -145,7 +150,7 @@ it("root cancellation blocks a running child's late result after a fresh send", 
   const receipt = await open(t);
   await expect
     .poll(async () => {
-      await vi.advanceTimersByTimeAsync(100);
+      await tick(t, 100);
       return state.offers.filter((offer) => offer.agent === "Researcher").length;
     })
     .toBe(1);
@@ -165,7 +170,7 @@ it("root cancellation blocks a running child's late result after a fresh send", 
     text: "fresh work",
     requestKey: "fresh-work",
   });
-  await vi.advanceTimersByTimeAsync(1_100);
+  await tick(t, 1_100);
   state.childRelease!();
   state.childGate = undefined;
   await drain(t);
@@ -234,7 +239,7 @@ it("a lost or duplicate ping is harmless because the inbox owns work", async () 
   const receipt = await open(t);
   await expect
     .poll(async () => {
-      await vi.advanceTimersByTimeAsync(100);
+      await tick(t, 100);
       return state.calls.length;
     })
     .toBe(1);

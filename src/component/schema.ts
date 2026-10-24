@@ -115,6 +115,15 @@ export const vPaginationResult = <T extends Validator<unknown, "required", strin
     ),
   });
 
+export const pendingGeneration = v.object({
+  messageId: v.string(),
+  executionId: v.string(),
+  epoch: v.number(),
+  getMessages: v.string(),
+  finalizeMessage: v.string(),
+  stream: v.optional(v.object({ id: v.string(), abort: v.string() })),
+});
+
 export default defineSchema({
   // Execution identity and epoch fence every managed write. The native thread
   // owns messages; this row holds only references and coordination facts.
@@ -132,6 +141,7 @@ export default defineSchema({
     recoveryDelayMs: v.optional(v.number()),
     watchdogId: v.optional(v.id("_scheduled_functions")),
     activeSlice: v.optional(v.string()),
+    pendingGeneration: v.optional(pendingGeneration),
     cancellationEpoch: v.number(),
     cancelled: v.boolean(),
     runId: v.optional(v.id("runs")),

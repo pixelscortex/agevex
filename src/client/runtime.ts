@@ -610,10 +610,14 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 ref: Parameters<RunnerCtx["runMutation"]>[0],
                 payload: unknown,
               ) => {
-                // Agent's abort listener fires asynchronously and expects its void
-                // finalization to resolve. Once revoked, avoid even resolving a
-                // handle: no late native or tool mutation may be issued at all.
-                if (fencedOut) return null;
+                // An abort listener may only close its own recorded placeholder.
+                // queue.write verifies the exact handle, id, execution and epoch.
+                if (
+                  fencedOut &&
+                  JSON.stringify(getFunctionAddress(ref)) !==
+                    JSON.stringify(getFunctionAddress(managed.component.messages.finalizeMessage))
+                )
+                  return null;
                 return ctx.runMutation(component.queue.write, {
                   assignmentId: args.assignmentId,
                   executionId: args.turnToken,
@@ -647,7 +651,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
             // while SDK-owned/native writes retain the transactional write fence.
             // Agent 0.7.7 fires these void saves from asynchronous abort listeners.
             // They must resolve after cancellation to avoid an unhandled rejection;
-            // queue.write still drops their stale writes transactionally. All other
+            // queue.write permits only their own terminal close after the fence. All other
             // native operations, including createTool's injected ctx, reject new
             // nested calls after revocation just like defineOnceTool does.
             const nativeFinalizers = new Set(
@@ -673,6 +677,25 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                     handle: await createFunctionHandle(ref),
                     args: payload,
                     rejectStale: true,
+                    ...(JSON.stringify(getFunctionAddress(ref)) ===
+                    JSON.stringify(getFunctionAddress(managed.component.streams.create))
+                      ? {
+                          nativeStream: await createFunctionHandle(managed.component.streams.abort),
+                        }
+                      : {}),
+                    ...(JSON.stringify(getFunctionAddress(ref)) ===
+                    JSON.stringify(getFunctionAddress(managed.component.messages.addMessages))
+                      ? {
+                          nativeMessages: {
+                            getMessages: await createFunctionHandle(
+                              managed.component.messages.getMessagesByIds,
+                            ),
+                            finalizeMessage: await createFunctionHandle(
+                              managed.component.messages.finalizeMessage,
+                            ),
+                          },
+                        }
+                      : {}),
                   });
                 } catch (error) {
                   if (error instanceof ConvexError && error.data?.code === "CANCELLED")

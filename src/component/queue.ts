@@ -604,6 +604,13 @@ export const write = mutation({
     handle: v.string(),
     args: v.any(),
     rejectStale: v.optional(v.boolean()),
+    nativeStream: v.optional(v.string()),
+    nativeMessages: v.optional(
+      v.object({
+        getMessages: v.string(),
+        finalizeMessage: v.string(),
+      }),
+    ),
   },
   handler: async (ctx, args): Promise<unknown> => {
     const row = await ctx.db.get("assignments", args.assignmentId);
@@ -614,10 +621,60 @@ export const write = mutation({
       row.turnToken !== args.executionId ||
       row.cancellationEpoch !== args.cancellationEpoch
     ) {
+      const pending = row?.pendingGeneration;
+      if (
+        pending &&
+        pending.executionId === args.executionId &&
+        pending.epoch === args.cancellationEpoch &&
+        pending.finalizeMessage === args.handle &&
+        args.args?.messageId === pending.messageId &&
+        args.args?.result?.status === "failed"
+      )
+        return ctx.runMutation(internal.cancellation.close, {
+          assignmentId: args.assignmentId,
+          executionId: args.executionId,
+          epoch: args.cancellationEpoch,
+          messageId: pending.messageId,
+        });
       if (args.rejectStale) throw new ConvexError({ code: "CANCELLED" });
-      return null; // Native abort listeners finalize asynchronously; stale void saves must resolve.
+      return null; // Agent's asynchronous void abort listeners must resolve.
     }
-    return ctx.runMutation(args.handle as FunctionHandle<"mutation">, args.args);
+    const result = await ctx.runMutation(args.handle as FunctionHandle<"mutation">, args.args);
+    if (args.nativeMessages) {
+      // Agent 0.7.7 addMessages returns the actual pending document, including
+      // its id (vercel/client/saveInputMessages.ts). Record only coordination
+      // metadata in the SAME transaction as the native placeholder creation.
+      const messages = (result as { messages: { _id: string; status: string }[] }).messages;
+      const pending = messages.filter((message) => message.status === "pending");
+      if (pending.length > 1) throw new Error("MULTIPLE_PENDING_GENERATIONS");
+      if (pending.length)
+        await ctx.db.patch("assignments", row._id, {
+          pendingGeneration: {
+            messageId: pending[0]._id,
+            executionId: args.executionId,
+            epoch: args.cancellationEpoch,
+            ...args.nativeMessages,
+          },
+        });
+      else if (row.pendingGeneration?.messageId === args.args?.pendingMessageId)
+        await ctx.db.patch("assignments", row._id, { pendingGeneration: undefined });
+    }
+    if (args.nativeStream) {
+      const pending = row.pendingGeneration;
+      if (
+        !pending ||
+        pending.executionId !== args.executionId ||
+        pending.epoch !== args.cancellationEpoch
+      )
+        throw new Error("UNTRACKED_GENERATION_STREAM");
+      await ctx.db.patch("assignments", row._id, {
+        pendingGeneration: {
+          ...pending,
+          stream: { id: result as string, abort: args.nativeStream },
+        },
+      });
+    }
+    return result;
   },
 });
 
@@ -760,6 +817,11 @@ export const cancel = mutation({
     for (const row of affected) {
       await disarmSlice(ctx, row);
       await disarmRecovery(ctx, row);
+      if (row.pendingGeneration)
+        await ctx.scheduler.runAfter(0, internal.cancellation.cleanup, {
+          assignmentId: row._id,
+          pending: row.pendingGeneration,
+        });
       await ctx.db.patch("assignments", row._id, {
         cancelled: true,
         cancellationEpoch: row.cancellationEpoch + 1,

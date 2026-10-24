@@ -29,10 +29,6 @@ export const LIMITS = {
   generationAbortMs: 90_000,
   executionWatchdogMs: 120_000,
   cancelPollMs: 1_000,
-  // Native messages can approach Convex's 1 MiB document ceiling. Leave room
-  // under the 16 MiB transaction budget for listing, finalization and streams.
-  cancelCleanupBatch: 4,
-  cancelSnapshotPage: 1,
   outputTokens: 4096,
   runLaunches: 12,
   runHops: 24,
