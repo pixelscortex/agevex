@@ -1,0 +1,36 @@
+src/client/types.ts
+  s_5104dab3b8029e::t_25cb34860d2dec 31-34
+  s_5104dab3b8029e::t_cde65f26fb975c 29-30
+src/client/endpoints.ts
+  s_5104dab3b8029e::t_cde65f26fb975c 23,80-95,110-119,239-242
+src/component/_generated/component.ts
+  s_5104dab3b8029e::t_d194045f1a2c40 181
+README.md
+  s_5104dab3b8029e::t_cde65f26fb975c 30-33,95,145-163
+  s_5104dab3b8029e::t_4a6a75a5e278b7 25-29,164
+src/component/subagents.ts
+  s_5104dab3b8029e::t_cde65f26fb975c 714-716
+tests/delegation.test.ts
+  s_5104dab3b8029e::t_cde65f26fb975c 1226
+tests/one-thread-reader.test.ts
+  s_5104dab3b8029e::t_d194045f1a2c40 1-141
+  s_5104dab3b8029e::t_f289ea53f9e3ae 142
+src/component/schema.ts
+  s_5104dab3b8029e::t_cde65f26fb975c 195-198,202-207,370
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b5d271f32b70d0ade96aaa18db8d1d7a09b55337",
+  "prompts": {},
+  "sessions": {
+    "s_5104dab3b8029e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16f6f-f568-76b1-849e-4c713cc2d5e0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
