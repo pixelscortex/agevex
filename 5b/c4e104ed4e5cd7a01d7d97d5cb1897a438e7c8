@@ -1,0 +1,42 @@
+src/component/schema.ts
+  s_9e721e40ca1e48::t_d665fda0c94599 203-207
+src/component/_generated/component.ts
+  s_9e721e40ca1e48::t_e600af8b9218f2 81
+src/component/queue.ts
+  s_9e721e40ca1e48::t_045729727dfffb 95-96
+  s_9e721e40ca1e48::t_d665fda0c94599 101,107-122
+tests/registration.test.ts
+  s_9e721e40ca1e48::t_d665fda0c94599 55,62-65
+  s_9e721e40ca1e48::t_58b327ca653dd5 56-61
+README.md
+  s_9e721e40ca1e48::t_e600af8b9218f2 151-153
+tests/fixture/promoted.ts
+  s_9e721e40ca1e48::t_e600af8b9218f2 1-28
+tests/fixture/api.ts
+  s_9e721e40ca1e48::t_e600af8b9218f2 21,56-60
+  s_9e721e40ca1e48::t_63858c0e52b2e2 61
+src/client/endpoints.ts
+  s_9e721e40ca1e48::t_d665fda0c94599 115-120
+tests/one-thread-reader.test.ts
+  s_9e721e40ca1e48::t_e600af8b9218f2 7-8,93-123
+src/component/subagents.ts
+  s_9e721e40ca1e48::t_e600af8b9218f2 714-715
+src/client/runtime.ts
+  s_9e721e40ca1e48::t_d665fda0c94599 138-141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5bc4e104ed4e5cd7a01d7d97d5cb1897a438e7c8",
+  "prompts": {},
+  "sessions": {
+    "s_9e721e40ca1e48": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16f74-eeb5-7f92-9c05-918909aa7508",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
