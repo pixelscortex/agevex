@@ -1,0 +1,40 @@
+src/component/cancellation.ts
+  s_d94eed08943adb::t_6e0ebd141198a4 1-71
+tests/review-regressions.test.ts
+  s_d94eed08943adb::t_73eefe63916605 5-7,228-230,236,238-272,274-281,294
+  s_d94eed08943adb::t_920f03646a85a3 150-194,196-204,208-212,218-222,225-227,231-235,237,273,282-293,295-298,300,303-304,312,315,324-325,340,344
+  s_d94eed08943adb::t_e417abda63e231 195,205-207,213-217,223-224,331,345
+  s_d94eed08943adb::t_c18aa053abc1e1 299,301-302,305-311,313-314,316-323,326-330,332-339,341-343,346
+src/component/limits.ts
+  s_d94eed08943adb::t_6e0ebd141198a4 32-34
+  s_d94eed08943adb::t_73eefe63916605 35
+src/component/_generated/component.ts
+  s_d94eed08943adb::t_6e0ebd141198a4 14,36
+src/component/queue.ts
+  s_d94eed08943adb::t_6e0ebd141198a4 136-139,182
+src/client/endpoints.ts
+  s_d94eed08943adb::t_6e0ebd141198a4 215-219,232-234,236-239,241-246
+  s_d94eed08943adb::t_73eefe63916605 235
+  s_d94eed08943adb::t_e9711601e17a0d 247,250
+src/component/_generated/api.ts
+  s_d94eed08943adb::t_6e0ebd141198a4 12,27
+tests/setup.ts
+  s_d94eed08943adb::t_62f2d52915f5ec 140,180
+  s_d94eed08943adb::t_dc9ab0749fccb3 181-189
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7bdf366e969e17f3881eb64de1f22a15ec0f8f40",
+  "prompts": {},
+  "sessions": {
+    "s_d94eed08943adb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16fc5-c0d1-7413-988a-4eeba35781ed",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
