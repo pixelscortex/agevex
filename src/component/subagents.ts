@@ -711,6 +711,9 @@ export const delegations = query({
     return {
       page: page.map((run) => ({
         runId: run.runId,
+        // Reserve writes the queued run before attach supplies its native
+        // thread. Preserve that absence explicitly for callers of the reader.
+        childThreadId: run.childThreadId ?? null,
         agent: run.agent,
         status: run.status,
         deliveryStatus: run.deliveryStatus,
