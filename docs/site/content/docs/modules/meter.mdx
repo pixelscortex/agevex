@@ -1,59 +1,79 @@
 ---
 title: Meter
 icon: Coins
-description: Planned usage attribution, costs, budgets and billing sinks.
+description: Planned usage, cost, budgets and billing sinks.
 status: Planned
 ---
 
-`sdk/meter` records consumption, reads thread/run/subject cost, gates the next
-slice and forwards settled events to a host billing system. It owns no plans,
-prices or credits beyond the policy supplied by the host.
+`sdk/meter` records what any call cost, answers what a thread, run or user
+cost, gates the next slice of work, and forwards settled charges to whatever
+bills the customer. It knows nothing about plans or prices beyond what the host
+tells it.
 
-## API shape
+## One lifecycle for every provider
 
-The optional-property and union notation below describes the draft contract.
+Providers report cost inline (OpenRouter), later by request id (Fal), in
+credits (Firecrawl, Daytona) or never. Every charge follows one path, and
+"not known yet" is never counted as zero:
 
-```ts title="Planned meter API"
-const meter = defineMeter(components.meter, {
-  sinks: [polarSink({ meter: "ai_usage" }), hostLedger(internal.billing.record)],   // optional
-  budgets?: (scope) => ({ maxNanos }) | undefined,                                  // optional policy
-})
-
-await meter.record(ctx, {
-  key: "agent:message:" + messageId,      // idempotent; same key = same event
-  revision: 1,                            // later revisions replace earlier ones
-  attribution: { subject, threadId, runId, agent },
-  provider: "openrouter", model: "minimax/minimax-m3.1-flash", operation: "generate",
-  units: { inputTokens, outputTokens },
-  cost: { nanos, source: "provider" } | { unknown: true },   // unknown is never zero
-})
-
-await meter.threadCost(ctx, { threadId })        // includes child threads of the root
-// → { totalNanos, estimatedNanos, unknown, byAgent: {...}, byModel: {...}, byProvider: {...} }
-await meter.breakdown(ctx, { subject, from, to, by: "day" | "agent" | "model" | "provider" })
-await meter.check(ctx, { subject, runId })       // → { allow: true } | { allow: false, reason }
+```text
+estimate ──▶ settled     provider reported the real cost
+   │    └──▶ corrected   quantity or tier fixed by the host
+   └──────▶ unknown      lookup window expired; stays visible
 ```
 
-## Guarantees
+## Profiles
 
-A record key identifies one event. Later revisions replace its aggregate
-contribution. Unknown cost is never zero; estimates are marked
-`source: "estimate"` with a `pricingVersion`.
+Assumptions are written down once, per provider:
 
-The runtime records model usage at the message-save boundary, once per step.
-Sandbox, extraction and `defineTask` record their own usage. Hosts wire custom
-providers only when they add them.
+```ts title="Planned meter config"
+const meter = defineMeter(components.meter, {
+  providers: {
+    openrouter: inline(),                                  // cost arrives with the response
+    fal: {
+      profiles: { "image:high": { unit: "image", usd: 1.0 } },
+      lookup: (ctx, requestId) => falCost(requestId),      // optional: real cost later
+      lookupFor: "1h",                                     // then the charge becomes unknown
+    },
+    firecrawl: { credits: { usdPerCredit: 0.001 } },
+  },
+  sinks: [polarSink({ meter: "ai_usage" })],               // optional
+  budgets: (scope) => ({ maxUsd: 5 }),                     // optional
+})
+```
 
-`@convex-dev/aggregate` holds totals by thread, run and subject. The owned
-`events` table holds keys, revisions and attribution. Cost reads use aggregates
-rather than scanning events. Root thread cost includes children.
+## Recording
 
-## Sinks and helpers
+Model calls are metered by core, once per saved step. Inside a tool,
+`tc.meter` is already attributed to the thread, run, agent and subject:
 
-Workpool/action-retrier handles delivery retries. A sink failure never blocks
-or fails agent work. `polarSink` forwards settled usage as Polar meter events;
-the Polar component still owns subscriptions and webhooks.
+```ts title="Planned tool usage"
+const charge = await tc.meter.estimate("fal", { profile: "image:high", quantity: 6 })
+const res = await fal.run(...)
+await charge.attach({ requestId: res.requestId })   // looked up later
+await charge.correct({ quantity: 5 })               // or fix it yourself
+await charge.settle({ usd: 4.87 })                  // or settle it directly
+```
 
-`observeProviderOutcome` separates the result from billing evidence.
-`openRouterCost()` reads provider cost and captures paid-but-rejected responses.
-`embeddingMetering()` records one event per physical embedding call.
+Outside tools, `meter.scope(ctx, { subject, threadId? })` returns the same
+object. Without a configured meter, `tc.meter` is a no-op.
+
+## Asking
+
+```ts title="Planned reads"
+await meter.threadCost(ctx, { threadId })   // root + children
+// → { usd: { settled, estimated }, unknown, byAgent, byModel, byProvider }
+await meter.breakdown(ctx, { subject, from, to, by: "day" | "agent" | "model" | "provider" })
+await meter.check(ctx, { subject, runId })  // budget gate, counts estimates
+```
+
+## Built on
+
+- Totals live in `@convex-dev/aggregate`, so cost reads never scan.
+- One owned `charges` table holds status, attribution and provider request ids.
+- Lookups and sink delivery run on Workpool with retries. A failing sink never
+  blocks agent work.
+- `polarSink` ingests settled charges as Polar meter events. The Polar
+  component still owns subscriptions and webhooks.
+- Calls routed through the Convex AI Gateway reuse `@convex-dev/ai-budget`
+  pricing.

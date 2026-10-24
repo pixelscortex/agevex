@@ -46,9 +46,11 @@ outputs stripped. `summarized` context is deferred.
 
 ## One reader
 
-The planned `messages({ threadId })` reads root and child conversations with
-thread ownership checks. `delegations` returns each run’s `childThreadId`.
-There is no separate transcript endpoint or opt-in flag in the draft design.
+`messages({ threadId })` reads the root and every child thread the caller
+owns, in the same envelope. `delegations` returns each run's `childThreadId`
+(`null` until the child starts). There is no separate transcript endpoint and
+no opt-in flag. `open`, `send`, `activity` and `delegations` accept root
+threads only.
 
 ## Available today
 
