@@ -354,6 +354,7 @@ export const claim = mutation({
     await ctx.db.patch("assignments", row._id, {
       turnStatus: "running",
       continueSlice: false,
+      approvalRequestMessageId: undefined,
       lastSlice: sliceId,
       inboxId: undefined,
     });
@@ -679,7 +680,11 @@ export const write = mutation({
 });
 
 export const pauseApproval = mutation({
-  args: { assignmentId: v.id("assignments"), executionId: v.string() },
+  args: {
+    assignmentId: v.id("assignments"),
+    executionId: v.string(),
+    approvalRequestMessageId: v.optional(v.string()),
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
     const row = await ctx.db.get("assignments", args.assignmentId);
@@ -701,6 +706,7 @@ export const pauseApproval = mutation({
       await disarmRecovery(ctx, row);
       await ctx.db.patch("assignments", row._id, {
         approvalBlocked: true,
+        approvalRequestMessageId: args.approvalRequestMessageId ?? row.approvalRequestMessageId,
         turnStatus: "idle",
         turnToken: undefined,
         promptMessageId: undefined,

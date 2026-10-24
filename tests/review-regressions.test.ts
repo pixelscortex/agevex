@@ -8,8 +8,16 @@ import { main, coordinateReference, runTurnReference, fixtureRuntime } from "./h
 import { HOST_LIMITS } from "../src/component/limits.js";
 import { LIMITS } from "../src/client/index.js";
 
+// Avoid expanding upstream Config's full model-id union just to set context.
+const modelContext = (
+  main as unknown as {
+    options: { contextOptions?: { recentMessages: number } };
+  }
+).options;
+
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
+  modelContext.contextOptions = undefined;
   vi.clearAllTimers();
   vi.useRealTimers();
 });
@@ -33,6 +41,235 @@ const recoveryJobs = (t: ReturnType<typeof setup>) =>
   t.query(
     componentsGeneric().agevex.agevexTest.recoveryJobs as unknown as FunctionReference<"query">,
   );
+
+/** Each pair is valid native history, saved in its own bounded transaction. */
+async function largeToolHistory(
+  t: ReturnType<typeof setup>,
+  threadId: string,
+  count: number,
+  bytes: number,
+  oneOrder = false,
+) {
+  // A single parallel-call request puts consecutive result documents at the
+  // newest order, so the former 20-message verifier exceeds 16 MiB at 900 KiB.
+  const batchRequest = oneOrder
+    ? await t.run((ctx) =>
+        saveMessage(ctx, components.agent, {
+          threadId,
+          order: "next",
+          message: {
+            role: "assistant",
+            content: Array.from({ length: count }, (_, i) => ({
+              type: "tool-call" as const,
+              toolCallId: "large-tool-" + i,
+              toolName: "echo",
+              input: {},
+            })),
+          },
+        }),
+      )
+    : undefined;
+  for (let i = 0; i < count; i++) {
+    await t.run(async (ctx) => {
+      const toolCallId = "large-tool-" + i;
+      const request =
+        batchRequest ??
+        (await saveMessage(ctx, components.agent, {
+          threadId,
+          order: "next",
+          message: {
+            role: "assistant",
+            content: [{ type: "tool-call", toolCallId, toolName: "echo", input: {} }],
+          },
+        }));
+      await saveMessage(ctx, components.agent, {
+        threadId,
+        promptMessageId: request.messageId,
+        message: {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId,
+              toolName: "echo",
+              output: {
+                type: "text",
+                value: "x".repeat(bytes),
+              },
+            },
+          ],
+        },
+      });
+    });
+  }
+}
+
+it("40 large tool results allow a turn to start, block on recorded approval, and resume after its response", async () => {
+  const t = setup(undefined, undefined, true);
+  // Bound the host's model context separately: upstream defaults to 100 and
+  // also has no byte cap. This regression targets our admission/approval guard.
+  modelContext.contextOptions = { recentMessages: 10 };
+  state.tools = true;
+  state.approval = true;
+  const receipt = await open(t);
+  // These are newer orders than the admitted prompt. The native generation
+  // reads its prompt; the old runtime's 100-message guard reads >17 MiB here.
+  await largeToolHistory(t, receipt.threadId, 40, 450 << 10);
+  await drain(t);
+  expect(state.calls).toHaveLength(1);
+  const execution = () =>
+    t.query(components.agevex.queue.execution, {
+      assignmentId: receipt.assignmentId,
+    });
+  const paused = await execution();
+  expect(paused).toMatchObject({ approvalBlocked: true, queuedMessages: 1 });
+  expect(paused?.approvalRequestMessageId).toBeTypeOf("string");
+  const [request] = await t.query(components.agent.messages.getMessagesByIds, {
+    messageIds: [paused!.approvalRequestMessageId!],
+  });
+  const content = request!.message!.content;
+  const part = Array.isArray(content)
+    ? content.find((part) => part.type === "tool-approval-request")
+    : undefined;
+  if (part?.type !== "tool-approval-request") throw new Error("APPROVAL_MISSING");
+  const alice = t.withIdentity({ subject: "alice" });
+  await alice.mutation(api.agents.send, {
+    threadId: receipt.threadId,
+    text: "still blocked",
+    requestKey: "still-blocked",
+  });
+  await drain(t);
+  expect(state.calls).toHaveLength(1);
+  expect(await execution()).toMatchObject({ approvalBlocked: true, queuedMessages: 2 });
+  // Save the native protocol response at the recorded request's order. Agent's
+  // own approveToolCall helper also scans 100 messages without a byte cap, so
+  // use its supported save API to exercise our guard independently of that bug.
+  await t.run(async (ctx) => {
+    const response = await saveMessage(ctx, components.agent, {
+      threadId: receipt.threadId,
+      promptMessageId: request!._id,
+      message: {
+        role: "tool",
+        content: [
+          {
+            type: "tool-approval-response",
+            approvalId: part.approvalId,
+            approved: true,
+          },
+        ],
+      },
+    });
+    await saveMessage(ctx, components.agent, {
+      threadId: receipt.threadId,
+      promptMessageId: response.messageId,
+      message: {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: part.toolCallId,
+            toolName: "echo",
+            output: { type: "text", value: "echoed" },
+          },
+        ],
+      },
+    });
+  });
+  state.approval = false;
+  await alice.mutation(api.agents.send, {
+    threadId: receipt.threadId,
+    text: "resume",
+    requestKey: "resume-large-history",
+  });
+  await drain(t);
+  expect(state.calls.length).toBeGreaterThan(1);
+  expect(await execution()).toMatchObject({
+    turnStatus: "idle",
+    queuedMessages: 0,
+    errorCode: null,
+  });
+  expect((await execution())?.approvalRequestMessageId).toBeUndefined();
+});
+
+it("20 large tool results cannot prevent exact-id child settlement and delivery", async () => {
+  const t = setup(undefined, undefined, true);
+  state.delegate = true;
+  state.childGate = new Promise((resolve) => {
+    state.childRelease = resolve;
+  });
+  const receipt = await open(t);
+  await expect
+    .poll(async () => {
+      await tick(t, 100);
+      return state.offers.filter((offer) => offer.agent === "Researcher").length;
+    })
+    .toBe(1);
+  const alice = t.withIdentity({ subject: "alice" });
+  const runs = () =>
+    alice.query(api.agents.delegations, {
+      threadId: receipt.threadId,
+      paginationOpts: { cursor: null, numItems: 20 },
+    });
+  const run = (await runs()).page[0];
+  await largeToolHistory(t, run.childThreadId!, 20, 900 << 10, true);
+  state.childRelease!();
+  state.childGate = undefined;
+  await drain(t);
+  const completed = (await runs()).page[0];
+  expect(completed).toMatchObject({
+    status: "completed",
+    deliveryStatus: "accepted",
+    errorCode: null,
+  });
+  const finalId = await t.query(
+    componentsGeneric().agevex.agevexTest
+      .childResultMessageId as unknown as FunctionReference<"query">,
+    { runId: completed.runId },
+  );
+  expect(finalId).toBeTypeOf("string");
+  const [final] = await t.query(components.agent.messages.getMessagesByIds, {
+    messageIds: [finalId],
+  });
+  expect(final).toMatchObject({
+    threadId: run.childThreadId,
+    agentName: "Researcher",
+    status: "success",
+    text: state.childText,
+  });
+  const messages = await alice.query(api.agents.messages, {
+    threadId: receipt.threadId,
+    paginationOpts: { cursor: null, numItems: 20 },
+  });
+  expect(messages.page.some((message) => message.text.includes(state.childText))).toBe(true);
+  expect(await activity(t, receipt.threadId)).toMatchObject({
+    turnStatus: "idle",
+    subagents: { active: 0 },
+  });
+});
+
+it("purge keeps maximum-size receipt batches below an 8 MiB read budget", async () => {
+  const t = setup(undefined, undefined, { bytesRead: 8 << 20 });
+  for (let i = 0; i < LIMITS.purgeBatch + 1; i++) {
+    const args = { scope: "purge-margin", key: String(i), fingerprint: String(i) };
+    const claim = await t.mutation(components.agevex.ledger.begin, args);
+    if (claim.status !== "claimed") throw new Error("RECEIPT_NOT_CLAIMED");
+    await t.mutation(components.agevex.ledger.complete, {
+      scope: args.scope,
+      key: args.key,
+      claim: claim.claim,
+      result: "x".repeat(LIMITS.receiptResultBytes - 8),
+    });
+  }
+  vi.setSystemTime(Date.now() + LIMITS.receiptRetentionMs + 1);
+  const purge = componentsGeneric().agevex.ledger.purge as unknown as FunctionReference<"mutation">;
+  const count = componentsGeneric().agevex.agevexTest
+    .receiptCount as unknown as FunctionReference<"query">;
+  expect(await t.query(count)).toBe(LIMITS.purgeBatch + 1);
+  await t.mutation(purge, {});
+  expect(await t.query(count)).toBe(1);
+  await t.mutation(purge, {});
+  expect(await t.query(count)).toBe(0);
+});
 
 it("a lost ping during a 45s completion delay keeps exactly one recovery check armed until work completes", async () => {
   const t = setup("delayedWait");
@@ -245,7 +482,7 @@ it("cancel leaves unrelated native pending placeholders untouched", async () => 
   const unrelated = await t.mutation(components.agent.messages.addMessages, {
     threadId: receipt.threadId,
     failPendingSteps: false,
-    messages: Array.from({ length: LIMITS.verificationPage * 2 + 1 }, () => ({
+    messages: Array.from({ length: 41 }, () => ({
       message: { role: "assistant" as const, content: [] },
       status: "pending" as const,
     })),
@@ -980,29 +1217,21 @@ it("completed slices ignore stale watchdogs and exclude time between slices", as
 
 it("an approval response followed by a fresh send completes the approval-blocked queue", async () => {
   const t = setup();
+  state.tools = true;
+  state.approval = true;
   const receipt = await open(t);
   await drain(t);
-  await t.run((ctx) =>
-    saveMessage(ctx, components.agent, {
-      threadId: receipt.threadId,
-      message: {
-        role: "assistant",
-        content: [
-          {
-            type: "tool-call",
-            toolCallId: "pending-call",
-            toolName: "echo",
-            input: { text: "approved" },
-          },
-          {
-            type: "tool-approval-request",
-            approvalId: "pending-approval",
-            toolCallId: "pending-call",
-          },
-        ],
-      },
-    }),
-  );
+  const execution = await t.query(components.agevex.queue.execution, {
+    assignmentId: receipt.assignmentId,
+  });
+  const [request] = await t.query(components.agent.messages.getMessagesByIds, {
+    messageIds: [execution!.approvalRequestMessageId!],
+  });
+  const content = request!.message!.content;
+  const part = Array.isArray(content)
+    ? content.find((part) => part.type === "tool-approval-request")
+    : undefined;
+  if (part?.type !== "tool-approval-request") throw new Error("APPROVAL_MISSING");
   const alice = t.withIdentity({ subject: "alice" });
   await alice.mutation(api.agents.send, {
     threadId: receipt.threadId,
@@ -1011,14 +1240,14 @@ it("an approval response followed by a fresh send completes the approval-blocked
   });
   await drain(t);
   expect(state.calls).toHaveLength(1);
-  expect(await activity(t, receipt.threadId)).toMatchObject({ queuedMessages: 1 });
+  expect(await activity(t, receipt.threadId)).toMatchObject({ queuedMessages: 2 });
   // Native approval responses share the request's order, even when user
   // messages were queued meanwhile. A plain append would create an invalid
   // protocol fixture that the Agent SDK cannot resume from the older prompt.
   const approval = await t.run((ctx) =>
     main.approveToolCall(ctx, {
       threadId: receipt.threadId,
-      approvalId: "pending-approval",
+      approvalId: part.approvalId,
     }),
   );
   // Phase 1a leaves approval continuation to the host's native Agent API. Save
@@ -1040,7 +1269,7 @@ it("an approval response followed by a fresh send completes the approval-blocked
     requestKey: "approved",
   });
   await drain(t);
-  expect(state.calls).toHaveLength(beforeSend + 2);
+  expect(state.calls).toHaveLength(beforeSend + 3);
   expect(await activity(t, receipt.threadId)).toMatchObject({
     turnStatus: "idle",
     queuedMessages: 0,

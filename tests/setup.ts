@@ -161,6 +161,7 @@ export function setup(
   state.revoke = false;
   state.hang = false;
   state.tools = false;
+  state.approval = false;
   state.once = false;
   state.onceCalls = 0;
   state.onceContext = undefined;

@@ -64,6 +64,7 @@ export const state = {
   revoke: false,
   hang: false,
   tools: false,
+  approval: false,
   once: false,
   onceCalls: 0,
   onceContext: undefined as ToolContext | undefined,
@@ -164,6 +165,17 @@ model.doStream = async (args) => {
           toolName: "once",
           toolCallId: `effect-${state.calls.length}`,
           input: JSON.stringify({ text: "one effect" }),
+        },
+      ],
+    ]).doStream(args);
+  if (state.approval && state.calls.length === 1)
+    return scriptedModel([
+      [
+        {
+          type: "tool-call",
+          toolCallId: "approval-call",
+          toolName: "echo",
+          input: '{"text":"echoed"}',
         },
       ],
     ]).doStream(args);
@@ -289,7 +301,11 @@ export const main = new Agent(components.agent, {
         return { saved: input.text };
       },
     }),
-    echo: tool({ inputSchema: z.object({ text: z.string() }), execute: ({ text }) => text }),
+    echo: tool({
+      inputSchema: z.object({ text: z.string() }),
+      needsApproval: () => state.approval,
+      execute: ({ text }) => text,
+    }),
   },
   subagents: [researcher],
 });

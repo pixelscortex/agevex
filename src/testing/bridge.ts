@@ -7,6 +7,7 @@ import {
   type FunctionReference,
 } from "convex/server";
 import { v } from "convex/values";
+import { LIMITS } from "../component/limits.js";
 const args = { lane: v.string(), module: v.string(), name: v.string(), args: v.any() };
 export const read = internalQueryGeneric({
   args,
@@ -47,4 +48,22 @@ export const queuedWork = internalQueryGeneric({
     inbox: await ctx.db.query("inbox").collect(),
     runs: await ctx.db.query("runs").collect(),
   }),
+});
+
+/** Bounded inspection for the ledger purge margin regression. */
+export const receiptCount = internalQueryGeneric({
+  args: {},
+  handler: async (ctx) => (await ctx.db.query("receipts").take(LIMITS.purgeBatch + 1)).length,
+});
+
+/** Inspect the exact child result recorded on one run, without native history. */
+export const childResultMessageId = internalQueryGeneric({
+  args: { runId: v.string() },
+  handler: async (ctx, { runId }) =>
+    (
+      await ctx.db
+        .query("subagentRuns")
+        .withIndex("by_run", (q) => q.eq("runId", runId))
+        .unique()
+    )?.childResultMessageId ?? null,
 });

@@ -157,6 +157,7 @@ export default defineSchema({
     turnOrigin: v.optional(turnOrigin),
     inboxId: v.optional(v.id("inbox")),
     approvalBlocked: v.optional(v.boolean()),
+    approvalRequestMessageId: v.optional(v.string()),
     continueSlice: v.optional(v.boolean()),
     lastSlice: v.optional(v.string()),
     activeRuns: v.optional(v.number()),

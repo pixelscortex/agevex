@@ -1,6 +1,6 @@
 // @vitest-environment edge-runtime
 import { it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { listMessages, saveMessage } from "@convex-dev/agent";
+import { listMessages } from "@convex-dev/agent";
 import { workflowCall } from "../src/testing/expect-journal.js";
 import { setup, api, components, state } from "./setup.js";
 import { expectJournalUnchanged } from "../src/test.js";
@@ -195,24 +195,10 @@ it("root cancellation blocks a running child's late result after a fresh send", 
 
 it("no turn starts while an approval is pending and its inbox row waits", async () => {
   const t = setup();
+  state.tools = true;
+  state.approval = true;
   const receipt = await open(t);
   await drain(t);
-  await t.run((ctx) =>
-    saveMessage(ctx, components.agent, {
-      threadId: receipt.threadId,
-      message: {
-        role: "assistant",
-        content: [
-          { type: "tool-call", toolCallId: "pending-call", toolName: "needs-approval", input: {} },
-          {
-            type: "tool-approval-request",
-            approvalId: "pending-approval",
-            toolCallId: "pending-call",
-          },
-        ],
-      },
-    }),
-  );
   const alice = t.withIdentity({ subject: "alice" });
   await alice.mutation(api.agents.send, {
     threadId: receipt.threadId,
@@ -222,7 +208,7 @@ it("no turn starts while an approval is pending and its inbox row waits", async 
   await drain(t);
   expect(state.calls).toHaveLength(1);
   expect(await alice.query(api.agents.activity, { threadId: receipt.threadId })).toMatchObject({
-    queuedMessages: 1,
+    queuedMessages: 2,
   });
   const messages = await alice.query(api.agents.messages, {
     threadId: receipt.threadId,

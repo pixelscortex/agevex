@@ -207,18 +207,24 @@ export function registerAgent(component: ComponentApi, config: Registration) {
     if (!child) return null;
     const thread = await getThreadMetadata(ctx, child.component, { threadId: target.threadId });
     if (!thread || thread.userId !== target.subject) return null;
-    const page = await listMessages(ctx, child.component, {
-      threadId: target.threadId,
-      paginationOpts: { cursor: null, numItems: LIMITS.verificationPage },
-    });
-    const found = page.page.find(
-      (message) =>
-        String(message._id) === target.messageId &&
-        message.message?.role === "assistant" &&
-        message.status === "success" &&
-        message.agentName === target.agentName,
-    );
-    if (!found) return null;
+    // An untrusted reported id can fail the native id validator. Treat that
+    // just like a missing document: no verified result, and no transcript scan.
+    const found = await ctx
+      .runQuery(child.component.messages.getMessagesByIds, {
+        messageIds: [target.messageId],
+      })
+      .then(
+        ([message]) => message,
+        () => null,
+      );
+    if (
+      !found ||
+      found.threadId !== target.threadId ||
+      found.message?.role !== "assistant" ||
+      found.status !== "success" ||
+      found.agentName !== target.agentName
+    )
+      return null;
     // `text` is the native extraction of this saved message's text parts.
     const text = found.text;
     return text && text.trim() ? text : null;
@@ -533,9 +539,11 @@ export function registerAgent(component: ComponentApi, config: Registration) {
           const managed = graph.byName.get(queued.agent);
           if (!managed) throw new Error("UNKNOWN_AGENT");
           // Agent 0.7.7 auto-denies unresolved approvals at generation start.
-          // Scan native pages until every historical request has a response;
-          // a recent-window-only check could silently miss an older approval.
-          if (await hasPendingApproval(ctx, managed, queued.threadId)) {
+          // Only our recorded request can block a managed turn. Native history
+          // is never searched to discover requests.
+          if (
+            await hasPendingApproval(ctx, managed, queued.threadId, queued.approvalRequestMessageId)
+          ) {
             await ctx.runMutation(component.queue.pauseApproval, {
               assignmentId: args.assignmentId,
               executionId: args.turnToken,
@@ -786,10 +794,20 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 snapshot.cancellationEpoch !== claimed.cancellationEpoch
               )
                 return null;
-              if (await hasPendingApproval(ctx, managed, claimed.threadId)) {
+              // One model step saves one assistant request message. Keep its
+              // exact id, rather than copying potentially large provider ids
+              // onto assignment metadata (also read by bounded cancellation).
+              const approvalRequest = result.savedMessages?.find(
+                (message) =>
+                  message.message?.role === "assistant" &&
+                  Array.isArray(message.message.content) &&
+                  message.message.content.some((part) => part.type === "tool-approval-request"),
+              );
+              if (approvalRequest) {
                 await ctx.runMutation(component.queue.pauseApproval, {
                   assignmentId: args.assignmentId,
                   executionId: args.turnToken,
+                  approvalRequestMessageId: String(approvalRequest._id),
                 });
                 return null;
               }
@@ -928,26 +946,51 @@ export function registerAgent(component: ComponentApi, config: Registration) {
   };
 }
 
-/** Native approvals remain native; this guard adds no approval table or UX. */
-async function hasPendingApproval(ctx: RunnerCtx, agent: ManagedAgent, threadId: string) {
-  const requests = new Set<string>();
-  const responses = new Set<string>();
+/** Native approvals remain native; only an exact recorded request is consulted. */
+async function hasPendingApproval(
+  ctx: RunnerCtx,
+  agent: ManagedAgent,
+  threadId: string,
+  requestMessageId?: string,
+) {
+  if (!requestMessageId) return false;
+  // One document, bounded by Convex's 1 MiB document ceiling. Keeping the id
+  // also preserves the cancel metadata budget regardless of request size.
+  const [request] = await ctx.runQuery(agent.component.messages.getMessagesByIds, {
+    messageIds: [requestMessageId],
+  });
+  if (!request || request.threadId !== threadId || request.message?.role !== "assistant")
+    return true;
+  const content = request.message.content;
+  const unresolved = new Set(
+    Array.isArray(content)
+      ? content.flatMap((part) => (part.type === "tool-approval-request" ? [part.approvalId] : []))
+      : [],
+  );
+  if (!unresolved.size) return false;
+  // Agent 0.7.7 approvals.ts stores responses as separate tool messages; its
+  // messages API has no approval-id/tool-call-id response lookup. This fallback
+  // continues byte-bounded pages and stops as soon as our recorded ids resolve.
   let cursor: string | null = null;
   for (;;) {
     const page = await listMessages(ctx, agent.component, {
       threadId,
-      paginationOpts: { cursor, numItems: LIMITS.approvalPage },
+      statuses: ["success"],
+      paginationOpts: {
+        cursor,
+        numItems: LIMITS.approvalPage,
+        maximumBytesRead: LIMITS.approvalPageBytes,
+      },
     });
     for (const message of page.page) {
       const content = message.message?.content;
       if (!Array.isArray(content)) continue;
       for (const part of content) {
-        if (part.type === "tool-approval-request") requests.add(part.approvalId);
-        if (part.type === "tool-approval-response") responses.add(part.approvalId);
+        if (part.type === "tool-approval-response") unresolved.delete(part.approvalId);
       }
     }
-    if (page.isDone) break;
+    if (!unresolved.size) return false;
+    if (page.isDone) return true;
     cursor = page.continueCursor;
   }
-  return [...requests].some((id) => !responses.has(id));
 }
