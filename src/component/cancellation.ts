@@ -23,12 +23,41 @@ async function finalize(ctx: MutationCtx, pending: typeof pendingGeneration.type
 }
 
 /** Backstop for an action that crashed or was killed before its abort listener. */
+const cleanupArgs = {
+  assignmentId: v.id("assignments"),
+  pending: v.optional(pendingGeneration),
+  approvalEpoch: v.optional(v.number()),
+};
+
 export const cleanup = internalMutation({
-  args: {
-    assignmentId: v.id("assignments"),
-    pending: v.optional(pendingGeneration),
-    approvalEpoch: v.optional(v.number()),
+  args: cleanupArgs,
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    try {
+      // A nested mutation is a savepoint: failed native writes roll back while
+      // this outer transaction can publish a recoverable, typed failure.
+      await ctx.runMutation(internal.cancellation.cleanupBatch, args);
+    } catch {
+      const row = await ctx.db.get("assignments", args.assignmentId);
+      if (
+        row &&
+        ((row.approvals?.cleanupPending && row.approvals.epoch === args.approvalEpoch) ||
+          (args.pending &&
+            row.pendingGeneration?.messageId === args.pending.messageId &&
+            row.pendingGeneration.epoch === args.pending.epoch))
+      )
+        await ctx.db.patch("assignments", row._id, {
+          turnStatus: "recovery_required",
+          errorCode: "CLEANUP_FAILED",
+          approvals: row.approvals ? { ...row.approvals, cleanupPending: false } : undefined,
+        });
+    }
+    return null;
   },
+});
+
+export const cleanupBatch = internalMutation({
+  args: cleanupArgs,
   returns: v.null(),
   handler: async (ctx, { assignmentId, pending, approvalEpoch }) => {
     // Stream creation is tracked atomically too: never list a thread's streams
@@ -58,7 +87,8 @@ export const cleanup = internalMutation({
       await ctx.db.patch("assignments", assignmentId, { pendingGeneration: undefined });
     const approvals = row?.approvals;
     if (!row || !approvals?.cleanupPending || approvals.epoch !== approvalEpoch) return null;
-    const messageId = approvals.requests[0].messageId;
+    const request = approvals.requests[0];
+    const messageId = request.messageId;
     // One exact request document per transaction (<= 1 MiB), plus native save
     // lookups and at most one placeholder/stream: never read sixteen huge docs
     // together. Chained jobs settle <= approvalsPerPause recorded requests in
@@ -70,20 +100,15 @@ export const cleanup = internalMutation({
     const content = message?.message?.content;
     const responses = [];
     const deniedCalls = [];
-    const seen = new Set<number>();
     if (message?.message?.role === "assistant" && Array.isArray(content)) {
       for (const part of content) {
         if (part.type !== "tool-approval-request") continue;
         const key = await approvalKey(part.approvalId);
-        const index = approvals.requests.findIndex((request) => request.key === key);
-        if (index < 0 || seen.has(index)) continue;
-        const request = approvals.requests[index];
-        if (request.messageId !== messageId) continue;
+        if (key !== request.key) continue;
         const call = content.find(
           (candidate) => candidate.type === "tool-call" && candidate.toolCallId === part.toolCallId,
         );
         if (call?.type !== "tool-call") throw new Error("APPROVAL_CALL_NOT_FOUND");
-        seen.add(index);
         // Even an answered request has no result until the gated continuation
         // runs. Cancel terminates that call without repeating its decision.
         deniedCalls.push({
@@ -91,13 +116,14 @@ export const cleanup = internalMutation({
           toolName: call.toolName,
           ...(request.providerExecuted ? { providerExecuted: true as const } : {}),
         });
-        if (!approvals.resolved.includes(index))
+        if (!approvals.resolved.includes(0))
           responses.push({
             approvalId: part.approvalId,
             approved: false,
             reason: "cancelled",
             ...(request.providerExecuted ? { providerExecuted: true as const } : {}),
           });
+        break;
       }
     }
     if (deniedCalls.length)
@@ -111,7 +137,7 @@ export const cleanup = internalMutation({
     // another order/message for a replacement after cancellation.
     const remaining = approvals.requests
       .map((request, index) => ({ request, resolved: approvals.resolved.includes(index) }))
-      .filter(({ request }) => request.messageId !== messageId);
+      .filter((_, index) => index !== 0);
     if (remaining.length) {
       await ctx.db.patch("assignments", assignmentId, {
         approvals: {

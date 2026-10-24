@@ -1,10 +1,19 @@
 import type { FunctionHandle } from "convex/server";
+import type { MessageDoc } from "@convex-dev/agent";
 import type { MutationCtx } from "./_generated/server.js";
+import { getConvexSize } from "convex/values";
+import { LIMITS } from "./limits.js";
 
 // Fixed-size references bound coordination metadata even for huge native ids.
-export async function approvalKey(id: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(id));
+export const callKey = (id: string) =>
+  crypto.subtle.digest("SHA-256", new TextEncoder().encode(id));
+
+export function keyString(digest: ArrayBuffer): string {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export async function approvalKey(id: string): Promise<string> {
+  return keyString(await callKey(id));
 }
 
 /** Agent 0.7.7's exact native response protocol, without its history planner. */
@@ -19,29 +28,32 @@ export async function saveResponses(
   }[],
   deniedCalls: { toolCallId: string; toolName: string; providerExecuted?: true }[] = [],
 ) {
+  const message = {
+    role: "tool" as const,
+    content: [
+      ...responses.map((response) => ({ type: "tool-approval-response", ...response })),
+      ...deniedCalls.map((call) => ({
+        type: "tool-result",
+        ...call,
+        output: { type: "execution-denied", reason: "cancelled" },
+      })),
+    ],
+  };
+  // Cleanup sends one response/result pair at a time. Reserve native envelope
+  // space too, then check the actual returned document before committing.
+  if (deniedCalls.length && getConvexSize(message) + 4096 > LIMITS.cleanupMessageBytes)
+    throw new Error("CLEANUP_MESSAGE_TOO_LARGE");
   const saved = (await ctx.runMutation(target.addMessages as FunctionHandle<"mutation">, {
     threadId: target.threadId,
     agentName: target.agent,
     promptMessageId: target.messageId,
     failPendingSteps: false,
-    messages: [
-      {
-        message: {
-          role: "tool",
-          content: [
-            ...responses.map((response) => ({ type: "tool-approval-response", ...response })),
-            // A cancelled approval is never resumed as the prompt. AI SDK only
-            // synthesizes denied results for responses in the LAST tool message;
-            // persist the terminal result too, before a fresh user prompt runs.
-            ...deniedCalls.map((call) => ({
-              type: "tool-result",
-              ...call,
-              output: { type: "execution-denied", reason: "cancelled" },
-            })),
-          ],
-        },
-      },
-    ],
-  })) as { messages: { _id: string }[] };
+    messages: [{ message }],
+  })) as { messages: MessageDoc[] };
+  if (
+    deniedCalls.length &&
+    saved.messages.some((doc) => getConvexSize(doc) > LIMITS.cleanupMessageBytes)
+  )
+    throw new Error("CLEANUP_MESSAGE_TOO_LARGE");
   return saved.messages[0]._id;
 }

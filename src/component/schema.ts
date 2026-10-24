@@ -15,6 +15,7 @@ export const errorCode = v.union(
   v.literal("GENERATION_FAILED"),
   v.literal("SLICE_LIMIT"),
   v.literal("APPROVAL_LIMIT"),
+  v.literal("CLEANUP_FAILED"),
   v.literal("AUTHORIZATION_DENIED"),
   v.literal("EXECUTION_AMBIGUOUS"),
 );
@@ -23,6 +24,7 @@ export const runErrorCode = v.union(
   v.literal("GENERATION_FAILED"),
   v.literal("SLICE_LIMIT"),
   v.literal("APPROVAL_LIMIT"),
+  v.literal("CLEANUP_FAILED"),
   v.literal("EXECUTION_AMBIGUOUS"),
   v.literal("EMPTY_RESULT"),
   v.literal("RESULT_UNVERIFIED"),
@@ -168,7 +170,22 @@ export default defineSchema({
         addMessages: v.string(),
         cleanupPending: v.optional(v.boolean()),
         requests: v.array(
-          v.object({ key: v.string(), messageId: v.string(), providerExecuted: v.boolean() }),
+          v.object({
+            key: v.string(),
+            messageId: v.string(),
+            providerExecuted: v.boolean(),
+            // Exact native ids remain in messageId's document. Hashes keep even
+            // near-1 MiB call ids out of coordination rows. Optional for v1 rows.
+            toolCallKey: v.optional(v.bytes()),
+            state: v.optional(
+              v.union(
+                v.literal("pending"),
+                v.literal("approved"),
+                v.literal("denied"),
+                v.literal("running"),
+              ),
+            ),
+          }),
         ),
         resolved: v.array(v.number()),
       }),

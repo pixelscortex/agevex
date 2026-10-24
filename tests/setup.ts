@@ -24,6 +24,7 @@ const modules = import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]);
  * boundary, so the tested path is the real one up to that point.
  */
 export type Fault =
+  | "cleanupSave"
   | "transcriptReads"
   | "lostPing"
   | "delayedWait"
@@ -166,6 +167,9 @@ export function setup(
   state.tools = false;
   state.approval = false;
   state.approvalCount = 1;
+  state.echoStarted = false;
+  state.echoGate = undefined;
+  state.cleanupFails = false;
   state.childApproval = false;
   state.once = false;
   state.onceCalls = 0;
@@ -212,6 +216,35 @@ export function setup(
         ...((await agent.modules["./component/messages.ts"]()) as Record<string, unknown>),
         addMessages: failure,
       }),
+    });
+  } else if (fault === "cleanupSave") {
+    t.registerComponent("agent", agent.schema, {
+      ...agent.modules,
+      "./component/messages.ts": async () => {
+        const real = (await agent.modules["./component/messages.ts"]()) as {
+          addMessages: NativeAddMessages;
+        };
+        return {
+          ...real,
+          addMessages: mutationGeneric({
+            args: real.addMessages._args as never,
+            returns: real.addMessages._returns as never,
+            handler: async (ctx, args) => {
+              const nativeArgs = args as unknown as AddMessagesArgs;
+              const saved = await real.addMessages._handler(
+                ctx as unknown as MutationCtx,
+                nativeArgs,
+              );
+              if (
+                state.cleanupFails &&
+                nativeArgs.messages.some(({ message }) => message.role === "tool")
+              )
+                throw new Error("injected cleanup save failure");
+              return saved as never;
+            },
+          }),
+        };
+      },
     });
   } else if (fault === "notificationSave") {
     t.registerComponent("agent", agent.schema, {

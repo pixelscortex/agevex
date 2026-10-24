@@ -68,6 +68,9 @@ export const state = {
   tools: false,
   approval: false,
   approvalCount: 1,
+  echoStarted: false,
+  echoGate: undefined as undefined | Promise<void>,
+  cleanupFails: false,
   childApproval: false,
   once: false,
   onceCalls: 0,
@@ -313,7 +316,11 @@ export const main = new Agent(components.agent, {
     echo: tool({
       inputSchema: z.object({ text: z.string() }),
       needsApproval: () => state.approval,
-      execute: ({ text }) => text,
+      execute: async ({ text }) => {
+        state.echoStarted = true;
+        if (state.echoGate) await state.echoGate;
+        return text;
+      },
     }),
   },
   subagents: [researcher],

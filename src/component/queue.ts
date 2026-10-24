@@ -21,7 +21,7 @@ import {
   turnOrigin as vTurnOrigin,
 } from "./schema.js";
 import { LIMITS, limitsValidator } from "./limits.js";
-import { approvalKey, saveResponses } from "./approvals.js";
+import { approvalKey, callKey, keyString, saveResponses } from "./approvals.js";
 
 async function existing(
   ctx: Pick<QueryCtx, "db">,
@@ -354,7 +354,15 @@ export const claim = mutation({
     await ctx.db.patch("assignments", row._id, {
       turnStatus: "running",
       continueSlice: false,
-      approvals: undefined,
+      approvals: row.approvals
+        ? {
+            ...row.approvals,
+            requests: row.approvals.requests.map((request, index) => ({
+              ...request,
+              state: row.approvals!.resolved.includes(index) ? ("running" as const) : request.state,
+            })),
+          }
+        : undefined,
       lastSlice: sliceId,
       inboxId: undefined,
     });
@@ -673,6 +681,29 @@ export const write = mutation({
       // its id (vercel/client/saveInputMessages.ts). Record only coordination
       // metadata in the SAME transaction as the native placeholder creation.
       const messages = (result as { messages: MessageDoc[] }).messages;
+      // Only committed native tool results retire calls. Claiming a continuation
+      // does not: cancel can still win while the approved tool is awaiting I/O.
+      if (row.approvals) {
+        const resulted = new Set<string>();
+        for (const message of messages) {
+          if (message.message?.role !== "tool" || !Array.isArray(message.message.content)) continue;
+          for (const part of message.message.content)
+            if (part.type === "tool-result") resulted.add(await approvalKey(part.toolCallId));
+        }
+        const remaining = row.approvals.requests
+          .map((request, index) => ({ request, resolved: row.approvals!.resolved.includes(index) }))
+          .filter(
+            ({ request }) => !request.toolCallKey || !resulted.has(keyString(request.toolCallKey)),
+          );
+        row.approvals = remaining.length
+          ? {
+              ...row.approvals,
+              requests: remaining.map(({ request }) => request),
+              resolved: remaining.flatMap(({ resolved }, index) => (resolved ? [index] : [])),
+            }
+          : undefined;
+        await ctx.db.patch("assignments", row._id, { approvals: row.approvals });
+      }
       const pending = messages.filter((message) => message.status === "pending");
       if (pending.length > 1) throw new Error("MULTIPLE_PENDING_GENERATIONS");
       if (pending.length)
@@ -702,6 +733,7 @@ export const write = mutation({
           requests.push({
             key,
             messageId: message._id,
+            toolCallKey: await callKey(part.toolCallId),
             providerExecuted: content.some(
               (call) =>
                 call.type === "tool-call" &&
@@ -715,6 +747,7 @@ export const write = mutation({
         await disarmSlice(ctx, row);
         await disarmRecovery(ctx, row);
         if (row.approvalBlocked) throw new Error("APPROVAL_ALREADY_PENDING");
+        if (row.approvals?.requests.length) throw new Error("APPROVAL_RESULTS_MISSING");
         // The response continuation must precede unrelated queued sends.
         const head = await ctx.db
           .query("inbox")
@@ -811,7 +844,17 @@ export const respond = mutation({
       ],
     );
     const resolved = [...approvals.resolved, index];
-    await ctx.db.patch("assignments", row._id, { approvals: { ...approvals, resolved } });
+    await ctx.db.patch("assignments", row._id, {
+      approvals: {
+        ...approvals,
+        resolved,
+        requests: approvals.requests.map((request, offset) =>
+          offset === index
+            ? { ...request, state: args.approved ? ("approved" as const) : ("denied" as const) }
+            : request,
+        ),
+      },
+    });
     if (resolved.length === approvals.requests.length) {
       await ctx.db.patch("inbox", approvals.inboxId, { messageId });
       await ctx.db.patch("assignments", row._id, { approvalBlocked: false });

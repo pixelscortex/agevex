@@ -89,16 +89,20 @@ export const LIMITS = {
   // Bound approval coordination metadata even when native approval ids are huge:
   // requests store SHA-256 keys; resolved contains only their array offsets.
   approvalsPerPause: 16,
-  // 4 × 1 MiB max stream doc + 8 MiB delta budget + 1 MiB pagination
-  // overshoot + our own reads (< 2 MiB) < 16 MiB, leaving > 1 MiB margin.
-  streamCursors: 4,
+  // One messages query, including BOTH transcript and streams (MiB):
+  // 0.5 transcript + 1 page overshoot + 1 merge lookahead + 2*1 stream docs
+  // + 8 Agent deltas + 1 delta overshoot + 0.25 ownership/coordination
+  // = 13.75 MiB <= 14 MiB, leaving >= 2.25 MiB below Convex's 16 MiB.
+  // Agent 0.7.7 listDeltas exposes no override for its fixed 8 MiB budget.
+  streamCursors: 2,
   // The public `messages` reader takes its page size from the client. Without a
   // server-side clamp, one request for a huge page of large tool results would
   // exceed the 16 MiB query read limit and that query would fail outright.
   // Native pagination stops early at `maximumBytesRead` and returns a cursor.
   // Agent owns the merged index lookahead and stream read bounds (spec §9b).
   messagePage: 100,
-  messagePageBytes: 4 << 20,
+  messagePageBytes: 512 << 10,
+  cleanupMessageBytes: 512 << 10,
   leaseMs: HOST_LIMITS.leaseMs.default,
   receiptRetentionMs: 7 * 24 * 60 * 60_000,
   receiptResultBytes: 64 << 10,
