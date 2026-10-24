@@ -223,11 +223,21 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
       returns: messagesReturn,
       handler: async (ctx, args) => {
         const row = await owned(ctx, args.threadId, "messages");
-        const page: PaginationResult<UIMessage> = await listUIMessages(
-          ctx,
-          row.native.component,
-          args,
-        );
+        // Clamp the client's page to the server's count and byte bounds (see
+        // LIMITS.messagePage); a smaller page only means one more cursor hop.
+        const { numItems, maximumBytesRead } = args.paginationOpts;
+        const paginationOpts = {
+          ...args.paginationOpts,
+          numItems: Math.min(numItems, LIMITS.messagePage),
+          maximumBytesRead: Math.min(
+            maximumBytesRead ?? LIMITS.messagePageBytes,
+            LIMITS.messagePageBytes,
+          ),
+        };
+        const page: PaginationResult<UIMessage> = await listUIMessages(ctx, row.native.component, {
+          ...args,
+          paginationOpts,
+        });
         const streams = await syncStreams(ctx, row.native.component, args);
         return { ...page, streams };
       },

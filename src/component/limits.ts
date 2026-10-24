@@ -88,6 +88,13 @@ export const LIMITS = {
   maxDelegationPage: 50,
   approvalPage: 16,
   approvalPageBytes: 1 << 20,
+  // The public `messages` reader takes its page size from the client. Without a
+  // server-side clamp, one request for a huge page of large tool results would
+  // exceed the 16 MiB query read limit and that query would fail outright.
+  // Native pagination stops early at `maximumBytesRead` and returns a cursor,
+  // so clamping costs the client only an extra page, never data.
+  messagePage: 100,
+  messagePageBytes: 4 << 20,
   leaseMs: HOST_LIMITS.leaseMs.default,
   receiptRetentionMs: 7 * 24 * 60 * 60_000,
   receiptResultBytes: 64 << 10,

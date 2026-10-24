@@ -191,6 +191,34 @@ it("40 large tool results allow a turn to start, block on recorded approval, and
   expect((await execution())?.approvalRequestMessageId).toBeUndefined();
 });
 
+it("messages serves an oversized page request over large history in bounded pages", async () => {
+  // The client picks the page size. Forty 450 KiB tool results are ~18 MiB, so
+  // an unclamped request for 1,000 items would exceed the 16 MiB query read
+  // limit and fail. The server clamps count and bytes and hands back a cursor.
+  const t = setup(undefined, undefined, true);
+  const receipt = await open(t);
+  await drain(t);
+  await largeToolHistory(t, receipt.threadId, 40, 450 << 10);
+  const alice = t.withIdentity({ subject: "alice" });
+  const seen = new Set<string>();
+  let cursor: string | null = null;
+  for (let pages = 0; pages < 20; pages++) {
+    const page: { page: unknown[]; isDone: boolean; continueCursor: string } = await alice.query(
+      api.agents.messages,
+      {
+        threadId: receipt.threadId,
+        paginationOpts: { cursor, numItems: 1_000 },
+      },
+    );
+    expect(page.page.length).toBeLessThanOrEqual(LIMITS.messagePage);
+    for (const message of page.page as { id: string }[]) seen.add(message.id);
+    if (page.isDone) break;
+    cursor = page.continueCursor;
+  }
+  // Every tool result is reachable through the cursor, one bounded page at a time.
+  expect(seen.size).toBeGreaterThanOrEqual(40);
+});
+
 it("20 large tool results cannot prevent exact-id child settlement and delivery", async () => {
   const t = setup(undefined, undefined, true);
   state.delegate = true;
