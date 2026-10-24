@@ -1,0 +1,21 @@
+README.md
+  s_14762e0b2e0132::t_71b525bca247e3 3-10,15,18,25,28-32,35-36,41-42,47-49,52-101,103-117,119-126,128,130-133,135-139,141-143,147,149-154,157-162,164-166
+src/component/README.md
+  s_14762e0b2e0132::t_97c4a39342d676 1-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b350dc5350557bb25353f89812c2c4234438ae28",
+  "prompts": {},
+  "sessions": {
+    "s_14762e0b2e0132": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16f81-ca68-7f92-ab89-1d35a9e6d90e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
