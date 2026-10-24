@@ -135,6 +135,10 @@ async function needsRecovery(ctx: MutationCtx, row: Doc<"assignments">) {
  */
 export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = true) {
   if (row.cancelled || row.turnStatus === "recovery_required") return;
+  // A full inbox may have deferred a completed group's single anchor. Release
+  // one cohort after a slot frees, without retrying its native deliveries.
+  if (await ctx.runMutation(api.subagents.releaseGroups, { assignmentId: row._id }))
+    row = (await ctx.db.get("assignments", row._id))!;
   // Failed/blocked child delivery also calls wake, but may leave no inbox work.
   // Such a doorbell would immediately lose its coalescing flag in
   // disarmRecovery and accumulate unconsumed events across loop rotation.
@@ -145,16 +149,35 @@ export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = tru
       .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
       .first();
     const run = next ? await ctx.db.get("runs", next.runId) : null;
-    // Results wait for all already-launched children to settle and finish their
-    // delivery attempt. One continuation then sees the whole consecutive batch.
-    if (next && !run?.cancelled && !(next.kind === "result" && run && run.pendingResults > 0)) {
+    // <=50 launches *4 KiB =200 KiB, plus two id-only inbox probes and
+    // assignment/run/Workflow bookkeeping (<256 KiB for this readiness probe). No transcript.
+    // Asking children and other explicit groups cannot block this continuation.
+    const pending =
+      next?.kind === "result"
+        ? await ctx.db
+            .query("subagentRuns")
+            .withIndex("by_parent_pending", (q) =>
+              q
+                .eq("actorAssignmentId", row._id)
+                .eq("parentRunId", next.runId)
+                .eq("deliveryStatus", "pending"),
+            )
+            .take((row.limits ?? LIMITS).runLaunches)
+        : [];
+    // Legacy/default each notifications coalesce per immediate parent. Explicit
+    // groups release independently; a grandchild never waits on its own parent.
+    if (
+      next &&
+      !run?.cancelled &&
+      !pending.some((child) => child.wait !== "all" && child.status !== "asking")
+    ) {
       await ctx.db.patch("assignments", row._id, {
         turnStatus: "queued",
         turnToken: `${row._id}:${row.nextTurn}`,
         promptMessageId: next.messageId,
         inboxId: next._id,
         runId: next.runId,
-        turnOrigin: next.kind === "result" ? "subagent_result" : "user",
+        turnOrigin: next.kind === "result" || next.kind === "note" ? "subagent_result" : "user",
         nextTurn: row.nextTurn + 1,
         queuedMessages: row.queuedMessages - 1,
       });
@@ -333,14 +356,16 @@ export const claim = mutation({
     if (first && row.inboxId) {
       const head = await ctx.db.get("inbox", row.inboxId);
       if (head) await ctx.db.delete("inbox", head._id);
-      if (head?.kind === "result") {
+      if (head?.kind === "result" || head?.kind === "note") {
+        // <=100 following inbox rows +100 delete reads =200 KiB of ids;
+        // <=100 deletes, plus fixed claim/watchdog metadata (<512 KiB total).
         const following = await ctx.db
           .query("inbox")
           .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
           .take((row.limits ?? LIMITS).queueLength);
         let count = 0;
         for (const item of following) {
-          if (item.kind !== "result" || item.runId !== head.runId) break;
+          if (item.kind !== head.kind || item.runId !== head.runId) break;
           await ctx.db.delete("inbox", item._id);
           row.promptMessageId = item.messageId;
           count++;
@@ -415,8 +440,11 @@ export const claim = mutation({
     if (first)
       await ctx.db.patch("subagentRuns", run._id, {
         status: "running",
-        startedAt: Date.now(),
-        events: [...run.events, { phase: "started" as const, at: Date.now(), errorCode: null }],
+        startedAt: run.startedAt ?? Date.now(),
+        events: [
+          ...run.events,
+          { phase: "started" as const, at: Date.now(), errorCode: null },
+        ].slice(-LIMITS.runEvents),
       });
     return {
       assignmentId,
@@ -623,9 +651,26 @@ export const write = mutation({
   },
   handler: async (ctx, args): Promise<unknown> => {
     const row = await ctx.db.get("assignments", args.assignmentId);
+    // A child can settle immediately before cancel, while its source action
+    // still owns the turn token. It no longer occupies an active slot, so
+    // cancel need not visit its assignment. The root epoch still fences every
+    // late native/tool write: two exact metadata reads (<16 KiB), no traversal.
+    const root = row?.rootAssignmentId
+      ? await ctx.db.get("assignments", row.rootAssignmentId)
+      : null;
+    const run = row?.childRunId
+      ? await ctx.db
+          .query("subagentRuns")
+          .withIndex("by_run", (q) => q.eq("runId", row.childRunId!))
+          .unique()
+      : null;
+    const rootRevoked =
+      !!row?.childRunId &&
+      (!root || root.cancelled || !run || run.rootCancellationEpoch !== root.cancellationEpoch);
     if (
       !row ||
       row.cancelled ||
+      rootRevoked ||
       row.turnStatus !== "running" ||
       row.turnToken !== args.executionId ||
       row.cancellationEpoch !== args.cancellationEpoch
@@ -703,6 +748,21 @@ export const write = mutation({
             }
           : undefined;
         await ctx.db.patch("assignments", row._id, { approvals: row.approvals });
+      }
+      if (row.childRunId) {
+        const run = await ctx.db
+          .query("subagentRuns")
+          .withIndex("by_run", (q) => q.eq("runId", row.childRunId!))
+          .unique();
+        const finals = messages.filter(
+          (message) =>
+            message.message?.role === "assistant" &&
+            message.status === "success" &&
+            message.text?.trim(),
+        );
+        const final = finals[finals.length - 1];
+        if (run && final)
+          await ctx.db.patch("subagentRuns", run._id, { childResultMessageId: final._id });
       }
       const pending = messages.filter((message) => message.status === "pending");
       if (pending.length > 1) throw new Error("MULTIPLE_PENDING_GENERATIONS");
@@ -946,7 +1006,7 @@ export const cancel = mutation({
     if (!root || root.subject !== args.subject || root.childRunId) throw new Error("FORBIDDEN");
     const children = (
       await Promise.all(
-        (["queued", "running"] as const).map((status) =>
+        (["queued", "running", "asking"] as const).map((status) =>
           ctx.db
             .query("subagentRuns")
             .withIndex("by_root_status", (q) =>

@@ -1,5 +1,10 @@
 export { Agent } from "./agent.js";
-export { DELEGATE_TOOL_NAME, registerAgent } from "./runtime.js";
+export {
+  DELEGATE_TOOL_NAME,
+  MESSAGE_CHILD_TOOL_NAME,
+  ASK_PARENT_TOOL_NAME,
+  registerAgent,
+} from "./runtime.js";
 export type {
   Activity,
   Receipt,

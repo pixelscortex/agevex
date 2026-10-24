@@ -278,7 +278,9 @@ it("runs Main -> Researcher -> Main and reports only persisted state", async () 
   // Phase 1a offers the tool to both the initial turn and its result continuation.
   expect(state.offers.filter((o) => o.tools.includes("agevex_delegate"))).toHaveLength(2);
   expect(
-    state.offers.filter((o) => o.agent === "Researcher").every((o) => o.tools.length === 0),
+    state.offers
+      .filter((o) => o.agent === "Researcher")
+      .every((o) => JSON.stringify(o.tools) === JSON.stringify(["agevex_ask_parent"])),
   ).toBe(true);
 });
 

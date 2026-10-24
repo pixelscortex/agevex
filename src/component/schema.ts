@@ -39,10 +39,19 @@ export const denialCode = v.union(
   v.literal("STALE_TURN"),
   v.literal("DELEGATION_CONFLICT"),
   v.literal("RUN_BUDGET"),
+  v.literal("DEPTH_LIMIT"),
+  v.literal("GROUP_LIMIT"),
+  v.literal("GROUP_CLOSED"),
+  v.literal("GROUP_CONFLICT"),
+  v.literal("CHILD_FINISHED"),
+  v.literal("MESSAGE_LIMIT"),
+  v.literal("ASK_PENDING"),
+  v.literal("QUEUE_LIMIT"),
 );
 export const runStatus = v.union(
   v.literal("queued"),
   v.literal("running"),
+  v.literal("asking"),
   v.literal("completed"),
   v.literal("failed"),
 );
@@ -212,7 +221,8 @@ export default defineSchema({
     ),
   }).index("by_assignment_sequence", ["assignmentId", "sequence"]),
   // A run outlives an individual turn: results and subsequent delegations spend
-  // the same budget. pendingResults lets the parent batch child notifications.
+  // the same budget. pendingResults retains v1 accounting; readiness now uses
+  // the bounded immediate-parent/group indexes on subagentRuns.
   runs: defineTable({
     launches: v.number(),
     hops: v.number(),
@@ -244,6 +254,16 @@ export default defineSchema({
     payloadFingerprint: v.string(),
     rootAssignmentId: v.id("assignments"),
     actorAssignmentId: v.id("assignments"),
+    // Optional only for replaying existing depth-one runs. Read by admission,
+    // group release and the tree projection; never duplicate native messages.
+    depth: v.optional(v.number()),
+    group: v.optional(v.string()),
+    wait: v.optional(v.union(v.literal("each"), v.literal("all"))),
+    groupReleased: v.optional(v.boolean()),
+    // The exact native question id is recorded with its native save and read
+    // for verification before delivery. `asking` itself is the open-question fence.
+    questionMessageId: v.optional(v.string()),
+    messagesReceived: v.optional(v.number()),
     childAssignmentId: v.optional(v.id("assignments")),
     childThreadId: v.optional(v.string()),
     childResultMessageId: v.optional(v.string()),
@@ -263,10 +283,17 @@ export default defineSchema({
     finishedAt: v.optional(v.number()),
     deliveryAt: v.optional(v.number()),
     resultMessageId: v.optional(v.string()),
+    // Native notifications can share a millisecond; this parent-local order
+    // selects the latest exact anchor when the closed group is released.
+    resultSequence: v.optional(v.number()),
     events: v.array(runEvent),
   })
     .index("by_dedup", ["dedupKey"])
     .index("by_run", ["runId"])
     .index("by_root_sequence", ["rootAssignmentId", "sequence"])
-    .index("by_root_status", ["rootAssignmentId", "status"]),
+    .index("by_root_status", ["rootAssignmentId", "status"])
+    .index("by_parent_pending", ["actorAssignmentId", "parentRunId", "deliveryStatus"])
+    .index("by_group", ["actorAssignmentId", "parentRunId", "group"])
+    .index("by_unjoined", ["actorAssignmentId", "rootCancellationEpoch", "wait", "groupReleased"])
+    .index("by_root_run", ["rootAssignmentId", "parentRunId", "sequence"]),
 });
