@@ -1,5 +1,3 @@
-import { paginator } from "convex-helpers/server/pagination";
-import schema from "./schema.js";
 import type { FunctionHandle } from "convex/server";
 import type { WorkflowId } from "@convex-dev/workflow";
 import { rootLane, childLane, laneManager } from "./workflows.js";
@@ -126,6 +124,15 @@ export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = tru
   } else if (ring && row.loopWaiting && !row.pinged) {
     await manager.sendEvent(ctx, { workflowId: row.workflowId as WorkflowId, name: "ping" });
     await ctx.db.patch("assignments", row._id, { pinged: true });
+    // One check per outstanding wake, not a perpetual deployment-wide sweep.
+    // Acceptance and this marker share a transaction, so concurrent sends cannot
+    // schedule duplicate checks. Keep the marker until the check runs: a later
+    // wake in the same window is covered by that check of the current row.
+    if (row.recoveryAt === undefined) {
+      const recoveryAt = Date.now() + LIMITS.reconcileIntervalMs;
+      await ctx.scheduler.runAt(recoveryAt, internal.queue.reconcile, { assignmentId: row._id });
+      await ctx.db.patch("assignments", row._id, { recoveryAt });
+    }
   }
 }
 
@@ -149,9 +156,6 @@ export const accept = mutation({
       .withIndex("by_thread", (q) => q.eq("threadId", args.threadId))
       .unique();
     if (!row) {
-      // One chain per mount, armed transactionally before its first assignment.
-      if (!(await ctx.db.query("assignments").first()))
-        await ctx.scheduler.runAfter(LIMITS.reconcileIntervalMs, internal.queue.reconcile, {});
       const id = await ctx.db.insert("assignments", {
         subject: args.subject,
         agent: args.agent,
@@ -505,8 +509,14 @@ export const next = internalMutation({
   returns: v.union(v.string(), v.null()),
   handler: async (ctx, { assignmentId }): Promise<string | null> => {
     let row = await ctx.db.get("assignments", assignmentId);
-    if (!row || row.cancelled || row.approvalBlocked || row.turnStatus === "recovery_required")
+    if (!row || row.cancelled || row.turnStatus === "recovery_required") return null;
+    if (row.approvalBlocked) {
+      // The loop awaits ping for every null result, including approval pauses.
+      // Publish that wait before returning so a fresh send can ring the loop
+      // after the native approval response is recorded. No journal step changes.
+      await ctx.db.patch("assignments", row._id, { pinged: false, loopWaiting: true });
       return null;
+    }
     // next runs after the previous ping was consumed, or after a turn ended.
     // Keep this in the existing mutation so the versioned step order is fixed.
     await ctx.db.patch("assignments", row._id, { pinged: false, loopWaiting: false });
@@ -736,48 +746,42 @@ export const cancel = mutation({
 });
 
 /**
- * Workflow 0.4.10 supports sleep, but racing sleep with awaitEvent journals both
- * branches and leaves the losing step behind. A single batched reconciliation
- * chain preserves the fixed loop step order and bounds recovery of a lost ping.
- * Its status check retries only an actually waiting event, never a sent ping
- * whose workflow resume is merely queued. Thus retries cannot leak events.
+ * Check only a wake that was actually sent to a sleeping loop. Racing a Workflow
+ * sleep with awaitEvent would add positional journal entries, so recovery lives
+ * entirely outside the journal. If ping was consumed, next clears loopWaiting;
+ * if resume is merely queued, status no longer shows an awaited event. Neither
+ * case needs another check. A still-awaited ping is re-rung and arms its own
+ * delayed check, stopping as soon as the wake is consumed or no work remains.
  */
 export const reconcile = internalMutation({
-  args: { cursor: v.optional(v.string()) },
+  args: { assignmentId: v.id("assignments") },
   returns: v.null(),
-  handler: async (ctx, { cursor }) => {
-    const batch = await paginator(ctx.db, schema)
-      .query("assignments")
-      .withIndex("by_loop_waiting", (q) => q.eq("loopWaiting", true).eq("turnStatus", "queued"))
-      .paginate({ cursor: cursor ?? null, numItems: LIMITS.reconcileBatch });
-    for (const row of batch.page) {
-      if (
-        row.cancelled ||
-        row.approvalBlocked ||
-        row.turnStatus === "recovery_required" ||
-        !row.workflowId
-      )
-        continue;
-      const head = await ctx.db
-        .query("inbox")
-        .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
-        .first();
-      if (!head) continue;
-      const manager = row.childRunId ? childLane : rootLane;
-      const status = await manager.status(ctx, row.workflowId as WorkflowId);
-      if (
-        status.type !== "inProgress" ||
-        !status.running.some((step) => step.kind === "event" && step.name === "ping")
-      )
-        continue;
-      await ctx.db.patch("assignments", row._id, { pinged: false });
-      await wake(ctx, { ...row, pinged: false });
-    }
-    await ctx.scheduler.runAfter(
-      batch.isDone ? LIMITS.reconcileIntervalMs : 0,
-      internal.queue.reconcile,
-      batch.isDone ? {} : { cursor: batch.continueCursor },
-    );
+  handler: async (ctx, { assignmentId }) => {
+    const row = await ctx.db.get("assignments", assignmentId);
+    if (!row) return null;
+    await ctx.db.patch("assignments", row._id, { recoveryAt: undefined });
+    if (
+      row.cancelled ||
+      row.approvalBlocked ||
+      !row.loopWaiting ||
+      row.turnStatus !== "queued" ||
+      !row.workflowId
+    )
+      return null;
+    const head = await ctx.db
+      .query("inbox")
+      .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
+      .first();
+    if (!head) return null;
+    const manager = laneManager(!!row.childRunId, row.limits ?? LIMITS);
+    const status = await manager.status(ctx, row.workflowId as WorkflowId);
+    if (
+      status.type !== "inProgress" ||
+      !status.running.some((step) => step.kind === "event" && step.name === "ping")
+    )
+      return null;
+    await ctx.db.patch("assignments", row._id, { pinged: false });
+    await wake(ctx, { ...row, pinged: false, recoveryAt: undefined });
     return null;
   },
 });

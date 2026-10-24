@@ -24,3 +24,18 @@ export const write = internalMutationGeneric({
       a.args,
     ),
 });
+
+/** Observe scheduler activity in this component, including completed checks. */
+export const recoveryJobs = internalQueryGeneric({
+  args: {},
+  handler: async (ctx) => {
+    const jobs = (await ctx.db.system.query("_scheduled_functions").collect()).filter(
+      (job) => job.name === "queue:reconcile",
+    );
+    return {
+      total: jobs.length,
+      pending: jobs.filter((job) => job.state.kind === "pending" || job.state.kind === "inProgress")
+        .length,
+    };
+  },
+});

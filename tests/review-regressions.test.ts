@@ -2,7 +2,9 @@
 import { it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { setup, api, components, state } from "./setup.js";
 import { workflowCall } from "../src/testing/expect-journal.js";
-import { listMessages } from "@convex-dev/agent";
+import { componentsGeneric, type FunctionReference } from "convex/server";
+import { listMessages, saveMessage } from "@convex-dev/agent";
+import { main } from "./host.js";
 import { LIMITS } from "../src/client/index.js";
 
 beforeEach(() => vi.useFakeTimers());
@@ -49,11 +51,17 @@ it("an idle loop recovers its only lost ping without a replacement send", async 
   });
 });
 
-it.each(["cancel", "a stale epoch"])(
-  "%s refuses new nested actions and mutations with CANCELLED and an aborted signal",
-  async (mode) => {
+it.each([
+  ["cancel", false],
+  ["a stale epoch", false],
+  ["cancel", true],
+  ["a stale epoch", true],
+] as const)(
+  "%s refuses new nested actions and mutations with CANCELLED and an aborted signal (native createTool: %s)",
+  async (mode, native) => {
     const t = setup();
     state.nestedAfterCancel = true;
+    state.nativeNested = native;
     state.nestedGate = new Promise((resolve) => {
       state.nestedRelease = resolve;
     });
@@ -358,4 +366,108 @@ it("completed slices ignore stale watchdogs and exclude time between slices", as
   });
   await t.mutation(components.agevex.queue.finish, { ...args, errorCode: null });
   await drain(t);
+});
+
+it("an approval response followed by a fresh send completes the approval-blocked queue", async () => {
+  const t = setup();
+  const receipt = await open(t);
+  await drain(t);
+  await t.run((ctx) =>
+    saveMessage(ctx, components.agent, {
+      threadId: receipt.threadId,
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "pending-call",
+            toolName: "echo",
+            input: { text: "approved" },
+          },
+          {
+            type: "tool-approval-request",
+            approvalId: "pending-approval",
+            toolCallId: "pending-call",
+          },
+        ],
+      },
+    }),
+  );
+  const alice = t.withIdentity({ subject: "alice" });
+  await alice.mutation(api.agents.send, {
+    threadId: receipt.threadId,
+    text: "must wait",
+    requestKey: "waiting",
+  });
+  await drain(t);
+  expect(state.calls).toHaveLength(1);
+  expect(await activity(t, receipt.threadId)).toMatchObject({ queuedMessages: 1 });
+  // Native approval responses share the request's order, even when user
+  // messages were queued meanwhile. A plain append would create an invalid
+  // protocol fixture that the Agent SDK cannot resume from the older prompt.
+  const approval = await t.run((ctx) =>
+    main.approveToolCall(ctx, {
+      threadId: receipt.threadId,
+      approvalId: "pending-approval",
+    }),
+  );
+  // Phase 1a leaves approval continuation to the host's native Agent API. Save
+  // the approved tool's result before unrelated queued prompts can be generated.
+  await t.action(async (ctx) => {
+    await main.generateText(
+      ctx,
+      { threadId: receipt.threadId },
+      {
+        promptMessageId: approval.messageId,
+        stopWhen: () => true,
+      },
+    );
+  });
+  const beforeSend = state.calls.length;
+  await alice.mutation(api.agents.send, {
+    threadId: receipt.threadId,
+    text: "resume after approval",
+    requestKey: "approved",
+  });
+  await drain(t);
+  expect(state.calls).toHaveLength(beforeSend + 2);
+  expect(await activity(t, receipt.threadId)).toMatchObject({
+    turnStatus: "idle",
+    queuedMessages: 0,
+    errorCode: null,
+  });
+});
+
+it("an idle deployment schedules no recovery jobs after its pending wakes are consumed", async () => {
+  const t = setup();
+  const receipt = await open(t);
+  await drain(t);
+  const jobs = () =>
+    t.query(
+      componentsGeneric().agevex.agevexTest.recoveryJobs as unknown as FunctionReference<"query">,
+    );
+  expect(await jobs()).toEqual({ total: 0, pending: 0 });
+  await t.withIdentity({ subject: "alice" }).mutation(api.agents.send, {
+    threadId: receipt.threadId,
+    text: "one wake",
+    requestKey: "wake",
+  });
+  await drain(t);
+  expect(state.calls).toHaveLength(2);
+  expect(await jobs()).toEqual({ total: 1, pending: 1 });
+  // Consume one wake, then ring again before its delayed check: the same
+  // transactionally armed check must cover the second wake too.
+  await t.withIdentity({ subject: "alice" }).mutation(api.agents.send, {
+    threadId: receipt.threadId,
+    text: "another wake",
+    requestKey: "another-wake",
+  });
+  await drain(t);
+  expect(state.calls).toHaveLength(3);
+  expect(await jobs()).toEqual({ total: 1, pending: 1 });
+  await tick(t, LIMITS.reconcileIntervalMs * 2);
+  const settled = await jobs();
+  expect(settled).toMatchObject({ pending: 0 });
+  await tick(t, LIMITS.reconcileIntervalMs * 10);
+  expect(await jobs()).toEqual(settled);
 });

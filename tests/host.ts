@@ -24,7 +24,7 @@ import {
   type Registration,
 } from "../src/client/index.js";
 import { scriptedModel } from "../src/test.js";
-import { mockModel } from "@convex-dev/agent";
+import { createTool, mockModel } from "@convex-dev/agent";
 import { tool } from "ai";
 import { z } from "zod";
 import {
@@ -47,6 +47,7 @@ export const state = {
   dropPing: false,
   nestedCalls: 0,
   nestedAfterCancel: false,
+  nativeNested: false,
   nestedStarted: false,
   nestedErrors: [] as unknown[],
   nestedSignals: [] as boolean[],
@@ -144,7 +145,14 @@ model.doStream = async (args) => {
   if (state.fail) throw new Error("private provider error must not leak");
   if (state.nestedAfterCancel)
     return scriptedModel([
-      [{ type: "tool-call", toolName: "nested", toolCallId: "nested", input: "{}" }],
+      [
+        {
+          type: "tool-call",
+          toolName: state.nativeNested ? "nativeNested" : "nested",
+          toolCallId: "nested",
+          input: "{}",
+        },
+      ],
     ]).doStream(args);
   if (state.once && state.calls.length <= 2)
     return scriptedModel([
@@ -228,6 +236,26 @@ export const main = new Agent(components.agent, {
   name: "Main",
   languageModel: model,
   tools: {
+    nativeNested: createTool({
+      inputSchema: z.object({}),
+      execute: async (ctx, _input, options) => {
+        state.nestedStarted = true;
+        if (state.nestedGate) await state.nestedGate;
+        try {
+          await ctx.runAction(makeFunctionReference<"action">("agents:nestedAction"), {});
+        } catch (error) {
+          state.nestedErrors.push(error);
+          state.nestedSignals.push(options.abortSignal?.aborted ?? false);
+        }
+        try {
+          await ctx.runMutation(makeFunctionReference<"mutation">("agents:nestedMutation"), {});
+        } catch (error) {
+          state.nestedErrors.push(error);
+          state.nestedSignals.push(options.abortSignal?.aborted ?? false);
+        }
+        return null;
+      },
+    }),
     nested: defineOnceTool({
       name: "nested-cancel-probe",
       input: z.object({}),

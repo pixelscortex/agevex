@@ -138,6 +138,7 @@ function acceptedDeliveryFault(real: AgevexMutation) {
 export function setup(fault?: Fault, limits?: Registration["limits"]) {
   state.dropPing = false;
   state.nestedCalls = 0;
+  state.nativeNested = false;
   state.nestedAfterCancel = false;
   state.nestedStarted = false;
   state.nestedErrors.length = 0;

@@ -44,7 +44,6 @@ export const LIMITS = {
   leaseMs: 10 * 60_000,
   receiptRetentionMs: 7 * 24 * 60 * 60_000,
   receiptResultBytes: 64 << 10,
-  reconcileBatch: 100,
   reconcileIntervalMs: 30_000,
   purgeBatch: 100,
   purgeIntervalMs: 60 * 60_000,

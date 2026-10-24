@@ -1,6 +1,7 @@
 import { createThread, getThreadMetadata, listMessages, saveMessage } from "@convex-dev/agent";
 import {
   createFunctionHandle,
+  getFunctionAddress,
   internalActionGeneric,
   internalMutationGeneric,
   type GenericActionCtx,
@@ -644,6 +645,16 @@ export function registerAgent(component: ComponentApi, config: Registration) {
             // action are yours to guard with tc.signal. An action call cannot be
             // made atomic with the cancel mutation: this is admission fencing,
             // while SDK-owned/native writes retain the transactional write fence.
+            // Agent 0.7.7 fires these void saves from asynchronous abort listeners.
+            // They must resolve after cancellation to avoid an unhandled rejection;
+            // queue.write still drops their stale writes transactionally. All other
+            // native operations, including createTool's injected ctx, reject new
+            // nested calls after revocation just like defineOnceTool does.
+            const nativeFinalizers = new Set(
+              [managed.component.messages.finalizeMessage, managed.component.streams.abort].map(
+                (ref) => JSON.stringify(getFunctionAddress(ref)),
+              ),
+            );
             const fencedCtx: RunnerCtx = {
               ...nativeCtx,
               runAction: (async (ref, ...payload) => {
@@ -651,6 +662,8 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 return ctx.runAction(ref, ...payload);
               }) as RunnerCtx["runAction"],
               runMutation: (async (ref, payload) => {
+                if (nativeFinalizers.has(JSON.stringify(getFunctionAddress(ref))))
+                  return nativeCtx.runMutation(ref, payload);
                 await assertActive();
                 try {
                   return await ctx.runMutation(component.queue.write, {
@@ -713,7 +726,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                   },
                 });
               const result = await managed.streamText(
-                nativeCtx,
+                fencedCtx,
                 { threadId: claimed.threadId },
                 {
                   promptMessageId: claimed.promptMessageId,
