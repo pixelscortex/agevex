@@ -1,0 +1,52 @@
+---
+title: Registry
+description: Copy an example tool into your app with shadcn.
+status: In progress
+---
+
+import { RegistryInstallCommand } from '@/components/setup-examples';
+
+The local registry endpoint serves one working example. The SDK’s production
+tools and community catalogue are **Planned**.
+
+## Install the example
+
+Start this docs site locally, then replace `<site-url>` with its origin
+(`http://localhost:3000` for the default dev server):
+
+<RegistryInstallCommand />
+
+`shadcn add` copies `lib/tools/todo-tool.ts` into your project and installs its
+`ai` and `zod` dependencies. It is source you can read and change, not a remote
+service. Inspect the [registry item](/r/todo-tool.json) before installing it.
+
+## What todo-tool does
+
+`createTodoTools()` returns `todo_read` and `todo_write`. Read returns the list;
+write replaces it. Each list holds at most 100 items, with bounded IDs and text.
+Each factory call owns a separate in-memory list.
+
+**Demonstration only.** State disappears on restart and is not shared across
+server instances. Do not share a tools instance between users. The file includes
+a TODO to use Agent-component storage, scoped to the trusted thread and owner,
+as specified in §8. Add host authorization before real use.
+
+## Community registries
+
+The planned distribution follows the shadcn registry format. First-party and
+community registries can use the same item format, so hosts copy only what they
+need and keep ownership of their code. A namespace is a placeholder until a
+host configures a registry URL; no hosted namespace is registered today.
+
+## Rebuild locally
+
+From `docs/site`:
+
+```sh
+bun run registry:build
+```
+
+This synchronizes the provisional namespace from `site.config.ts` into
+`registry.json`, then runs `bunx shadcn build`. Output is committed under
+`public/r/` and served at `/r/todo-tool.json`. The production build also rebuilds
+it. Change the provisional name only in `site.config.ts`, then rebuild.

@@ -1,0 +1,67 @@
+---
+title: Introduction
+description: A Convex-native, headless Agent SDK for TypeScript.
+status: Available
+---
+
+import { SiteName } from '@/components/setup-examples';
+
+<SiteName /> is a Convex-native, **headless** agent system: state,
+orchestration and subagent management, so building a feature does not mean
+re-solving how to manage the agent. It is general purpose, rather than tied to
+one product: a Convex-native counterpart to running Mastra on Convex.
+
+The package provides **mechanisms**. Your app provides **policy**: who may do
+what, prices, credits, plans, copy and domain tools.
+
+## Available today
+
+The current runtime uses Workpool for authorized message acceptance, persisted
+scheduling and bounded, depth-1 delegation. The native Agent component owns
+threads, messages, generation and streaming. A managed turn takes one model
+step; paid generation is not retried automatically.
+
+**Preview: API in development.** These docs also describe the draft design.
+The Available badge covers current runtime basics only. Planned pages describe
+future contracts, not exports you can install today. Workflow orchestration,
+expanded delegation and optional modules are all planned.
+
+## The rule ladder
+
+1. If Convex or a Convex component provides it, build around that.
+2. If it almost works, add the thinnest layer on top that makes it work.
+3. Only if neither is possible, own it. Owning is the last step.
+
+## Surgical schemas
+
+Add a table only when no existing table can hold the state, including the Agent
+component’s and Workflow’s tables. Prefer IDs and an extra read over a copied
+row. Keep tables small and justified.
+
+## Friendly APIs
+
+One obvious way to do each thing, short names, typed results and little ceremony.
+The planned one-screen setup is:
+
+```ts
+const researcher = new Agent(components.agent, { name: "Researcher", languageModel, instructions })
+const main = new Agent(components.agent, { name: "Main", languageModel, instructions, subagents: [researcher] })
+
+export const sdk = defineAgents(components.sdk, { agents: [main], authorize, meter })
+export const { open, send, cancel, messages, activity, delegations, threadCost } = sdk.api()
+
+// anywhere in the host
+const cost = await sdk.meter.threadCost(ctx, { threadId })   // { totalNanos, unknown, byAgent, byModel }
+```
+
+Errors have typed codes and a one-line reason. The planned `LIMITS` export keeps
+bounds in one place. Public doc comments explain guarantees and why they exist.
+
+## Read next
+
+Start with [getting started](/docs/getting-started), compare the current and
+planned [runtime](/docs/concepts/runtime), or inspect the
+[copy-paste registry](/docs/registry).
+
+The SDK is headless: it ships no React UI or hooks. It does not replace the
+native transcript, own billing policy, or promise exactly-once external effects.

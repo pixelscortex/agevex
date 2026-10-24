@@ -1,0 +1,52 @@
+---
+title: Idempotency
+description: The planned receipts ledger fences stale work and preserves unknown outcomes.
+status: Planned
+---
+
+The SDK extends its existing `receipts` table into a shared idempotency ledger.
+A `(scope, key)` pair identifies work; the key defaults to `toolCallId`. A hash
+of the input detects a reused key with changed arguments as `KEY_CONFLICT`.
+
+## State transitions
+
+```text
+begin(scope, key, fingerprint)
+  no row                          → running, new claim         → run it
+  running, lease live             → "in progress"              → don't run
+  running, lease expired          → unknown                    → don't run (outcome unknown)
+  done / failed                   → return stored result       → don't run
+  any row, different fingerprint  → KEY_CONFLICT
+complete(claim, result | failure)
+  claim matches and row running   → done / failed
+  otherwise                       → ignored (stale or superseded)
+```
+
+A random claim fences completion. A live claim blocks concurrent execution.
+A lease that expires becomes **unknown**: expiration is not evidence that an
+external effect did not happen, so the SDK does not silently run it again.
+The model receives an unknown outcome and must check before retrying.
+
+The ledger stores bounded results, or a storage ID for larger results. Rows
+have `expiresAt` and are purged in scheduled batches.
+
+## Tool helper (planned)
+
+This is a spec shape; the optional-property notation describes the contract.
+
+```ts
+defineOnceTool({
+  name, input, run,
+  key?: (input, tc) => string,   // default tc.toolCallId
+  repeatSafe?: boolean,          // true: an expired lease may be re-claimed
+  leaseMs?: number,              // default 10 min
+})
+```
+
+Only an explicitly repeat-safe effect may reclaim an expired lease. The default
+lease is ten minutes. This provides fenced admission, not exactly-once external
+effects: a safe retry still depends on the provider.
+
+The same ledger backs open/send keys, sandbox background jobs and extraction
+admission. Today’s runtime already deduplicates accepted requests; this extended
+ledger and its unknown-outcome rules are planned.

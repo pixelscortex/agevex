@@ -1,0 +1,58 @@
+---
+title: Meter
+description: Planned usage attribution, costs, budgets and billing sinks.
+status: Planned
+---
+
+`sdk/meter` records consumption, reads thread/run/subject cost, gates the next
+slice and forwards settled events to a host billing system. It owns no plans,
+prices or credits beyond the policy supplied by the host.
+
+## API shape
+
+The optional-property and union notation below describes the draft contract.
+
+```ts
+const meter = defineMeter(components.meter, {
+  sinks: [polarSink({ meter: "ai_usage" }), hostLedger(internal.billing.record)],   // optional
+  budgets?: (scope) => ({ maxNanos }) | undefined,                                  // optional policy
+})
+
+await meter.record(ctx, {
+  key: "agent:message:" + messageId,      // idempotent; same key = same event
+  revision: 1,                            // later revisions replace earlier ones
+  attribution: { subject, threadId, runId, agent },
+  provider: "openrouter", model: "minimax/minimax-m3.1-flash", operation: "generate",
+  units: { inputTokens, outputTokens },
+  cost: { nanos, source: "provider" } | { unknown: true },   // unknown is never zero
+})
+
+await meter.threadCost(ctx, { threadId })        // includes child threads of the root
+// → { totalNanos, estimatedNanos, unknown, byAgent: {...}, byModel: {...}, byProvider: {...} }
+await meter.breakdown(ctx, { subject, from, to, by: "day" | "agent" | "model" | "provider" })
+await meter.check(ctx, { subject, runId })       // → { allow: true } | { allow: false, reason }
+```
+
+## Guarantees
+
+A record key identifies one event. Later revisions replace its aggregate
+contribution. Unknown cost is never zero; estimates are marked
+`source: "estimate"` with a `pricingVersion`.
+
+The runtime records model usage at the message-save boundary, once per step.
+Sandbox, extraction and `defineTask` record their own usage. Hosts wire custom
+providers only when they add them.
+
+`@convex-dev/aggregate` holds totals by thread, run and subject. The owned
+`events` table holds keys, revisions and attribution. Cost reads use aggregates
+rather than scanning events. Root thread cost includes children.
+
+## Sinks and helpers
+
+Workpool/action-retrier handles delivery retries. A sink failure never blocks
+or fails agent work. `polarSink` forwards settled usage as Polar meter events;
+the Polar component still owns subscriptions and webhooks.
+
+`observeProviderOutcome` separates the result from billing evidence.
+`openRouterCost()` reads provider cost and captures paid-but-rejected responses.
+`embeddingMetering()` records one event per physical embedding call.

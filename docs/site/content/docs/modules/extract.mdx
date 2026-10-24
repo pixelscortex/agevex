@@ -1,0 +1,81 @@
+---
+title: Extract
+description: Planned durable file and web extraction, with optional RAG.
+status: Planned
+---
+
+`sdk/extract` turns Agent-component files into bounded text artifacts. Fetching
+a URL is a separate step from extracting it. RAG indexing is optional.
+
+## API shape
+
+This is the draft contract; `?` properties and union alternatives describe API
+shapes rather than executable TypeScript.
+
+```ts
+const extract = defineExtract(components.extract, {
+  backends: [directText(), firecrawlParse(), visionOcr({ model })],   // ordered
+  route?: (file) => BackendId | undefined,     // default: first backend whose accepts() matches
+  limits: { maxBytes: { document: 50e6, image: 10e6, text: 8 * 2 ** 20 }, payloadBytes: 32 * 2 ** 20 },
+  usage?: UsageHooks,
+  rag?: { component: components.rag, embedding, chunk?: ChunkOptions },  // optional
+})
+
+// files are Agent-component fileIds (storeFile); web pages are fetched first
+const { fileId } = await extract.fromUrl(ctx, { url })    // Firecrawl fetch → storeFile; fetching ≠ extraction
+
+// extraction
+const job = await extract.run(ctx, { fileId, backend?, onComplete? })  // async, durable
+const artifact = await extract.get(ctx, { fileId })                     // summary + status
+const page = await extract.readText(ctx, { artifactId, cursor, maxBytes })   // bounded
+const pages = await extract.readPages(ctx, { artifactId, from, count })      // ≤ 100
+
+// optional RAG
+await extract.index(ctx, { artifactId, namespace, key })
+const hits = await extract.search(ctx, { namespace, query, limit })
+// agent tool
+extract.tools()   // read_file(fileId, page?) returning bounded text + references
+```
+
+## Backends
+
+```ts
+type ExtractBackend = {
+  id: string                       // stable, part of the artifact identity
+  version: string                  // bump to force re-extraction
+  accepts(file: { mimeType: string; byteSize: number }): boolean
+  run(input: {
+    bytes: () => Promise<Blob>     // lazy, bounded
+    file: FileInfo
+    signal: AbortSignal
+  }): Promise<BackendResult>
+}
+type BackendResult =
+  | { ok: true; doc: ExtractedDoc; usage?: ProviderUsage }
+  | { ok: false; failure: ExtractFailure; usage?: ProviderUsage }   // paid failures keep usage
+type ExtractedDoc = { kind: "text" | "document" | "image"; text: string; pages?: Page[]; language? }
+```
+
+Backends are ordered: `directText` accepts text, Markdown, HTML, CSV and JSON;
+`firecrawlParse` handles PDF, DOCX, PPTX and XLSX; `visionOcr` handles images
+with an AI SDK model. Hosts may supply additional backends.
+
+## Identity, storage and limits
+
+An artifact is unique per `(fileId, backend.id, backend.version, optionsHash)`.
+Re-running returns the existing artifact. Admission yields reuse, wait, or a
+new attempt. Completion checks the matching attempt and a live file claim;
+release wins over a late completion.
+
+Only the summary lives in the `artifacts` table. JSON payloads live in Convex
+storage; reads return windows of at most 1 MiB or 100 pages. Defaults allow
+50 MB documents, 10 MB images, 8 MiB text and 32 MiB payloads. Huge jobs may
+use a sandbox backend. Agents get references and bounded slices.
+
+Final failures are `UNSUPPORTED_TYPE`, `UNREADABLE`, `EMPTY`, `INVALID_OUTPUT`
+and `TOO_LARGE`. Retryable failures are `PROVIDER_UNAVAILABLE`,
+`OBJECT_UNAVAILABLE` and `CHECKSUM_FAILED`. Provider bodies are never stored;
+paid failures retain usage evidence.
+
+The Agent component owns files, the receipts ledger owns attempts, and the RAG
+component owns vectors. Chunking and indexing happen only when `rag` is configured.
