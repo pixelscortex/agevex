@@ -1,0 +1,23 @@
+tests/live/config.ts
+  s_e7b4298ce355c6::t_5aecc4c3ca1e2f 2
+tests/live/convex/agents.ts
+  s_e7b4298ce355c6::t_93de1740c3530b 18-20,81,106-140,144,146,175
+tests/live/runtime.live.ts
+  s_e7b4298ce355c6::t_97dacc791d3622 17,19,21-24,30-32,37-42,63-64,80-100,116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b380eb084c4d8b5291f74e628223d6626691c550",
+  "prompts": {},
+  "sessions": {
+    "s_e7b4298ce355c6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17035-2158-76f0-8bd7-1a92452c0b8d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
