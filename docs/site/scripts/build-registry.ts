@@ -14,3 +14,6 @@ const result = Bun.spawnSync(['bunx', 'shadcn', 'build'], {
   stderr: 'inherit',
 });
 if (result.exitCode !== 0) process.exit(result.exitCode);
+
+// Serve the registry index alongside the generated item.
+await Bun.write(new URL('../public/r/registry.json', import.meta.url), file);

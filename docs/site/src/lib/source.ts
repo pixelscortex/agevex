@@ -5,9 +5,10 @@ import { defineDocs } from 'fumadocs-mdx/macro';
 import { metaSchema, pageSchema } from 'fumadocs-core/source/schema';
 import { z } from 'zod';
 
-const docs = defineDocs({
+export const docs = defineDocs({
   dir: 'content/docs',
   docs: {
+    async: true,
     schema: pageSchema.extend({
       status: z.enum(['Planned', 'In progress', 'Available']),
     }),
