@@ -67,6 +67,7 @@ export const state = {
   hang: false,
   tools: false,
   approval: false,
+  approvalCount: 1,
   childApproval: false,
   once: false,
   onceCalls: 0,
@@ -173,14 +174,12 @@ model.doStream = async (args) => {
     ]).doStream(args);
   if (state.approval && state.calls.length === 1)
     return scriptedModel([
-      [
-        {
-          type: "tool-call",
-          toolCallId: "approval-call",
-          toolName: "echo",
-          input: '{"text":"echoed"}',
-        },
-      ],
+      Array.from({ length: state.approvalCount }, (_, i) => ({
+        type: "tool-call" as const,
+        toolCallId: "approval-call-" + i,
+        toolName: "echo",
+        input: '{"text":"echoed"}',
+      })),
     ]).doStream(args);
   if (state.tools && state.calls.length === 1) return toolModel.doStream(args);
   const prompt = JSON.stringify(

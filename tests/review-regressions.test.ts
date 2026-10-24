@@ -123,9 +123,9 @@ it("40 large tool results allow a turn to start, block on recorded approval, and
     });
   const paused = await execution();
   expect(paused).toMatchObject({ approvalBlocked: true, queuedMessages: 1 });
-  expect(paused?.approvalRequestMessageId).toBeTypeOf("string");
+  expect(paused?.approvals?.requests[0].messageId).toBeTypeOf("string");
   const [request] = await t.query(components.agent.messages.getMessagesByIds, {
-    messageIds: [paused!.approvalRequestMessageId!],
+    messageIds: [paused!.approvals!.requests[0].messageId],
   });
   const content = request!.message!.content;
   const part = Array.isArray(content)
@@ -159,7 +159,7 @@ it("40 large tool results allow a turn to start, block on recorded approval, and
     queuedMessages: 0,
     errorCode: null,
   });
-  expect((await execution())?.approvalRequestMessageId).toBeUndefined();
+  expect((await execution())?.approvals).toBeUndefined();
 });
 
 it("messages serves an oversized page request over large history in bounded pages", async () => {
@@ -1239,7 +1239,7 @@ it("an approval response followed by a fresh send completes the approval-blocked
     assignmentId: receipt.assignmentId,
   });
   const [request] = await t.query(components.agent.messages.getMessagesByIds, {
-    messageIds: [execution!.approvalRequestMessageId!],
+    messageIds: [execution!.approvals!.requests[0].messageId],
   });
   const content = request!.message!.content;
   const part = Array.isArray(content)

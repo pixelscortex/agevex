@@ -159,11 +159,14 @@ export default defineSchema({
     turnOrigin: v.optional(turnOrigin),
     inboxId: v.optional(v.id("inbox")),
     approvalBlocked: v.optional(v.boolean()),
-    approvalRequestMessageId: v.optional(v.string()),
     // At most LIMITS.approvalsPerPause fixed-size approval keys, never payloads.
     approvals: v.optional(
       v.object({
         inboxId: v.id("inbox"),
+        epoch: v.number(),
+        getMessages: v.string(),
+        addMessages: v.string(),
+        cleanupPending: v.optional(v.boolean()),
         requests: v.array(
           v.object({ key: v.string(), messageId: v.string(), providerExecuted: v.boolean() }),
         ),

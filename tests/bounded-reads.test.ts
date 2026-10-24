@@ -49,7 +49,7 @@ async function nativeHandles(t: Test) {
 }
 async function request(t: Test, count = 2, providerExecuted = false, idPrefix = "approval-") {
   const turn = await claimed(t);
-  await t.mutation(components.agevex.queue.write, {
+  const writeResult = await t.mutation(components.agevex.queue.write, {
     assignmentId: turn.assignmentId,
     executionId: turn.executionId,
     cancellationEpoch: turn.cancellationEpoch,
@@ -82,7 +82,7 @@ async function request(t: Test, count = 2, providerExecuted = false, idPrefix = 
       ],
     },
   });
-  return turn;
+  return { ...turn, writeResult };
 }
 
 it("a post-save throw leaves the native approval atomically blocked", async () => {
@@ -108,9 +108,9 @@ it("a post-save throw leaves the native approval atomically blocked", async () =
     errorCode: null,
     queuedMessages: 1,
   });
-  expect(row?.approvalRequestMessageId).toBeTypeOf("string");
+  expect(row?.approvals?.requests[0].messageId).toBeTypeOf("string");
   const [native] = await t.query(components.agent.messages.getMessagesByIds, {
-    messageIds: [row!.approvalRequestMessageId!],
+    messageIds: [row!.approvals!.requests[0].messageId],
   });
   expect(JSON.stringify(native?.message)).toContain("tool-approval-request");
   await owner(t).mutation(api.agents.send, {
@@ -178,7 +178,7 @@ it("respond resolves two approvals separately and resumes from the final native 
   const queued = await execution(t, turn.assignmentId);
   expect(queued).toMatchObject({ approvalBlocked: false, promptMessageId: last.messageId });
   const messages = await t.query(components.agent.messages.getMessagesByIds, {
-    messageIds: [queued!.approvalRequestMessageId!, first.messageId, last.messageId],
+    messageIds: [queued!.approvals!.requests[0].messageId, first.messageId, last.messageId],
   });
   expect(new Set(messages.map((m) => m!.order)).size).toBe(1);
   expect(messages[2]?.message).toMatchObject({
@@ -231,7 +231,7 @@ it("respond authorizes an owned child and continues its managed settlement", asy
   const child = (await execution(t, assignment!.assignmentId))!;
   expect(child.approvalBlocked).toBe(true);
   const [message] = await t.query(components.agent.messages.getMessagesByIds, {
-    messageIds: [child.approvalRequestMessageId!],
+    messageIds: [child.approvals!.requests[0].messageId],
   });
   const content = message!.message!.content;
   const part = Array.isArray(content)
@@ -280,12 +280,11 @@ it("sixteen approvals stay bounded and resolve atomically at the pause limit", a
   await drain(t);
 });
 
-it("an oversized approval step commits APPROVAL_LIMIT with the native save and never resumes", async () => {
+it("an oversized approval step commits APPROVAL_LIMIT before the native save and never resumes", async () => {
   const t = setup("transcriptReads");
   const turn = await request(t, LIMITS.approvalsPerPause + 1);
   const row = (await execution(t, turn.assignmentId))!;
   expect(row).toMatchObject({
-    approvalBlocked: true,
     turnStatus: "recovery_required",
     errorCode: "APPROVAL_LIMIT",
   });
@@ -293,13 +292,7 @@ it("an oversized approval step commits APPROVAL_LIMIT with the native save and n
   expect(row.turnToken).toBeUndefined();
   expect(row.watchdogId).toBeUndefined();
   expect(row.recoveryJobId).toBeUndefined();
-  const [native] = await t.query(components.agent.messages.getMessagesByIds, {
-    messageIds: [row.approvalRequestMessageId!],
-  });
-  const content = native!.message!.content;
-  expect(
-    Array.isArray(content) && content.filter((p) => p.type === "tool-approval-request"),
-  ).toHaveLength(LIMITS.approvalsPerPause + 1);
+  expect(turn.writeResult).toBeNull();
   // An action's later failure cannot overwrite the transaction's typed failure.
   await t.mutation(components.agevex.queue.finish, {
     assignmentId: turn.assignmentId,
@@ -319,6 +312,108 @@ it("an oversized approval step commits APPROVAL_LIMIT with the native save and n
   expect(state.transcriptReads).toBe(0);
   expect(state.calls).toHaveLength(0);
   expect(await execution(t, turn.assignmentId)).toMatchObject({ errorCode: "APPROVAL_LIMIT" });
+});
+
+it.each([1, LIMITS.approvalsPerPause])(
+  "%i genuine managed approvals can pause, cancel, and complete a fresh send after native cleanup",
+  async (count) => {
+    const t = setup(undefined, undefined, true);
+    state.approval = true;
+    state.approvalCount = count;
+    const receipt = await open(t);
+    await drain(t);
+    const paused = (await execution(t, receipt.assignmentId))!;
+    expect(paused).toMatchObject({ approvalBlocked: true, turnStatus: "idle" });
+    const approvals = paused.approvals!;
+    const [request] = await t.query(components.agent.messages.getMessagesByIds, {
+      messageIds: [approvals.requests[0].messageId],
+    });
+    const content = request!.message!.content;
+    const approval = Array.isArray(content)
+      ? content.find((part) => part.type === "tool-approval-request")
+      : undefined;
+    if (approval?.type !== "tool-approval-request") throw new Error("APPROVAL_MISSING");
+    await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
+    await owner(t).mutation(api.agents.send, {
+      threadId: receipt.threadId,
+      text: "fresh turn",
+      requestKey: "fresh-after-cancel",
+    });
+    expect(await execution(t, receipt.assignmentId)).toMatchObject({
+      approvalBlocked: true,
+      turnStatus: "idle",
+      queuedMessages: 1,
+      approvals: { cleanupPending: true },
+    });
+    await expect(
+      owner(t).mutation(api.agents.respond, {
+        threadId: receipt.threadId,
+        approvalId: approval.approvalId,
+        approved: true,
+      }),
+    ).rejects.toThrow("APPROVAL_NOT_FOUND");
+    expect(state.calls).toHaveLength(1);
+    await drain(t);
+    expect(state.calls).toHaveLength(2);
+    expect(JSON.stringify(state.calls[1].prompt)).toContain("execution-denied");
+    expect(JSON.stringify(state.calls[1].prompt)).toContain("cancelled");
+    expect(await execution(t, receipt.assignmentId)).toMatchObject({
+      approvalBlocked: false,
+      turnStatus: "idle",
+      queuedMessages: 0,
+      errorCode: null,
+    });
+    expect((await execution(t, receipt.assignmentId))?.approvals).toBeUndefined();
+  },
+);
+
+it("a genuine managed APPROVAL_LIMIT can cancel and complete a fresh send without orphan approvals", async () => {
+  const t = setup(undefined, undefined, true);
+  state.approval = true;
+  state.approvalCount = LIMITS.approvalsPerPause + 1;
+  const receipt = await open(t);
+  await drain(t);
+  expect(await execution(t, receipt.assignmentId)).toMatchObject({
+    turnStatus: "recovery_required",
+    errorCode: "APPROVAL_LIMIT",
+  });
+  expect((await execution(t, receipt.assignmentId))?.approvals).toBeUndefined();
+  await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
+  await owner(t).mutation(api.agents.send, {
+    threadId: receipt.threadId,
+    text: "fresh after overflow",
+    requestKey: "fresh-after-overflow",
+  });
+  await drain(t);
+  expect(state.calls).toHaveLength(2);
+  expect(await execution(t, receipt.assignmentId)).toMatchObject({
+    turnStatus: "idle",
+    queuedMessages: 0,
+    errorCode: null,
+  });
+  expect(JSON.stringify(state.calls[1].prompt)).not.toContain("tool-approval-request");
+});
+
+it("cancel settles the remaining approvals after a partial response without replaying decisions", async () => {
+  const t = setup(undefined, undefined, true);
+  const turn = await request(t);
+  await owner(t).mutation(api.agents.respond, {
+    threadId: turn.threadId,
+    approvalId: "approval-0",
+    approved: true,
+  });
+  await owner(t).mutation(api.agents.cancel, { threadId: turn.threadId });
+  await owner(t).mutation(api.agents.send, {
+    threadId: turn.threadId,
+    text: "fresh",
+    requestKey: "fresh-after-partial",
+  });
+  await drain(t);
+  expect(state.calls).toHaveLength(1);
+  expect(await execution(t, turn.assignmentId)).toMatchObject({
+    turnStatus: "idle",
+    errorCode: null,
+  });
 });
 
 it("huge native approval ids leave fixed-size assignment metadata and still resolve", async () => {
@@ -428,7 +523,7 @@ it("40 repeated delta cursors read one owned stream within the metadata and delt
   await drain(t);
 });
 
-it("forty distinct delta cursors read at most eight native streams and retain the earliest offset", async () => {
+it("forty distinct delta cursors read at most four native streams and retain the earliest offset", async () => {
   const t = setup(undefined, undefined, true);
   const turn = await activeStream(t);
   const streamIds = [turn.streamId];
@@ -463,6 +558,44 @@ it("forty distinct delta cursors read at most eight native streams and retain th
   expect(result.streams.deltas.map((delta) => delta.streamId)).toEqual(
     streamIds.slice(0, LIMITS.streamCursors),
   );
+  await owner(t).mutation(api.agents.cancel, { threadId: turn.threadId });
+  await drain(t);
+});
+
+it("eight 1020 KiB stream docs and nine large deltas stay within transaction read limits", async () => {
+  const t = setup(undefined, undefined, true);
+  const turn = await activeStream(t, 1020 << 10);
+  const streamIds = [turn.streamId];
+  for (let i = 1; i < 8; i++)
+    streamIds.push(
+      await t.mutation(components.agent.streams.create, {
+        threadId: turn.threadId,
+        order: i + 1,
+        stepOrder: 0,
+        providerOptions: { huge: { value: "x".repeat(1020 << 10) } },
+      }),
+    );
+  // Put the page on the last accepted cursor so all four max-size stream
+  // documents are read before Agent exhausts the shared 8 MiB delta budget.
+  for (let i = 0; i < 9; i++)
+    await t.mutation(components.agent.streams.addDelta, {
+      streamId: streamIds[LIMITS.streamCursors - 1],
+      start: i,
+      end: i + 1,
+      parts: [{ type: "text-delta", id: "text", delta: "x".repeat(1020 << 10) }],
+    });
+  const result = await owner(t).query(api.agents.messages, {
+    threadId: turn.threadId,
+    paginationOpts: { cursor: null, numItems: 1 },
+    streamArgs: { kind: "deltas", cursors: streamIds.map((streamId) => ({ streamId, cursor: 0 })) },
+  });
+  if (result.streams?.kind !== "deltas") throw new Error("EXPECTED_DELTAS");
+  expect(result.streams.deltas.length).toBeGreaterThan(0);
+  expect(result.streams.deltas.length).toBeLessThanOrEqual(9);
+  expect(JSON.stringify(result.streams.deltas).length).toBeLessThan(9 << 20);
+  expect(
+    result.streams.deltas.every((delta) => delta.streamId === streamIds[LIMITS.streamCursors - 1]),
+  ).toBe(true);
   await owner(t).mutation(api.agents.cancel, { threadId: turn.threadId });
   await drain(t);
 });

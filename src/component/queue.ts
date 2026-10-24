@@ -21,6 +21,7 @@ import {
   turnOrigin as vTurnOrigin,
 } from "./schema.js";
 import { LIMITS, limitsValidator } from "./limits.js";
+import { approvalKey, saveResponses } from "./approvals.js";
 
 async function existing(
   ctx: Pick<QueryCtx, "db">,
@@ -353,7 +354,6 @@ export const claim = mutation({
     await ctx.db.patch("assignments", row._id, {
       turnStatus: "running",
       continueSlice: false,
-      approvalRequestMessageId: undefined,
       approvals: undefined,
       lastSlice: sliceId,
       inboxId: undefined,
@@ -640,6 +640,33 @@ export const write = mutation({
       if (args.rejectStale) throw new ConvexError({ code: "CANCELLED" });
       return null; // Agent's asynchronous void abort listeners must resolve.
     }
+    if (args.nativeMessages) {
+      const messages = args.args.messages as { message?: MessageDoc["message"] }[];
+      const count = messages.reduce(
+        (total, { message }) =>
+          total +
+          (message?.role === "assistant" && Array.isArray(message.content)
+            ? message.content.filter((part) => part.type === "tool-approval-request").length
+            : 0),
+        0,
+      );
+      if (count > LIMITS.approvalsPerPause) {
+        // Reject the entire step BEFORE its native save: overflow approvals must
+        // never exist without bounded coordination references. Return null so
+        // this typed failure commits; throwing would roll it back. The SDK
+        // stops on the rejected save, and its stale finish cannot overwrite it.
+        await disarmSlice(ctx, row);
+        await disarmRecovery(ctx, row);
+        await failChild(ctx, row, "APPROVAL_LIMIT");
+        await ctx.db.patch("assignments", row._id, {
+          turnStatus: "recovery_required",
+          errorCode: "APPROVAL_LIMIT",
+          turnToken: undefined,
+          continueSlice: false,
+        });
+        return null;
+      }
+    }
     const result = await ctx.runMutation(args.handle as FunctionHandle<"mutation">, args.args);
     if (args.nativeMessages) {
       // Agent 0.7.7 addMessages returns the actual pending document, including
@@ -670,7 +697,6 @@ export const write = mutation({
           if (part.type !== "tool-approval-request") continue;
           requestMessageId ??= message._id;
           count++;
-          if (count > LIMITS.approvalsPerPause) continue;
           const key = await approvalKey(part.approvalId);
           if (requests.some((request) => request.key === key)) continue;
           requests.push({
@@ -688,21 +714,6 @@ export const write = mutation({
       if (count) {
         await disarmSlice(ctx, row);
         await disarmRecovery(ctx, row);
-        if (count > LIMITS.approvalsPerPause) {
-          // Commit a typed, fenced failure WITH the native save. Throwing here
-          // would roll back the only durable evidence of this oversized pause.
-          await failChild(ctx, row, "APPROVAL_LIMIT");
-          await ctx.db.patch("assignments", row._id, {
-            approvalBlocked: true,
-            approvalRequestMessageId: requestMessageId,
-            approvals: undefined,
-            turnStatus: "recovery_required",
-            errorCode: "APPROVAL_LIMIT",
-            turnToken: undefined,
-            continueSlice: false,
-          });
-          return result;
-        }
         if (row.approvalBlocked) throw new Error("APPROVAL_ALREADY_PENDING");
         // The response continuation must precede unrelated queued sends.
         const head = await ctx.db
@@ -720,8 +731,14 @@ export const write = mutation({
         // immediately after this mutation. No later action owns this fact.
         await ctx.db.patch("assignments", row._id, {
           approvalBlocked: true,
-          approvals: { inboxId, requests, resolved: [] },
-          approvalRequestMessageId: requestMessageId,
+          approvals: {
+            inboxId,
+            requests,
+            resolved: [],
+            epoch: row.cancellationEpoch,
+            getMessages: args.nativeMessages.getMessages,
+            addMessages: args.handle,
+          },
           turnStatus: "idle",
           turnToken: undefined,
           promptMessageId: undefined,
@@ -751,13 +768,6 @@ export const write = mutation({
   },
 });
 
-// Fixed-size references keep cancellation metadata bounded even for huge native
-// approval ids. Only respond hashes a supplied id; pending guards read no transcript.
-async function approvalKey(id: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(id));
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
 /** Approval responses MUST go through the authorized respond endpoint. A
  * response saved directly through Agent is not seen by this runtime.
  */
@@ -778,36 +788,28 @@ export const respond = mutation({
     const key = await approvalKey(args.approvalId);
     const index = approvals?.requests.findIndex((request) => request.key === key) ?? -1;
     const decision = approvals?.requests[index];
-    if (!row.approvalBlocked || row.cancelled || !approvals || !decision)
+    if (
+      !row.approvalBlocked ||
+      row.cancelled ||
+      !approvals ||
+      approvals.cleanupPending ||
+      !decision
+    )
       throw new ConvexError({ code: "APPROVAL_NOT_FOUND" });
     if (approvals.resolved.includes(index))
       throw new ConvexError({ code: "APPROVAL_ALREADY_RESOLVED" });
-    // Agent 0.7.7 approveToolCall / denyToolCall call respondToToolCallApprovals.
-    // Its planner scans history; use its exact addMessages protocol instead,
-    // anchored to our atomically recorded request and provider-executed flag.
-    const saved = (await ctx.runMutation(args.addMessages as FunctionHandle<"mutation">, {
-      threadId: row.threadId,
-      agentName: row.agent,
-      promptMessageId: decision.messageId,
-      failPendingSteps: false,
-      messages: [
+    const messageId = await saveResponses(
+      ctx,
+      { ...row, messageId: decision.messageId, addMessages: args.addMessages },
+      [
         {
-          message: {
-            role: "tool",
-            content: [
-              {
-                type: "tool-approval-response",
-                approvalId: args.approvalId,
-                approved: args.approved,
-                ...(args.reason !== undefined ? { reason: args.reason } : {}),
-                ...(decision.providerExecuted ? { providerExecuted: true } : {}),
-              },
-            ],
-          },
+          approvalId: args.approvalId,
+          approved: args.approved,
+          ...(args.reason !== undefined ? { reason: args.reason } : {}),
+          ...(decision.providerExecuted ? { providerExecuted: true as const } : {}),
         },
       ],
-    })) as { messages: { _id: string }[] };
-    const messageId = saved.messages[0]._id;
+    );
     const resolved = [...approvals.resolved, index];
     await ctx.db.patch("assignments", row._id, { approvals: { ...approvals, resolved } });
     if (resolved.length === approvals.requests.length) {
@@ -816,45 +818,6 @@ export const respond = mutation({
       await wake(ctx, { ...row, approvalBlocked: false });
     }
     return { messageId };
-  },
-});
-
-export const pauseApproval = mutation({
-  args: {
-    assignmentId: v.id("assignments"),
-    executionId: v.string(),
-    approvalRequestMessageId: v.optional(v.string()),
-  },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const row = await ctx.db.get("assignments", args.assignmentId);
-    if (row?.turnToken === args.executionId && !row.cancelled) {
-      if (row.turnStatus === "running" && row.runId) {
-        const id = await ctx.db.insert("inbox", {
-          assignmentId: row._id,
-          runId: row.runId,
-          messageId: row.promptMessageId!,
-          sequence: row.nextSequence,
-          kind: row.turnOrigin === "subagent_result" ? "result" : "user",
-        });
-        await ctx.db.patch("assignments", row._id, {
-          inboxId: id,
-          nextSequence: row.nextSequence + 1,
-        });
-      }
-      await disarmSlice(ctx, row);
-      await disarmRecovery(ctx, row);
-      await ctx.db.patch("assignments", row._id, {
-        approvalBlocked: true,
-        approvalRequestMessageId: args.approvalRequestMessageId ?? row.approvalRequestMessageId,
-        turnStatus: "idle",
-        turnToken: undefined,
-        promptMessageId: undefined,
-        inboxId: undefined,
-        queuedMessages: row.queuedMessages + 1,
-      });
-    }
-    return null;
   },
 });
 
@@ -963,10 +926,12 @@ export const cancel = mutation({
     for (const row of affected) {
       await disarmSlice(ctx, row);
       await disarmRecovery(ctx, row);
-      if (row.pendingGeneration)
+      const approvalCleanup = !!row.approvals?.requests.length;
+      if (row.pendingGeneration || approvalCleanup)
         await ctx.scheduler.runAfter(0, internal.cancellation.cleanup, {
           assignmentId: row._id,
           pending: row.pendingGeneration,
+          approvalEpoch: approvalCleanup ? row.approvals!.epoch : undefined,
         });
       await ctx.db.patch("assignments", row._id, {
         cancelled: true,
@@ -981,9 +946,8 @@ export const cancel = mutation({
         pinged: false,
         queuedMessages: 0,
         continueSlice: false,
-        approvalBlocked: false,
-        approvals: undefined,
-        approvalRequestMessageId: undefined,
+        approvalBlocked: !!approvalCleanup,
+        approvals: approvalCleanup ? { ...row.approvals!, cleanupPending: true } : undefined,
       });
       const inbox = await ctx.db
         .query("inbox")

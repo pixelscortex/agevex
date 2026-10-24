@@ -89,8 +89,9 @@ export const LIMITS = {
   // Bound approval coordination metadata even when native approval ids are huge:
   // requests store SHA-256 keys; resolved contains only their array offsets.
   approvalsPerPause: 16,
-  // Agent byte-bounds the shared delta page; cap its per-cursor metadata reads.
-  streamCursors: 8,
+  // 4 × 1 MiB max stream doc + 8 MiB delta budget + 1 MiB pagination
+  // overshoot + our own reads (< 2 MiB) < 16 MiB, leaving > 1 MiB margin.
+  streamCursors: 4,
   // The public `messages` reader takes its page size from the client. Without a
   // server-side clamp, one request for a huge page of large tool results would
   // exceed the 16 MiB query read limit and that query would fail outright.
