@@ -1,6 +1,8 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v, type Validator } from "convex/values";
 
+import { limitsValidator } from "./limits.js";
+
 export const turnOrigin = v.union(v.literal("user"), v.literal("subagent_result"));
 export const turnStatus = v.union(
   v.literal("queued"),
@@ -11,12 +13,14 @@ export const turnStatus = v.union(
 export const errorCode = v.union(
   v.null(),
   v.literal("GENERATION_FAILED"),
+  v.literal("SLICE_LIMIT"),
   v.literal("AUTHORIZATION_DENIED"),
   v.literal("EXECUTION_AMBIGUOUS"),
 );
 export const runErrorCode = v.union(
   v.null(),
   v.literal("GENERATION_FAILED"),
+  v.literal("SLICE_LIMIT"),
   v.literal("EXECUTION_AMBIGUOUS"),
   v.literal("EMPTY_RESULT"),
   v.literal("RESULT_UNVERIFIED"),
@@ -120,6 +124,11 @@ export default defineSchema({
     threadId: v.string(),
     runTurn: v.string(),
     workflowId: v.optional(v.string()),
+    limits: v.optional(limitsValidator),
+    loopWaiting: v.optional(v.boolean()),
+    pinged: v.optional(v.boolean()),
+    watchdogId: v.optional(v.id("_scheduled_functions")),
+    activeSlice: v.optional(v.string()),
     cancellationEpoch: v.number(),
     cancelled: v.boolean(),
     runId: v.optional(v.id("runs")),
@@ -140,7 +149,9 @@ export default defineSchema({
     activeRuns: v.optional(v.number()),
     historyRuns: v.optional(v.number()),
     nextRunSequence: v.optional(v.number()),
-  }).index("by_thread", ["threadId"]),
+  })
+    .index("by_thread", ["threadId"])
+    .index("by_loop_waiting", ["loopWaiting", "turnStatus"]),
   inbox: defineTable({
     assignmentId: v.id("assignments"),
     messageId: v.string(),

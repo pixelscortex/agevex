@@ -1,13 +1,15 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
 import { mutationGeneric } from "convex/server";
+import workflow from "@convex-dev/workflow/test";
+import { type Registration } from "../src/client/types.js";
 import agent from "@convex-dev/agent/test";
 import { registerWorkflow } from "../src/test.js";
 import agevex from "../src/test.js";
 import schema from "./fixture/schema.js";
 import type { MutationCtx } from "../src/component/_generated/server.js";
 import type { Id } from "../src/component/_generated/dataModel.js";
-import { state } from "./host.js";
+import { state, fixtureRuntime } from "./host.js";
 
 // The fixture app mirrors a real Convex host app: its `_generated` directory
 // marks the functions root, and its `agents` module is the deterministic test
@@ -21,6 +23,7 @@ const modules = import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]);
  * boundary, so the tested path is the real one up to that point.
  */
 export type Fault =
+  | "lostPing"
   | "save"
   | "accept"
   | "finish"
@@ -132,7 +135,16 @@ function acceptedDeliveryFault(real: AgevexMutation) {
   });
 }
 
-export function setup(fault?: Fault) {
+export function setup(fault?: Fault, limits?: Registration["limits"]) {
+  state.dropPing = false;
+  state.nestedCalls = 0;
+  state.nestedAfterCancel = false;
+  state.nestedStarted = false;
+  state.nestedErrors.length = 0;
+  state.nestedSignals.length = 0;
+  state.nestedGate = undefined;
+  state.nestedRelease = undefined;
+  state.childToolSlices = 0;
   state.calls.length = 0;
   state.offers.length = 0;
   state.events.length = 0;
@@ -164,7 +176,11 @@ export function setup(fault?: Fault) {
   state.childRelease = undefined;
   const t = convexTest(schema, {
     ...modules,
-    "./fixture/agents.ts": () => import("./host.js"),
+    "./fixture/agents.ts": async () => {
+      const host = await import("./host.js");
+      const runtime = fixtureRuntime(limits);
+      return { ...host, ...runtime.internalFunctions(), ...runtime.authorizedEndpoints() };
+    },
   });
   const failure = mutationGeneric({
     handler: async () => {
@@ -239,6 +255,42 @@ export function setup(fault?: Fault) {
     registerWorkflow(t, "agevex/rootWorkflow");
     registerWorkflow(t, "agevex/childWorkflow");
   } else agevex.register(t);
+  if (fault === "lostPing") {
+    t.registerComponent("agevex/rootWorkflow", workflow.schema, {
+      ...workflow.modules,
+      "./component/agevexJournal.ts": () => import("../src/testing/journal.js"),
+      "./component/event.ts": async () => {
+        const real = (await workflow.modules["./component/event.ts"]()) as Record<
+          string,
+          NativeAddMessages
+        >;
+        return {
+          ...real,
+          send: mutationGeneric({
+            args: real.send._args as never,
+            returns: real.send._returns as never,
+            handler: async (ctx, args) => {
+              if (state.dropPing && (args as { name?: string }).name === "ping") {
+                state.dropPing = false;
+                // Model a lost doorbell without disturbing the existing awaited event.
+                const id = await ctx.db.insert("events", {
+                  workflowId: (args as { workflowId: string }).workflowId,
+                  name: "ping",
+                  state: { kind: "created" },
+                });
+                await ctx.db.delete(id);
+                return id as never;
+              }
+              return (await real.send._handler(
+                ctx as unknown as MutationCtx,
+                args as AddMessagesArgs,
+              )) as never;
+            },
+          }),
+        };
+      },
+    });
+  }
   return t;
 }
 export { api, internal, components } from "./fixture/api.js";

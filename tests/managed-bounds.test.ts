@@ -99,9 +99,8 @@ it("aborts a non-finishing provider at 90 seconds and does not retry", async () 
   await vi.advanceTimersByTimeAsync(100);
   expect(state.calls).toHaveLength(1);
   expect(state.calls[0].abortSignal?.aborted).toBe(false);
-  // Keep convex-test's async-local syscall scope while fake time fires the
-  // native Agent's abort listeners (which persist native failure metadata).
-  await t.run(async () => {
+  // An action supplies syscall scope without a transaction around reconciliation.
+  await t.action(async () => {
     await vi.advanceTimersByTimeAsync(90_000);
   });
   await running;

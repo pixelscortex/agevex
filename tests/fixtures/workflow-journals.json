@@ -44,27 +44,6 @@
         {
           "kind": "event",
           "name": "ping",
-          "args": {},
-          "runResult": {
-            "kind": "success",
-            "returnValue": null
-          }
-        },
-        {
-          "kind": "function",
-          "name": "queue:next",
-          "functionType": "mutation",
-          "args": {
-            "assignmentId": "$assignment"
-          },
-          "runResult": {
-            "kind": "success",
-            "returnValue": null
-          }
-        },
-        {
-          "kind": "event",
-          "name": "ping",
           "args": {}
         }
       ]
@@ -163,27 +142,6 @@
           },
           "runResult": {
             "kind": "success",
-            "returnValue": null
-          }
-        },
-        {
-          "kind": "event",
-          "name": "ping",
-          "args": {},
-          "runResult": {
-            "kind": "success",
-            "returnValue": null
-          }
-        },
-        {
-          "kind": "function",
-          "name": "queue:next",
-          "functionType": "mutation",
-          "args": {
-            "assignmentId": "$assignment"
-          },
-          "runResult": {
-            "kind": "success",
             "returnValue": "$assignment:1"
           }
         },
@@ -195,27 +153,6 @@
             "executionId": "$assignment:1",
             "version": 1
           },
-          "runResult": {
-            "kind": "success",
-            "returnValue": null
-          }
-        },
-        {
-          "kind": "function",
-          "name": "queue:next",
-          "functionType": "mutation",
-          "args": {
-            "assignmentId": "$assignment"
-          },
-          "runResult": {
-            "kind": "success",
-            "returnValue": null
-          }
-        },
-        {
-          "kind": "event",
-          "name": "ping",
-          "args": {},
           "runResult": {
             "kind": "success",
             "returnValue": null
@@ -332,27 +269,6 @@
             "executionId": "$assignment:0",
             "version": 1
           },
-          "runResult": {
-            "kind": "success",
-            "returnValue": null
-          }
-        },
-        {
-          "kind": "function",
-          "name": "queue:next",
-          "functionType": "mutation",
-          "args": {
-            "assignmentId": "$assignment"
-          },
-          "runResult": {
-            "kind": "success",
-            "returnValue": null
-          }
-        },
-        {
-          "kind": "event",
-          "name": "ping",
-          "args": {},
           "runResult": {
             "kind": "success",
             "returnValue": null

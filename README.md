@@ -66,7 +66,9 @@ busy. Arrivals never silently enter an ongoing turn.
 
 Each thread has a component-internal loop workflow. It reads the durable
 `inbox`, starts turn child workflows, then sleeps on `awaitEvent("ping")`.
-Pings are doorbells; inbox rows own the work. Each turn runs at most 16 slices,
+Pings are doorbells; inbox rows own the work. Shared, batched reconciliation
+checks idle loops every 30 seconds, recovering lost doorbells. Each turn runs
+at most 16 slices,
 one native model step per action. Paid work uses `maxRetries: 0` and
 `retry: false`. Only ids and control values enter the workflow journal.
 
@@ -83,7 +85,8 @@ call `agevex_delegate` again. Over budget returns
 5 active children per root and 4000 characters per delegated task.
 
 Failures are sanitized and never automatically replayed. Ambiguous execution
-sets `recovery_required`; queue wait does not consume the execution watchdog.
+sets `recovery_required`; the watchdog covers each active slice, excluding
+queue and between-slice time.
 
 ## Cancellation and approvals
 
@@ -91,6 +94,7 @@ sets `recovery_required`; queue wait does not consume the execution watchdog.
 epoch, cancels root/child workflows and clears queued work. Running actions
 poll about once a second and abort their signal. Native and managed-tool
 mutations check execution id plus epoch atomically; late writes are dropped.
+after cancel, the SDK refuses new nested calls and drops its own writes; writes your own code makes inside an already-running nested action are yours to guard with `tc.signal`.
 A fresh `send` can start new work after cancellation. External effects already
 accepted by a provider still depend on that provider's abort behavior.
 
@@ -140,7 +144,12 @@ observer failures do not change execution.
 
 `LIMITS`, exported from `agevex`, is the single source of runtime bounds,
 including lane sizes, model output/deadline, slices, run budgets, queue size,
-ledger retention and platform journal/step ceilings (8 MiB / 800 KiB).
+ledger retention. Registration accepts `limits?: Partial<Limits>` for lanes,
+run budgets, active children, task/queue size, slices and lease; positive
+integers are required and lanes must fit scheduled concurrency. Registrations
+sharing a component mount share its lane capacities. `PLATFORM` contains
+documented facts, not checked by the SDK, including Workflow journal/step
+ceilings (8 MiB / 800 KiB). Workflow enforces those byte limits.
 
 ## Development
 

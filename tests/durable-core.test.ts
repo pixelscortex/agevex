@@ -272,6 +272,7 @@ it("a lost or duplicate ping is harmless because the inbox owns work", async () 
   });
 });
 
+// Ping coalescing removes idle repetitions from fixtures; version 1 step order stays unchanged.
 it("journal replay preserves the committed basic step sequence", async () => {
   const t = setup();
   await open(t);

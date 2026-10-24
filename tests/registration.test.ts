@@ -156,3 +156,19 @@ it("rejects an invalid delegation graph instead of pretending collaboration exis
     "RESERVED_TOOL_NAME",
   );
 });
+
+it("registration rejects invalid tunable limits and platform overrides synchronously", () => {
+  for (const limits of [
+    { rootLane: 0 },
+    { childLane: 1.5 },
+    { rootLane: 5, childLane: 4 },
+    { runLaunches: NaN },
+    { leaseMs: -1 },
+    { slicesPerTurn: Infinity },
+    { scheduledConcurrency: 100 },
+    { stepBytes: 10 },
+  ])
+    expect(() =>
+      registerAgent(components.agevex, { ...policy, agents: [main], limits } as never),
+    ).toThrow("INVALID_LIMITS");
+});

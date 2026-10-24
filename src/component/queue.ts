@@ -1,8 +1,10 @@
+import { paginator } from "convex-helpers/server/pagination";
+import schema from "./schema.js";
 import type { FunctionHandle } from "convex/server";
 import type { WorkflowId } from "@convex-dev/workflow";
-import { rootLane, childLane } from "./workflows.js";
+import { rootLane, childLane, laneManager } from "./workflows.js";
 import { findReceipt, armPurge } from "./ledger.js";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { api, internal } from "./_generated/api.js";
 import {
   mutation,
@@ -19,7 +21,7 @@ import {
   errorCode,
   turnOrigin as vTurnOrigin,
 } from "./schema.js";
-import { LIMITS } from "./limits.js";
+import { LIMITS, limitsValidator } from "./limits.js";
 
 async function existing(
   ctx: Pick<QueryCtx, "db">,
@@ -102,20 +104,29 @@ export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = tru
       });
     }
   }
-  const manager = row.childRunId ? childLane : rootLane;
+  const manager = laneManager(!!row.childRunId, row.limits ?? LIMITS);
   if (!row.workflowId) {
     const workflowId = await manager.start(
       ctx,
       row.childRunId ? internal.workflows.childLoop : internal.workflows.rootLoop,
-      { assignmentId: row._id, version: LIMITS.workflowVersion },
+      {
+        assignmentId: row._id,
+        version: LIMITS.workflowVersion,
+        ...(row.limits && row.limits.slicesPerTurn !== LIMITS.slicesPerTurn
+          ? { slicesPerTurn: row.limits.slicesPerTurn }
+          : {}),
+      },
       {
         onComplete: row.childRunId ? internal.workflows.childDone : internal.workflows.rootDone,
         context: { assignmentId: row._id },
+        startAsync: true,
       },
     );
     await ctx.db.patch("assignments", row._id, { workflowId });
-  } else if (ring)
+  } else if (ring && row.loopWaiting && !row.pinged) {
     await manager.sendEvent(ctx, { workflowId: row.workflowId as WorkflowId, name: "ping" });
+    await ctx.db.patch("assignments", row._id, { pinged: true });
+  }
 }
 
 export const accept = mutation({
@@ -127,6 +138,7 @@ export const accept = mutation({
     fingerprint: v.string(),
     promptMessageId: v.string(),
     runTurn: v.string(),
+    limits: v.optional(limitsValidator),
   },
   returns: vReceipt,
   handler: async (ctx, args) => {
@@ -137,11 +149,15 @@ export const accept = mutation({
       .withIndex("by_thread", (q) => q.eq("threadId", args.threadId))
       .unique();
     if (!row) {
+      // One chain per mount, armed transactionally before its first assignment.
+      if (!(await ctx.db.query("assignments").first()))
+        await ctx.scheduler.runAfter(LIMITS.reconcileIntervalMs, internal.queue.reconcile, {});
       const id = await ctx.db.insert("assignments", {
         subject: args.subject,
         agent: args.agent,
         threadId: args.threadId,
         runTurn: args.runTurn,
+        limits: args.limits,
         turnStatus: "idle",
         errorCode: null,
         queuedMessages: 0,
@@ -154,7 +170,7 @@ export const accept = mutation({
     }
     if (row.subject !== args.subject || row.agent !== args.agent) throw new Error("FORBIDDEN");
     if (row.turnStatus === "recovery_required") throw new Error("RECOVERY_REQUIRED");
-    if (row.queuedMessages >= LIMITS.queueLength) throw new Error("QUEUE_LIMIT");
+    if (row.queuedMessages >= (row.limits ?? LIMITS).queueLength) throw new Error("QUEUE_LIMIT");
     if (row.cancelled) {
       await ctx.db.patch("assignments", row._id, { cancelled: false });
       row = { ...row, cancelled: false };
@@ -208,8 +224,8 @@ export const accept = mutation({
  * Claim one model slice, not an entire retriable action. A first slice consumes
  * the reserved inbox row, while subsequent slices require both continuation
  * state and a new slice id under the same execution token. Replayed or racing
- * calls therefore cannot pay for the same slice twice. A watchdog measures
- * execution time only; lane wait does not spend it. Consecutive child results
+ * calls therefore cannot pay for the same slice twice. Each slice arms its own
+ * watchdog; lane wait and time between completed slices do not spend it. Consecutive child results
  * share a final prompt anchor, letting native context include the whole batch.
  */
 export const claim = mutation({
@@ -258,7 +274,7 @@ export const claim = mutation({
         const following = await ctx.db
           .query("inbox")
           .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
-          .take(LIMITS.queueLength);
+          .take((row.limits ?? LIMITS).queueLength);
         let count = 0;
         for (const item of following) {
           if (item.kind !== "result" || item.runId !== head.runId) break;
@@ -278,11 +294,19 @@ export const claim = mutation({
       lastSlice: sliceId,
       inboxId: undefined,
     });
-    if (first)
-      await ctx.scheduler.runAfter(LIMITS.executionWatchdogMs, internal.queue.stalled, {
+    const activeSlice = sliceId ?? turnToken;
+    const watchdogId = await ctx.scheduler.runAfter(
+      LIMITS.executionWatchdogMs,
+      internal.queue.stalled,
+      {
         assignmentId,
         turnToken,
-      });
+        sliceId: activeSlice,
+      },
+    );
+    await ctx.db.patch("assignments", row._id, { watchdogId, activeSlice });
+    row.watchdogId = watchdogId;
+    row.activeSlice = activeSlice;
     const runId = row.childRunId;
     if (!runId) {
       return {
@@ -307,6 +331,8 @@ export const claim = mutation({
     if (!run || !root || (run.status !== "queued" && run.status !== "running")) {
       // A launch without a resolvable run is a corrupt state; escalate rather
       // than generate against an untrackable child.
+      await disarmSlice(ctx, row);
+      await failChild(ctx, row, "EXECUTION_AMBIGUOUS");
       await ctx.db.patch("assignments", assignmentId, {
         turnStatus: "recovery_required",
         errorCode: "EXECUTION_AMBIGUOUS",
@@ -350,7 +376,9 @@ export const finish = mutation({
     const row = await ctx.db.get("assignments", args.assignmentId);
     if (!row || row.cancelled || row.turnToken !== args.turnToken || row.turnStatus !== "running")
       return null;
+    await disarmSlice(ctx, row);
     if (args.errorCode) {
+      await failChild(ctx, row, args.errorCode);
       await ctx.db.patch("assignments", row._id, {
         turnStatus: "recovery_required",
         errorCode: args.errorCode,
@@ -367,10 +395,24 @@ export const finish = mutation({
   },
 });
 
-async function escalateChild(ctx: MutationCtx, assignmentId: Id<"assignments">) {
-  const row = await ctx.db.get("assignments", assignmentId);
-  if (!row?.childRunId) return null;
-  await ctx.runMutation(internal.subagents.escalate, { runId: row.childRunId });
+async function disarmSlice(ctx: MutationCtx, row: Doc<"assignments">) {
+  if (row.watchdogId) {
+    const job = await ctx.db.system.get(row.watchdogId);
+    // A watchdog firing now already owns its scheduled job. Clear the slice
+    // fence without attempting to cancel that in-progress detector itself.
+    if (job?.state.kind === "pending") await ctx.scheduler.cancel(row.watchdogId);
+  }
+  await ctx.db.patch("assignments", row._id, { watchdogId: undefined, activeSlice: undefined });
+}
+
+/** All terminal child failures share the idempotent settlement/notification path. */
+async function failChild(
+  ctx: MutationCtx,
+  row: Doc<"assignments">,
+  code: Doc<"assignments">["errorCode"],
+) {
+  if (!row.childRunId) return null;
+  await ctx.runMutation(internal.subagents.escalate, { runId: row.childRunId, errorCode: code });
   return null;
 }
 
@@ -386,7 +428,8 @@ async function markAmbiguous(ctx: MutationCtx, assignmentId: Id<"assignments">, 
       turnStatus: "recovery_required",
       errorCode: "EXECUTION_AMBIGUOUS",
     });
-    await escalateChild(ctx, row._id);
+    await disarmSlice(ctx, row);
+    await failChild(ctx, row, "EXECUTION_AMBIGUOUS");
   }
   return null;
 }
@@ -398,17 +441,28 @@ export const ambiguous = mutation({
 });
 
 export const stalled = internalMutation({
-  args: { assignmentId: v.id("assignments"), turnToken: v.string() },
+  args: {
+    assignmentId: v.id("assignments"),
+    turnToken: v.string(),
+    sliceId: v.optional(v.string()),
+  },
   returns: v.null(),
   // Detection only: never reassign an expired token or replay a generation.
   handler: async (ctx, args) => {
     const row = await ctx.db.get("assignments", args.assignmentId);
-    if (row && !row.cancelled && row.turnToken === args.turnToken && row.turnStatus === "running") {
+    if (
+      row &&
+      !row.cancelled &&
+      row.turnToken === args.turnToken &&
+      row.turnStatus === "running" &&
+      row.activeSlice === (args.sliceId ?? args.turnToken)
+    ) {
       await ctx.db.patch("assignments", row._id, {
         turnStatus: "recovery_required",
         errorCode: "EXECUTION_AMBIGUOUS",
       });
-      await escalateChild(ctx, row._id);
+      await disarmSlice(ctx, row);
+      await failChild(ctx, row, "EXECUTION_AMBIGUOUS");
     }
     return null;
   },
@@ -453,11 +507,16 @@ export const next = internalMutation({
     let row = await ctx.db.get("assignments", assignmentId);
     if (!row || row.cancelled || row.approvalBlocked || row.turnStatus === "recovery_required")
       return null;
+    // next runs after the previous ping was consumed, or after a turn ended.
+    // Keep this in the existing mutation so the versioned step order is fixed.
+    await ctx.db.patch("assignments", row._id, { pinged: false, loopWaiting: false });
     if (row.turnStatus === "idle") {
       await wake(ctx, row, false);
       row = await ctx.db.get("assignments", assignmentId);
     }
-    return row?.turnStatus === "queued" ? row.turnToken! : null;
+    if (row?.turnStatus === "queued") return row.turnToken!;
+    if (row) await ctx.db.patch("assignments", row._id, { loopWaiting: true });
+    return null;
   },
 });
 
@@ -473,6 +532,7 @@ export const write = mutation({
     cancellationEpoch: v.number(),
     handle: v.string(),
     args: v.any(),
+    rejectStale: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<unknown> => {
     const row = await ctx.db.get("assignments", args.assignmentId);
@@ -482,8 +542,10 @@ export const write = mutation({
       row.turnStatus !== "running" ||
       row.turnToken !== args.executionId ||
       row.cancellationEpoch !== args.cancellationEpoch
-    )
+    ) {
+      if (args.rejectStale) throw new ConvexError({ code: "CANCELLED" });
       return null; // Native abort listeners finalize asynchronously; stale void saves must resolve.
+    }
     return ctx.runMutation(args.handle as FunctionHandle<"mutation">, args.args);
   },
 });
@@ -507,6 +569,7 @@ export const pauseApproval = mutation({
           nextSequence: row.nextSequence + 1,
         });
       }
+      await disarmSlice(ctx, row);
       await ctx.db.patch("assignments", row._id, {
         approvalBlocked: true,
         turnStatus: "idle",
@@ -536,11 +599,13 @@ export const continueTurn = mutation({
       row.turnToken === args.executionId &&
       row.cancellationEpoch === args.cancellationEpoch &&
       row.turnStatus === "running"
-    )
+    ) {
+      await disarmSlice(ctx, row);
       await ctx.db.patch("assignments", row._id, {
         continueSlice: true,
         promptMessageId: args.messageId,
       });
+    }
     return null;
   },
 });
@@ -559,11 +624,15 @@ export const betweenSlices = internalMutation({
       !row.continueSlice
     )
       return null;
+    await disarmSlice(ctx, row);
     const run = row.runId ? await ctx.db.get("runs", row.runId) : null;
     if (!run || run.cancelled) return null;
     // Exhausting delegation budget never prevents a final answer. Admission of
     // additional effects checks launches/hops transactionally in reserve.
-    if (run.launches > LIMITS.runLaunches || run.hops > LIMITS.runHops)
+    if (
+      run.launches > (row.limits ?? LIMITS).runLaunches ||
+      run.hops > (row.limits ?? LIMITS).runHops
+    )
       throw new Error("RUN_BUDGET");
     return args.executionId;
   },
@@ -576,7 +645,7 @@ export const sliceLimit = internalMutation({
     await ctx.runMutation(api.queue.finish, {
       assignmentId: args.assignmentId,
       turnToken: args.executionId,
-      errorCode: "GENERATION_FAILED",
+      errorCode: "SLICE_LIMIT",
     });
     return null;
   },
@@ -602,7 +671,7 @@ export const cancel = mutation({
             .withIndex("by_root_status", (q) =>
               q.eq("rootAssignmentId", root._id).eq("status", status),
             )
-            .take(LIMITS.activeChildrenPerRoot),
+            .take((root.limits ?? LIMITS).activeChildrenPerRoot),
         ),
       )
     ).flat();
@@ -617,6 +686,7 @@ export const cancel = mutation({
       ).filter((row): row is Doc<"assignments"> => row !== null),
     ];
     for (const row of affected) {
+      await disarmSlice(ctx, row);
       await ctx.db.patch("assignments", row._id, {
         cancelled: true,
         cancellationEpoch: row.cancellationEpoch + 1,
@@ -626,6 +696,8 @@ export const cancel = mutation({
         promptMessageId: undefined,
         inboxId: undefined,
         workflowId: undefined,
+        loopWaiting: false,
+        pinged: false,
         queuedMessages: 0,
         continueSlice: false,
         approvalBlocked: false,
@@ -633,7 +705,7 @@ export const cancel = mutation({
       const inbox = await ctx.db
         .query("inbox")
         .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
-        .take(LIMITS.queueLength + 1);
+        .take((row.limits ?? LIMITS).queueLength + 1);
       for (const item of inbox) {
         await ctx.db.patch("runs", item.runId, { cancelled: true });
         await ctx.db.delete("inbox", item._id);
@@ -660,5 +732,52 @@ export const cancel = mutation({
       historyRuns: (root.historyRuns ?? 0) + children.length,
     });
     return affected.map((row) => ({ threadId: row.threadId, agent: row.agent }));
+  },
+});
+
+/**
+ * Workflow 0.4.10 supports sleep, but racing sleep with awaitEvent journals both
+ * branches and leaves the losing step behind. A single batched reconciliation
+ * chain preserves the fixed loop step order and bounds recovery of a lost ping.
+ * Its status check retries only an actually waiting event, never a sent ping
+ * whose workflow resume is merely queued. Thus retries cannot leak events.
+ */
+export const reconcile = internalMutation({
+  args: { cursor: v.optional(v.string()) },
+  returns: v.null(),
+  handler: async (ctx, { cursor }) => {
+    const batch = await paginator(ctx.db, schema)
+      .query("assignments")
+      .withIndex("by_loop_waiting", (q) => q.eq("loopWaiting", true).eq("turnStatus", "queued"))
+      .paginate({ cursor: cursor ?? null, numItems: LIMITS.reconcileBatch });
+    for (const row of batch.page) {
+      if (
+        row.cancelled ||
+        row.approvalBlocked ||
+        row.turnStatus === "recovery_required" ||
+        !row.workflowId
+      )
+        continue;
+      const head = await ctx.db
+        .query("inbox")
+        .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
+        .first();
+      if (!head) continue;
+      const manager = row.childRunId ? childLane : rootLane;
+      const status = await manager.status(ctx, row.workflowId as WorkflowId);
+      if (
+        status.type !== "inProgress" ||
+        !status.running.some((step) => step.kind === "event" && step.name === "ping")
+      )
+        continue;
+      await ctx.db.patch("assignments", row._id, { pinged: false });
+      await wake(ctx, { ...row, pinged: false });
+    }
+    await ctx.scheduler.runAfter(
+      batch.isDone ? LIMITS.reconcileIntervalMs : 0,
+      internal.queue.reconcile,
+      batch.isDone ? {} : { cursor: batch.continueCursor },
+    );
+    return null;
   },
 });

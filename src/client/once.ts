@@ -67,6 +67,7 @@ export function bindOnceTool(
   rawCtx: GenericActionCtx<GenericDataModel>,
   context: Omit<ToolContext, "toolCallId">,
   fence: { assignmentId: string; executionId: string; cancellationEpoch: number },
+  leaseMs: number,
 ): Tool {
   const config = (declared as Tool & { [ONCE]?: OnceConfig<unknown, Value> })[ONCE];
   if (!config) return declared;
@@ -81,7 +82,7 @@ export function bindOnceTool(
         ...common,
         fingerprint: await fingerprint(input),
         repeatSafe: config.repeatSafe,
-        leaseMs: config.leaseMs,
+        leaseMs: config.leaseMs ?? leaseMs,
       });
       if (admission.status === "done" || admission.status === "failed") return admission.result;
       if (admission.status !== "claimed")

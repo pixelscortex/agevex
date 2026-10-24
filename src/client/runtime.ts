@@ -9,12 +9,12 @@ import {
   type RegisteredAction,
   type RegisteredMutation,
 } from "convex/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { tool } from "ai";
 import { z } from "zod";
 import type { ComponentApi } from "../component/_generated/component.js";
 import { denialCode, runErrorCode } from "../component/schema.js";
-import { LIMITS } from "../component/limits.js";
+import { LIMITS, resolveLimits } from "../component/limits.js";
 import { bindOnceTool, fingerprint } from "./once.js";
 import type {
   Activity,
@@ -166,6 +166,7 @@ const delegationResult = v.union(
  * native methods remain unmanaged.
  */
 export function registerAgent(component: ComponentApi, config: Registration) {
+  const limits = resolveLimits(config.limits);
   const graph = resolveGraph(config);
   const collaboration = [...graph.edges.values()].some((allowed) => allowed.size > 0);
   if (collaboration && !config.refs.coordinate) throw new Error("COORDINATE_REF_REQUIRED");
@@ -405,7 +406,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
             const args = raw as CoordinateArgs;
             if (args.op === "launch") {
               const task = args.task.trim();
-              if (!task || task.length > LIMITS.taskLength)
+              if (!task || task.length > limits.taskLength)
                 return { status: "denied" as const, code: "TASK_LIMIT" as const };
               const owned = await ctx.runQuery(component.subagents.delegateContext, {
                 assignmentId: args.assignmentId,
@@ -602,7 +603,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
             // Route native saves and tool mutations through one atomic check.
             // Polling aborts cooperative providers; this fence also catches an
             // uncooperative provider that returns after cancellation.
-            const fencedCtx: RunnerCtx = {
+            const nativeCtx: RunnerCtx = {
               ...ctx,
               runMutation: (async (
                 ref: Parameters<RunnerCtx["runMutation"]>[0],
@@ -619,6 +620,52 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                   handle: await createFunctionHandle(ref),
                   args: payload,
                 });
+              }) as RunnerCtx["runMutation"],
+            };
+            const assertActive = async () => {
+              const row = await ctx.runQuery(component.queue.execution, {
+                assignmentId: args.assignmentId,
+              });
+              if (
+                controller.signal.aborted ||
+                !row ||
+                row.cancelled ||
+                row.turnToken !== args.turnToken ||
+                row.cancellationEpoch !== claimed.cancellationEpoch ||
+                row.turnStatus !== "running"
+              ) {
+                fencedOut = true;
+                controller.abort();
+                throw new ConvexError({ code: "CANCELLED" });
+              }
+            };
+            // after cancel, the SDK refuses new nested calls and drops its own
+            // writes; writes your own code makes inside an already-running nested
+            // action are yours to guard with tc.signal. An action call cannot be
+            // made atomic with the cancel mutation: this is admission fencing,
+            // while SDK-owned/native writes retain the transactional write fence.
+            const fencedCtx: RunnerCtx = {
+              ...nativeCtx,
+              runAction: (async (ref, ...payload) => {
+                await assertActive();
+                return ctx.runAction(ref, ...payload);
+              }) as RunnerCtx["runAction"],
+              runMutation: (async (ref, payload) => {
+                await assertActive();
+                try {
+                  return await ctx.runMutation(component.queue.write, {
+                    assignmentId: args.assignmentId,
+                    executionId: args.turnToken,
+                    cancellationEpoch: claimed.cancellationEpoch,
+                    handle: await createFunctionHandle(ref),
+                    args: payload,
+                    rejectStale: true,
+                  });
+                } catch (error) {
+                  if (error instanceof ConvexError && error.data?.code === "CANCELLED")
+                    controller.abort();
+                  throw error;
+                }
               }) as RunnerCtx["runMutation"],
             };
             try {
@@ -642,6 +689,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                       executionId: args.turnToken,
                       cancellationEpoch: claimed.cancellationEpoch,
                     },
+                    limits.leaseMs,
                   ),
                 ]),
               );
@@ -665,7 +713,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                   },
                 });
               const result = await managed.streamText(
-                fencedCtx,
+                nativeCtx,
                 { threadId: claimed.threadId },
                 {
                   promptMessageId: claimed.promptMessageId,

@@ -20,7 +20,7 @@ import {
 } from "convex/server";
 import { v, type Validator } from "convex/values";
 import { fingerprint } from "./once.js";
-import { LIMITS } from "../component/limits.js";
+import { LIMITS, resolveLimits } from "../component/limits.js";
 import type { ComponentApi } from "../component/_generated/component.js";
 import { activity, receipt, subagentRun, vPaginationResult } from "../component/schema.js";
 import type { AgentEvent, ManagedAgent, Registration } from "./types.js";
@@ -76,6 +76,7 @@ function validateInput(text: string, requestKey: string) {
 }
 
 export function authorizedEndpoints(component: ComponentApi, config: Registration) {
+  const limits = resolveLimits(config.limits);
   // A managed conversation is always a native thread, including a delegated
   // conversation. Index the entire registered graph so a persisted assignment's
   // agent name resolves to the correct native component for transcript reads.
@@ -152,6 +153,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           fingerprint: hash,
           promptMessageId: messageId,
           runTurn,
+          limits,
         });
         await observe(ctx, config, {
           type: "request.accepted",
@@ -189,6 +191,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           fingerprint: hash,
           promptMessageId: messageId,
           runTurn: await createFunctionHandle(config.refs.runTurn()),
+          limits,
         });
         await observe(ctx, config, {
           type: "request.accepted",

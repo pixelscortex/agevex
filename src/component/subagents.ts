@@ -140,7 +140,7 @@ export const reserve = mutation({
         return { kind: "denied" as const, code: "DELEGATION_CONFLICT" as const };
       return { kind: "replay" as const, runId: duplicate.runId, agent: duplicate.agent };
     }
-    if ((row.activeRuns ?? 0) >= LIMITS.activeChildrenPerRoot)
+    if ((row.activeRuns ?? 0) >= (row.limits ?? LIMITS).activeChildrenPerRoot)
       return { kind: "denied" as const, code: "ACTIVE_LIMIT" as const };
     // A delivered-result turn retains this run id: completing a child cannot
     // replenish launches, and a new caller prompt alone creates a new budget.
@@ -148,8 +148,8 @@ export const reserve = mutation({
     if (
       !budget ||
       budget.cancelled ||
-      budget.launches >= LIMITS.runLaunches ||
-      budget.hops >= LIMITS.runHops
+      budget.launches >= (row.limits ?? LIMITS).runLaunches ||
+      budget.hops >= (row.limits ?? LIMITS).runHops
     )
       return { kind: "denied" as const, code: "RUN_BUDGET" as const };
     await ctx.db.patch("runs", budget._id, {
@@ -203,11 +203,13 @@ export const attach = mutation({
     const run = await runById(ctx, args.runId);
     if (!run || run.childAssignmentId) return null;
     if (run.status !== "queued") throw new Error("INVALID_LAUNCH");
+    const root = await ctx.db.get("assignments", run.rootAssignmentId);
     const childId = await ctx.db.insert("assignments", {
       subject: run.subject,
       agent: run.agent,
       threadId: args.childThreadId,
       runTurn: run.runTurn,
+      limits: root?.limits,
       turnStatus: "idle",
       errorCode: null,
       queuedMessages: 1,
@@ -343,12 +345,18 @@ export const settle = mutation({
 });
 
 export const escalate = internalMutation({
-  args: { runId: v.string() },
+  args: { runId: v.string(), errorCode: v.optional(runErrorCode) },
   returns: v.null(),
   handler: async (ctx, args) => {
     const run = await runById(ctx, args.runId);
     if (!run) return null;
-    const first = await settleRunState(ctx, run, "failed", "EXECUTION_AMBIGUOUS", undefined);
+    const first = await settleRunState(
+      ctx,
+      run,
+      "failed",
+      args.errorCode ?? "EXECUTION_AMBIGUOUS",
+      undefined,
+    );
     if (!first) return null;
     await ctx.scheduler.runAfter(0, internal.subagents.notify, {
       runId: run.runId,
@@ -461,8 +469,9 @@ async function applyDelivery(
     queuedMessages: root.queuedMessages + 1,
     nextSequence: root.nextSequence + 1,
   };
-  if (root.queuedMessages >= LIMITS.queueLength) throw new Error("QUEUE_LIMIT");
-  if (!budget || budget.cancelled || budget.hops >= LIMITS.runHops) throw new Error("RUN_BUDGET");
+  if (root.queuedMessages >= (root.limits ?? LIMITS).queueLength) throw new Error("QUEUE_LIMIT");
+  if (!budget || budget.cancelled || budget.hops >= (root.limits ?? LIMITS).runHops)
+    throw new Error("RUN_BUDGET");
   await ctx.db.insert("inbox", {
     assignmentId: root._id,
     messageId: args.parentMessageId,

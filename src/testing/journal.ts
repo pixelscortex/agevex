@@ -89,3 +89,14 @@ export const dropPings = internalMutationGeneric({
     return null;
   },
 });
+
+/** Count orphaned events using the real nested Workflow store. */
+export const events = internalQueryGeneric({
+  args: {},
+  handler: async (ctx) => {
+    const events = await ctx.db.query("events").collect();
+    let orphaned = 0;
+    for (const event of events) if (!(await ctx.db.get(event.workflowId))) orphaned++;
+    return { orphaned, total: events.length };
+  },
+});

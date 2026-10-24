@@ -3,7 +3,7 @@ import { it, expect } from "vite-plus/test";
 import { convexTest } from "convex-test";
 import agent from "@convex-dev/agent/test";
 import { anyApi, type ApiFromModules } from "convex/server";
-import { LIMITS } from "../../src/client/index.js";
+import { LIVE_LIMITS } from "./config.js";
 import agevex from "../../src/test.js";
 import schema from "../fixture/schema.js";
 import { live, modelId } from "./convex/agents.js";
@@ -80,7 +80,7 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
     } finally {
       await Promise.all(live.evidence);
       expect(live.usd).toBeLessThanOrEqual(
-        Number(process.env.OPENROUTER_LIVE_MAX_USD ?? LIMITS.liveMaxUsd),
+        Number(process.env.OPENROUTER_LIVE_MAX_USD ?? LIVE_LIMITS.maxUsd),
       );
       const evidence = JSON.stringify({
         requestedModel: modelId,

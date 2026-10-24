@@ -21,14 +21,19 @@ import {
   type CoordinateArgs,
   type CoordinateResult,
   type TurnArgs,
+  type Registration,
 } from "../src/client/index.js";
 import { scriptedModel } from "../src/test.js";
 import { mockModel } from "@convex-dev/agent";
 import { tool } from "ai";
 import { z } from "zod";
 import {
+  internalActionGeneric,
+  internalMutationGeneric,
   makeFunctionReference,
   type FunctionReference,
+  type RegisteredAction,
+  type RegisteredMutation,
   type PaginationOptions,
   type PaginationResult,
 } from "convex/server";
@@ -39,6 +44,15 @@ const toolNames = (tools: unknown): string[] =>
   Array.isArray(tools) ? tools.map((entry) => (entry as { name?: string }).name ?? "?") : [];
 
 export const state = {
+  dropPing: false,
+  nestedCalls: 0,
+  nestedAfterCancel: false,
+  nestedStarted: false,
+  nestedErrors: [] as unknown[],
+  nestedSignals: [] as boolean[],
+  nestedRelease: undefined as undefined | (() => void),
+  nestedGate: undefined as undefined | Promise<void>,
+  childToolSlices: 0,
   calls: [] as Parameters<ReturnType<typeof mockModel>["doStream"]>[0][],
   /** Tool names offered on each model call, in call order. */
   offers: [] as OfferedCall[],
@@ -104,7 +118,13 @@ const delegateReply = () =>
       type: "tool-call" as const,
       toolCallId: state.delegateFanout === 1 ? "delegate-call" : `delegate-call-${index + 1}`,
       toolName: "agevex_delegate",
-      input: JSON.stringify({ agent: state.delegateAgent, task: state.delegateTask }),
+      input: JSON.stringify({
+        agent: state.delegateAgent,
+        task:
+          state.childToolSlices > 0 && index === 0
+            ? state.delegateTask + " keep slicing"
+            : state.delegateTask,
+      }),
     })),
     [{ type: "text", text: "Main acknowledged the queued delegation." }],
   ]);
@@ -122,6 +142,10 @@ model.doStream = async (args) => {
     });
   if (state.gate) await state.gate;
   if (state.fail) throw new Error("private provider error must not leak");
+  if (state.nestedAfterCancel)
+    return scriptedModel([
+      [{ type: "tool-call", toolName: "nested", toolCallId: "nested", input: "{}" }],
+    ]).doStream(args);
   if (state.once && state.calls.length <= 2)
     return scriptedModel([
       [
@@ -170,6 +194,21 @@ childModel.doStream = async (args) => {
     await new Promise((resolve) => setTimeout(resolve, state.childDelayMs));
   if (state.childGate) await state.childGate;
   if (state.childFail) throw new Error("private child provider error must not leak");
+  if (
+    state.childToolSlices > 0 &&
+    JSON.stringify(args.prompt).includes("keep slicing") &&
+    state.offers.filter((offer) => offer.agent === "Researcher").length <= state.childToolSlices
+  )
+    return scriptedModel([
+      [
+        {
+          type: "tool-call",
+          toolName: "echo",
+          toolCallId: crypto.randomUUID(),
+          input: '{"text":"slice"}',
+        },
+      ],
+    ]).doStream(args);
   return childReply().doStream(args);
 };
 
@@ -178,10 +217,38 @@ export const researcher = new Agent(components.agent, {
   languageModel: childModel,
   subagents: [],
 });
+// Opt-in fixture tools preserve the tool-less child promised by existing tests.
+Object.defineProperty(researcher, "declaredTools", {
+  get: () =>
+    state.childToolSlices > 0
+      ? { echo: tool({ inputSchema: z.object({ text: z.string() }), execute: ({ text }) => text }) }
+      : {},
+});
 export const main = new Agent(components.agent, {
   name: "Main",
   languageModel: model,
   tools: {
+    nested: defineOnceTool({
+      name: "nested-cancel-probe",
+      input: z.object({}),
+      run: async (_input, tc) => {
+        state.nestedStarted = true;
+        if (state.nestedGate) await state.nestedGate;
+        try {
+          await tc.ctx.runAction(makeFunctionReference<"action">("agents:nestedAction"), {});
+        } catch (error) {
+          state.nestedErrors.push(error);
+          state.nestedSignals.push(tc.signal.aborted);
+        }
+        try {
+          await tc.ctx.runMutation(makeFunctionReference<"mutation">("agents:nestedMutation"), {});
+        } catch (error) {
+          state.nestedErrors.push(error);
+          state.nestedSignals.push(tc.signal.aborted);
+        }
+        return null;
+      },
+    }),
     once: defineOnceTool({
       name: "one-effect",
       input: z.object({ text: z.string() }),
@@ -204,40 +271,56 @@ const runTurnRef = makeFunctionReference<"action", TurnArgs, null>(
   "agents:runTurn",
 ) as unknown as FunctionReference<"action", "internal", TurnArgs, null>;
 
-const runtime = registerAgent(components.agevex, {
-  agents: [main],
-  refs: {
-    runTurn: () => runTurnRef,
-    // The fixture app's generated api is generic and enumerates no exported
-    // function, so the coordinator is addressed by name. This points at the
-    // real registered mutation exported below by that name; Convex resolves it
-    // by the name, and the visibility marker `makeFunctionReference` types as
-    // "public" is phantom and has no runtime effect.
-    coordinate: () =>
-      makeFunctionReference<"mutation", CoordinateArgs, CoordinateResult>(
-        "agents:coordinate",
-      ) as unknown as FunctionReference<"mutation", "internal", CoordinateArgs, CoordinateResult>,
+export function fixtureRuntime(limits?: Registration["limits"]) {
+  return registerAgent(components.agevex, {
+    limits,
+    agents: [main],
+    refs: {
+      runTurn: () => runTurnRef,
+      // The fixture app's generated api is generic and enumerates no exported
+      // function, so the coordinator is addressed by name. This points at the
+      // real registered mutation exported below by that name; Convex resolves it
+      // by the name, and the visibility marker `makeFunctionReference` types as
+      // "public" is phantom and has no runtime effect.
+      coordinate: () =>
+        makeFunctionReference<"mutation", CoordinateArgs, CoordinateResult>(
+          "agents:coordinate",
+        ) as unknown as FunctionReference<"mutation", "internal", CoordinateArgs, CoordinateResult>,
+    },
+    authorize: async (ctx, scope) => {
+      if (scope.operation === "delegate" || scope.operation === "deliver") {
+        if (scope.operation === "delegate" && state.denyDelegate) throw new Error("DENIED");
+        if (scope.operation === "deliver" && state.denyDeliver) throw new Error("DENIED");
+        if (!ALLOWED_BACKGROUND_SUBJECTS.has(scope.subject)) throw new Error("FORBIDDEN");
+        if (scope.operation === "delegate" && scope.childAgent !== "Researcher")
+          throw new Error("FORBIDDEN");
+        return { subject: scope.subject };
+      }
+      const identity = await ctx.auth.getUserIdentity();
+      if (!identity) throw new Error("UNAUTHENTICATED");
+      return { subject: identity.subject };
+    },
+    authorizeExecution: async (_ctx, scope) => {
+      if (state.revoke || scope.subject !== "alice") throw new Error("REVOKED");
+      if (scope.child && state.revokeChild) throw new Error("REVOKED_CHILD");
+    },
+    observe: async (_ctx, event) => {
+      if (state.observerFails) throw new Error("observer failure");
+      state.events.push(event);
+    },
+  });
+}
+const runtime = fixtureRuntime();
+export const nestedAction: RegisteredAction<"internal", {}, null> = internalActionGeneric({
+  handler: async () => {
+    state.nestedCalls++;
+    return null;
   },
-  authorize: async (ctx, scope) => {
-    if (scope.operation === "delegate" || scope.operation === "deliver") {
-      if (scope.operation === "delegate" && state.denyDelegate) throw new Error("DENIED");
-      if (scope.operation === "deliver" && state.denyDeliver) throw new Error("DENIED");
-      if (!ALLOWED_BACKGROUND_SUBJECTS.has(scope.subject)) throw new Error("FORBIDDEN");
-      if (scope.operation === "delegate" && scope.childAgent !== "Researcher")
-        throw new Error("FORBIDDEN");
-      return { subject: scope.subject };
-    }
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("UNAUTHENTICATED");
-    return { subject: identity.subject };
-  },
-  authorizeExecution: async (_ctx, scope) => {
-    if (state.revoke || scope.subject !== "alice") throw new Error("REVOKED");
-    if (scope.child && state.revokeChild) throw new Error("REVOKED_CHILD");
-  },
-  observe: async (_ctx, event) => {
-    if (state.observerFails) throw new Error("observer failure");
-    state.events.push(event);
+});
+export const nestedMutation: RegisteredMutation<"internal", {}, null> = internalMutationGeneric({
+  handler: async () => {
+    state.nestedCalls++;
+    return null;
   },
 });
 const { runTurn, coordinate } = runtime.internalFunctions();

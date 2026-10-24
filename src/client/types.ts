@@ -229,7 +229,11 @@ export type ManagedAgent = {
   }>;
 };
 
+import type { Limits } from "../component/limits.js";
+
 export type Registration = {
+  /** Positive host bounds merged over LIMITS and validated at registration. */
+  limits?: Partial<Limits>;
   /**
    * The agents exposed as delegation **roots**. A child is resolved through a
    * root's `subagents`, not listed here, and a name-only entry is not an

@@ -5,11 +5,12 @@ import type { ComponentApi } from "../../../src/component/_generated/component.j
 import {
   Agent,
   registerAgent,
-  LIMITS,
   type TurnArgs,
   type CoordinateArgs,
   type CoordinateResult,
 } from "../../../src/client/index.js";
+
+import { LIVE_LIMITS } from "../config.js";
 
 declare const process: { env: Record<string, string | undefined> };
 export const live = {
@@ -25,13 +26,13 @@ export const live = {
   evidence: [] as Promise<void>[],
 };
 export const modelId = process.env.OPENROUTER_LIVE_MODEL ?? "openrouter/free";
-const maxUsd = Number(process.env.OPENROUTER_LIVE_MAX_USD ?? LIMITS.liveMaxUsd);
+const maxUsd = Number(process.env.OPENROUTER_LIVE_MAX_USD ?? LIVE_LIMITS.maxUsd);
 const provider = createOpenAI({
   apiKey: process.env.OPENROUTER_API_KEY ?? "skipped",
   baseURL: "https://openrouter.ai/api/v1",
   name: "openrouter",
   fetch: async (url, init) => {
-    if (++live.requests > LIMITS.liveRequests || live.usd >= maxUsd)
+    if (++live.requests > LIVE_LIMITS.requests || live.usd >= maxUsd)
       throw new Error("LIVE_COST_CAP");
     const response = await fetch(url, init);
     // Read a clone for the provider's authoritative routed model and cost.
@@ -72,7 +73,7 @@ rootModel.doStream = (args) => {
   // the runtime still validates, creates, runs and verifies every child.
   return rootStream({
     ...args,
-    maxOutputTokens: LIMITS.liveOutputTokens,
+    maxOutputTokens: LIVE_LIMITS.outputTokens,
     toolChoice:
       live.delegation && call < 2
         ? { type: "tool", toolName: "agevex_delegate" }
@@ -83,7 +84,7 @@ const childModel = provider.chat(modelId);
 const childStream = childModel.doStream.bind(childModel);
 childModel.doStream = (args) => {
   live.childCalls++;
-  return childStream({ ...args, maxOutputTokens: LIMITS.liveOutputTokens });
+  return childStream({ ...args, maxOutputTokens: LIVE_LIMITS.outputTokens });
 };
 const usageHandler = (
   _ctx: unknown,
