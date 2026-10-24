@@ -20,7 +20,7 @@ export default defineConfig({
     // please see https://tanstack.com/start/latest/docs/framework/react/guide/hosting#nitro for guides on hosting
     nitro({
       preset: 'bun',
-      // Radix imports tslib through its Node export; bundle it for standalone output.
+      // Bundle tslib for standalone output, using its ESM export below.
       noExternals: ['tslib'],
     }),
   ],

@@ -7,7 +7,7 @@ status: Planned
 One `Agent` type represents roots and children. An agent becomes a child by
 appearing in another agent’s `subagents` list.
 
-```ts
+```ts title="Planned agent hierarchy"
 const reviewer = new Agent(components.agent, { name: "Reviewer", languageModel, instructions })
 const builder = new Agent(components.agent, {
   name: "Builder", languageModel, instructions,

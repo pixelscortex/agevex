@@ -1,5 +1,5 @@
 import { createFileRoute, notFound } from '@tanstack/react-router';
-import { DocsLayout } from 'fumadocs-ui/layouts/docs';
+import { DocsLayout } from 'fumadocs-ui/layouts/spacious';
 import { createServerFn } from '@tanstack/react-start';
 import { docs, source } from '@/lib/source';
 import {
@@ -8,12 +8,12 @@ import {
   DocsPage,
   DocsTitle,
   MarkdownCopyButton,
-} from 'fumadocs-ui/layouts/docs/page';
+} from 'fumadocs-ui/layouts/spacious/page';
 import { baseOptions } from '@/lib/layout.shared';
 import { getPageMarkdownUrl } from '@/lib/shared';
 import { useFumadocsLoader } from 'fumadocs-core/source/client';
 import { Suspense, use } from 'react';
-import { useMDXComponents } from '@/components/mdx';
+import mdxComponents from '@/components/mdx';
 import { siteConfig } from '@/site.config';
 
 export const Route = createFileRoute('/docs/$')({
@@ -71,7 +71,7 @@ function Content({ path, markdownUrl }: { path: string; markdownUrl: string }) {
         <MarkdownCopyButton markdownUrl={markdownUrl} />
       </div>
       <DocsBody>
-        <MDX components={useMDXComponents()} />
+        <MDX components={mdxComponents} />
       </DocsBody>
     </DocsPage>
   );

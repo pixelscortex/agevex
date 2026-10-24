@@ -12,7 +12,7 @@ prices or credits beyond the policy supplied by the host.
 
 The optional-property and union notation below describes the draft contract.
 
-```ts
+```ts title="Planned meter API"
 const meter = defineMeter(components.meter, {
   sinks: [polarSink({ meter: "ai_usage" }), hostLedger(internal.billing.record)],   // optional
   budgets?: (scope) => ({ maxNanos }) | undefined,                                  // optional policy

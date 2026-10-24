@@ -4,9 +4,7 @@ description: A Convex-native, headless Agent SDK for TypeScript.
 status: Available
 ---
 
-import { SiteName } from '@/components/setup-examples';
-
-<SiteName /> is a Convex-native, **headless** agent system: state,
+agevex is a Convex-native, **headless** agent system: state,
 orchestration and subagent management, so building a feature does not mean
 re-solving how to manage the agent. It is general purpose, rather than tied to
 one product: a Convex-native counterpart to running Mastra on Convex.
@@ -43,7 +41,7 @@ row. Keep tables small and justified.
 One obvious way to do each thing, short names, typed results and little ceremony.
 The planned one-screen setup is:
 
-```ts
+```ts title="Planned one-screen setup"
 const researcher = new Agent(components.agent, { name: "Researcher", languageModel, instructions })
 const main = new Agent(components.agent, { name: "Main", languageModel, instructions, subagents: [researcher] })
 

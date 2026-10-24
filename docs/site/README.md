@@ -31,8 +31,8 @@ bunx shadcn add http://localhost:3000/r/todo-tool.json
 The todo tool is a bounded, in-memory demonstration. It needs host
 authorization and Agent-component storage before real use.
 
-`site.config.ts` is the single source for the provisional package name, site
-title and registry namespace. Change the name there, then rebuild; the registry
+`site.config.ts` sets the provisional site title and registry namespace.
+When renaming the package, update the plain MDX examples too. The registry
 script updates the committed `registry.json` and generated item. The repository
 URL derives from that name. There is no production host or registered shadcn
 namespace yet.
@@ -43,10 +43,15 @@ current Workpool runtime basics are Available. All phase APIs from the draft
 spec are Planned, including the preview one-screen setup. Spec snippets with
 optional-property shorthand are contract sketches, not runnable TypeScript.
 
-The site uses Fumadocs’ neutral theme, system fonts, built-in search, dark mode,
+The site uses Fumadocs’ Base UI build and Spacious layout with the shadcn preset
+and its neutral CSS variables, system fonts, built-in search, dark mode,
 mobile navigation, code copying and Markdown/LLM routes. Builds do not fetch
 Google Fonts. The local preview is marked noindex. API-reference generation
 from package doc comments is future work; the current pages document the spec.
+
+`components.json` configures shadcn's Base UI library and neutral palette; no
+shadcn components are installed. Content uses normal MDX fenced code blocks
+with languages and titles, highlighted by Fumadocs MDX's default Shiki pipeline.
 
 The implementation follows the official Fumadocs `tanstack-start` template
 from `bunx create-fumadocs-app@latest --template tanstack-start --pm bun`.

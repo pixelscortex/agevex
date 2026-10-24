@@ -13,7 +13,7 @@ against a provider interface. Daytona is the first adapter, over
 The following is the draft contract, including interface shorthand and scope
 alternatives; it is not executable setup code.
 
-```ts
+```ts title="Planned sandbox API"
 interface SandboxProvider {
   id: string
   create(ctx, opts): Promise<{ sandboxId: string }>        // must return before cold start completes

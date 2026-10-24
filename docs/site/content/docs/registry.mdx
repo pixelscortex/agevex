@@ -4,8 +4,6 @@ description: Copy an example tool into your app with shadcn.
 status: In progress
 ---
 
-import { RegistryInstallCommand } from '@/components/setup-examples';
-
 The local registry endpoint serves one working example. The SDK’s production
 tools and community catalogue are **Planned**.
 
@@ -14,7 +12,9 @@ tools and community catalogue are **Planned**.
 Start this docs site locally, then replace `<site-url>` with its origin
 (`http://localhost:3000` for the default dev server):
 
-<RegistryInstallCommand />
+```sh title="Terminal"
+bunx shadcn add <site-url>/r/todo-tool.json
+```
 
 `shadcn add` copies `lib/tools/todo-tool.ts` into your project and installs its
 `ai` and `zod` dependencies. It is source you can read and change, not a remote
@@ -42,7 +42,7 @@ host configures a registry URL; no hosted namespace is registered today.
 
 From `docs/site`:
 
-```sh
+```sh title="Terminal"
 bun run registry:build
 ```
 

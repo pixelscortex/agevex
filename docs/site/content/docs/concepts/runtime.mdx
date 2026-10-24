@@ -17,7 +17,7 @@ A long-lived loop workflow manages each thread. It runs turn workflows and sleep
 on `awaitEvent('ping')` when the inbox is empty. Inbox rows are the source of
 truth; a ping is only a doorbell.
 
-```text
+```text title="Planned workflow execution"
 open/send → inbox row (durable) → ping
 loop workflow (one per managed thread)
   └─ turn workflow
@@ -44,7 +44,7 @@ every second, abort through an `AbortController`, and fence writes with
 
 ## Registration shape (planned)
 
-```ts
+```ts title="Planned runtime registration"
 const runtime = registerAgent(components.sdk, {
   agents: [main],
   refs: { runTurn: () => internal.agents.runTurn, coordinate: () => internal.agents.coordinate },
@@ -72,7 +72,7 @@ state. The Agent component still owns threads, messages and streaming.
 
 Tools receive trusted facts, rather than an SDK permission system:
 
-```ts
+```ts title="Planned tool context"
 type ToolContext = {
   ctx: ActionCtx        // the normal Convex action ctx
   subject: string       // whose request this is (the thread owner)

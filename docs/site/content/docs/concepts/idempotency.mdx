@@ -10,7 +10,7 @@ of the input detects a reused key with changed arguments as `KEY_CONFLICT`.
 
 ## State transitions
 
-```text
+```text title="Planned receipt transitions"
 begin(scope, key, fingerprint)
   no row                          → running, new claim         → run it
   running, lease live             → "in progress"              → don't run
@@ -34,7 +34,7 @@ have `expiresAt` and are purged in scheduled batches.
 
 This is a spec shape; the optional-property notation describes the contract.
 
-```ts
+```ts title="Planned idempotent tool helper"
 defineOnceTool({
   name, input, run,
   key?: (input, tc) => string,   // default tc.toolCallId

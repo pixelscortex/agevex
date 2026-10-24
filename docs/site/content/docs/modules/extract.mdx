@@ -12,7 +12,7 @@ a URL is a separate step from extracting it. RAG indexing is optional.
 This is the draft contract; `?` properties and union alternatives describe API
 shapes rather than executable TypeScript.
 
-```ts
+```ts title="Planned extract API"
 const extract = defineExtract(components.extract, {
   backends: [directText(), firecrawlParse(), visionOcr({ model })],   // ordered
   route?: (file) => BackendId | undefined,     // default: first backend whose accepts() matches
@@ -39,7 +39,7 @@ extract.tools()   // read_file(fileId, page?) returning bounded text + reference
 
 ## Backends
 
-```ts
+```ts title="Planned backend contracts"
 type ExtractBackend = {
   id: string                       // stable, part of the artifact identity
   version: string                  // bump to force re-extraction
