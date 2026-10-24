@@ -18,7 +18,7 @@ export type RunErrorCode = Infer<typeof runErrorCode>;
 /**
  * Origin of a managed turn. A `subagent_result` turn was started by a delivered
  * child result, so it is a real generation but not a user-triggered prompt: it
- * never acquires the managed delegation tool.
+ * may acquire the managed delegation tool while the originating run has budget.
  */
 export type TurnOrigin = "user" | "subagent_result";
 
@@ -40,7 +40,7 @@ export type TurnOrigin = "user" | "subagent_result";
  */
 export type AuthorizationScope =
   | { operation: "open"; agent: string }
-  | { operation: "send" | "messages" | "activity"; agent: string; threadId: string }
+  | { operation: "send" | "cancel" | "messages" | "activity"; agent: string; threadId: string }
   | {
       operation: "delegate";
       agent: string;
@@ -142,7 +142,7 @@ export type ObserveAgentEvent = (
   ctx: GenericActionCtx<GenericDataModel> | GenericMutationCtx<GenericDataModel>,
   event: AgentEvent,
 ) => Promise<void> | void;
-export type TurnArgs = { assignmentId: string; turnToken: string };
+export type TurnArgs = { assignmentId: string; turnToken: string; sliceId?: string };
 /** Result of a managed `agevex_delegate` call. A denial is a tool result, not a failure. */
 export type DelegationResult =
   | { status: "queued"; runId: string; agent: string }
@@ -152,7 +152,8 @@ export type DelegationDenialCode =
   | "TASK_LIMIT"
   | "FORBIDDEN"
   | "STALE_TURN"
-  | "DELEGATION_CONFLICT";
+  | "DELEGATION_CONFLICT"
+  | "RUN_BUDGET";
 
 /**
  * The single host-internal coordinator mutation.

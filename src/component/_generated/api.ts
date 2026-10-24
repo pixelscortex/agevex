@@ -11,6 +11,8 @@
 import type * as limits from "../limits.js";
 import type * as queue from "../queue.js";
 import type * as subagents from "../subagents.js";
+import type * as ledger from "../ledger.js";
+import type * as workflows from "../workflows.js";
 import type * as worker from "../worker.js";
 
 import type {
@@ -22,6 +24,8 @@ import { anyApi, componentsGeneric } from "convex/server";
 
 const fullApi: ApiFromModules<{
   limits: typeof limits;
+  ledger: typeof ledger;
+  workflows: typeof workflows;
   queue: typeof queue;
   subagents: typeof subagents;
   worker: typeof worker;
@@ -54,5 +58,6 @@ export const internal: FilterApi<
 > = anyApi as any;
 
 export const components = componentsGeneric() as unknown as {
-  workpool: import("@convex-dev/workpool/_generated/component.js").ComponentApi<"workpool">;
+  rootWorkflow: import("@convex-dev/workflow/_generated/component.js").ComponentApi<"rootWorkflow">;
+  childWorkflow: import("@convex-dev/workflow/_generated/component.js").ComponentApi<"childWorkflow">;
 };

@@ -9,7 +9,7 @@
     // NodeNext-checked through `bun run typecheck`.
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "types": ["vite/client"],
+    "types": ["vite/client", "node"],
     "allowJs": true
   },
   "include": ["./**/*.ts", "./**/*.js", "../src/**/*"]

@@ -1,6 +1,7 @@
 import {
   createThread,
   listUIMessages,
+  listMessages,
   saveMessage,
   syncStreams,
   vStreamArgs,
@@ -18,6 +19,8 @@ import {
   type PaginationResult,
 } from "convex/server";
 import { v, type Validator } from "convex/values";
+import { fingerprint } from "./once.js";
+import { LIMITS } from "../component/limits.js";
 import type { ComponentApi } from "../component/_generated/component.js";
 import { activity, receipt, subagentRun, vPaginationResult } from "../component/schema.js";
 import type { AgentEvent, ManagedAgent, Registration } from "./types.js";
@@ -66,14 +69,10 @@ const messagesReturn = v.object({
   streams: vStreamMessagesReturnValue.fields.streams,
 });
 
-async function fingerprint(input: unknown) {
-  const bytes = new TextEncoder().encode(JSON.stringify(input));
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
-}
 function validateInput(text: string, requestKey: string) {
-  if (!text.trim() || text.length > 16_000) throw new Error("INVALID_MESSAGE");
-  if (!requestKey || requestKey.length > 200) throw new Error("INVALID_REQUEST_KEY");
+  if (!text.trim() || text.length > LIMITS.messageLength) throw new Error("INVALID_MESSAGE");
+  if (!requestKey || requestKey.length > LIMITS.requestKeyLength)
+    throw new Error("INVALID_REQUEST_KEY");
 }
 
 export function authorizedEndpoints(component: ComponentApi, config: Registration) {
@@ -101,7 +100,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
   async function owned(
     ctx: GenericQueryCtx<GenericDataModel>,
     threadId: string,
-    operation: "send" | "messages" | "activity",
+    operation: "send" | "cancel" | "messages" | "activity",
   ) {
     const row = await ctx.runQuery(component.queue.assignment, { threadId });
     if (!row) throw new Error("FORBIDDEN");
@@ -199,6 +198,44 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           agent: row.agent,
         });
         return accepted;
+      },
+    }),
+    cancel: mutationGeneric({
+      args: { threadId: v.string() },
+      returns: v.null(),
+      handler: async (ctx, args) => {
+        const row = await owned(ctx, args.threadId, "cancel");
+        const affected = await ctx.runMutation(component.queue.cancel, {
+          assignmentId: row.assignmentId,
+          subject: row.subject,
+        });
+        // These are cancellation-owned writes, after the epoch fence is set.
+        // Running actions must drop their later saves, so the authorized cancel
+        // transaction itself closes native streams and pending placeholders.
+        for (const thread of affected) {
+          const native = managedAgents.get(thread.agent);
+          if (!native) continue;
+          const streams = await ctx.runQuery(native.component.streams.list, {
+            threadId: thread.threadId,
+            statuses: ["streaming"],
+          });
+          for (const stream of streams)
+            await ctx.runMutation(native.component.streams.abort, {
+              streamId: stream.streamId,
+              reason: "CANCELLED",
+            });
+          const pending = await listMessages(ctx, native.component, {
+            threadId: thread.threadId,
+            paginationOpts: { cursor: null, numItems: LIMITS.verificationPage },
+          });
+          for (const message of pending.page)
+            if (message.status === "pending")
+              await ctx.runMutation(native.component.messages.finalizeMessage, {
+                messageId: message._id,
+                result: { status: "failed", error: "CANCELLED" },
+              });
+        }
+        return null;
       },
     }),
     messages: queryGeneric({

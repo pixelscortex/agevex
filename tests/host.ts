@@ -6,7 +6,7 @@
 // through `state.delegate`, so the root transcript never changes shape unless a
 // test asks for it.
 //
-// Background authorization policy: `delegate`/`deliver` run from the Workpool
+// Background authorization policy: `delegate`/`deliver` run from a Workflow slice
 // action with no end user on the connection, so `ctx.auth` is null there. The
 // policy branches on the operation and rechecks the capability-validated
 // persisted principal against the current allowed set, instead of echoing the
@@ -15,11 +15,14 @@
 import {
   Agent,
   registerAgent,
+  defineOnceTool,
+  type ToolContext,
   type AgentEvent,
   type CoordinateArgs,
   type CoordinateResult,
   type TurnArgs,
 } from "../src/client/index.js";
+import { scriptedModel } from "../src/test.js";
 import { mockModel } from "@convex-dev/agent";
 import { tool } from "ai";
 import { z } from "zod";
@@ -45,6 +48,9 @@ export const state = {
   revoke: false,
   hang: false,
   tools: false,
+  once: false,
+  onceCalls: 0,
+  onceContext: undefined as ToolContext | undefined,
   /** Emit one `agevex_delegate` tool call on every root step. */
   delegate: false,
   /**
@@ -55,6 +61,9 @@ export const state = {
    * own native tool call id.
    */
   delegateFanout: 1,
+  delegationRounds: 1,
+  delegatedRounds: 0,
+  roundsByPrompt: new Map<string, number>(),
   /** Child agent name requested by the emitted delegation tool call. */
   delegateAgent: "Researcher",
   /** Task text requested by the emitted delegation tool call. */
@@ -79,12 +88,10 @@ export const state = {
 
 const model = mockModel({ content: [{ type: "text", text: "DEMO deterministic native reply" }] });
 const original = model.doStream.bind(model);
-const toolModel = mockModel({
-  contentSteps: [
-    [{ type: "tool-call", toolCallId: "demo-tool", toolName: "echo", input: '{"text":"echoed"}' }],
-    [{ type: "text", text: "MUST NOT RUN A SECOND STEP" }],
-  ],
-});
+const toolModel = scriptedModel([
+  [{ type: "tool-call", toolCallId: "demo-tool", toolName: "echo", input: '{"text":"echoed"}' }],
+  [{ type: "text", text: "MUST NOT RUN A SECOND STEP" }],
+]);
 /**
  * Delegation reply, built per call so `state.delegateAgent`/`state.delegateTask`
  * are read at emission time rather than frozen at module load. A fanout above
@@ -92,17 +99,15 @@ const toolModel = mockModel({
  * of its tasks in one model step instead of waiting between them.
  */
 const delegateReply = () =>
-  mockModel({
-    contentSteps: [
-      Array.from({ length: state.delegateFanout }, (_unused, index) => ({
-        type: "tool-call" as const,
-        toolCallId: state.delegateFanout === 1 ? "delegate-call" : `delegate-call-${index + 1}`,
-        toolName: "agevex_delegate",
-        input: JSON.stringify({ agent: state.delegateAgent, task: state.delegateTask }),
-      })),
-      [{ type: "text", text: "Main acknowledged the queued delegation." }],
-    ],
-  });
+  scriptedModel([
+    Array.from({ length: state.delegateFanout }, (_unused, index) => ({
+      type: "tool-call" as const,
+      toolCallId: state.delegateFanout === 1 ? "delegate-call" : `delegate-call-${index + 1}`,
+      toolName: "agevex_delegate",
+      input: JSON.stringify({ agent: state.delegateAgent, task: state.delegateTask }),
+    })),
+    [{ type: "text", text: "Main acknowledged the queued delegation." }],
+  ]);
 /** The managed delegation tool is offered to this model call? */
 const offersDelegation = (tools: unknown) => toolNames(tools).includes("agevex_delegate");
 model.doStream = async (args) => {
@@ -117,8 +122,33 @@ model.doStream = async (args) => {
     });
   if (state.gate) await state.gate;
   if (state.fail) throw new Error("private provider error must not leak");
-  if (state.tools) return toolModel.doStream(args);
-  if (state.delegate && offersDelegation(args.tools)) return delegateReply().doStream(args);
+  if (state.once && state.calls.length <= 2)
+    return scriptedModel([
+      [
+        {
+          type: "tool-call",
+          toolName: "once",
+          toolCallId: `effect-${state.calls.length}`,
+          input: JSON.stringify({ text: "one effect" }),
+        },
+      ],
+    ]).doStream(args);
+  if (state.tools && state.calls.length === 1) return toolModel.doStream(args);
+  const prompt = JSON.stringify(
+    args.prompt
+      .filter(
+        (message) =>
+          message.role === "user" &&
+          !JSON.stringify(message.content).includes("the delegated task"),
+      )
+      .slice(-1),
+  );
+  const rounds = state.roundsByPrompt.get(prompt) ?? 0;
+  if (state.delegate && rounds < state.delegationRounds && offersDelegation(args.tools)) {
+    state.delegatedRounds++;
+    state.roundsByPrompt.set(prompt, rounds + 1);
+    return delegateReply().doStream(args);
+  }
   return original(args);
 };
 
@@ -152,6 +182,16 @@ export const main = new Agent(components.agent, {
   name: "Main",
   languageModel: model,
   tools: {
+    once: defineOnceTool({
+      name: "one-effect",
+      input: z.object({ text: z.string() }),
+      key: () => "stable-effect",
+      run: (input, tc) => {
+        state.onceCalls++;
+        state.onceContext = tc;
+        return { saved: input.text };
+      },
+    }),
     echo: tool({ inputSchema: z.object({ text: z.string() }), execute: ({ text }) => text }),
   },
   subagents: [researcher],
@@ -202,7 +242,8 @@ const runtime = registerAgent(components.agevex, {
 });
 const { runTurn, coordinate } = runtime.internalFunctions();
 export { runTurn, coordinate };
-export const { open, send, messages, activity, delegations } = runtime.authorizedEndpoints();
+export const { open, send, cancel, messages, activity, delegations } =
+  runtime.authorizedEndpoints();
 
 /**
  * Reference to the authorized `delegations` query of the *test* registration.

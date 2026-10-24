@@ -1,0 +1,98 @@
+import { writeFile } from "node:fs/promises";
+import { it, expect } from "vite-plus/test";
+import { convexTest } from "convex-test";
+import agent from "@convex-dev/agent/test";
+import { anyApi, type ApiFromModules } from "convex/server";
+import { LIMITS } from "../../src/client/index.js";
+import agevex from "../../src/test.js";
+import schema from "../fixture/schema.js";
+import { live, modelId } from "./convex/agents.js";
+import type * as agents from "./convex/agents.js";
+
+declare const process: { env: Record<string, string | undefined> };
+const api = anyApi as unknown as ApiFromModules<{ agents: typeof agents }>;
+const modules = import.meta.glob(["./convex/**/*.ts", "./convex/**/*.js"]);
+
+it.skipIf(!process.env.OPENROUTER_API_KEY)(
+  "live plain turn and delegation round trip with a result turn delegating again",
+  async () => {
+    try {
+      for (const delegation of [false, true]) {
+        const t = convexTest(schema, modules);
+        agent.register(t);
+        agevex.register(t);
+        const owner = t.withIdentity({ subject: "live-owner" });
+        live.delegation = delegation;
+        live.rootCalls = 0;
+        live.childCalls = 0;
+        const receipt = await owner.mutation(api.agents.open, {
+          agent: "Main",
+          prompt: delegation
+            ? "Delegate a short task to Researcher, then delegate one more short task after its result, then answer."
+            : "Say hello in three words.",
+          requestKey: delegation ? "collaboration" : "plain",
+        });
+        await expect
+          .poll(
+            async () => {
+              const status = await owner.query(api.agents.activity, { threadId: receipt.threadId });
+              if (status.turnStatus === "recovery_required")
+                throw new Error(`LIVE_TURN_FAILED:${status.errorCode}`);
+              return {
+                status: status.turnStatus,
+                active: status.subagents.active,
+                history: status.subagents.history,
+                rootCalls: live.rootCalls,
+                queued: status.queuedMessages,
+              };
+            },
+            { timeout: 180_000, interval: 200 },
+          )
+          .toEqual({
+            status: "idle",
+            active: 0,
+            history: delegation ? 2 : 0,
+            rootCalls: delegation ? 3 : 1,
+            queued: 0,
+          });
+        if (delegation) {
+          const runs = await owner.query(api.agents.delegations, {
+            threadId: receipt.threadId,
+            paginationOpts: { cursor: null, numItems: 20 },
+          });
+          expect(runs.page).toHaveLength(2);
+          expect(
+            runs.page.every(
+              (run) => run.status === "completed" && run.deliveryStatus === "accepted",
+            ),
+          ).toBe(true);
+          expect(live.childCalls).toBe(2);
+        }
+        const messages = await owner.query(api.agents.messages, {
+          threadId: receipt.threadId,
+          paginationOpts: { cursor: null, numItems: 20 },
+        });
+        expect(
+          messages.page.some((message) => message.role === "assistant" && message.text.trim()),
+        ).toBe(true);
+        await owner.mutation(api.agents.cancel, { threadId: receipt.threadId });
+      }
+    } finally {
+      await Promise.all(live.evidence);
+      expect(live.usd).toBeLessThanOrEqual(
+        Number(process.env.OPENROUTER_LIVE_MAX_USD ?? LIMITS.liveMaxUsd),
+      );
+      const evidence = JSON.stringify({
+        requestedModel: modelId,
+        routedModels: [...live.models],
+        requests: live.requests,
+        inputTokens: live.inputTokens,
+        outputTokens: live.outputTokens,
+        usd: live.costReported ? live.usd : null,
+      });
+      await writeFile(".vite-plus/live-results.json", evidence + "\n");
+      console.log(evidence);
+    }
+  },
+  360_000,
+);

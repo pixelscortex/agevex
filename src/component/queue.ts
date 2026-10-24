@@ -1,23 +1,9 @@
-// Managed turn queue for the component.
-//
-// The component owns only assignment state, the accepted-message backlog and
-// dispatch. Each turn must claim a one-shot token before the host generates, so a
-// duplicate dispatch, a late finalization or an expired execution window can never
-// produce a second generation. Generation, transcript and message bodies stay
-// native: rows hold native ids only.
-//
-// Busy queue: at most one turn per assignment is dispatched. Additional accepted
-// messages wait in `pending` and are woken by the finish path, where selection
-// and enqueue share one transaction, so the queue state transition and the
-// dispatch enqueue commit or fail together.
-//
-// No takeover: `recovery_required` is terminal for this component. Nothing here
-// expires a token, replays a generation or repairs state, and there is no
-// retention/expiry policy, so rows live until the host deletes them.
-
-import { Workpool } from "@convex-dev/workpool";
+import type { FunctionHandle } from "convex/server";
+import type { WorkflowId } from "@convex-dev/workflow";
+import { rootLane, childLane } from "./workflows.js";
+import { findReceipt, armPurge } from "./ledger.js";
 import { v } from "convex/values";
-import { internal, components } from "./_generated/api.js";
+import { api, internal } from "./_generated/api.js";
 import {
   mutation,
   query,
@@ -33,69 +19,31 @@ import {
   errorCode,
   turnOrigin as vTurnOrigin,
 } from "./schema.js";
-import { EXECUTION_WATCHDOG_MS, MAX_PARALLEL_TURNS } from "./limits.js";
+import { LIMITS } from "./limits.js";
 
-const pool = new Workpool(components.workpool, {
-  maxParallelism: MAX_PARALLEL_TURNS,
-  retryActionsByDefault: false,
-});
-
-/**
- * Shared Workpool used by every managed root and child turn.
- *
- * Exported for the subagent launch path, which enqueues the child through the
- * same pool rather than a second concurrency lane. Enqueue *names* are labels.
- */
-export { pool };
-// The execution window belongs to a turn that owns the assignment, not to one
-// that is still waiting for Workpool capacity. It is therefore armed by `claim`,
-// never by `wake`, so a backlog larger than the pool cannot expire queued work.
-
-/**
- * Resolve a previously accepted request, or report conflicting reuse of its key.
- *
- * Read-only: it writes nothing and enqueues nothing. An exact fingerprint match
- * replays the original acceptance receipt (`status: "accepted"` — not a result); a
- * different fingerprint under the same `subject + requestKey` throws
- * `REQUEST_KEY_CONFLICT` so the host fails the retry before any native write.
- */
 async function existing(
   ctx: Pick<QueryCtx, "db">,
   subject: string,
   requestKey: string,
   fingerprint: string,
 ) {
-  const row = await ctx.db
-    .query("receipts")
-    .withIndex("by_subject_key", (q) => q.eq("subject", subject).eq("requestKey", requestKey))
-    .unique();
+  const row = await findReceipt(ctx, `request:${subject}`, requestKey);
   if (!row) return null;
-  if (row.fingerprint !== fingerprint) throw new Error("REQUEST_KEY_CONFLICT");
-  return {
-    assignmentId: row.assignmentId,
-    threadId: row.threadId,
-    receiptId: row._id,
-    status: "accepted" as const,
+  if (row.fingerprint !== fingerprint) throw new Error("KEY_CONFLICT");
+  return row.result as {
+    assignmentId: string;
+    threadId: string;
+    receiptId: string;
+    status: "accepted";
   };
 }
 
-/**
- * Public read of an accepted request that creates nothing. Same replay/conflict
- * semantics as `accept`; `null` means the key was never accepted.
- */
 export const lookupReceipt = query({
   args: { subject: v.string(), requestKey: v.string(), fingerprint: v.string() },
   returns: v.union(v.null(), vReceipt),
   handler: (ctx, args) => existing(ctx, args.subject, args.requestKey, args.fingerprint),
 });
 
-/**
- * Ownership projection of an existing assignment, or `null` for an unknown thread.
- *
- * Deliberately unauthenticated: it exposes only stored identity and role fields.
- * The host endpoint compares the returned `subject` with its own authorization
- * decision before returning anything to a caller.
- */
 export const assignment = query({
   args: { threadId: v.string() },
   returns: v.union(v.null(), v.object({ ...scope.fields, root: v.boolean() })),
@@ -105,7 +53,7 @@ export const assignment = query({
       .withIndex("by_thread", (q) => q.eq("threadId", threadId))
       .unique();
     // The assignment's role is fixed by how it was created: a delegated child
-    // carries its runId, while a public root does not. Never infer this from
+    // carries its childRunId, while a public root does not. Never infer this from
     // the current registration's root names. A host could later promote a
     // former child agent name to a root; that must not promote its old child
     // threads or permit public sends outside the coordinator's lifecycle.
@@ -117,70 +65,59 @@ export const assignment = query({
           threadId,
           subject: row.subject,
           agent: row.agent,
-          root: row.runId === undefined,
+          root: row.childRunId === undefined,
         }
       : null;
   },
 });
 
 /**
- * Dispatch the head of an idle assignment's backlog.
- *
- * Guarded to be a no-op unless the assignment is `idle`, which is what makes it
- * safe to call from both `accept` and `finish`. In one transaction it deletes the
- * selected backlog row, publishes a fresh turn token plus that row's
- * `promptMessageId`, and enqueues dispatch. Deleting first means one backlog row
- * is consumed for exactly one turn; doing the state change and the enqueue in one
- * transaction means they commit or fail together. Neither is an exactly-once
- * guarantee about provider, model or tool side effects, nor a liveness guarantee
- * about downstream scheduling.
+ * Publish at most one inbox head and ring the thread's loop in the same
+ * transaction as acceptance/delivery. Selection is metadata-only: claim keeps
+ * deletion until after the host's native approval guard. The loop rechecks
+ * this indexed queue after every child workflow, so early or duplicate events
+ * can never create an extra model call. Its own reads use ring=false to avoid
+ * waking itself forever when idle.
  */
-export async function wake(ctx: MutationCtx, row: Doc<"assignments">) {
-  if (row.turnStatus !== "idle") return;
-  const next = await ctx.db
-    .query("pending")
-    .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
-    .first();
-  if (!next) return;
-  const turnToken = `${row._id}:${row.nextTurn}`;
-  await ctx.db.delete("pending", next._id);
-  await ctx.db.patch("assignments", row._id, {
-    turnStatus: "queued",
-    turnToken,
-    promptMessageId: next.messageId,
-    turnOrigin: next.origin ?? "user",
-    nextTurn: row.nextTurn + 1,
-    queuedMessages: row.queuedMessages - 1,
-  });
-  await pool.enqueueAction(
-    ctx,
-    internal.worker.dispatch,
-    { assignmentId: row._id, turnToken, runTurn: row.runTurn },
-    { retry: false },
-  );
+export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = true) {
+  if (row.cancelled || row.turnStatus === "recovery_required") return;
+  if (row.turnStatus === "idle" && !row.approvalBlocked) {
+    const next = await ctx.db
+      .query("inbox")
+      .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
+      .first();
+    const run = next ? await ctx.db.get("runs", next.runId) : null;
+    // Results wait for all already-launched children to settle and finish their
+    // delivery attempt. One continuation then sees the whole consecutive batch.
+    if (next && !run?.cancelled && !(next.kind === "result" && run && run.pendingResults > 0)) {
+      await ctx.db.patch("assignments", row._id, {
+        turnStatus: "queued",
+        turnToken: `${row._id}:${row.nextTurn}`,
+        promptMessageId: next.messageId,
+        inboxId: next._id,
+        runId: next.runId,
+        turnOrigin: next.kind === "result" ? "subagent_result" : "user",
+        nextTurn: row.nextTurn + 1,
+        queuedMessages: row.queuedMessages - 1,
+      });
+    }
+  }
+  const manager = row.childRunId ? childLane : rootLane;
+  if (!row.workflowId) {
+    const workflowId = await manager.start(
+      ctx,
+      row.childRunId ? internal.workflows.childLoop : internal.workflows.rootLoop,
+      { assignmentId: row._id, version: LIMITS.workflowVersion },
+      {
+        onComplete: row.childRunId ? internal.workflows.childDone : internal.workflows.rootDone,
+        context: { assignmentId: row._id },
+      },
+    );
+    await ctx.db.patch("assignments", row._id, { workflowId });
+  } else if (ring)
+    await manager.sendEvent(ctx, { workflowId: row.workflowId as WorkflowId, name: "ping" });
 }
 
-/**
- * Accept one message into an assignment and return an acceptance receipt.
- *
- * Side effects, in order: create the assignment on a thread's first accept;
- * append a `pending` backlog row and bump `queuedMessages`/`nextSequence`; write
- * the immutable `receipts` dedup row; then wake a turn when the assignment is
- * idle. The native thread and message are saved by the host endpoint, which passes
- * `promptMessageId` — the component persists only that native reference.
- *
- * Idempotency: an exact `(subject, requestKey, fingerprint)` replay returns the
- * original receipt without re-enqueueing; a changed fingerprint for the same key
- * throws `REQUEST_KEY_CONFLICT`.
- *
- * Ownership boundary: `subject` and `agent` are the host's trusted policy values.
- * An existing assignment owned by a different subject or agent throws `FORBIDDEN`;
- * the component enforces ownership by identity comparison, not by access rules.
- *
- * Returns: a receipt meaning "durably queued". It is not generated output, not a
- * read, not a finished turn and not task completion, and the turn may still be
- * waiting behind the pool.
- */
 export const accept = mutation({
   args: {
     subject: v.string(),
@@ -210,29 +147,54 @@ export const accept = mutation({
         queuedMessages: 0,
         nextSequence: 0,
         nextTurn: 0,
+        cancellationEpoch: 0,
+        cancelled: false,
       });
       row = (await ctx.db.get("assignments", id))!;
     }
     if (row.subject !== args.subject || row.agent !== args.agent) throw new Error("FORBIDDEN");
     if (row.turnStatus === "recovery_required") throw new Error("RECOVERY_REQUIRED");
-    await ctx.db.insert("pending", {
+    if (row.queuedMessages >= LIMITS.queueLength) throw new Error("QUEUE_LIMIT");
+    if (row.cancelled) {
+      await ctx.db.patch("assignments", row._id, { cancelled: false });
+      row = { ...row, cancelled: false };
+    }
+    const runId = await ctx.db.insert("runs", {
+      rootAssignmentId: row._id,
+      launches: 0,
+      hops: 0,
+      pendingResults: 0,
+      cancelled: false,
+    });
+    await ctx.db.insert("inbox", {
       assignmentId: row._id,
       messageId: args.promptMessageId,
       sequence: row.nextSequence,
-      origin: "user",
+      kind: "user",
+      runId,
     });
     await ctx.db.patch("assignments", row._id, {
       queuedMessages: row.queuedMessages + 1,
       nextSequence: row.nextSequence + 1,
     });
+    await armPurge(ctx);
+    // Acceptance and the host's native prompt save share one transaction: no
+    // external effect can outlive an abandoned claim, so request receipts enter
+    // the same ledger already done rather than leasing an action-shaped claim.
     const receiptId = await ctx.db.insert("receipts", {
-      subject: args.subject,
-      requestKey: args.requestKey,
+      scope: `request:${args.subject}`,
+      key: args.requestKey,
       fingerprint: args.fingerprint,
-      assignmentId: row._id,
-      threadId: args.threadId,
+      status: "done",
+      claim: crypto.randomUUID(),
+      leaseUntil: Date.now(),
+      expiresAt: Date.now() + LIMITS.receiptRetentionMs,
     });
-    await wake(ctx, { ...row, queuedMessages: row.queuedMessages + 1 });
+    await ctx.db.patch("receipts", receiptId, {
+      result: { assignmentId: row._id, threadId: args.threadId, receiptId, status: "accepted" },
+    });
+    await wake(ctx, { ...row, approvalBlocked: false, queuedMessages: row.queuedMessages + 1 });
+    await ctx.db.patch("assignments", row._id, { approvalBlocked: false });
     return {
       assignmentId: row._id,
       threadId: args.threadId,
@@ -243,30 +205,26 @@ export const accept = mutation({
 });
 
 /**
- * Take ownership of one turn and return the prompt anchor to generate from.
- *
- * Returns `null` unless the assignment exists, still holds this exact
- * `turnToken` and is `queued`, so duplicate dispatch, stale tokens and replays are
- * no-ops rather than takeovers. The token is one-shot: a successful `finish`
- * clears it, so the same token can never claim twice.
- *
- * Also arms the execution watchdog here, in the same transaction that marks the
- * turn `running`, so a turn receives its full window from the moment execution
- * starts no matter how long it waited for pool capacity.
- *
- * A child turn additionally returns the trusted `subagent` context (run id,
- * delivery capability, root linkage) and records the run's `started` transition
- * in this same transaction. That context is derived from persisted state, never
- * from anything the caller supplied, and it is what lets the host runner report
- * and later deliver the run's single bounded notification.
+ * Claim one model slice, not an entire retriable action. A first slice consumes
+ * the reserved inbox row, while subsequent slices require both continuation
+ * state and a new slice id under the same execution token. Replayed or racing
+ * calls therefore cannot pay for the same slice twice. A watchdog measures
+ * execution time only; lane wait does not spend it. Consecutive child results
+ * share a final prompt anchor, letting native context include the whole batch.
  */
 export const claim = mutation({
-  args: { assignmentId: v.id("assignments"), turnToken: v.string() },
+  args: {
+    assignmentId: v.id("assignments"),
+    turnToken: v.string(),
+    sliceId: v.optional(v.string()),
+  },
   returns: v.union(
     v.null(),
     v.object({
       ...scope.fields,
       promptMessageId: v.string(),
+      runId: v.string(),
+      cancellationEpoch: v.number(),
       turnOrigin: vTurnOrigin,
       subagent: v.union(
         v.null(),
@@ -284,17 +242,48 @@ export const claim = mutation({
       ),
     }),
   ),
-  handler: async (ctx, { assignmentId, turnToken }) => {
+  handler: async (ctx, { assignmentId, turnToken, sliceId }) => {
     const row = await ctx.db.get("assignments", assignmentId);
-    if (!row || row.turnToken !== turnToken || row.turnStatus !== "queued") return null;
-    await ctx.db.patch("assignments", assignmentId, { turnStatus: "running" });
-    // Scheduled exactly once, in the same transaction that takes ownership:
-    // queued work waiting on the Workpool never burns this window.
-    await ctx.scheduler.runAfter(EXECUTION_WATCHDOG_MS, internal.queue.stalled, {
-      assignmentId,
-      turnToken,
+    if (!row || row.cancelled || row.turnToken !== turnToken) return null;
+    const first = row.turnStatus === "queued";
+    if (
+      !first &&
+      !(row.turnStatus === "running" && row.continueSlice && sliceId && row.lastSlice !== sliceId)
+    )
+      return null;
+    if (first && row.inboxId) {
+      const head = await ctx.db.get("inbox", row.inboxId);
+      if (head) await ctx.db.delete("inbox", head._id);
+      if (head?.kind === "result") {
+        const following = await ctx.db
+          .query("inbox")
+          .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
+          .take(LIMITS.queueLength);
+        let count = 0;
+        for (const item of following) {
+          if (item.kind !== "result" || item.runId !== head.runId) break;
+          await ctx.db.delete("inbox", item._id);
+          row.promptMessageId = item.messageId;
+          count++;
+        }
+        await ctx.db.patch("assignments", row._id, {
+          queuedMessages: row.queuedMessages - count,
+          promptMessageId: row.promptMessageId,
+        });
+      }
+    }
+    await ctx.db.patch("assignments", row._id, {
+      turnStatus: "running",
+      continueSlice: false,
+      lastSlice: sliceId,
+      inboxId: undefined,
     });
-    const runId = row.runId;
+    if (first)
+      await ctx.scheduler.runAfter(LIMITS.executionWatchdogMs, internal.queue.stalled, {
+        assignmentId,
+        turnToken,
+      });
+    const runId = row.childRunId;
     if (!runId) {
       return {
         assignmentId,
@@ -302,6 +291,8 @@ export const claim = mutation({
         subject: row.subject,
         agent: row.agent,
         promptMessageId: row.promptMessageId!,
+        runId: row.runId!,
+        cancellationEpoch: row.cancellationEpoch,
         turnOrigin: row.turnOrigin ?? "user",
         subagent: null,
       };
@@ -313,7 +304,7 @@ export const claim = mutation({
     const root = row.rootAssignmentId
       ? await ctx.db.get("assignments", row.rootAssignmentId)
       : null;
-    if (!run || !root || run.status !== "queued") {
+    if (!run || !root || (run.status !== "queued" && run.status !== "running")) {
       // A launch without a resolvable run is a corrupt state; escalate rather
       // than generate against an untrackable child.
       await ctx.db.patch("assignments", assignmentId, {
@@ -322,17 +313,20 @@ export const claim = mutation({
       });
       return null;
     }
-    await ctx.db.patch("subagentRuns", run._id, {
-      status: "running",
-      startedAt: Date.now(),
-      events: [...run.events, { phase: "started" as const, at: Date.now(), errorCode: null }],
-    });
+    if (first)
+      await ctx.db.patch("subagentRuns", run._id, {
+        status: "running",
+        startedAt: Date.now(),
+        events: [...run.events, { phase: "started" as const, at: Date.now(), errorCode: null }],
+      });
     return {
       assignmentId,
       threadId: row.threadId,
       subject: row.subject,
       agent: row.agent,
       promptMessageId: row.promptMessageId!,
+      runId: row.runId!,
+      cancellationEpoch: row.cancellationEpoch,
       turnOrigin: row.turnOrigin ?? "user",
       subagent: {
         runId: run.runId,
@@ -349,29 +343,13 @@ export const claim = mutation({
   },
 });
 
-/**
- * Report the outcome of the turn the caller owns.
- *
- * A no-op returning `null` unless the assignment is `running` under this exact
- * `turnToken`, which makes duplicate or late finalization harmless. A host-action
- * or finalization failure that propagates out of the runner reaches the
- * dispatcher, which calls `queue.ambiguous` promptly and escalates the turn to
- * `recovery_required`; if instead a claimed turn is abandoned with no propagated
- * failure and no successful finalization, the watchdog armed by `claim`
- * escalates it later. The component never infers an outcome from a failure it
- * never observes.
- *
- * On failure the turn becomes sticky `recovery_required` carrying the sanitized
- * code, and further messages are rejected. On success the turn returns to `idle`,
- * its token and prompt anchor are cleared, and any backlog is woken in the same
- * transaction, so an idle assignment cannot lose an accepted wakeup.
- */
 export const finish = mutation({
   args: { assignmentId: v.id("assignments"), turnToken: v.string(), errorCode },
   returns: v.null(),
   handler: async (ctx, args) => {
     const row = await ctx.db.get("assignments", args.assignmentId);
-    if (!row || row.turnToken !== args.turnToken || row.turnStatus !== "running") return null;
+    if (!row || row.cancelled || row.turnToken !== args.turnToken || row.turnStatus !== "running")
+      return null;
     if (args.errorCode) {
       await ctx.db.patch("assignments", row._id, {
         turnStatus: "recovery_required",
@@ -389,32 +367,18 @@ export const finish = mutation({
   },
 });
 
-/**
- * Escalate a child turn's run exactly once, if that assignment is a child.
- *
- * Called from the ambiguity and watchdog paths of `queue`. It never generates,
- * replays or takes over anything: it records the terminal failed outcome, moves
- * the root counters, and schedules exactly one bounded notification attempt
- * through the stored coordinator handle. Non-child assignments are a no-op, so
- * a root failure never touches subagent state.
- */
 async function escalateChild(ctx: MutationCtx, assignmentId: Id<"assignments">) {
   const row = await ctx.db.get("assignments", assignmentId);
-  if (!row?.runId) return null;
-  await ctx.runMutation(internal.subagents.escalate, { runId: row.runId });
+  if (!row?.childRunId) return null;
+  await ctx.runMutation(internal.subagents.escalate, { runId: row.childRunId });
   return null;
 }
 
-/**
- * Mark the identified turn ambiguous while it is still `queued` or `running`.
- *
- * An escalation that loses the race to a successful `finish` is discarded, and no
- * generation is ever replayed.
- */
 async function markAmbiguous(ctx: MutationCtx, assignmentId: Id<"assignments">, turnToken: string) {
   const row = await ctx.db.get("assignments", assignmentId);
   if (
     row &&
+    !row.cancelled &&
     row.turnToken === turnToken &&
     (row.turnStatus === "queued" || row.turnStatus === "running")
   ) {
@@ -427,37 +391,19 @@ async function markAmbiguous(ctx: MutationCtx, assignmentId: Id<"assignments">, 
   return null;
 }
 
-/**
- * Flag a turn as ambiguous after the host action reference failed to run.
- *
- * Separates a callback/handle failure from an execution stall: the action may
- * never have reached `claim`, so a still-`queued` turn is escalated too.
- * Sanitizing happens upstream — only `EXECUTION_AMBIGUOUS` is stored, never the
- * underlying exception.
- */
 export const ambiguous = mutation({
   args: { assignmentId: v.id("assignments"), turnToken: v.string() },
   returns: v.null(),
   handler: (ctx, args) => markAmbiguous(ctx, args.assignmentId, args.turnToken),
 });
 
-/**
- * Detection-only watchdog for a turn that never finalized.
- *
- * Internal, fired by the timer armed in `claim`. It escalates a still-owned running
- * token to `recovery_required` and stops there: the window is never extended, the
- * owner is never replaced and no generation is replayed. A turn still waiting in
- * the pool is ignored, which is why the timer is armed on claim rather than wake.
- * A child turn additionally records its run as failed and schedules its single
- * bounded notification, so a healthy root is not blocked by a stalled child.
- */
 export const stalled = internalMutation({
   args: { assignmentId: v.id("assignments"), turnToken: v.string() },
   returns: v.null(),
   // Detection only: never reassign an expired token or replay a generation.
   handler: async (ctx, args) => {
     const row = await ctx.db.get("assignments", args.assignmentId);
-    if (row && row.turnToken === args.turnToken && row.turnStatus === "running") {
+    if (row && !row.cancelled && row.turnToken === args.turnToken && row.turnStatus === "running") {
       await ctx.db.patch("assignments", row._id, {
         turnStatus: "recovery_required",
         errorCode: "EXECUTION_AMBIGUOUS",
@@ -468,15 +414,6 @@ export const stalled = internalMutation({
   },
 });
 
-/**
- * Coordination view for one thread: turn progress, backlog size and sanitized
- * failure code. Additive to the native transcript read — not a completion status
- * and not a replacement message protocol.
- *
- * Ownership is checked here explicitly: the caller-supplied `subject` must match
- * the assignment's owner, otherwise `FORBIDDEN`. The host endpoint authorizes
- * before calling in.
- */
 export const activity = query({
   args: { threadId: v.string(), subject: v.string() },
   returns: vActivity,
@@ -500,5 +437,228 @@ export const activity = query({
         total: (row.activeRuns ?? 0) + (row.historyRuns ?? 0),
       },
     };
+  },
+});
+
+/** Read execution metadata outside the Workflow journal; only ids cross steps. */
+export const execution = query({
+  args: { assignmentId: v.id("assignments") },
+  handler: (ctx, args) => ctx.db.get("assignments", args.assignmentId),
+});
+
+export const next = internalMutation({
+  args: { assignmentId: v.id("assignments") },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, { assignmentId }): Promise<string | null> => {
+    let row = await ctx.db.get("assignments", assignmentId);
+    if (!row || row.cancelled || row.approvalBlocked || row.turnStatus === "recovery_required")
+      return null;
+    if (row.turnStatus === "idle") {
+      await wake(ctx, row, false);
+      row = await ctx.db.get("assignments", assignmentId);
+    }
+    return row?.turnStatus === "queued" ? row.turnToken! : null;
+  },
+});
+
+/** A single transactional fence around the native mutation, including its save.
+ * Checking in the action before calling a native mutation leaves a cancel race;
+ * nested Convex mutations share this transaction, so cancellation wins or the
+ * write commits before cancellation. Host tool mutations use this same path.
+ */
+export const write = mutation({
+  args: {
+    assignmentId: v.id("assignments"),
+    executionId: v.string(),
+    cancellationEpoch: v.number(),
+    handle: v.string(),
+    args: v.any(),
+  },
+  handler: async (ctx, args): Promise<unknown> => {
+    const row = await ctx.db.get("assignments", args.assignmentId);
+    if (
+      !row ||
+      row.cancelled ||
+      row.turnStatus !== "running" ||
+      row.turnToken !== args.executionId ||
+      row.cancellationEpoch !== args.cancellationEpoch
+    )
+      return null; // Native abort listeners finalize asynchronously; stale void saves must resolve.
+    return ctx.runMutation(args.handle as FunctionHandle<"mutation">, args.args);
+  },
+});
+
+export const pauseApproval = mutation({
+  args: { assignmentId: v.id("assignments"), executionId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get("assignments", args.assignmentId);
+    if (row?.turnToken === args.executionId && !row.cancelled) {
+      if (row.turnStatus === "running" && row.runId) {
+        const id = await ctx.db.insert("inbox", {
+          assignmentId: row._id,
+          runId: row.runId,
+          messageId: row.promptMessageId!,
+          sequence: row.nextSequence,
+          kind: row.turnOrigin === "subagent_result" ? "result" : "user",
+        });
+        await ctx.db.patch("assignments", row._id, {
+          inboxId: id,
+          nextSequence: row.nextSequence + 1,
+        });
+      }
+      await ctx.db.patch("assignments", row._id, {
+        approvalBlocked: true,
+        turnStatus: "idle",
+        turnToken: undefined,
+        promptMessageId: undefined,
+        inboxId: undefined,
+        queuedMessages: row.queuedMessages + 1,
+      });
+    }
+    return null;
+  },
+});
+
+export const continueTurn = mutation({
+  args: {
+    assignmentId: v.id("assignments"),
+    executionId: v.string(),
+    cancellationEpoch: v.number(),
+    messageId: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get("assignments", args.assignmentId);
+    if (
+      row &&
+      !row.cancelled &&
+      row.turnToken === args.executionId &&
+      row.cancellationEpoch === args.cancellationEpoch &&
+      row.turnStatus === "running"
+    )
+      await ctx.db.patch("assignments", row._id, {
+        continueSlice: true,
+        promptMessageId: args.messageId,
+      });
+    return null;
+  },
+});
+
+/** Phase 1c's seam: all between-slice state checks belong in this mutation. */
+export const betweenSlices = internalMutation({
+  args: { assignmentId: v.id("assignments"), executionId: v.string() },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get("assignments", args.assignmentId);
+    if (
+      !row ||
+      row.cancelled ||
+      row.turnToken !== args.executionId ||
+      row.turnStatus !== "running" ||
+      !row.continueSlice
+    )
+      return null;
+    const run = row.runId ? await ctx.db.get("runs", row.runId) : null;
+    if (!run || run.cancelled) return null;
+    // Exhausting delegation budget never prevents a final answer. Admission of
+    // additional effects checks launches/hops transactionally in reserve.
+    if (run.launches > LIMITS.runLaunches || run.hops > LIMITS.runHops)
+      throw new Error("RUN_BUDGET");
+    return args.executionId;
+  },
+});
+
+export const sliceLimit = internalMutation({
+  args: { assignmentId: v.id("assignments"), executionId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await ctx.runMutation(api.queue.finish, {
+      assignmentId: args.assignmentId,
+      turnToken: args.executionId,
+      errorCode: "GENERATION_FAILED",
+    });
+    return null;
+  },
+});
+export const failWorkflow = internalMutation({
+  args: { assignmentId: v.id("assignments"), executionId: v.string() },
+  returns: v.null(),
+  handler: (ctx, args) => markAmbiguous(ctx, args.assignmentId, args.executionId),
+});
+
+/** Cancel sets fences before canceling Workflow, which cannot abort actions. */
+export const cancel = mutation({
+  args: { assignmentId: v.id("assignments"), subject: v.string() },
+  returns: v.array(v.object({ threadId: v.string(), agent: v.string() })),
+  handler: async (ctx, args) => {
+    const root = await ctx.db.get("assignments", args.assignmentId);
+    if (!root || root.subject !== args.subject || root.childRunId) throw new Error("FORBIDDEN");
+    const children = (
+      await Promise.all(
+        (["queued", "running"] as const).map((status) =>
+          ctx.db
+            .query("subagentRuns")
+            .withIndex("by_root_status", (q) =>
+              q.eq("rootAssignmentId", root._id).eq("status", status),
+            )
+            .take(LIMITS.activeChildrenPerRoot),
+        ),
+      )
+    ).flat();
+    const affected = [
+      root,
+      ...(
+        await Promise.all(
+          children.map((run) =>
+            run.childAssignmentId ? ctx.db.get("assignments", run.childAssignmentId) : null,
+          ),
+        )
+      ).filter((row): row is Doc<"assignments"> => row !== null),
+    ];
+    for (const row of affected) {
+      await ctx.db.patch("assignments", row._id, {
+        cancelled: true,
+        cancellationEpoch: row.cancellationEpoch + 1,
+        turnStatus: "idle",
+        errorCode: null,
+        turnToken: undefined,
+        promptMessageId: undefined,
+        inboxId: undefined,
+        workflowId: undefined,
+        queuedMessages: 0,
+        continueSlice: false,
+        approvalBlocked: false,
+      });
+      const inbox = await ctx.db
+        .query("inbox")
+        .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
+        .take(LIMITS.queueLength + 1);
+      for (const item of inbox) {
+        await ctx.db.patch("runs", item.runId, { cancelled: true });
+        await ctx.db.delete("inbox", item._id);
+      }
+      if (row.runId) await ctx.db.patch("runs", row.runId, { cancelled: true });
+      if (row.workflowId)
+        await (row.childRunId ? childLane : rootLane).cancel(ctx, row.workflowId as WorkflowId);
+    }
+    for (const run of children) {
+      await ctx.db.patch("subagentRuns", run._id, {
+        status: "failed",
+        deliveryStatus: "blocked",
+        errorCode: "ROOT_UNAVAILABLE",
+        finishedAt: Date.now(),
+        deliveryAt: Date.now(),
+        events: [
+          ...run.events,
+          { phase: "failed" as const, at: Date.now(), errorCode: "ROOT_UNAVAILABLE" as const },
+        ].slice(-LIMITS.runEvents),
+      });
+    }
+    await ctx.db.patch("assignments", root._id, {
+      activeRuns: 0,
+      historyRuns: (root.historyRuns ?? 0) + children.length,
+    });
+    return affected.map((row) => ({ threadId: row.threadId, agent: row.agent }));
   },
 });

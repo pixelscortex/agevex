@@ -2,7 +2,7 @@
   "name": "agevex",
   "version": "0.0.0",
   "private": true,
-  "description": "A Convex component package: a Workpool-backed managed agent runtime with bounded, native-compatible delegation.",
+  "description": "A Workflow-backed Convex component and host client for managed agents.",
   "keywords": [
     "agent",
     "component",
@@ -44,18 +44,23 @@
     "fmt:check": "vp fmt . --check --ignore-path .prettierignore",
     "lint": "vp lint . --deny-warnings",
     "lint:convex:check": "bun run scripts/check-convex-lint.ts",
-    "check": "vp check . && bun run lint:convex:check"
+    "check": "vp check . && bun run lint:convex:check",
+    "test": "vp test --run",
+    "test:live": "vp test --run --config vite.live.config.ts"
   },
   "dependencies": {
+    "@convex-dev/workflow": "0.4.10",
     "@convex-dev/workpool": "0.4.14"
   },
   "devDependencies": {
-    "@ai-sdk/provider": "4.0.29",
-    "@ai-sdk/provider-utils": "5.0.62",
+    "@ai-sdk/openai": "4.0.102",
+    "@ai-sdk/provider": "4.0.34",
+    "@ai-sdk/provider-utils": "5.0.68",
     "@convex-dev/agent": "0.7.7",
     "@convex-dev/eslint-plugin": "5.0.0",
     "@edge-runtime/vm": "5.0.0",
-    "ai": "7.0.143",
+    "@types/node": "26.6.5",
+    "ai": "7.0.153",
     "convex": "1.47.0",
     "convex-helpers": "0.1.128",
     "convex-test": "0.0.61",
@@ -64,10 +69,10 @@
     "zod": "4.6.7"
   },
   "peerDependencies": {
-    "@ai-sdk/provider": "^4.0.29",
-    "@ai-sdk/provider-utils": "^5.0.62",
+    "@ai-sdk/provider": "^4.0.34",
+    "@ai-sdk/provider-utils": "^5.0.68",
     "@convex-dev/agent": "^0.7.7",
-    "ai": "^7.0.143",
+    "ai": "^7.0.153",
     "convex": "^1.47.0",
     "convex-helpers": "^0.1.128"
   },

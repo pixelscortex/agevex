@@ -2,7 +2,7 @@
 import { convexTest } from "convex-test";
 import { mutationGeneric } from "convex/server";
 import agent from "@convex-dev/agent/test";
-import workpool from "@convex-dev/workpool/test";
+import { registerWorkflow } from "../src/test.js";
 import agevex from "../src/test.js";
 import schema from "./fixture/schema.js";
 import type { MutationCtx } from "../src/component/_generated/server.js";
@@ -29,8 +29,7 @@ export type Fault =
   | "settle"
   | "notificationSave"
   | "childFinish"
-  | "acceptedDelivery"
-  | "legacyAllowance";
+  | "acceptedDelivery";
 
 /** Shape of the `addMessages` argument the notification fault inspects. */
 type AddMessagesArgs = {
@@ -100,7 +99,7 @@ function childFinishFault(real: AgevexMutation) {
         "assignments",
         finishArgs.assignmentId as Id<"assignments">,
       );
-      if (row?.runId) throw new Error("injected child finish failure");
+      if (row?.childRunId) throw new Error("injected child finish failure");
       return (await real._handler(ctx, finishArgs)) as never;
     },
   });
@@ -112,44 +111,6 @@ type DeliverArgs = {
   deliveryToken: string;
   deliveryStatus: "accepted" | "failed" | "blocked";
 };
-
-/**
- * Reservation arguments whose root row carries the per-prompt launch pair.
- */
-type ReserveArgs = { assignmentId: string; turnToken: string };
-
-/** Root assignments already downgraded once by {@link legacyAllowanceFault}. */
-const legacyDowngraded = new Set<string>();
-
-/**
- * Allowance fault: make one root look like a row written before the persisted
- * per-prompt launch count existed.
- *
- * `subagents.reserve` treats a matching `delegatedTurnToken` with no
- * `delegatedTurnCount` as one already spent. There is no public way to produce
- * such a row now, so the first reservation from an already-served turn strips
- * the count just before the real handler reads it. Only that one transition is
- * rewritten: every other reservation, and the whole rest of the launch, stays
- * real, so the legacy reading is proven against the real decision rather than a
- * replica of it.
- */
-function legacyAllowanceFault(real: AgevexMutation) {
-  return mutationGeneric({
-    args: (real as unknown as { _args: unknown })._args as never,
-    returns: (real as unknown as { _returns: unknown })._returns as never,
-    handler: async (ctx, args) => {
-      const reserveArgs = args as ReserveArgs;
-      const db = (ctx as MutationCtx).db;
-      const id = reserveArgs.assignmentId as Id<"assignments">;
-      const row = await db.get(id);
-      if (row?.delegatedTurnToken === reserveArgs.turnToken && !legacyDowngraded.has(id)) {
-        legacyDowngraded.add(id);
-        await db.patch(id, { delegatedTurnCount: undefined });
-      }
-      return (await real._handler(ctx, args)) as never;
-    },
-  });
-}
 
 /**
  * Delivery fault: refuse the queue acceptance of a delivered result only.
@@ -172,7 +133,6 @@ function acceptedDeliveryFault(real: AgevexMutation) {
 }
 
 export function setup(fault?: Fault) {
-  legacyDowngraded.clear();
   state.calls.length = 0;
   state.offers.length = 0;
   state.events.length = 0;
@@ -181,8 +141,14 @@ export function setup(fault?: Fault) {
   state.revoke = false;
   state.hang = false;
   state.tools = false;
+  state.once = false;
+  state.onceCalls = 0;
+  state.onceContext = undefined;
   state.delegate = false;
   state.delegateFanout = 1;
+  state.delegationRounds = 1;
+  state.delegatedRounds = 0;
+  state.roundsByPrompt.clear();
   state.delegateAgent = "Researcher";
   state.delegateTask = "research the bounded question";
   state.denyDelegate = false;
@@ -230,9 +196,7 @@ export function setup(fault?: Fault) {
       ? { module: "./component/queue.ts", name: "finish" as const }
       : fault === "acceptedDelivery"
         ? { module: "./component/subagents.ts", name: "deliver" as const }
-        : fault === "legacyAllowance"
-          ? { module: "./component/subagents.ts", name: "reserve" as const }
-          : undefined;
+        : undefined;
   const subagentFault =
     fault === "attach" || fault === "deliver" || fault === "settle" ? fault : undefined;
   if (queueFault || conditionalFault || subagentFault) {
@@ -246,11 +210,7 @@ export function setup(fault?: Fault) {
               AgevexMutation
             >;
             const wrap =
-              conditionalFault.name === "finish"
-                ? childFinishFault
-                : conditionalFault.name === "reserve"
-                  ? legacyAllowanceFault
-                  : acceptedDeliveryFault;
+              conditionalFault.name === "finish" ? childFinishFault : acceptedDeliveryFault;
             return { ...real, [conditionalFault.name]: wrap(real[conditionalFault.name]) };
           },
         }
@@ -276,7 +236,8 @@ export function setup(fault?: Fault) {
         : {}),
     });
     // Preserve the real nested bridge even for failure injection.
-    workpool.register(t, "agevex/workpool");
+    registerWorkflow(t, "agevex/rootWorkflow");
+    registerWorkflow(t, "agevex/childWorkflow");
   } else agevex.register(t);
   return t;
 }
