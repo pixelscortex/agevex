@@ -390,6 +390,13 @@ sharing a component mount share its lane capacities. `PLATFORM` contains
 documented facts, not checked by the SDK, including Workflow journal/step
 ceilings (8 MiB / 800 KiB). Workflow enforces those byte limits.
 
+## Optional cost meter
+
+Mount `agevex/meter/convex.config` and import `defineMeter` from `agevex/meter`
+for keyed cost recording, estimates/corrections, aggregate thread/subject/run
+reads, budget gates, request-id lookups, and Polar/webhook/custom sinks.
+Core wiring is separate. See the [meter API, limits and delivery semantics](src/meter/README.md).
+
 ## Development
 
 ```sh
@@ -411,7 +418,7 @@ in `.vite-plus/live-results.json`. `agevex/test` exports `register`,
 journals and replays them through the real Workflow engine.
 
 See [component ownership](src/component/README.md). Deferred: depth above two,
-peer messaging, approval UX, hooks, meter and other optional modules. Existing
+peer messaging, approval UX, hooks and other optional modules. Existing
 v1 Workflow step order is preserved; new delegation fields are optional on
 persisted v1 rows.
 

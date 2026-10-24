@@ -33,7 +33,19 @@
     "./_generated/component.js": {
       "types": "./dist/component/_generated/component.d.ts"
     },
-    "./test": "./src/test.ts"
+    "./test": "./src/test.ts",
+    "./meter": {
+      "types": "./dist/meter/index.d.ts",
+      "default": "./dist/meter/index.js"
+    },
+    "./meter/convex.config": {
+      "types": "./dist/meter/component/convex.config.d.ts",
+      "default": "./dist/meter/component/convex.config.js"
+    },
+    "./meter/_generated/component.js": {
+      "types": "./dist/meter/component/_generated/component.d.ts"
+    },
+    "./meter/test": "./src/meter/test.ts"
   },
   "scripts": {
     "build": "tsc --project tsconfig.json",
@@ -46,9 +58,11 @@
     "lint:convex:check": "bun run scripts/check-convex-lint.ts",
     "check": "vp check . && bun run lint:convex:check",
     "test": "vp test --run",
-    "test:live": "vp test --run --config vite.live.config.ts"
+    "test:live": "vp test --run --config vite.live.config.ts && bun run test:meter:live",
+    "test:meter:live": "vp test --run --config tests/meter/live.config.ts"
   },
   "dependencies": {
+    "@convex-dev/aggregate": "^0.3.4",
     "@convex-dev/workflow": "0.4.10",
     "@convex-dev/workpool": "0.4.14"
   },
@@ -59,6 +73,7 @@
     "@convex-dev/agent": "0.7.7",
     "@convex-dev/eslint-plugin": "5.0.0",
     "@edge-runtime/vm": "5.0.0",
+    "@openrouter/ai-sdk-provider": "^3.1.0",
     "@types/node": "26.6.5",
     "ai": "7.0.153",
     "convex": "1.47.0",
