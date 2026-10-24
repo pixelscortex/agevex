@@ -227,16 +227,24 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
               streamId: stream.streamId,
               reason: "CANCELLED",
             });
-          const pending = await listMessages(ctx, native.component, {
-            threadId: thread.threadId,
-            paginationOpts: { cursor: null, numItems: LIMITS.verificationPage },
-          });
-          for (const message of pending.page)
-            if (message.status === "pending")
+          // A running placeholder may precede an entire full inbox of newer
+          // prompts. Agent 0.7.7 indexes this status filter, so cleanup must page
+          // pending messages themselves rather than scan the newest transcript.
+          let cursor: string | null = null;
+          for (;;) {
+            const pending = await listMessages(ctx, native.component, {
+              threadId: thread.threadId,
+              statuses: ["pending"],
+              paginationOpts: { cursor, numItems: LIMITS.verificationPage },
+            });
+            for (const message of pending.page)
               await ctx.runMutation(native.component.messages.finalizeMessage, {
                 messageId: message._id,
                 result: { status: "failed", error: "CANCELLED" },
               });
+            if (pending.isDone) break;
+            cursor = pending.continueCursor;
+          }
         }
         return null;
       },

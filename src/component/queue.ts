@@ -72,6 +72,58 @@ export const assignment = query({
 });
 
 /**
+ * Keep exactly one check while durable inbox work has no running turn. The
+ * Workflow completion callback can lag next's committed loopWaiting flag by
+ * longer than a check interval, so neither that flag nor pinged owns recovery.
+ * Its scheduler id lets claim/cancel/block retire the check transactionally;
+ * idle deployments need no sweep and busy generations must never be re-rung.
+ */
+async function armRecovery(
+  ctx: MutationCtx,
+  row: Doc<"assignments">,
+  delayMs: number = LIMITS.reconcileIntervalMs,
+) {
+  if (row.recoveryAt !== undefined) return;
+  const recoveryAt = Date.now() + delayMs;
+  const recoveryJobId = await ctx.scheduler.runAt(recoveryAt, internal.queue.reconcile, {
+    assignmentId: row._id,
+    recoveryAt,
+  });
+  await ctx.db.patch("assignments", row._id, {
+    recoveryAt,
+    recoveryJobId,
+    recoveryDelayMs: delayMs,
+  });
+}
+
+async function disarmRecovery(ctx: MutationCtx, row: Doc<"assignments">) {
+  if (row.recoveryJobId) {
+    const job = await ctx.db.system.get(row.recoveryJobId);
+    if (job?.state.kind === "pending") await ctx.scheduler.cancel(row.recoveryJobId);
+  }
+  await ctx.db.patch("assignments", row._id, {
+    recoveryAt: undefined,
+    recoveryJobId: undefined,
+    recoveryDelayMs: undefined,
+    pinged: false,
+  });
+}
+
+async function needsRecovery(ctx: MutationCtx, row: Doc<"assignments">) {
+  if (
+    row.cancelled ||
+    row.approvalBlocked ||
+    row.turnStatus === "running" ||
+    row.turnStatus === "recovery_required"
+  )
+    return false;
+  return !!(await ctx.db
+    .query("inbox")
+    .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
+    .first());
+}
+
+/**
  * Publish at most one inbox head and ring the thread's loop in the same
  * transaction as acceptance/delivery. Selection is metadata-only: claim keeps
  * deletion until after the host's native approval guard. The loop rechecks
@@ -121,19 +173,21 @@ export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = tru
       },
     );
     await ctx.db.patch("assignments", row._id, { workflowId });
-  } else if (ring && row.loopWaiting && !row.pinged) {
+  } else if (
+    ring &&
+    row.loopWaiting &&
+    !row.pinged &&
+    !row.approvalBlocked &&
+    row.turnStatus !== "running"
+  ) {
     await manager.sendEvent(ctx, { workflowId: row.workflowId as WorkflowId, name: "ping" });
     await ctx.db.patch("assignments", row._id, { pinged: true });
-    // One check per outstanding wake, not a perpetual deployment-wide sweep.
-    // Acceptance and this marker share a transaction, so concurrent sends cannot
-    // schedule duplicate checks. Keep the marker until the check runs: a later
-    // wake in the same window is covered by that check of the current row.
-    if (row.recoveryAt === undefined) {
-      const recoveryAt = Date.now() + LIMITS.reconcileIntervalMs;
-      await ctx.scheduler.runAt(recoveryAt, internal.queue.reconcile, { assignmentId: row._id });
-      await ctx.db.patch("assignments", row._id, { recoveryAt });
-    }
   }
+  // wake may have reserved the head or started a loop; use its committed row
+  // so recovery follows inbox ownership even before the first awaited ping.
+  const current = (await ctx.db.get("assignments", row._id))!;
+  if (await needsRecovery(ctx, current)) await armRecovery(ctx, current);
+  else await disarmRecovery(ctx, current);
 }
 
 export const accept = mutation({
@@ -213,8 +267,8 @@ export const accept = mutation({
     await ctx.db.patch("receipts", receiptId, {
       result: { assignmentId: row._id, threadId: args.threadId, receiptId, status: "accepted" },
     });
-    await wake(ctx, { ...row, approvalBlocked: false, queuedMessages: row.queuedMessages + 1 });
     await ctx.db.patch("assignments", row._id, { approvalBlocked: false });
+    await wake(ctx, { ...row, approvalBlocked: false, queuedMessages: row.queuedMessages + 1 });
     return {
       assignmentId: row._id,
       threadId: args.threadId,
@@ -298,6 +352,7 @@ export const claim = mutation({
       lastSlice: sliceId,
       inboxId: undefined,
     });
+    await disarmRecovery(ctx, row);
     const activeSlice = sliceId ?? turnToken;
     const watchdogId = await ctx.scheduler.runAfter(
       LIMITS.executionWatchdogMs,
@@ -433,6 +488,7 @@ async function markAmbiguous(ctx: MutationCtx, assignmentId: Id<"assignments">, 
       errorCode: "EXECUTION_AMBIGUOUS",
     });
     await disarmSlice(ctx, row);
+    await disarmRecovery(ctx, row);
     await failChild(ctx, row, "EXECUTION_AMBIGUOUS");
   }
   return null;
@@ -580,6 +636,7 @@ export const pauseApproval = mutation({
         });
       }
       await disarmSlice(ctx, row);
+      await disarmRecovery(ctx, row);
       await ctx.db.patch("assignments", row._id, {
         approvalBlocked: true,
         turnStatus: "idle",
@@ -697,6 +754,7 @@ export const cancel = mutation({
     ];
     for (const row of affected) {
       await disarmSlice(ctx, row);
+      await disarmRecovery(ctx, row);
       await ctx.db.patch("assignments", row._id, {
         cancelled: true,
         cancellationEpoch: row.cancellationEpoch + 1,
@@ -746,42 +804,54 @@ export const cancel = mutation({
 });
 
 /**
- * Check only a wake that was actually sent to a sleeping loop. Racing a Workflow
- * sleep with awaitEvent would add positional journal entries, so recovery lives
- * entirely outside the journal. If ping was consumed, next clears loopWaiting;
- * if resume is merely queued, status no longer shows an awaited event. Neither
- * case needs another check. A still-awaited ping is re-rung and arms its own
- * delayed check, stopping as soon as the wake is consumed or no work remains.
+ * Recovery lives outside the positional Workflow journal. A missing awaited
+ * event can mean next's completion callback is still in flight, not that the
+ * work was consumed. Keep checking through that transition with capped backoff.
+ * Only Workflow's actual awaited ping permits a re-ring and a pinged reset;
+ * this avoids another event/generation when resume is already in flight.
  */
 export const reconcile = internalMutation({
-  args: { assignmentId: v.id("assignments") },
+  args: { assignmentId: v.id("assignments"), recoveryAt: v.optional(v.number()) },
   returns: v.null(),
-  handler: async (ctx, { assignmentId }) => {
+  handler: async (ctx, { assignmentId, recoveryAt }) => {
     const row = await ctx.db.get("assignments", assignmentId);
-    if (!row) return null;
-    await ctx.db.patch("assignments", row._id, { recoveryAt: undefined });
-    if (
-      row.cancelled ||
-      row.approvalBlocked ||
-      !row.loopWaiting ||
-      row.turnStatus !== "queued" ||
-      !row.workflowId
-    )
+    if (!row || (recoveryAt !== undefined && row.recoveryAt !== recoveryAt)) return null;
+    if (!(await needsRecovery(ctx, row))) {
+      await disarmRecovery(ctx, row);
       return null;
-    const head = await ctx.db
-      .query("inbox")
-      .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
-      .first();
-    if (!head) return null;
-    const manager = laneManager(!!row.childRunId, row.limits ?? LIMITS);
-    const status = await manager.status(ctx, row.workflowId as WorkflowId);
+    }
+    // Retire this check before arming its successor in this same transaction.
+    // A stale scheduled invocation must not clear a newer check's marker.
+    if (row.recoveryJobId) {
+      const job = await ctx.db.system.get(row.recoveryJobId);
+      if (job?.state.kind === "pending") await ctx.scheduler.cancel(row.recoveryJobId);
+    }
+    await ctx.db.patch("assignments", row._id, {
+      recoveryAt: undefined,
+      recoveryJobId: undefined,
+    });
+    const status = row.workflowId
+      ? await laneManager(!!row.childRunId, row.limits ?? LIMITS).status(
+          ctx,
+          row.workflowId as WorkflowId,
+        )
+      : null;
     if (
-      status.type !== "inProgress" ||
-      !status.running.some((step) => step.kind === "event" && step.name === "ping")
-    )
-      return null;
-    await ctx.db.patch("assignments", row._id, { pinged: false });
-    await wake(ctx, { ...row, pinged: false, recoveryAt: undefined });
+      status?.type === "inProgress" &&
+      status.running.some((step) => step.kind === "event" && step.name === "ping")
+    ) {
+      await ctx.db.patch("assignments", row._id, { pinged: false });
+      await wake(ctx, { ...row, loopWaiting: true, pinged: false, recoveryAt: undefined });
+    } else {
+      await armRecovery(
+        ctx,
+        { ...row, recoveryAt: undefined },
+        Math.min(
+          (row.recoveryDelayMs ?? LIMITS.reconcileIntervalMs) * 2,
+          LIMITS.reconcileMaxIntervalMs,
+        ),
+      );
+    }
     return null;
   },
 });

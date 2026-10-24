@@ -1,10 +1,11 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { mutationGeneric } from "convex/server";
+import { makeFunctionReference, mutationGeneric } from "convex/server";
 import workflow from "@convex-dev/workflow/test";
 import { type Registration } from "../src/client/types.js";
 import agent from "@convex-dev/agent/test";
 import { registerWorkflow } from "../src/test.js";
+import type { GenericId } from "convex/values";
 import agevex from "../src/test.js";
 import schema from "./fixture/schema.js";
 import type { MutationCtx } from "../src/component/_generated/server.js";
@@ -24,6 +25,7 @@ const modules = import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]);
  */
 export type Fault =
   | "lostPing"
+  | "delayedWait"
   | "save"
   | "accept"
   | "finish"
@@ -256,10 +258,53 @@ export function setup(fault?: Fault, limits?: Registration["limits"]) {
     registerWorkflow(t, "agevex/rootWorkflow");
     registerWorkflow(t, "agevex/childWorkflow");
   } else agevex.register(t);
-  if (fault === "lostPing") {
+  if (fault === "lostPing" || fault === "delayedWait") {
     t.registerComponent("agevex/rootWorkflow", workflow.schema, {
       ...workflow.modules,
       "./component/agevexJournal.ts": () => import("../src/testing/journal.js"),
+      ...(fault === "delayedWait"
+        ? {
+            "./component/pool.ts": async () => {
+              const real = (await workflow.modules["./component/pool.ts"]()) as Record<
+                string,
+                NativeAddMessages
+              >;
+              return {
+                ...real,
+                onComplete: mutationGeneric({
+                  args: real.onComplete._args as never,
+                  returns: real.onComplete._returns as never,
+                  handler: async (ctx, args) => {
+                    const completion = args as {
+                      context: { stepId: GenericId<"steps">; delayed?: boolean };
+                      result: { kind: string; returnValue?: unknown };
+                    };
+                    const entry = await ctx.db.get(completion.context.stepId);
+                    if (
+                      !completion.context.delayed &&
+                      entry?.step.name === "queue:next" &&
+                      completion.result.kind === "success" &&
+                      completion.result.returnValue === null
+                    ) {
+                      // Delay the real completion callback, after next committed
+                      // loopWaiting but before Workflow can register awaitEvent.
+                      await ctx.scheduler.runAfter(
+                        45_000,
+                        makeFunctionReference<"mutation">("pool:onComplete"),
+                        { ...completion, context: { ...completion.context, delayed: true } },
+                      );
+                      return null as never;
+                    }
+                    return (await real.onComplete._handler(
+                      ctx as unknown as MutationCtx,
+                      args as AddMessagesArgs,
+                    )) as never;
+                  },
+                }),
+              };
+            },
+          }
+        : {}),
       "./component/event.ts": async () => {
         const real = (await workflow.modules["./component/event.ts"]()) as Record<
           string,

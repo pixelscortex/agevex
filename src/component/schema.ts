@@ -128,6 +128,8 @@ export default defineSchema({
     loopWaiting: v.optional(v.boolean()),
     pinged: v.optional(v.boolean()),
     recoveryAt: v.optional(v.number()),
+    recoveryJobId: v.optional(v.id("_scheduled_functions")),
+    recoveryDelayMs: v.optional(v.number()),
     watchdogId: v.optional(v.id("_scheduled_functions")),
     activeSlice: v.optional(v.string()),
     cancellationEpoch: v.number(),

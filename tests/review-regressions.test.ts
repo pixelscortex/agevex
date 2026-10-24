@@ -28,6 +28,167 @@ const open = (t: ReturnType<typeof setup>) =>
   });
 const activity = (t: ReturnType<typeof setup>, threadId: string) =>
   t.withIdentity({ subject: "alice" }).query(api.agents.activity, { threadId });
+const recoveryJobs = (t: ReturnType<typeof setup>) =>
+  t.query(
+    componentsGeneric().agevex.agevexTest.recoveryJobs as unknown as FunctionReference<"query">,
+  );
+
+it("a lost ping during a 45s completion delay keeps exactly one recovery check armed until work completes", async () => {
+  const t = setup("delayedWait");
+  const receipt = await open(t);
+  const execution = () =>
+    t.query(components.agevex.queue.execution, { assignmentId: receipt.assignmentId });
+  await expect
+    .poll(async () => {
+      await tick(t, 100);
+      return (await execution())?.loopWaiting;
+    })
+    .toBe(true);
+  expect(state.calls).toHaveLength(1);
+  state.dropPing = true;
+  await t.withIdentity({ subject: "alice" }).mutation(api.agents.send, {
+    threadId: receipt.threadId,
+    text: "lost before awaitEvent registration",
+    requestKey: "delayed-wait",
+  });
+  const assertArmed = async () => {
+    const row = await execution();
+    expect(row?.turnStatus).toBe("queued");
+    expect(row?.recoveryAt).toBeDefined();
+    // In particular, a coalescing flag must never outlive its recovery job.
+    expect(row?.pinged).toBe(true);
+    expect(await recoveryJobs(t)).toMatchObject({ pending: 1 });
+  };
+  await assertArmed();
+  await tick(t, 31_000);
+  expect(state.calls).toHaveLength(1);
+  await assertArmed();
+  await tick(t, 15_000);
+  await assertArmed();
+  await tick(t, 60_000);
+  await drain(t);
+  expect(state.calls).toHaveLength(2);
+  expect(await activity(t, receipt.threadId)).toMatchObject({
+    turnStatus: "idle",
+    queuedMessages: 0,
+  });
+  expect((await execution())?.pinged).toBe(false);
+  expect(await recoveryJobs(t)).toMatchObject({ pending: 0 });
+});
+
+it("cancel closes the active pending placeholder behind a full inbox", async () => {
+  const t = setup();
+  state.gate = new Promise((resolve) => {
+    state.release = resolve;
+  });
+  const receipt = await open(t);
+  await expect
+    .poll(async () => {
+      await tick(t, 100);
+      return state.calls.length;
+    })
+    .toBe(1);
+  const pending = () =>
+    t.run((ctx) =>
+      listMessages(ctx, components.agent, {
+        threadId: receipt.threadId,
+        statuses: ["pending"],
+        paginationOpts: { cursor: null, numItems: 100 },
+      }),
+    );
+  const placeholder = (await pending()).page;
+  expect(placeholder).toHaveLength(1);
+  const alice = t.withIdentity({ subject: "alice" });
+  for (let i = 0; i < LIMITS.queueLength; i++)
+    await alice.mutation(api.agents.send, {
+      threadId: receipt.threadId,
+      text: "queued " + i,
+      requestKey: "queued-" + i,
+    });
+  expect(await activity(t, receipt.threadId)).toMatchObject({ queuedMessages: 20 });
+  await alice.mutation(api.agents.cancel, { threadId: receipt.threadId });
+  state.release!();
+  state.gate = undefined;
+  await drain(t);
+  expect((await pending()).page).toEqual([]);
+  expect(
+    await t.query(components.agent.messages.getMessagesByIds, {
+      messageIds: [placeholder[0]._id],
+    }),
+  ).toMatchObject([{ status: "failed", error: "CANCELLED" }]);
+  expect(state.calls).toHaveLength(1);
+});
+
+it("cancel finalizes every page of native pending placeholders", async () => {
+  const t = setup();
+  const receipt = await open(t);
+  await drain(t);
+  // Native hosts may have pending messages beyond the managed generation's
+  // single placeholder. Cleanup must exhaust the filtered cursor even while
+  // finalization removes earlier pages from the pending-status index.
+  const placeholders = await t.mutation(components.agent.messages.addMessages, {
+    threadId: receipt.threadId,
+    failPendingSteps: false,
+    messages: Array.from({ length: LIMITS.verificationPage * 2 + 1 }, () => ({
+      message: { role: "assistant" as const, content: [] },
+      status: "pending" as const,
+    })),
+  });
+  await t.withIdentity({ subject: "alice" }).mutation(api.agents.cancel, {
+    threadId: receipt.threadId,
+  });
+  await drain(t);
+  const messages = await t.query(components.agent.messages.getMessagesByIds, {
+    messageIds: placeholders.messages.map((message) => message._id),
+  });
+  expect(messages).toHaveLength(LIMITS.verificationPage * 2 + 1);
+  expect(
+    messages.every((message) => message?.status === "failed" && message.error === "CANCELLED"),
+  ).toBe(true);
+});
+
+it("recovery never re-rings an active generation with queued inbox work", async () => {
+  const t = setup();
+  state.gate = new Promise((resolve) => {
+    state.release = resolve;
+  });
+  const receipt = await open(t);
+  await expect
+    .poll(async () => {
+      await tick(t, 100);
+      return state.calls.length;
+    })
+    .toBe(1);
+  await t.withIdentity({ subject: "alice" }).mutation(api.agents.send, {
+    threadId: receipt.threadId,
+    text: "wait for active generation",
+    requestKey: "active",
+  });
+  // Exercise even a stale detector arriving after the turn was claimed.
+  await t.mutation(
+    (components.agevex.queue as Record<string, unknown>).reconcile as FunctionReference<"mutation">,
+    { assignmentId: receipt.assignmentId },
+  );
+  await tick(t, LIMITS.reconcileIntervalMs * 2);
+  expect(state.calls).toHaveLength(1);
+  const row = await t.query(components.agevex.queue.execution, {
+    assignmentId: receipt.assignmentId,
+  });
+  expect(row).toMatchObject({ turnStatus: "running", pinged: false });
+  expect(row?.recoveryAt).toBeUndefined();
+  expect(await recoveryJobs(t)).toMatchObject({ pending: 0 });
+  state.release!();
+  state.gate = undefined;
+  await drain(t);
+  expect(state.calls).toHaveLength(2);
+  const events = await workflowCall<
+    { total: number },
+    typeof import("./fixture/schema.js").default
+  >(t, "agevex/rootWorkflow", "query", "agevexJournal", "events");
+  // The sole event is the loop's final awaited ping; no early doorbells were
+  // sent to a loop executing a child turn.
+  expect(events.total).toBe(1);
+});
 
 it("an idle loop recovers its only lost ping without a replacement send", async () => {
   const t = setup("lostPing");
@@ -438,15 +599,14 @@ it("an approval response followed by a fresh send completes the approval-blocked
   });
 });
 
-it("an idle deployment schedules no recovery jobs after its pending wakes are consumed", async () => {
+it("an idle deployment with an empty inbox schedules no recovery checks", async () => {
   const t = setup();
   const receipt = await open(t);
   await drain(t);
-  const jobs = () =>
-    t.query(
-      componentsGeneric().agevex.agevexTest.recoveryJobs as unknown as FunctionReference<"query">,
-    );
-  expect(await jobs()).toEqual({ total: 0, pending: 0 });
+  const settled = await recoveryJobs(t);
+  expect(settled).toMatchObject({ pending: 0 });
+  await tick(t, LIMITS.reconcileIntervalMs * 10);
+  expect(await recoveryJobs(t)).toEqual(settled);
   await t.withIdentity({ subject: "alice" }).mutation(api.agents.send, {
     threadId: receipt.threadId,
     text: "one wake",
@@ -454,20 +614,58 @@ it("an idle deployment schedules no recovery jobs after its pending wakes are co
   });
   await drain(t);
   expect(state.calls).toHaveLength(2);
-  expect(await jobs()).toEqual({ total: 1, pending: 1 });
-  // Consume one wake, then ring again before its delayed check: the same
-  // transactionally armed check must cover the second wake too.
-  await t.withIdentity({ subject: "alice" }).mutation(api.agents.send, {
+  // Recovery now follows durable inbox ownership: claim cancels its check
+  // immediately, instead of leaving a delayed check for an already idle loop.
+  const afterWake = await recoveryJobs(t);
+  expect(afterWake).toMatchObject({ pending: 0 });
+  await tick(t, LIMITS.reconcileIntervalMs * 10);
+  expect(await recoveryJobs(t)).toEqual(afterWake);
+});
+
+it("consuming the first ping then losing the second keeps one check through coalesced sends", async () => {
+  const t = setup("lostPing");
+  const receipt = await open(t);
+  await drain(t);
+  const alice = t.withIdentity({ subject: "alice" });
+  await alice.mutation(api.agents.send, {
     threadId: receipt.threadId,
-    text: "another wake",
-    requestKey: "another-wake",
+    text: "consumed first ping",
+    requestKey: "first-ping",
   });
   await drain(t);
-  expect(state.calls).toHaveLength(3);
-  expect(await jobs()).toEqual({ total: 1, pending: 1 });
-  await tick(t, LIMITS.reconcileIntervalMs * 2);
-  const settled = await jobs();
-  expect(settled).toMatchObject({ pending: 0 });
-  await tick(t, LIMITS.reconcileIntervalMs * 10);
-  expect(await jobs()).toEqual(settled);
+  expect(state.calls).toHaveLength(2);
+  state.dropPing = true;
+  await t.withIdentity({ subject: "alice" }).mutation(api.agents.send, {
+    threadId: receipt.threadId,
+    text: "lost second ping",
+    requestKey: "second-ping",
+  });
+  const armed = await t.query(components.agevex.queue.execution, {
+    assignmentId: receipt.assignmentId,
+  });
+  expect(armed?.pinged).toBe(true);
+  expect(armed?.recoveryAt).toBeDefined();
+  for (let i = 0; i < 3; i++) {
+    await alice.mutation(api.agents.send, {
+      threadId: receipt.threadId,
+      text: "coalesced " + i,
+      requestKey: "coalesced-" + i,
+    });
+    expect(await recoveryJobs(t)).toMatchObject({ pending: 1 });
+    expect(
+      (
+        await t.query(components.agevex.queue.execution, {
+          assignmentId: receipt.assignmentId,
+        })
+      )?.recoveryAt,
+    ).toBe(armed?.recoveryAt);
+  }
+  await tick(t, LIMITS.reconcileIntervalMs + 1_000);
+  await drain(t);
+  expect(state.calls).toHaveLength(6);
+  expect(await recoveryJobs(t)).toMatchObject({ pending: 0 });
+  expect(await activity(t, receipt.threadId)).toMatchObject({
+    turnStatus: "idle",
+    queuedMessages: 0,
+  });
 });

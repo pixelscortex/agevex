@@ -15,8 +15,11 @@ afterEach(() => {
   vi.clearAllTimers();
   vi.useRealTimers();
 });
+// Queue-owned recovery adds control jobs that claim cancels immediately. Allow
+// the real scheduler harness to settle those timers as well as both Workflow
+// lanes; the default 100 iterations can expire after the run is already idle.
 const drain = (t: ReturnType<typeof setup>) =>
-  t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100));
+  t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100), 2000);
 
 type Convex = ReturnType<typeof setup>;
 type RunView = {
