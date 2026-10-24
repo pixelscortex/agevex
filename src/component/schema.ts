@@ -1,6 +1,5 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v, type Validator } from "convex/values";
-import { vStreamMessage, vStreamDelta } from "@convex-dev/agent/validators";
 
 import { limitsValidator } from "./limits.js";
 
@@ -15,6 +14,7 @@ export const errorCode = v.union(
   v.null(),
   v.literal("GENERATION_FAILED"),
   v.literal("SLICE_LIMIT"),
+  v.literal("APPROVAL_LIMIT"),
   v.literal("AUTHORIZATION_DENIED"),
   v.literal("EXECUTION_AMBIGUOUS"),
 );
@@ -22,6 +22,7 @@ export const runErrorCode = v.union(
   v.null(),
   v.literal("GENERATION_FAILED"),
   v.literal("SLICE_LIMIT"),
+  v.literal("APPROVAL_LIMIT"),
   v.literal("EXECUTION_AMBIGUOUS"),
   v.literal("EMPTY_RESULT"),
   v.literal("RESULT_UNVERIFIED"),
@@ -159,7 +160,16 @@ export default defineSchema({
     inboxId: v.optional(v.id("inbox")),
     approvalBlocked: v.optional(v.boolean()),
     approvalRequestMessageId: v.optional(v.string()),
-    approvalRequestId: v.optional(v.id("approvalRequests")),
+    // At most LIMITS.approvalsPerPause fixed-size approval keys, never payloads.
+    approvals: v.optional(
+      v.object({
+        inboxId: v.id("inbox"),
+        requests: v.array(
+          v.object({ key: v.string(), messageId: v.string(), providerExecuted: v.boolean() }),
+        ),
+        resolved: v.array(v.number()),
+      }),
+    ),
     continueSlice: v.optional(v.boolean()),
     lastSlice: v.optional(v.string()),
     activeRuns: v.optional(v.number()),
@@ -168,35 +178,6 @@ export default defineSchema({
   })
     .index("by_thread", ["threadId"])
     .index("by_loop_waiting", ["loopWaiting", "turnStatus"]),
-  // Payload-sized ids stay off assignments: cancellation reads metadata only.
-  approvalRequests: defineTable({
-    assignmentId: v.id("assignments"),
-    messageId: v.string(),
-    inboxId: v.id("inbox"),
-    approvals: v.array(
-      v.object({
-        approvalId: v.string(),
-        toolCallId: v.string(),
-        providerExecuted: v.boolean(),
-        responseMessageId: v.optional(v.string()),
-      }),
-    ),
-  }),
-  // Exact native stream ids and their creation projection. Agent 0.7.7 has
-  // no stream-by-id query; never use its unbudgeted thread-wide list reader.
-  nativeStreams: defineTable({
-    streamId: v.string(),
-    assignmentId: v.id("assignments"),
-    message: vStreamMessage,
-  }).index("by_stream", ["streamId"]),
-  // Stream chunks are a UI read projection, written with the native delta.
-  // Unlike Agent 0.7.7 listDeltas, this projection has a shared metadata/byte
-  // budget and never needs a native thread-wide lookup.
-  nativeStreamDeltas: defineTable(vStreamDelta).index("by_stream_start", [
-    "streamId",
-    "start",
-    "end",
-  ]),
   inbox: defineTable({
     assignmentId: v.id("assignments"),
     messageId: v.string(),
@@ -213,7 +194,6 @@ export default defineSchema({
   // A run outlives an individual turn: results and subsequent delegations spend
   // the same budget. pendingResults lets the parent batch child notifications.
   runs: defineTable({
-    rootAssignmentId: v.id("assignments"),
     launches: v.number(),
     hops: v.number(),
     pendingResults: v.number(),

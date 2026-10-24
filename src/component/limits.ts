@@ -86,19 +86,16 @@ export const LIMITS = {
   requestKeyLength: 200,
   runEvents: 4,
   maxDelegationPage: 50,
-  // One active generation per thread. The stream read shares 4 MiB between
-  // <=1 MiB metadata, a 2 MiB delta page and <=1 MiB boundary overshoot.
-  streamCursors: 1,
-  streamPageBytes: 4 << 20,
-  streamDeltaPage: 100,
-  nativeDocumentBytes: 1 << 20,
+  // Bound approval coordination metadata even when native approval ids are huge:
+  // requests store SHA-256 keys; resolved contains only their array offsets.
+  approvalsPerPause: 16,
+  // Agent byte-bounds the shared delta page; cap its per-cursor metadata reads.
+  streamCursors: 8,
   // The public `messages` reader takes its page size from the client. Without a
   // server-side clamp, one request for a huge page of large tool results would
   // exceed the 16 MiB query read limit and that query would fail outright.
   // Native pagination stops early at `maximumBytesRead` and returns a cursor.
-  // Its six merged status/tool indexes can read <=6 additional <=1 MiB
-  // lookahead/boundary documents. <=10 MiB plus the 4 MiB stream budget leaves
-  // room for assignment/authorization metadata under Convex's 16 MiB ceiling.
+  // Agent owns the merged index lookahead and stream read bounds (spec §9b).
   messagePage: 100,
   messagePageBytes: 4 << 20,
   leaseMs: HOST_LIMITS.leaseMs.default,

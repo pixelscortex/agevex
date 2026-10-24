@@ -678,14 +678,6 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                     args: payload,
                     rejectStale: true,
                     ...(JSON.stringify(getFunctionAddress(ref)) ===
-                    JSON.stringify(getFunctionAddress(managed.component.streams.addDelta))
-                      ? { nativeDelta: true }
-                      : {}),
-                    ...(JSON.stringify(getFunctionAddress(ref)) ===
-                    JSON.stringify(getFunctionAddress(managed.component.streams.finish))
-                      ? { nativeStreamFinished: true }
-                      : {}),
-                    ...(JSON.stringify(getFunctionAddress(ref)) ===
                     JSON.stringify(getFunctionAddress(managed.component.streams.create))
                       ? {
                           nativeStream: await createFunctionHandle(managed.component.streams.abort),

@@ -2,11 +2,12 @@ import {
   createThread,
   listUIMessages,
   saveMessage,
+  syncStreams,
   vStreamArgs,
   vStreamMessagesReturnValue,
   type UIMessage,
 } from "@convex-dev/agent";
-import type { StreamArgs, StreamDelta, StreamMessage } from "@convex-dev/agent/validators";
+import type { StreamArgs } from "@convex-dev/agent/validators";
 import {
   createFunctionHandle,
   mutationGeneric,
@@ -264,7 +265,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           ...args,
           paginationOpts,
         });
-        const streams = await boundedStreams(ctx, component, row, args.streamArgs);
+        const streams = await boundedStreams(ctx, row, args.streamArgs);
         return { ...page, streams };
       },
     }),
@@ -311,42 +312,31 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
 
 async function boundedStreams(
   ctx: GenericQueryCtx<GenericDataModel>,
-  component: ComponentApi,
-  row: { assignmentId: string; threadId: string; native: ManagedAgent },
+  row: { threadId: string; native: ManagedAgent },
   args?: StreamArgs,
 ) {
   if (!args) return undefined;
   if (args.kind === "list") {
-    const execution = await ctx.runQuery(component.queue.execution, {
-      assignmentId: row.assignmentId,
-    });
-    const id = execution?.cancelled ? undefined : execution?.pendingGeneration?.stream?.id;
-    const stream = id
-      ? await ctx.runQuery(component.queue.stream, {
-          assignmentId: row.assignmentId,
-          streamId: id,
-        })
-      : null;
-    const messages: StreamMessage[] =
-      stream?.status === "streaming" && stream.order >= (args.startOrder ?? 0) ? [stream] : [];
-    return { kind: "list" as const, messages };
+    // Accepted upstream exception, like Agent's context reader (spec §9b):
+    // Agent 0.7.7 streams.list reads at most 100 streaming-state metadata docs.
+    return syncStreams(ctx, row.native.component, { threadId: row.threadId, streamArgs: args });
   }
-  // A thread has one active generation. Deduplicate by id (including cursors
-  // at different offsets) and keep the earliest offset so data isn't skipped.
+  // Deduplicate by id (including cursors at different offsets), keeping the
+  // earliest offset so data isn't skipped. Agent byte-bounds the shared page;
+  // the cursor cap bounds its one metadata-document read per stream.
   const cursors = new Map<string, number>();
   for (const { streamId, cursor } of args.cursors) {
     if (!Number.isSafeInteger(cursor) || cursor < 0)
       throw new ConvexError({ code: "INVALID_STREAM_CURSOR" });
     cursors.set(streamId, Math.min(cursors.get(streamId) ?? cursor, cursor));
   }
-  const deltas: StreamDelta[] = [];
-  for (const [streamId, cursor] of [...cursors].slice(0, LIMITS.streamCursors)) {
-    const page = await ctx.runQuery(component.queue.streamDeltas, {
-      assignmentId: row.assignmentId,
-      streamId,
-      cursor,
-    });
-    deltas.push(...page);
-  }
-  return { kind: "deltas" as const, deltas };
+  return syncStreams(ctx, row.native.component, {
+    threadId: row.threadId,
+    streamArgs: {
+      ...args,
+      cursors: [...cursors]
+        .slice(0, LIMITS.streamCursors)
+        .map(([streamId, cursor]) => ({ streamId, cursor })),
+    },
+  });
 }

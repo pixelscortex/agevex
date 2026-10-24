@@ -16,10 +16,10 @@ afterEach(() => {
 });
 const drain = (t: Test) => t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100), 2000);
 const owner = (t: Test) => t.withIdentity({ subject: "alice" });
-const open = (t: Test, key = "round8") =>
+const open = (t: Test, key = "bounded-reads") =>
   owner(t).mutation(api.agents.open, {
     agent: "Main",
-    prompt: "round eight",
+    prompt: "bounded reads",
     requestKey: key,
   });
 const execution = (t: Test, assignmentId: string) =>
@@ -47,7 +47,7 @@ async function nativeHandles(t: Test) {
     },
   }));
 }
-async function request(t: Test, count = 2, providerExecuted = false) {
+async function request(t: Test, count = 2, providerExecuted = false, idPrefix = "approval-") {
   const turn = await claimed(t);
   await t.mutation(components.agevex.queue.write, {
     assignmentId: turn.assignmentId,
@@ -73,7 +73,7 @@ async function request(t: Test, count = 2, providerExecuted = false) {
               },
               {
                 type: "tool-approval-request",
-                approvalId: `approval-${i}`,
+                approvalId: `${idPrefix}${i}`,
                 toolCallId: `call-${i}`,
               },
             ]).flat(),
@@ -260,6 +260,84 @@ it("respond authorizes an owned child and continues its managed settlement", asy
   });
 });
 
+it("sixteen approvals stay bounded and resolve atomically at the pause limit", async () => {
+  const t = setup(undefined, undefined, true);
+  const turn = await request(t, LIMITS.approvalsPerPause);
+  const paused = (await execution(t, turn.assignmentId))!;
+  expect(paused.approvals?.requests).toHaveLength(LIMITS.approvalsPerPause);
+  expect(new TextEncoder().encode(JSON.stringify(paused.approvals)).length).toBeLessThan(4 << 10);
+  for (let i = 0; i < LIMITS.approvalsPerPause; i++) {
+    const response = await owner(t).mutation(api.agents.respond, {
+      threadId: turn.threadId,
+      approvalId: `approval-${i}`,
+      approved: false,
+    });
+    const row = (await execution(t, turn.assignmentId))!;
+    expect(row.approvals?.resolved).toHaveLength(i + 1);
+    expect(row.approvalBlocked).toBe(i < LIMITS.approvalsPerPause - 1);
+    if (i === LIMITS.approvalsPerPause - 1) expect(row.promptMessageId).toBe(response.messageId);
+  }
+  await drain(t);
+});
+
+it("an oversized approval step commits APPROVAL_LIMIT with the native save and never resumes", async () => {
+  const t = setup("transcriptReads");
+  const turn = await request(t, LIMITS.approvalsPerPause + 1);
+  const row = (await execution(t, turn.assignmentId))!;
+  expect(row).toMatchObject({
+    approvalBlocked: true,
+    turnStatus: "recovery_required",
+    errorCode: "APPROVAL_LIMIT",
+  });
+  expect(row.approvals).toBeUndefined();
+  expect(row.turnToken).toBeUndefined();
+  expect(row.watchdogId).toBeUndefined();
+  expect(row.recoveryJobId).toBeUndefined();
+  const [native] = await t.query(components.agent.messages.getMessagesByIds, {
+    messageIds: [row.approvalRequestMessageId!],
+  });
+  const content = native!.message!.content;
+  expect(
+    Array.isArray(content) && content.filter((p) => p.type === "tool-approval-request"),
+  ).toHaveLength(LIMITS.approvalsPerPause + 1);
+  // An action's later failure cannot overwrite the transaction's typed failure.
+  await t.mutation(components.agevex.queue.finish, {
+    assignmentId: turn.assignmentId,
+    turnToken: turn.executionId,
+    errorCode: "GENERATION_FAILED",
+  });
+  state.transcriptReads = 0;
+  state.forbidTranscriptReads = true;
+  await expect(
+    owner(t).mutation(api.agents.send, {
+      threadId: turn.threadId,
+      text: "must stay blocked",
+      requestKey: "overflow-followup",
+    }),
+  ).rejects.toThrow("RECOVERY_REQUIRED");
+  await drain(t);
+  expect(state.transcriptReads).toBe(0);
+  expect(state.calls).toHaveLength(0);
+  expect(await execution(t, turn.assignmentId)).toMatchObject({ errorCode: "APPROVAL_LIMIT" });
+});
+
+it("huge native approval ids leave fixed-size assignment metadata and still resolve", async () => {
+  const t = setup(undefined, undefined, true);
+  const prefix = "x".repeat(450 << 10);
+  const turn = await request(t, 1, true, prefix);
+  const row = (await execution(t, turn.assignmentId))!;
+  expect(row.approvals?.requests[0].key).toHaveLength(64);
+  expect(JSON.stringify(row.approvals).length).toBeLessThan(4 << 10);
+  await owner(t).mutation(api.agents.respond, {
+    threadId: turn.threadId,
+    approvalId: prefix + "0",
+    approved: false,
+  });
+  expect(await execution(t, turn.assignmentId)).toMatchObject({ approvalBlocked: false });
+  await owner(t).mutation(api.agents.cancel, { threadId: turn.threadId });
+  await drain(t);
+});
+
 async function activeStream(t: Test, bytes = 450 << 10) {
   const turn = await claimed(t);
   await t.mutation(components.agevex.queue.write, {
@@ -293,24 +371,29 @@ async function activeStream(t: Test, bytes = 450 << 10) {
   return { ...turn, streamId };
 }
 
-it("kind list ignores 40 by 450 KiB native streams and returns only the recorded active id", async () => {
+// Agent owns the 100-document streaming metadata bound; accepted by spec §9b.
+it("kind list preserves Agent's 100-stream bound and startOrder", async () => {
   const t = setup(undefined, undefined, true);
-  const turn = await activeStream(t);
-  for (let i = 0; i < 40; i++)
+  const turn = await activeStream(t, 0);
+  for (let i = 0; i < 104; i++)
     await t.mutation(components.agent.streams.create, {
       threadId: turn.threadId,
       order: i + 2,
       stepOrder: 0,
-      providerOptions: { huge: { value: "x".repeat(450 << 10) } },
     });
-  const result = await owner(t).query(api.agents.messages, {
-    threadId: turn.threadId,
-    paginationOpts: { cursor: null, numItems: 1 },
-    streamArgs: { kind: "list" },
-  });
-  expect(result.streams).toMatchObject({ kind: "list", messages: [{ streamId: turn.streamId }] });
+  const read = (startOrder?: number) =>
+    owner(t).query(api.agents.messages, {
+      threadId: turn.threadId,
+      paginationOpts: { cursor: null, numItems: 1 },
+      streamArgs: { kind: "list", ...(startOrder !== undefined ? { startOrder } : {}) },
+    });
+  const result = await read();
   if (result.streams?.kind !== "list") throw new Error("EXPECTED_LIST");
-  expect(result.streams.messages).toHaveLength(1);
+  expect(result.streams.messages).toHaveLength(100);
+  expect(result.streams.messages[0].order).toBe(105);
+  const filtered = await read(103);
+  if (filtered.streams?.kind !== "list") throw new Error("EXPECTED_LIST");
+  expect(filtered.streams.messages.map((message) => message.order)).toEqual([105, 104, 103]);
   await owner(t).mutation(api.agents.cancel, { threadId: turn.threadId });
   await drain(t);
 });
@@ -328,8 +411,9 @@ it("40 repeated delta cursors read one owned stream within the metadata and delt
   });
   if (result.streams?.kind !== "deltas") throw new Error("EXPECTED_DELTAS");
   expect(result.streams.deltas).toEqual([]);
+  const otherThread = await open(t, "other-thread");
   const other = await t.mutation(components.agent.streams.create, {
-    threadId: turn.threadId,
+    threadId: otherThread.threadId,
     order: 99,
     stepOrder: 0,
   });
@@ -339,22 +423,60 @@ it("40 repeated delta cursors read one owned stream within the metadata and delt
       paginationOpts: { cursor: null, numItems: 1 },
       streamArgs: { kind: "deltas", cursors: [{ streamId: other, cursor: 0 }] },
     }),
-  ).rejects.toThrow("FORBIDDEN_STREAM");
+  ).rejects.toThrow("Stream does not belong to the given thread");
   await owner(t).mutation(api.agents.cancel, { threadId: turn.threadId });
   await drain(t);
 });
 
-it("delta pages include metadata in their byte budget and preserve continuation", async () => {
+it("forty distinct delta cursors read at most eight native streams and retain the earliest offset", async () => {
+  const t = setup(undefined, undefined, true);
+  const turn = await activeStream(t);
+  const streamIds = [turn.streamId];
+  for (let i = 1; i < 40; i++)
+    streamIds.push(
+      await t.mutation(components.agent.streams.create, {
+        threadId: turn.threadId,
+        order: i + 1,
+        stepOrder: 0,
+        providerOptions: { huge: { value: "x".repeat(450 << 10) } },
+      }),
+    );
+  for (const streamId of streamIds)
+    await t.mutation(components.agent.streams.addDelta, {
+      streamId,
+      start: 0,
+      end: 1,
+      parts: [{ type: "text-delta", id: "text", delta: "chunk" }],
+    });
+  const result = await owner(t).query(api.agents.messages, {
+    threadId: turn.threadId,
+    paginationOpts: { cursor: null, numItems: 1 },
+    streamArgs: {
+      kind: "deltas",
+      cursors: [
+        { streamId: turn.streamId, cursor: 1 },
+        ...streamIds.map((streamId) => ({ streamId, cursor: 0 })),
+      ],
+    },
+  });
+  if (result.streams?.kind !== "deltas") throw new Error("EXPECTED_DELTAS");
+  expect(result.streams.deltas.map((delta) => delta.streamId)).toEqual(
+    streamIds.slice(0, LIMITS.streamCursors),
+  );
+  await owner(t).mutation(api.agents.cancel, { threadId: turn.threadId });
+  await drain(t);
+});
+
+it("native byte-bounded delta pages preserve continuation", async () => {
   const t = setup(undefined, undefined, true);
   const turn = await activeStream(t);
   const deltaHandle = await t.run(() => createFunctionHandle(components.agent.streams.addDelta));
-  for (let i = 0; i < 12; i++)
+  for (let i = 0; i < 24; i++)
     await t.mutation(components.agevex.queue.write, {
       assignmentId: turn.assignmentId,
       executionId: turn.executionId,
       cancellationEpoch: 0,
       handle: deltaHandle,
-      nativeDelta: true,
       args: {
         streamId: turn.streamId,
         start: i,
@@ -373,14 +495,14 @@ it("delta pages include metadata in their byte budget and preserve continuation"
     });
     if (result.streams?.kind !== "deltas") throw new Error("EXPECTED_DELTAS");
     if (!result.streams.deltas.length) break;
-    expect(result.streams.deltas.length).toBeLessThan(12);
+    expect(result.streams.deltas.length).toBeLessThan(24);
     for (const delta of result.streams.deltas) {
       expect(seen.has(delta.start)).toBe(false);
       seen.add(delta.start);
       cursor = delta.end;
     }
   }
-  expect(seen.size).toBe(12);
+  expect(seen.size).toBe(24);
   await owner(t).mutation(api.agents.cancel, { threadId: turn.threadId });
   await drain(t);
 });

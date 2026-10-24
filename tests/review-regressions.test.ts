@@ -568,25 +568,47 @@ it("cancel commits a full approval-blocked backlog with maximum limits, children
     const pending = await savePending(t, turn, turn.threadId, 0, "x".repeat(490 << 10));
     messageIds.push(pending._id);
   }
-  // Pause each claimed turn after its tracked save. Children retain their one
-  // prompt; the root then fills the entire configured queue via public sends.
-  for (const turn of turns)
-    await t.mutation(components.agevex.queue.pauseApproval, {
+  // Fill bounded approval metadata on every assignment as well as its tracked
+  // placeholder. Large native ids must not inflate the atomic cancel reads.
+  const handles = await t.run(async () => ({
+    handle: await createFunctionHandle(components.agent.messages.addMessages),
+    nativeMessages: {
+      getMessages: await createFunctionHandle(components.agent.messages.getMessagesByIds),
+      finalizeMessage: await createFunctionHandle(components.agent.messages.finalizeMessage),
+    },
+  }));
+  for (const turn of turns) {
+    await t.mutation(components.agevex.queue.write, {
       assignmentId: turn.assignmentId,
       executionId: turn.turnToken,
-    });
-  await t.run((ctx) =>
-    saveMessage(ctx, components.agent, {
-      threadId: receipt.threadId,
-      message: {
-        role: "assistant",
-        content: [
-          { type: "tool-call", toolCallId: "max-call", toolName: "echo", input: {} },
-          { type: "tool-approval-request", approvalId: "max-approval", toolCallId: "max-call" },
+      cancellationEpoch: 0,
+      ...handles,
+      args: {
+        threadId: turn.threadId,
+        failPendingSteps: false,
+        messages: [
+          {
+            message: {
+              role: "assistant",
+              content: Array.from({ length: LIMITS.approvalsPerPause }, (_, i) => [
+                { type: "tool-call", toolCallId: `call-${i}`, toolName: "echo", input: {} },
+                {
+                  type: "tool-approval-request",
+                  approvalId: "x".repeat(20 << 10) + i,
+                  toolCallId: `call-${i}`,
+                },
+              ]).flat(),
+            },
+          },
         ],
       },
-    }),
-  );
+    });
+    const paused = await t.query(components.agevex.queue.execution, {
+      assignmentId: turn.assignmentId,
+    });
+    expect(paused?.approvals?.requests).toHaveLength(LIMITS.approvalsPerPause);
+    expect(new TextEncoder().encode(JSON.stringify(paused)).length).toBeLessThan(4 << 10);
+  }
   const alice = t.withIdentity({ subject: "alice" });
   for (let i = 1; i < HOST_LIMITS.queueLength.max; i++) {
     await alice.mutation(api.agents.send, {
