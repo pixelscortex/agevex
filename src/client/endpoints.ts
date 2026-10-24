@@ -212,9 +212,11 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           assignmentId: row.assignmentId,
           subject: row.subject,
         });
-        // These are cancellation-owned writes, after the epoch fence is set.
-        // Running actions must drop their later saves, so the authorized cancel
-        // transaction itself closes native streams and pending placeholders.
+        // Abort streams after fencing running actions, but yield placeholder
+        // finalization to bounded scheduled transactions. Capture each native
+        // cutoff now: a later send clears cancelled and may immediately create
+        // a new placeholder that this cancellation must never finalize.
+        const targets = [];
         for (const thread of affected) {
           const native = managedAgents.get(thread.agent);
           if (!native) continue;
@@ -227,25 +229,25 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
               streamId: stream.streamId,
               reason: "CANCELLED",
             });
-          // A running placeholder may precede an entire full inbox of newer
-          // prompts. Agent 0.7.7 indexes this status filter, so cleanup must page
-          // pending messages themselves rather than scan the newest transcript.
-          let cursor: string | null = null;
-          for (;;) {
-            const pending = await listMessages(ctx, native.component, {
+          const pending = await listMessages(ctx, native.component, {
+            threadId: thread.threadId,
+            statuses: ["pending"],
+            paginationOpts: { cursor: null, numItems: LIMITS.cancelSnapshotPage },
+          });
+          const newest = pending.page[0];
+          if (newest)
+            targets.push({
               threadId: thread.threadId,
-              statuses: ["pending"],
-              paginationOpts: { cursor, numItems: LIMITS.verificationPage },
+              listMessages: await createFunctionHandle(
+                native.component.messages.listMessagesByThreadId,
+              ),
+              finalizeMessage: await createFunctionHandle(
+                native.component.messages.finalizeMessage,
+              ),
+              cutoff: { messageId: newest._id, order: newest.order, stepOrder: newest.stepOrder },
             });
-            for (const message of pending.page)
-              await ctx.runMutation(native.component.messages.finalizeMessage, {
-                messageId: message._id,
-                result: { status: "failed", error: "CANCELLED" },
-              });
-            if (pending.isDone) break;
-            cursor = pending.continueCursor;
-          }
         }
+        await ctx.runMutation(component.cancellation.scheduleCleanup, { targets });
         return null;
       },
     }),

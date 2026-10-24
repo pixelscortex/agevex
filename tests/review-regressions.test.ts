@@ -2,9 +2,9 @@
 import { it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { setup, api, components, state } from "./setup.js";
 import { workflowCall } from "../src/testing/expect-journal.js";
-import { componentsGeneric, type FunctionReference } from "convex/server";
-import { listMessages, saveMessage } from "@convex-dev/agent";
-import { main } from "./host.js";
+import { componentsGeneric, createFunctionHandle, type FunctionReference } from "convex/server";
+import { createThread, listMessages, saveMessage } from "@convex-dev/agent";
+import { main, coordinateReference, runTurnReference } from "./host.js";
 import { LIMITS } from "../src/client/index.js";
 
 beforeEach(() => vi.useFakeTimers());
@@ -146,6 +146,203 @@ it("cancel finalizes every page of native pending placeholders", async () => {
     messages.every((message) => message?.status === "failed" && message.error === "CANCELLED"),
   ).toBe(true);
 });
+
+it("cancel commits its fence before bounded cleanup drains 300 large pending messages", async () => {
+  const t = setup(undefined, undefined, true);
+  const receipt = await open(t);
+  await drain(t);
+  const messageIds: string[] = [];
+  // Separate native writes fit the platform's transaction budget individually;
+  // their combined 19 MiB cannot be read by a single cancel transaction.
+  for (let i = 0; i < 300; i++) {
+    const saved = await t.mutation(components.agent.messages.addMessages, {
+      threadId: receipt.threadId,
+      failPendingSteps: false,
+      messages: [
+        {
+          message: { role: "assistant", content: [{ type: "text", text: "x".repeat(64 << 10) }] },
+          status: "pending",
+        },
+      ],
+    });
+    messageIds.push(saved.messages[0]._id);
+  }
+  await t.withIdentity({ subject: "alice" }).mutation(api.agents.cancel, {
+    threadId: receipt.threadId,
+  });
+  expect(
+    await t.query(components.agevex.queue.execution, {
+      assignmentId: receipt.assignmentId,
+    }),
+  ).toMatchObject({ cancelled: true, cancellationEpoch: 1 });
+  // Cancellation must yield to scheduled transactions before exhausting native
+  // cleanup, even though the durable fence is already observable.
+  const pending = () =>
+    t.run((ctx) =>
+      listMessages(ctx, components.agent, {
+        threadId: receipt.threadId,
+        statuses: ["pending"],
+        paginationOpts: { cursor: null, numItems: 1 },
+      }),
+    );
+  expect((await pending()).page).toHaveLength(1);
+  await drain(t);
+  expect((await pending()).page).toEqual([]);
+  for (const messageId of messageIds) {
+    expect(
+      await t.query(components.agent.messages.getMessagesByIds, {
+        messageIds: [messageId],
+      }),
+    ).toMatchObject([{ status: "failed", error: "CANCELLED" }]);
+  }
+}, 30_000);
+
+it("cancel cleanup preserves a pending placeholder from a later send", async () => {
+  const t = setup();
+  const receipt = await open(t);
+  await drain(t);
+  const old = await t.mutation(components.agent.messages.addMessages, {
+    threadId: receipt.threadId,
+    failPendingSteps: false,
+    messages: Array.from({ length: LIMITS.verificationPage * 2 + 1 }, () => ({
+      message: { role: "assistant" as const, content: [] },
+      status: "pending" as const,
+    })),
+  });
+  const alice = t.withIdentity({ subject: "alice" });
+  await alice.mutation(api.agents.cancel, { threadId: receipt.threadId });
+  expect(
+    await t.query(components.agent.messages.getMessagesByIds, {
+      messageIds: [old.messages[0]._id],
+    }),
+  ).toMatchObject([{ status: "pending" }]);
+  await alice.mutation(api.agents.send, {
+    threadId: receipt.threadId,
+    text: "new epoch",
+    requestKey: "after-cleanup-cutoff",
+  });
+  const turn = { assignmentId: receipt.assignmentId, turnToken: `${receipt.assignmentId}:1` };
+  expect(await t.mutation(components.agevex.queue.claim, turn)).not.toBeNull();
+  // Drive the native placeholder save for the claimed send directly, before
+  // advancing the scheduler. The same clock tick is intentional: timestamp
+  // rounding must not let cleanup close a later order's placeholder.
+  const fresh = await t.mutation(components.agent.messages.addMessages, {
+    threadId: receipt.threadId,
+    failPendingSteps: false,
+    messages: [{ message: { role: "assistant", content: [] }, status: "pending" }],
+  });
+  await t.mutation(components.agevex.queue.finish, { ...turn, errorCode: null });
+  await drain(t);
+  expect(
+    await t.query(components.agent.messages.getMessagesByIds, {
+      messageIds: [fresh.messages[0]._id],
+    }),
+  ).toMatchObject([{ status: "pending" }]);
+  expect(
+    (
+      await t.query(components.agent.messages.getMessagesByIds, {
+        messageIds: old.messages.map((message) => message._id),
+      })
+    ).every((message) => message?.status === "failed" && message.error === "CANCELLED"),
+  ).toBe(true);
+});
+
+it.each(["failed", "blocked"] as const)(
+  "two %s deliveries with an empty inbox leave no orphaned event after rotation",
+  async (deliveryStatus) => {
+    const t = setup();
+    const receipt = await open(t);
+    const root = { assignmentId: receipt.assignmentId, turnToken: `${receipt.assignmentId}:0` };
+    expect(await t.mutation(components.agevex.queue.claim, root)).not.toBeNull();
+    const deliveries = [];
+    // Use real launch, claim and settlement transitions, holding delivery until
+    // the root is asleep. No fake-time advance may resume it between deliveries.
+    for (let i = 0; i < 2; i++) {
+      const delivery = await t.run(async (ctx) => {
+        const reserved = await ctx.runMutation(components.agevex.subagents.reserve, {
+          ...root,
+          toolCallId: "empty-delivery-" + i,
+          agent: "Researcher",
+          payloadFingerprint: "empty-delivery-" + i,
+          coordinateHandle: await createFunctionHandle(coordinateReference()),
+          runTurn: await createFunctionHandle(runTurnReference()),
+        });
+        if (reserved.kind !== "reserved") throw new Error("RESERVATION_FAILED");
+        const threadId = await createThread(ctx, components.agent, { userId: "alice" });
+        const { messageId } = await saveMessage(ctx, components.agent, {
+          threadId,
+          prompt: "task",
+        });
+        await ctx.runMutation(components.agevex.subagents.attach, {
+          runId: reserved.runId,
+          childThreadId: threadId,
+          promptMessageId: messageId,
+        });
+        const child = await ctx.runQuery(components.agevex.queue.assignment, { threadId });
+        if (!child) throw new Error("CHILD_MISSING");
+        const turn = { assignmentId: child.assignmentId, turnToken: `${child.assignmentId}:0` };
+        const claimed = await ctx.runMutation(components.agevex.queue.claim, turn);
+        if (!claimed?.subagent) throw new Error("CHILD_NOT_CLAIMED");
+        await ctx.runMutation(components.agevex.subagents.settle, {
+          ...turn,
+          runId: reserved.runId,
+          childResultMessageId: null,
+          errorCode: "GENERATION_FAILED",
+        });
+        await ctx.runMutation(components.agevex.queue.finish, { ...turn, errorCode: null });
+        return { runId: reserved.runId, deliveryToken: claimed.subagent.deliveryToken };
+      });
+      deliveries.push(delivery);
+    }
+    await t.mutation(components.agevex.queue.finish, { ...root, errorCode: null });
+    await drain(t);
+    expect(
+      await t.query(components.agevex.queue.execution, {
+        assignmentId: receipt.assignmentId,
+      }),
+    ).toMatchObject({ loopWaiting: true, turnStatus: "idle" });
+    // Each serial send consumes one waiting iteration and one turn iteration.
+    // Stop at the final wait, so surplus doorbells cannot be consumed by another
+    // idle iteration before rotation cleans up this workflows journal.
+    const sendsBeforeRotation = Math.floor((LIMITS.turnsPerLoop - 1) / 2);
+    const send = (i: number) =>
+      t.withIdentity({ subject: "alice" }).mutation(api.agents.send, {
+        threadId: receipt.threadId,
+        text: "rotate " + i,
+        requestKey: "rotate-" + i,
+      });
+    for (let i = 0; i < sendsBeforeRotation; i++) {
+      await send(i);
+      await drain(t);
+    }
+    const before = await t.query(components.agevex.queue.execution, {
+      assignmentId: receipt.assignmentId,
+    });
+    for (const delivery of deliveries)
+      await t.mutation(components.agevex.subagents.deliver, {
+        ...delivery,
+        deliveryStatus,
+        parentMessageId: null,
+        errorCode: deliveryStatus === "failed" ? "DELIVERY_FAILED" : "AUTHORIZATION_DENIED",
+      });
+    await send(sendsBeforeRotation);
+    await drain(t);
+    expect(
+      (
+        await t.query(components.agevex.queue.execution, {
+          assignmentId: receipt.assignmentId,
+        })
+      )?.workflowId,
+    ).not.toBe(before?.workflowId);
+    const events = await workflowCall<
+      { orphaned: number },
+      typeof import("./fixture/schema.js").default
+    >(t, "agevex/rootWorkflow", "query", "agevexJournal", "events");
+    expect(events.orphaned).toBe(0);
+    expect(state.calls).toHaveLength(sendsBeforeRotation + 1);
+  },
+  30_000,
+);
 
 it("recovery never re-rings an active generation with queued inbox work", async () => {
   const t = setup();

@@ -133,6 +133,10 @@ async function needsRecovery(ctx: MutationCtx, row: Doc<"assignments">) {
  */
 export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = true) {
   if (row.cancelled || row.turnStatus === "recovery_required") return;
+  // Failed/blocked child delivery also calls wake, but may leave no inbox work.
+  // Such a doorbell would immediately lose its coalescing flag in
+  // disarmRecovery and accumulate unconsumed events across loop rotation.
+  const hasWork = await needsRecovery(ctx, row);
   if (row.turnStatus === "idle" && !row.approvalBlocked) {
     const next = await ctx.db
       .query("inbox")
@@ -175,6 +179,7 @@ export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = tru
     await ctx.db.patch("assignments", row._id, { workflowId });
   } else if (
     ring &&
+    hasWork &&
     row.loopWaiting &&
     !row.pinged &&
     !row.approvalBlocked &&

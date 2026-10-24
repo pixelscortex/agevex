@@ -11,6 +11,7 @@ import type { GenericId } from "convex/values";
 import type * as queue from "../queue.js";
 import type * as subagents from "../subagents.js";
 import type * as ledger from "../ledger.js";
+import type * as cancellation from "../cancellation.js";
 
 type Wire<T> = T extends GenericId<string>
   ? string
@@ -32,6 +33,7 @@ type Exposed<T, Name extends string | undefined> = {
 
 export type ComponentApi<Name extends string | undefined = string | undefined> = Exposed<
   ApiFromModules<{
+    cancellation: typeof cancellation;
     queue: typeof queue;
     subagents: typeof subagents;
     ledger: typeof ledger;

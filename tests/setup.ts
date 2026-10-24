@@ -137,7 +137,7 @@ function acceptedDeliveryFault(real: AgevexMutation) {
   });
 }
 
-export function setup(fault?: Fault, limits?: Registration["limits"]) {
+export function setup(fault?: Fault, limits?: Registration["limits"], transactionLimits = false) {
   state.dropPing = false;
   state.nestedCalls = 0;
   state.nativeNested = false;
@@ -177,12 +177,16 @@ export function setup(fault?: Fault, limits?: Registration["limits"]) {
   state.release = undefined;
   state.childGate = undefined;
   state.childRelease = undefined;
-  const t = convexTest(schema, {
-    ...modules,
-    "./fixture/agents.ts": async () => {
-      const host = await import("./host.js");
-      const runtime = fixtureRuntime(limits);
-      return { ...host, ...runtime.internalFunctions(), ...runtime.authorizedEndpoints() };
+  const t = convexTest({
+    schema,
+    transactionLimits,
+    modules: {
+      ...modules,
+      "./fixture/agents.ts": async () => {
+        const host = await import("./host.js");
+        const runtime = fixtureRuntime(limits);
+        return { ...host, ...runtime.internalFunctions(), ...runtime.authorizedEndpoints() };
+      },
     },
   });
   const failure = mutationGeneric({

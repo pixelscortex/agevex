@@ -9,6 +9,7 @@
  */
 
 import type * as limits from "../limits.js";
+import type * as cancellation from "../cancellation.js";
 import type * as queue from "../queue.js";
 import type * as subagents from "../subagents.js";
 import type * as ledger from "../ledger.js";
@@ -23,6 +24,7 @@ import type {
 import { anyApi, componentsGeneric } from "convex/server";
 
 const fullApi: ApiFromModules<{
+  cancellation: typeof cancellation;
   limits: typeof limits;
   ledger: typeof ledger;
   workflows: typeof workflows;
