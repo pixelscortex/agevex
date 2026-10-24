@@ -1,0 +1,48 @@
+---
+title: Goals
+description: Set and read one explicit goal for a user run.
+---
+
+```sh
+bunx shadcn add http://localhost:3000/r/goals.json
+```
+
+Start the docs site first, or replace the origin. The item requires the host's
+existing `agevex` package, installs `ai`, `convex` and `zod`, and copies three
+files into `convex/agevexTools/` without changing your schema.
+
+```ts title="convex/schema.ts"
+import { defineSchema } from "convex/server";
+import { goalTables } from "./agevexTools/goalsSchema.js";
+
+export default defineSchema({ ...goalTables }); // merge your existing tables
+```
+
+```ts title="In your agevex Agent registration"
+import { createGoalTools } from "./agevexTools/goals.js";
+import { internal } from "./_generated/api.js";
+
+const tools = createGoalTools(internal.agevexTools.goalsState);
+// Include ...tools in the Agent's tools; keep host authorize and
+// authorizeExecution policies on registerAgent.
+```
+
+`goal_set({ goal })` replaces the current run's explicit goal and returns
+`{ goal }`. Text is trimmed and must contain 1–4000 characters.
+`goal_check({})` reads `{ goal: string | null }`; `null` means no goal has been
+set in this run. The model uses that goal to report its progress; the tool does
+not independently verify success.
+
+`GOAL_LIMITS` fix goal text at 4000 characters and every scope string at 1024.
+The host table `agevexGoals` stores `subject`, `threadId` and `runId` as the
+composite ownership/run index, plus `goal` for both tools to read. A new user
+run has its own goal. The host owns retention and deletion. Each operation
+reads at most two indexed rows; a valid row is below 29 KiB and a set writes
+one row. There are no SDK tables or transcript reads.
+
+Both tools use core `defineOnceTool`, which supplies trusted `ToolContext`
+facts and the cancellation fence. Ownership and run are never model input;
+unknown input fields are rejected. Each `toolCallId` replays its original
+result, so an old replay cannot overwrite a newer goal. Different input under
+the same key returns `KEY_CONFLICT`; unknown outcomes are not retried. Use new
+call IDs for new checks. Keep the shipped state functions internal.

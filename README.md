@@ -390,6 +390,30 @@ sharing a component mount share its lane capacities. `PLATFORM` contains
 documented facts, not checked by the SDK, including Workflow journal/step
 ceilings (8 MiB / 800 KiB). Workflow enforces those byte limits.
 
+## Registry tools
+
+Copy headless tools into your host with shadcn. Start the docs site in
+`docs/site`, then install from its origin:
+
+```sh
+bunx shadcn add http://localhost:3000/r/todo.json
+```
+
+Items: [todo](docs/site/content/docs/tools/todo.mdx) (100 items, 32 KiB/list),
+[goals](docs/site/content/docs/tools/goals.mdx) (one 4000-character goal/run),
+[ask-user](docs/site/content/docs/tools/ask-user.mdx) and
+[continue-budget](docs/site/content/docs/tools/continue-budget.mdx) (native
+approval, 2000 characters). Todo/goals ship host table snippets to merge into
+your schema; approval items add no tables. Core `ToolContext` supplies ownership
+and the once-tool ledger. Keep state functions internal and answer approvals
+through core `respond`. Approved reasons are not model-visible; send a separate
+message for freeform answers. Budget consent does not change a budget.
+
+`bun run registry:build` rebuilds `/r/*.json`; `bun run test:tools` builds the
+package and runs the offline suite, including a CLI install smoke test that
+clearly skips if shadcn needs network. The provisional `@agevex` namespace
+requires a host registry URL configuration.
+
 ## Development
 
 ```sh

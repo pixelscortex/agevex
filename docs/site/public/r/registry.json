@@ -4,19 +4,98 @@
   "homepage": "http://localhost:3000",
   "items": [
     {
-      "name": "todo-tool",
+      "name": "todo",
       "type": "registry:lib",
-      "title": "Todo tool (in-memory example)",
-      "description": "Preview AI SDK todo_read and todo_write tools. In-memory demonstration only; replace storage and enforce host authorization before real use.",
+      "title": "Todo tools",
+      "description": "Durable todo_read/todo_write for a trusted owner and thread. Host table agevexTodos; at most 100 unique items, 100-character ids, 4000-character text and 32 KiB UTF-8 per list. Core receipts deduplicate tool calls.",
       "dependencies": [
-        "ai",
-        "zod"
+        "ai@^7.0.153",
+        "zod@^4.6.7",
+        "convex@^1.47.0"
       ],
+      "docs": "Merge todoTables from the installed schema snippet into convex/schema.ts. Pass internal.agevexTools.todoState to createTodoTools and register on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. No schema is overwritten. See /docs/tools/todo.",
       "files": [
         {
-          "path": "registry/todo-tool/todo-tool.ts",
-          "type": "registry:lib",
-          "target": "lib/tools/todo-tool.ts"
+          "path": "registry/todo/todo.ts",
+          "type": "registry:file",
+          "target": "~/convex/agevexTools/todo.ts"
+        },
+        {
+          "path": "registry/todo/todoSchema.ts",
+          "type": "registry:file",
+          "target": "~/convex/agevexTools/todoSchema.ts"
+        },
+        {
+          "path": "registry/todo/todoState.ts",
+          "type": "registry:file",
+          "target": "~/convex/agevexTools/todoState.ts"
+        }
+      ]
+    },
+    {
+      "name": "goals",
+      "type": "registry:lib",
+      "title": "Goal tools",
+      "description": "goal_set/goal_check for a trusted owner, thread and run. Host table agevexGoals; one explicit goal up to 4000 characters per run. Core receipts deduplicate tool calls.",
+      "dependencies": [
+        "ai@^7.0.153",
+        "zod@^4.6.7",
+        "convex@^1.47.0"
+      ],
+      "docs": "Merge goalTables from the installed schema snippet into convex/schema.ts. Pass internal.agevexTools.goalsState to createGoalTools and register on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. No schema is overwritten. See /docs/tools/goals.",
+      "files": [
+        {
+          "path": "registry/goals/goals.ts",
+          "type": "registry:file",
+          "target": "~/convex/agevexTools/goals.ts"
+        },
+        {
+          "path": "registry/goals/goalsSchema.ts",
+          "type": "registry:file",
+          "target": "~/convex/agevexTools/goalsSchema.ts"
+        },
+        {
+          "path": "registry/goals/goalsState.ts",
+          "type": "registry:file",
+          "target": "~/convex/agevexTools/goalsState.ts"
+        }
+      ]
+    },
+    {
+      "name": "ask-user",
+      "type": "registry:lib",
+      "title": "Ask the user",
+      "description": "ask_user requests native Agent approval for one nonblank yes/no question up to 2000 characters. No item tables; native approval parts and core receipts hold state. Answer through core respond; use core send for freeform answers.",
+      "dependencies": [
+        "ai@^7.0.153",
+        "zod@^4.6.7",
+        "convex@^1.47.0"
+      ],
+      "docs": "Register createAskUserTool() on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. Responses must use core respond, never native approveToolCall directly. See /docs/tools/ask-user.",
+      "files": [
+        {
+          "path": "registry/ask-user/askUser.ts",
+          "type": "registry:file",
+          "target": "~/convex/agevexTools/askUser.ts"
+        }
+      ]
+    },
+    {
+      "name": "continue-budget",
+      "type": "registry:lib",
+      "title": "Continue budget",
+      "description": "continue_budget requests native Agent approval with a nonblank reason up to 2000 characters. No item tables; native approval parts and core receipts hold state. Consent does not modify any budget. Resume through core respond.",
+      "dependencies": [
+        "ai@^7.0.153",
+        "zod@^4.6.7",
+        "convex@^1.47.0"
+      ],
+      "docs": "Register createContinueBudgetTool() on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. Responses must use core respond, never native approveToolCall directly. See /docs/tools/continue-budget.",
+      "files": [
+        {
+          "path": "registry/continue-budget/continueBudget.ts",
+          "type": "registry:file",
+          "target": "~/convex/agevexTools/continueBudget.ts"
         }
       ]
     }

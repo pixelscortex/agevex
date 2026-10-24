@@ -1,0 +1,240 @@
+// @vitest-environment edge-runtime
+import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
+import type { LanguageModelV4Content } from "@ai-sdk/provider";
+import { setup, api, state } from "./setup.js";
+import { TODO_LIMITS } from "../../docs/site/registry/todo/todo.js";
+import { GOAL_LIMITS } from "../../docs/site/registry/goals/goals.js";
+
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => {
+  vi.clearAllTimers();
+  vi.useRealTimers();
+});
+const drain = (t: ReturnType<typeof setup>) =>
+  t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100));
+const call = (toolName: string, toolCallId: string, input: unknown): LanguageModelV4Content[] => [
+  {
+    type: "tool-call",
+    toolName,
+    toolCallId,
+    input: JSON.stringify(input),
+  },
+];
+const todo = (text = "Write the guide") => ({ id: "guide", text, done: false });
+const open = (t: ReturnType<typeof setup>, requestKey = "first", subject = "alice") =>
+  t
+    .withIdentity({ subject })
+    .mutation(api.host.open, { agent: "Tools", prompt: "Use the tools", requestKey });
+
+function maximumTodos() {
+  const todos = Array.from({ length: TODO_LIMITS.items }, (_, i) => ({
+    id: String(i),
+    text: "x",
+    done: false,
+  }));
+  let remaining =
+    TODO_LIMITS.listBytes - new TextEncoder().encode(JSON.stringify(todos)).byteLength;
+  for (const item of todos) {
+    const extra = Math.min(remaining, TODO_LIMITS.textChars - item.text.length);
+    item.text += "x".repeat(extra);
+    remaining -= extra;
+  }
+  expect(remaining).toBe(0);
+  return todos;
+}
+
+it("todo tools persist across calls and reads, isolate owners and threads, and replay old writes without overwriting newer state", async () => {
+  const t = setup();
+  state.steps.push(
+    call("todo_write", "original-write", { todos: [todo("original")] }),
+    call("todo_write", "newer-write", { todos: [todo("newer")] }),
+    call("todo_write", "original-write", { todos: [todo("original")] }),
+    call("todo_read", "read", {}),
+  );
+  const receipt = await open(t);
+  await drain(t);
+  const scope = { subject: "alice", threadId: receipt.threadId };
+  expect(await t.query(api.todoState.read, scope)).toEqual({ todos: [todo("newer")] });
+  expect(JSON.stringify(state.calls[state.calls.length - 1]?.prompt)).toContain('"text":"newer"');
+  expect(await t.query(api.todoState.read, { ...scope, subject: "bob" })).toEqual({ todos: [] });
+  expect(await t.query(api.todoState.read, { ...scope, threadId: "another" })).toEqual({
+    todos: [],
+  });
+  await expect(
+    t.withIdentity({ subject: "bob" }).query(api.host.messages, {
+      threadId: receipt.threadId,
+      paginationOpts: { cursor: null, numItems: 10 },
+    }),
+  ).rejects.toThrow();
+  state.steps.length = state.calls.length;
+  state.steps.push(call("todo_read", "next-turn-read", {}));
+  await t.withIdentity({ subject: "alice" }).mutation(api.host.send, {
+    threadId: receipt.threadId,
+    text: "Read it again",
+    requestKey: "second",
+  });
+  await drain(t);
+  expect(JSON.stringify(state.calls[state.calls.length - 1]?.prompt)).toContain('"text":"newer"');
+});
+
+it("goal tools replay idempotently, return the current run goal, and isolate runs and owners", async () => {
+  const t = setup();
+  state.steps.push(
+    call("goal_set", "original-goal", { goal: "original" }),
+    call("goal_set", "newer-goal", { goal: "newer" }),
+    call("goal_set", "original-goal", { goal: "original" }),
+    call("goal_check", "check", {}),
+  );
+  const receipt = await open(t);
+  await drain(t);
+  const rows = await t.run((ctx) => ctx.db.query("agevexGoals").collect());
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({ subject: "alice", threadId: receipt.threadId, goal: "newer" });
+  const scope = { subject: "alice", threadId: receipt.threadId, runId: rows[0].runId };
+  expect(await t.query(api.goalsState.check, scope)).toEqual({ goal: "newer" });
+  expect(await t.query(api.goalsState.check, { ...scope, runId: "another" })).toEqual({
+    goal: null,
+  });
+  expect(await t.query(api.goalsState.check, { ...scope, subject: "bob" })).toEqual({ goal: null });
+  expect(await t.query(api.goalsState.check, { ...scope, threadId: "another" })).toEqual({
+    goal: null,
+  });
+  state.steps.length = state.calls.length;
+  state.steps.push(call("goal_check", "new-run", {}));
+  await t.withIdentity({ subject: "alice" }).mutation(api.host.send, {
+    threadId: receipt.threadId,
+    text: "A new goal?",
+    requestKey: "second",
+  });
+  await drain(t);
+  expect(JSON.stringify(state.calls[state.calls.length - 1]?.prompt)).toContain('"goal":null');
+});
+
+it.each(["todo_write", "goal_set"])(
+  "%s rejects a conflicting call key and model-supplied ownership",
+  async (toolName) => {
+    const t = setup();
+    const input = toolName === "todo_write" ? { todos: [todo("original")] } : { goal: "original" };
+    const changed = toolName === "todo_write" ? { todos: [todo("changed")] } : { goal: "changed" };
+    state.steps.push(
+      call(toolName, "stable", input),
+      call(toolName, "stable", changed),
+      call(toolName, "spoof", {
+        ...changed,
+        subject: "bob",
+        threadId: "foreign",
+        runId: "foreign",
+      }),
+    );
+    const receipt = await open(t);
+    await drain(t);
+    const prompt = JSON.stringify(state.calls[state.calls.length - 1]?.prompt);
+    expect(prompt).toContain("KEY_CONFLICT");
+    const todos = await t.run((ctx) => ctx.db.query("agevexTodos").collect());
+    const goals = await t.run((ctx) => ctx.db.query("agevexGoals").collect());
+    expect([...todos, ...goals]).toHaveLength(1);
+    expect([...todos, ...goals][0]).toMatchObject({ subject: "alice", threadId: receipt.threadId });
+    if (toolName === "todo_write") expect(todos[0].todos).toEqual([todo("original")]);
+    else expect(goals[0].goal).toBe("original");
+  },
+);
+
+it("todo admits 100 unique items at exactly 32 KiB and rejects count, UTF-8 byte, field and duplicate-id overflow", async () => {
+  const t = setup();
+  const scope = {
+    subject: "a".repeat(TODO_LIMITS.scopeChars),
+    threadId: "t".repeat(TODO_LIMITS.scopeChars),
+  };
+  const todos = maximumTodos();
+  expect(await t.mutation(api.todoState.write, { ...scope, todos })).toEqual({ todos });
+  expect(await t.query(api.todoState.read, scope)).toEqual({ todos });
+  const invalid = [
+    [...todos, todo()],
+    todos.map((item, i) => (i === todos.length - 1 ? { ...item, text: item.text + "x" } : item)),
+    [todo(), todo()],
+    [{ ...todo(), id: "x".repeat(TODO_LIMITS.idChars + 1) }],
+    [todo("x".repeat(TODO_LIMITS.textChars + 1))],
+    Array.from({ length: TODO_LIMITS.items }, (_, i) => ({
+      id: String(i),
+      text: "😀".repeat(100),
+      done: false,
+    })),
+  ];
+  for (const input of invalid)
+    await expect(t.mutation(api.todoState.write, { ...scope, todos: input })).rejects.toThrow();
+  await expect(
+    t.query(api.todoState.read, { ...scope, subject: "a".repeat(TODO_LIMITS.scopeChars + 1) }),
+  ).rejects.toThrow();
+  expect(await t.query(api.todoState.read, scope)).toEqual({ todos });
+  expect(await t.mutation(api.todoState.write, { ...scope, todos: [] })).toEqual({ todos: [] });
+});
+
+it("goal state accepts its hard maximum and rejects blank, oversized and unbounded scope values before changing state", async () => {
+  const t = setup();
+  const scope = {
+    subject: "a".repeat(GOAL_LIMITS.scopeChars),
+    threadId: "t".repeat(GOAL_LIMITS.scopeChars),
+    runId: "r".repeat(GOAL_LIMITS.scopeChars),
+  };
+  const goal = "界".repeat(GOAL_LIMITS.goalChars);
+  expect(await t.mutation(api.goalsState.set, { ...scope, goal })).toEqual({ goal });
+  expect(await t.query(api.goalsState.check, scope)).toEqual({ goal });
+  for (const invalid of ["", "   ", goal + "x"])
+    await expect(t.mutation(api.goalsState.set, { ...scope, goal: invalid })).rejects.toThrow();
+  await expect(
+    t.mutation(api.goalsState.set, {
+      ...scope,
+      runId: "r".repeat(GOAL_LIMITS.scopeChars + 1),
+      goal,
+    }),
+  ).rejects.toThrow();
+  expect(await t.query(api.goalsState.check, scope)).toEqual({ goal });
+});
+
+it("concurrent first writes retain one host row per owner scope", async () => {
+  const t = setup();
+  const scope = { subject: "alice", threadId: "thread" };
+  await Promise.all(
+    Array.from({ length: 4 }, (_, i) =>
+      t.mutation(api.todoState.write, { ...scope, todos: [todo(String(i))] }),
+    ),
+  );
+  await Promise.all(
+    Array.from({ length: 4 }, (_, i) =>
+      t.mutation(api.goalsState.set, { ...scope, runId: "run", goal: String(i) }),
+    ),
+  );
+  expect(await t.run((ctx) => ctx.db.query("agevexTodos").collect())).toHaveLength(1);
+  expect(await t.run((ctx) => ctx.db.query("agevexGoals").collect())).toHaveLength(1);
+});
+
+it("maximum todo and goal payloads round-trip through managed tools and core receipts with transaction limits enforced", async () => {
+  const t = setup();
+  const todos = maximumTodos();
+  const goal = "界".repeat(GOAL_LIMITS.goalChars);
+  state.steps.push(
+    call("todo_write", "max-todos", { todos }),
+    call("goal_set", "max-goal", { goal }),
+    call("todo_read", "max-read", {}),
+    call("goal_check", "max-check", {}),
+  );
+  const receipt = await open(t);
+  await drain(t);
+  expect(
+    await t.withIdentity({ subject: "alice" }).query(api.host.activity, {
+      threadId: receipt.threadId,
+    }),
+  ).toMatchObject({ turnStatus: "idle", errorCode: null });
+  expect(state.calls).toHaveLength(5);
+  const rows = await t.run((ctx) => ctx.db.query("agevexGoals").collect());
+  expect(rows[0].goal).toBe(goal);
+  expect(
+    await t.query(api.todoState.read, { subject: "alice", threadId: receipt.threadId }),
+  ).toEqual({ todos });
+  const lastPrompt = JSON.stringify(state.calls[state.calls.length - 1].prompt);
+  expect(lastPrompt).toContain(goal);
+  const readResult = state.calls[state.calls.length - 1].prompt
+    .flatMap((message) => (message.role === "tool" ? message.content : []))
+    .find((part) => part.type === "tool-result" && part.toolCallId === "max-read");
+  expect(readResult).toMatchObject({ output: { type: "json", value: { todos } } });
+});

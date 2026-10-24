@@ -1,0 +1,21 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "ask-user",
+  "title": "Ask the user",
+  "description": "ask_user requests native Agent approval for one nonblank yes/no question up to 2000 characters. No item tables; native approval parts and core receipts hold state. Answer through core respond; use core send for freeform answers.",
+  "dependencies": [
+    "ai@^7.0.153",
+    "zod@^4.6.7",
+    "convex@^1.47.0"
+  ],
+  "files": [
+    {
+      "path": "registry/ask-user/askUser.ts",
+      "content": "import { defineOnceTool } from \"agevex\";\nimport { z } from \"zod\";\n\nexport const ASK_USER_LIMITS = { minChars: 1, questionChars: 2000 } as const;\nexport const questionInput = z.strictObject({\n  question: z.string().trim().min(ASK_USER_LIMITS.minChars).max(ASK_USER_LIMITS.questionChars),\n});\n\n/**\n * Agent 0.7.7 persists the native approval request/response. The host answers\n * with core respond({ threadId, approvalId, approved, reason }). This is a\n * yes/no question: AI SDK filters approved reasons from the model prompt\n * (ai/src/prompt/convert-to-language-model-prompt.ts:339-341). Send freeform\n * answers through core send as well. Never scan messages to recover them.\n * Do not save a native response directly: core must wake the waiting turn.\n * Source: @convex-dev/agent/src/approvals.ts:3-7,65-82.\n */\nexport function createAskUserTool() {\n  const approval = defineOnceTool({\n    name: \"ask_user\",\n    input: questionInput,\n    run: (input, tc) => {\n      tc.signal.throwIfAborted();\n      // Only approved calls execute. The answer remains on the native\n      // approval-response part; never echo model text as a human answer.\n      return { approved: true, question: questionInput.parse(input).question };\n    },\n  });\n  approval.description =\n    \"Ask the user one yes/no question and wait for native approval. Freeform answers require a separate user message.\";\n  approval.needsApproval = true;\n  return approval;\n}\n",
+      "type": "registry:file",
+      "target": "~/convex/agevexTools/askUser.ts"
+    }
+  ],
+  "docs": "Register createAskUserTool() on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. Responses must use core respond, never native approveToolCall directly. See /docs/tools/ask-user.",
+  "type": "registry:lib"
+}

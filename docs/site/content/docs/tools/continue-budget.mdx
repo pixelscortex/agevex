@@ -1,0 +1,43 @@
+---
+title: Continue budget
+description: Ask for consent to continue without changing budget policy.
+---
+
+```sh
+bunx shadcn add http://localhost:3000/r/continue-budget.json
+```
+
+Start the docs site or replace its origin. The item copies
+`convex/agevexTools/continueBudget.ts` and installs `ai`, `convex`, `zod`.
+The host must already have `agevex`.
+
+```ts title="In your agevex Agent registration"
+import { createContinueBudgetTool } from "./agevexTools/continueBudget.js";
+
+const tools = { continue_budget: createContinueBudgetTool() };
+// Include ...tools in your Agent's tools; keep host authorization policies.
+```
+
+`continue_budget({ reason })` pauses on a native approval. The fixed
+`CONTINUE_BUDGET_LIMITS` allow one trimmed, nonblank reason of at most 2000
+characters. Unknown input fields, including ownership or a proposed numeric
+budget, are rejected. Only approval executes the tool, returning
+`{ approved: true, reason }` through core `defineOnceTool`. Denial never
+returns an approved execution.
+
+The owner answers via core
+`respond({ threadId, approvalId, approved, reason? })`. Core rejects foreign or
+duplicate responses and wakes the waiting turn. Saving a response directly
+through native Agent is insufficient. Approved response notes are retained
+natively but filtered from the model prompt by AI SDK; send a separate core
+message when the model needs those instructions.
+
+**Consent does not raise any limit.** This tool does not modify a meter, grant
+credit, reset core run counters or resume a hard-exhausted run. The host applies
+its budget policy separately and should request consent before a hard limit
+prevents the model from calling tools.
+
+There are no item tables or schema changes. Native Agent stores the approval
+parts; core stores pending references and idempotent tool receipts. The reason
+is at most 8000 UTF-8 bytes conservatively, below the 64 KiB receipt cap. No
+paid work or automatic retry is added.

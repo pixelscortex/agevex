@@ -1,0 +1,46 @@
+---
+title: Ask the user
+description: Pause for a bounded yes/no question using native approvals.
+---
+
+```sh
+bunx shadcn add http://localhost:3000/r/ask-user.json
+```
+
+Start the docs site or replace its origin. This installs
+`convex/agevexTools/askUser.ts` and `ai`, `convex`, `zod`; the host must already
+have `agevex`.
+
+```ts title="In your agevex Agent registration"
+import { createAskUserTool } from "./agevexTools/askUser.js";
+
+const tools = { ask_user: createAskUserTool() };
+// Include ...tools in your Agent's tools and keep host authorization policies.
+```
+
+`ask_user({ question })` requests approval. `ASK_USER_LIMITS` cap one nonblank,
+trimmed question at 2000 characters. Additional fields, including ownership,
+are rejected. `needsApproval: true` prevents execution before a decision.
+Approved execution returns `{ approved: true, question }` through core's
+idempotent `defineOnceTool` context. Denial produces a native denied execution.
+
+The host displays the native question and answers through its core endpoint:
+
+```ts
+await respond({ threadId, approvalId, approved: true, reason: "Optional note" });
+```
+
+Core authorizes the thread owner, saves the exact native response and wakes
+the waiting turn. Duplicate or foreign responses are rejected. Do not call
+native `approveToolCall` directly: it does not wake core's waiting turn.
+
+This is a **yes/no question**. AI SDK removes approved `reason` text from the
+next model prompt. To deliver a freeform answer, also enqueue it with core
+`send({ threadId, text, requestKey })`; do not recover it by scanning messages.
+The core endpoint's existing reason/message bounds still apply.
+
+No item table or host schema snippet is needed. Native approval parts store
+the question and decision; core owns pending references and once-tool receipts.
+At most 2000 characters (8000 UTF-8 bytes conservatively) enter the tool result,
+below the 64 KiB receipt cap. The item adds no model calls, paid effects or
+automatic retries. The host's UI and approval policy remain host-owned.
