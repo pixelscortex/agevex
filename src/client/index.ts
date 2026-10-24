@@ -16,3 +16,8 @@ export type {
   AgentEvent,
   ObserveAgentEvent,
 } from "./types.js";
+
+export { LIMITS, PLATFORM } from "../component/limits.js";
+export type { Limits } from "../component/limits.js";
+export { defineOnceTool } from "./once.js";
+export type { ToolContext } from "./once.js";

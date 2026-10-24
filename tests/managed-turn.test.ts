@@ -11,22 +11,23 @@ const input = { agent: "Main", prompt: "first boundary", requestKey: "first" };
 const drain = (t: ReturnType<typeof setup>) =>
   t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100));
 
+// Phase 1a unifies request-key errors with the general ledger.
 it("deduplicates open/send and conflicts before a native write", async () => {
   const t = setup();
   const alice = t.withIdentity({ subject: "alice" });
   const receipt = await alice.mutation(api.agents.open, input);
   expect(await alice.mutation(api.agents.open, input)).toEqual(receipt);
   await expect(alice.mutation(api.agents.open, { ...input, prompt: "changed" })).rejects.toThrow(
-    "REQUEST_KEY_CONFLICT",
+    "KEY_CONFLICT",
   );
   const send = { threadId: receipt.threadId, text: "second boundary", requestKey: "second" };
   const second = await alice.mutation(api.agents.send, send);
   expect(await alice.mutation(api.agents.send, send)).toEqual(second);
   await expect(alice.mutation(api.agents.send, { ...send, text: "changed" })).rejects.toThrow(
-    "REQUEST_KEY_CONFLICT",
+    "KEY_CONFLICT",
   );
   await expect(alice.mutation(api.agents.send, { ...send, requestKey: "first" })).rejects.toThrow(
-    "REQUEST_KEY_CONFLICT",
+    "KEY_CONFLICT",
   );
   const messages = await alice.query(api.agents.messages, {
     threadId: receipt.threadId,

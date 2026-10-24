@@ -6,7 +6,7 @@ afterEach(() => {
   vi.clearAllTimers();
   vi.useRealTimers();
 });
-describe("nested Workpool to host/native Agent bridge", () => {
+describe("nested Workflow to host/native Agent bridge", () => {
   it("accepts, dispatches through a host function handle and streams a native transcript", async () => {
     vi.useFakeTimers();
     const t = setup();

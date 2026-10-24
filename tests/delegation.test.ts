@@ -8,15 +8,18 @@ import { createThread, listMessages, saveMessage } from "@convex-dev/agent";
 import { createFunctionHandle } from "convex/server";
 import { setup, api, components, state } from "./setup.js";
 import { delegationsQuery, coordinateReference, runTurnReference, releaseChild } from "./host.js";
-import { EXECUTION_WATCHDOG_MS } from "../src/component/limits.js";
+import { LIMITS } from "../src/component/limits.js";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
   vi.clearAllTimers();
   vi.useRealTimers();
 });
+// Queue-owned recovery adds control jobs that claim cancels immediately. Allow
+// the real scheduler harness to settle those timers as well as both Workflow
+// lanes; the default 100 iterations can expire after the run is already idle.
 const drain = (t: ReturnType<typeof setup>) =>
-  t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100));
+  t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100), 2000);
 
 type Convex = ReturnType<typeof setup>;
 type RunView = {
@@ -272,24 +275,27 @@ it("runs Main -> Researcher -> Main and reports only persisted state", async () 
     "RESEARCHER deterministic native result",
   );
   expect(state.calls.every((call) => call.maxOutputTokens === 4096)).toBe(true);
-  // Only the root turn that delegated was offered the tool, and only once.
-  expect(state.offers.filter((o) => o.tools.includes("agevex_delegate"))).toHaveLength(1);
+  // Phase 1a offers the tool to both the initial turn and its result continuation.
+  expect(state.offers.filter((o) => o.tools.includes("agevex_delegate"))).toHaveLength(2);
   expect(
     state.offers.filter((o) => o.agent === "Researcher").every((o) => o.tools.length === 0),
   ).toBe(true);
 });
 
-it("never offers delegation to a result-triggered continuation", async () => {
+// Phase 1a: result continuations spend the same run budget and may delegate.
+it("a result turn can delegate again", async () => {
   const t = setup();
   state.delegate = true;
+  state.delegationRounds = 2;
   const receipt = await open(t);
   await drain(t);
-  await drain(t);
-  await drain(t);
-  // The follow-up turn that consumed the delivered result ran without the tool,
-  // so it could not start a second run.
-  expect((await runs(t, receipt.threadId)).page).toHaveLength(1);
-  expect(state.offers.filter((o) => o.tools.includes("agevex_delegate"))).toHaveLength(1);
+  const page = (await runs(t, receipt.threadId)).page;
+  expect(page).toHaveLength(2);
+  expect(page.every((run) => run.status === "completed" && run.deliveryStatus === "accepted")).toBe(
+    true,
+  );
+  expect(state.calls).toHaveLength(3);
+  expect(JSON.stringify(state.calls[1].prompt)).toContain("RESEARCHER deterministic native result");
 });
 
 it("refuses a launch that exceeds the task bound without starting a run", async () => {
@@ -326,7 +332,7 @@ it("refuses a launch the host policy denies and starts nothing", async () => {
   });
 });
 
-it("accepts three launches from one user prompt and refuses the fourth below the cap", async () => {
+it("accepts a fourth launch below the concurrent cap", async () => {
   const t = setup();
   // Hold the root generation so its turn keeps owning the token while several
   // coordinator launches are driven with the capabilities the tool would use.
@@ -334,7 +340,12 @@ it("accepts three launches from one user prompt and refuses the fourth below the
     state.release = resolve;
   });
   const receipt = await open(t);
-  await vi.advanceTimersByTimeAsync(100);
+  await expect
+    .poll(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+      return state.calls.length;
+    })
+    .toBe(1);
   const { assignmentId } = (await t
     .withIdentity({ subject: "alice" })
     .query(api.agents.activity, { threadId: receipt.threadId })) as {
@@ -353,12 +364,11 @@ it("accepts three launches from one user prompt and refuses the fourth below the
   for (const toolCallId of ["call-1", "call-2", "call-3"]) {
     expect(await launch(toolCallId)).toMatchObject({ status: "queued" });
   }
-  // This root is well below its five-child concurrent cap, so the spent
-  // per-prompt allowance answers the fourth launch, not the cap.
-  expect(await launch("call-4")).toEqual({ status: "denied", code: "TASK_LIMIT" });
-  expect((await runs(t, receipt.threadId)).page).toHaveLength(3);
+  // Phase 1a replaces the three-launch per-prompt bound with a run budget.
+  expect(await launch("call-4")).toMatchObject({ status: "queued" });
+  expect((await runs(t, receipt.threadId)).page).toHaveLength(4);
   expect(await activity(t, receipt.threadId)).toMatchObject({
-    subagents: { active: 3, history: 0, total: 3 },
+    subagents: { active: 4, history: 0, total: 4 },
   });
   state.release!();
   state.gate = undefined;
@@ -368,7 +378,7 @@ it("accepts three launches from one user prompt and refuses the fourth below the
   await drain(t);
   expect(await activity(t, receipt.threadId)).toMatchObject({
     turnStatus: "idle",
-    subagents: { active: 0, history: 3, total: 3 },
+    subagents: { active: 0, history: 4, total: 4 },
   });
 });
 
@@ -444,8 +454,8 @@ it("replays a duplicated launch at the concurrent cap without taking a slot", as
   expect(await activity(t, threadId)).toMatchObject({ subagents: { active: 5 } });
 
   // The same prompt's second, differently identified launch meets the full cap
-  // first, so it is `ACTIVE_LIMIT` here; below the cap the per-prompt allowance
-  // would answer instead, and this prompt still has two of its three left.
+  // first, so it is `ACTIVE_LIMIT` here. Its run budget still has eleven
+  // launches left, independently of the concurrent cap.
   expect(await t.mutation(coordinate, { ...launch, toolCallId: "call-4-again" })).toEqual({
     status: "denied",
     code: "ACTIVE_LIMIT",
@@ -499,10 +509,12 @@ it("keeps the root usable while a child is still running", async () => {
   state.delegate = true;
   holdChild();
   const receipt = await open(t);
-  await vi.advanceTimersByTimeAsync(100);
-  expect(await activity(t, receipt.threadId)).toMatchObject({
-    subagents: { active: 1, history: 0, total: 1 },
-  });
+  await expect
+    .poll(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+      return (await activity(t, receipt.threadId)).subagents.active;
+    })
+    .toBe(1);
   // A second caller prompt is accepted on the same owned thread.
   await expect(
     t.withIdentity({ subject: "alice" }).mutation(api.agents.send, {
@@ -535,7 +547,12 @@ it("replays a duplicated tool call and conflicts on a changed payload", async ()
     state.release = resolve;
   });
   const receipt = await open(t);
-  await vi.advanceTimersByTimeAsync(100);
+  await expect
+    .poll(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+      return state.calls.length;
+    })
+    .toBe(1);
   const { assignmentId } = (await t
     .withIdentity({ subject: "alice" })
     .query(api.agents.activity, { threadId: receipt.threadId })) as {
@@ -654,7 +671,7 @@ it("escalates a stalled child run once and makes one bounded notification attemp
   const receipt = await open(t);
   const { childTurn } = await launchChild(t, receipt.assignmentId);
 
-  // Claim the queued child exactly as the Workpool dispatch would. That arms
+  // Claim the queued child exactly as the Workflow slice would. That arms
   // the claim-armed watchdog and moves the run to `running`; the dispatch that
   // is already queued then observes an owned token and no-ops, so no model ever
   // runs and no abort timer is left behind.
@@ -673,7 +690,7 @@ it("escalates a stalled child run once and makes one bounded notification attemp
   });
 
   // Detection only: nothing changes before the window armed by `claim` ends.
-  await vi.advanceTimersByTimeAsync(EXECUTION_WATCHDOG_MS - 1_000);
+  await vi.advanceTimersByTimeAsync(LIMITS.executionWatchdogMs - 1_000);
   expect((await runs(t, receipt.threadId)).page[0]).toMatchObject({
     status: "running",
     deliveryStatus: "pending",
@@ -942,12 +959,12 @@ it("delivers a committed child result even when child finalization fails", async
   expect(delivered.join("\n")).toContain("RESEARCHER deterministic native result");
   // The delivered result still woke the parent for one follow-up turn, and the
   // generation was never replayed: one child generation, and no child retry.
-  expect(state.offers.filter((offer) => offer.tools.includes("agevex_delegate"))).toHaveLength(1);
+  expect(state.offers.filter((offer) => offer.tools.includes("agevex_delegate"))).toHaveLength(2);
   expect(state.offers.filter((offer) => offer.agent === "Researcher")).toHaveLength(1);
   // The fault is never claimed twice: the escalated child run stays terminal
   // with one accepted notification, and its armed watchdog — which ignores a
   // recovery-required turn — cannot re-record or re-deliver anything.
-  await vi.advanceTimersByTimeAsync(EXECUTION_WATCHDOG_MS + 1_000);
+  await vi.advanceTimersByTimeAsync(LIMITS.executionWatchdogMs + 1_000);
   await drain(t);
   expect((await runs(t, receipt.threadId)).page[0].events.map((e) => e.phase)).toEqual([
     "queued",
@@ -998,10 +1015,10 @@ it("records a failed delivery when the queue acceptance of the result fails", as
   });
 });
 
-it("refuses a fourth launch from one accepted user prompt once its children settle", async () => {
+it("run budget denies the 13th launch", async () => {
   const t = setup();
   const receipt = await open(t);
-  // Claim the root turn exactly as the Workpool dispatch would and never hand it
+  // Claim the root turn exactly as the Workflow slice would and never hand it
   // back, so the actor is still RUNNING while its child runs and settles. The
   // already-queued dispatch then observes the owned token and no-ops.
   const rootTurn = { assignmentId: receipt.assignmentId, turnToken: `${receipt.assignmentId}:0` };
@@ -1033,24 +1050,27 @@ it("refuses a fourth launch from one accepted user prompt once its children sett
 
   // A terminal child frees an active slot, so the same accepted user prompt
   // still cannot spend more than its own allowance, whatever the child state.
-  for (const toolCallId of ["call-2", "call-3"]) {
+  for (const toolCallId of Array.from(
+    { length: LIMITS.runLaunches - 1 },
+    (_, i) => `call-${i + 2}`,
+  )) {
     expect(await t.mutation(coordinate, { ...launch, toolCallId })).toMatchObject({
       status: "queued",
     });
     await drain(t);
   }
-  expect(await t.mutation(coordinate, { ...launch, toolCallId: "call-4" })).toEqual({
+  expect(await t.mutation(coordinate, { ...launch, toolCallId: "call-13" })).toEqual({
     status: "denied",
-    code: "TASK_LIMIT",
+    code: "RUN_BUDGET",
   });
-  expect((await runs(t, receipt.threadId)).page).toHaveLength(3);
+  expect((await runs(t, receipt.threadId)).page).toHaveLength(12);
   expect(await activity(t, receipt.threadId)).toMatchObject({
     turnStatus: "running",
-    subagents: { active: 0, history: 3, total: 3 },
+    subagents: { active: 0, history: 12, total: 12 },
   });
   // Each accepted child was generated exactly once: a settled child never
   // replenished its parent's prompt budget, so no extra child thread exists.
-  expect(state.offers.filter((offer) => offer.agent === "Researcher")).toHaveLength(3);
+  expect(state.offers.filter((offer) => offer.agent === "Researcher")).toHaveLength(12);
   // Dedup still precedes the allowance: the exact tuples replay their original
   // runs, and a changed payload under one of them is still a conflict.
   expect(await t.mutation(coordinate, launch)).toEqual(first);
@@ -1058,7 +1078,7 @@ it("refuses a fourth launch from one accepted user prompt once its children sett
     status: "denied",
     code: "DELEGATION_CONFLICT",
   });
-  expect((await runs(t, receipt.threadId)).page).toHaveLength(3);
+  expect((await runs(t, receipt.threadId)).page).toHaveLength(12);
 
   // The refusal is a tool result, so the root turn still finalizes normally.
   await t.mutation(components.agevex.queue.finish, { ...rootTurn, errorCode: null });
@@ -1066,7 +1086,7 @@ it("refuses a fourth launch from one accepted user prompt once its children sett
   expect(await activity(t, receipt.threadId)).toMatchObject({
     turnStatus: "idle",
     errorCode: null,
-    subagents: { active: 0, history: 3, total: 3 },
+    subagents: { active: 0, history: 12, total: 12 },
   });
 });
 
@@ -1082,10 +1102,9 @@ it("gives the next accepted user prompt its own launch allowance", async () => {
     turnStatus: "idle",
     subagents: { active: 0, history: 1, total: 1 },
   });
-  // The first allowance was spent by the caller prompt that delegated; the
-  // result-triggered continuation that ran between the two prompts is never
-  // offered the tool.
-  expect(state.offers.filter((o) => o.tools.includes("agevex_delegate"))).toHaveLength(1);
+  // Phase 1a: both the user turn and its result continuation receive the tool;
+  // only the next user prompt starts a fresh run budget.
+  expect(state.offers.filter((o) => o.tools.includes("agevex_delegate"))).toHaveLength(2);
   await t.withIdentity({ subject: "alice" }).mutation(api.agents.send, {
     threadId: receipt.threadId,
     text: "second",
@@ -1099,8 +1118,8 @@ it("gives the next accepted user prompt its own launch allowance", async () => {
     turnStatus: "idle",
     subagents: { active: 0, history: 2, total: 2 },
   });
-  // Exactly the two caller prompts were offered the managed tool.
-  expect(state.offers.filter((o) => o.tools.includes("agevex_delegate"))).toHaveLength(2);
+  // Both caller prompts and both result continuations received the managed tool.
+  expect(state.offers.filter((o) => o.tools.includes("agevex_delegate"))).toHaveLength(4);
 });
 
 it("rolls the whole launch back when attaching the child fails", async () => {
@@ -1288,12 +1307,11 @@ it("launches three children from one model step when Main is asked for three", a
     ),
   ).toBe(true);
   expect((await toolOutputs(t, receipt.threadId)).join("\n")).not.toContain("TASK_LIMIT");
-  // Exactly one Main model step was offered the managed tool, so all three
-  // calls were requested together rather than one per model step; the runtime
-  // step count is unchanged.
+  // All three calls belong to the initial Main step. Their batched result
+  // continuation also receives the tool without launching another child.
   expect(
     state.offers.filter((o) => o.agent === "Main" && o.tools.includes("agevex_delegate")),
-  ).toHaveLength(1);
+  ).toHaveLength(2);
   expect(state.calls).toHaveLength(state.offers.filter((o) => o.agent === "Main").length);
   expect(state.offers.filter((o) => o.agent === "Researcher")).toHaveLength(3);
 });
@@ -1331,42 +1349,17 @@ it("spends no launch allowance on a stale, out-of-graph or policy-denied attempt
   expect(await launch("policy")).toEqual({ status: "denied", code: "FORBIDDEN" });
   state.denyDelegate = false;
   // None of the three refusals spent a launch, so this prompt still has its
-  // full allowance of three.
+  // full run budget of twelve.
   for (const n of [1, 2, 3]) expect(await launch(`call-${n}`)).toMatchObject({ status: "queued" });
-  expect(await launch("call-4")).toEqual({ status: "denied", code: "TASK_LIMIT" });
-  expect((await runs(t, receipt.threadId)).page).toHaveLength(3);
+  // Phase 1a: expected refusals leave the run budget unspent.
+  expect(await launch("call-4")).toMatchObject({ status: "queued" });
+  expect((await runs(t, receipt.threadId)).page).toHaveLength(4);
   await t.mutation(components.agevex.queue.finish, { ...rootTurn, errorCode: null });
 });
 
-it("counts a legacy root without a stored launch count as one already spent", async () => {
-  const t = setup("legacyAllowance");
-  const receipt = await open(t, "prompt 1", "r1");
-  const rootTurn = {
-    assignmentId: receipt.assignmentId,
-    turnToken: `${receipt.assignmentId}:0`,
-  };
-  expect(await t.mutation(components.agevex.queue.claim, rootTurn)).not.toBeNull();
-  const coordinate = coordinateReference();
-  const launch = (toolCallId: string) =>
-    t.mutation(coordinate, {
-      op: "launch" as const,
-      ...rootTurn,
-      toolCallId,
-      agent: "Researcher",
-      task: "one bounded task",
-    });
-  expect(await launch("call-1")).toMatchObject({ status: "queued" });
-  // The fault stripped the stored count before this reservation read it. A
-  // missing count means "one already spent", not "none", so the legacy row is
-  // left exactly two launches and not four.
-  expect(await launch("call-2")).toMatchObject({ status: "queued" });
-  expect(await launch("call-3")).toMatchObject({ status: "queued" });
-  expect(await launch("call-4")).toEqual({ status: "denied", code: "TASK_LIMIT" });
-  expect((await runs(t, receipt.threadId)).page).toHaveLength(3);
-  await t.mutation(components.agevex.queue.finish, { ...rootTurn, errorCode: null });
-});
+// Phase 1a drops legacy per-prompt counters; breaking schema changes need no migration.
 
-it("gives each accepted user prompt its own allowance of three", async () => {
+it("gives each accepted user prompt a fresh run budget", async () => {
   const t = setup();
   const { assignmentId, threadId } = await open(t, "prompt 1", "r1");
   const spendPrompt = async (index: number, prefix: string) => {
@@ -1375,8 +1368,8 @@ it("gives each accepted user prompt its own allowance of three", async () => {
     const children = [];
     for (const n of [1, 2, 3])
       children.push(await reserveAndAttachChild(t, rootTurn, `${prefix}-${n}`));
-    // Below the five-child concurrent cap, so the per-prompt allowance answers.
-    expect(await probeReserve(t, rootTurn, `${prefix}-4`)).toBe("denied:TASK_LIMIT");
+    // Phase 1a: the fourth launch still fits both the run and concurrent budgets.
+    expect(await probeReserve(t, rootTurn, `${prefix}-4`)).toBe("reserved");
     // Free the concurrent slots through the real settlement path, so the next
     // prompt is answered by its own allowance rather than by the cap.
     for (const child of children) {
@@ -1401,7 +1394,7 @@ it("gives each accepted user prompt its own allowance of three", async () => {
     requestKey: "r2",
   });
   // The next accepted user prompt claims a new turn token, which starts a fresh
-  // allowance of three instead of continuing the spent one.
+  // run budget of twelve instead of continuing the spent one.
   await spendPrompt(1, "second");
   expect(await activity(t, threadId)).toMatchObject({
     turnStatus: "idle",

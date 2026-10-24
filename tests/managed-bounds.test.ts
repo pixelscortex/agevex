@@ -11,13 +11,14 @@ const input = { agent: "Main", prompt: "bounded", requestKey: "first" };
 const drain = (t: ReturnType<typeof setup>) =>
   t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100));
 
-it("saves one native tool step without automatically generating a second step", async () => {
+// Phase 1a executes bounded slices until tools finish or a child handoff occurs.
+it("continues a native tool step in a separate bounded slice", async () => {
   const t = setup();
   const alice = t.withIdentity({ subject: "alice" });
   state.tools = true;
   const receipt = await alice.mutation(api.agents.open, input);
   await drain(t);
-  expect(state.calls).toHaveLength(1);
+  expect(state.calls).toHaveLength(2);
   const messages = await alice.query(api.agents.messages, {
     threadId: receipt.threadId,
     paginationOpts: { cursor: null, numItems: 20 },
@@ -98,9 +99,8 @@ it("aborts a non-finishing provider at 90 seconds and does not retry", async () 
   await vi.advanceTimersByTimeAsync(100);
   expect(state.calls).toHaveLength(1);
   expect(state.calls[0].abortSignal?.aborted).toBe(false);
-  // Keep convex-test's async-local syscall scope while fake time fires the
-  // native Agent's abort listeners (which persist native failure metadata).
-  await t.run(async () => {
+  // An action supplies syscall scope without a transaction around reconciliation.
+  await t.action(async () => {
     await vi.advanceTimersByTimeAsync(90_000);
   });
   await running;

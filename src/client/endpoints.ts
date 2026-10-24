@@ -7,6 +7,7 @@ import {
   vStreamMessagesReturnValue,
   type UIMessage,
 } from "@convex-dev/agent";
+import type { StreamArgs } from "@convex-dev/agent/validators";
 import {
   createFunctionHandle,
   mutationGeneric,
@@ -17,7 +18,9 @@ import {
   type GenericQueryCtx,
   type PaginationResult,
 } from "convex/server";
-import { v, type Validator } from "convex/values";
+import { ConvexError, v, type Validator } from "convex/values";
+import { fingerprint } from "./once.js";
+import { LIMITS, resolveLimits } from "../component/limits.js";
 import type { ComponentApi } from "../component/_generated/component.js";
 import { activity, receipt, subagentRun, vPaginationResult } from "../component/schema.js";
 import type { AgentEvent, ManagedAgent, Registration } from "./types.js";
@@ -66,17 +69,14 @@ const messagesReturn = v.object({
   streams: vStreamMessagesReturnValue.fields.streams,
 });
 
-async function fingerprint(input: unknown) {
-  const bytes = new TextEncoder().encode(JSON.stringify(input));
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
-}
 function validateInput(text: string, requestKey: string) {
-  if (!text.trim() || text.length > 16_000) throw new Error("INVALID_MESSAGE");
-  if (!requestKey || requestKey.length > 200) throw new Error("INVALID_REQUEST_KEY");
+  if (!text.trim() || text.length > LIMITS.messageLength) throw new Error("INVALID_MESSAGE");
+  if (!requestKey || requestKey.length > LIMITS.requestKeyLength)
+    throw new Error("INVALID_REQUEST_KEY");
 }
 
 export function authorizedEndpoints(component: ComponentApi, config: Registration) {
+  const limits = resolveLimits(config.limits);
   // A managed conversation is always a native thread, including a delegated
   // conversation. Index the entire registered graph so a persisted assignment's
   // agent name resolves to the correct native component for transcript reads.
@@ -101,23 +101,24 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
   async function owned(
     ctx: GenericQueryCtx<GenericDataModel>,
     threadId: string,
-    operation: "send" | "messages" | "activity",
+    operation: "send" | "respond" | "cancel" | "messages" | "activity",
   ) {
     const row = await ctx.runQuery(component.queue.assignment, { threadId });
     if (!row) throw new Error("FORBIDDEN");
     const trusted = await config.authorize(ctx, { operation, agent: row.agent, threadId });
     if (!trusted.subject || trusted.subject !== row.subject) throw new Error("FORBIDDEN");
-    // Ownership permits reading a child's transcript, not driving its managed
-    // lifecycle. Child turns belong to the coordinator's bounded delegation and
+    // Ownership permits reading a child's transcript and resolving its recorded
+    // approvals. Child turns belong to the coordinator's bounded delegation and
     // settlement path; accepting a public send could start another child turn
     // outside that path. Keep send and coordination reads (activity/delegations)
-    // root-only, while messages uses the same ownership check for every thread.
+    // root-only; messages/respond use the same ownership check for every thread.
     // The role must come from the persisted assignment, not today's root names:
     // a later deployment can register a former child agent as a root without
     // changing the role of any existing child thread. A name-based check would
     // grant send/activity access to those old threads (and previously also let
     // a shared Agent object registered as both root and child bypass the guard).
-    if (operation !== "messages" && row.root === false) throw new Error("FORBIDDEN");
+    if (operation !== "messages" && operation !== "respond" && row.root === false)
+      throw new Error("FORBIDDEN");
     const native = managedAgents.get(row.agent);
     if (!native) throw new Error("UNKNOWN_AGENT");
     return { ...row, native };
@@ -153,6 +154,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           fingerprint: hash,
           promptMessageId: messageId,
           runTurn,
+          limits,
         });
         await observe(ctx, config, {
           type: "request.accepted",
@@ -190,6 +192,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           fingerprint: hash,
           promptMessageId: messageId,
           runTurn: await createFunctionHandle(config.refs.runTurn()),
+          limits,
         });
         await observe(ctx, config, {
           type: "request.accepted",
@@ -201,6 +204,38 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
         return accepted;
       },
     }),
+    respond: mutationGeneric({
+      args: {
+        threadId: v.string(),
+        approvalId: v.string(),
+        approved: v.boolean(),
+        reason: v.optional(v.string()),
+      },
+      returns: v.object({ messageId: v.string() }),
+      handler: async (ctx, args) => {
+        const row = await owned(ctx, args.threadId, "respond");
+        return ctx.runMutation(component.queue.respond, {
+          assignmentId: row.assignmentId,
+          subject: row.subject,
+          approvalId: args.approvalId,
+          approved: args.approved,
+          ...(args.reason !== undefined ? { reason: args.reason } : {}),
+          addMessages: await createFunctionHandle(row.native.component.messages.addMessages),
+        });
+      },
+    }),
+    cancel: mutationGeneric({
+      args: { threadId: v.string() },
+      returns: v.null(),
+      handler: async (ctx, args) => {
+        const row = await owned(ctx, args.threadId, "cancel");
+        await ctx.runMutation(component.queue.cancel, {
+          assignmentId: row.assignmentId,
+          subject: row.subject,
+        });
+        return null;
+      },
+    }),
     messages: queryGeneric({
       args: {
         threadId: v.string(),
@@ -210,12 +245,27 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
       returns: messagesReturn,
       handler: async (ctx, args) => {
         const row = await owned(ctx, args.threadId, "messages");
-        const page: PaginationResult<UIMessage> = await listUIMessages(
-          ctx,
-          row.native.component,
-          args,
-        );
-        const streams = await syncStreams(ctx, row.native.component, args);
+        // Clamp the client's page to the server's count and byte bounds (see
+        // LIMITS.messagePage); a smaller page only means one more cursor hop.
+        const { numItems, maximumBytesRead, maximumRowsRead } = args.paginationOpts;
+        for (const value of [numItems, maximumBytesRead, maximumRowsRead]) {
+          if (value !== undefined && (!Number.isSafeInteger(value) || value < 0))
+            throw new ConvexError({ code: "INVALID_PAGINATION" });
+        }
+        const paginationOpts = {
+          ...args.paginationOpts,
+          numItems: Math.min(numItems, LIMITS.messagePage),
+          maximumRowsRead: Math.min(maximumRowsRead ?? LIMITS.messagePage, LIMITS.messagePage),
+          maximumBytesRead: Math.min(
+            maximumBytesRead ?? LIMITS.messagePageBytes,
+            LIMITS.messagePageBytes,
+          ),
+        };
+        const page: PaginationResult<UIMessage> = await listUIMessages(ctx, row.native.component, {
+          ...args,
+          paginationOpts,
+        });
+        const streams = await boundedStreams(ctx, row, args.streamArgs);
         return { ...page, streams };
       },
     }),
@@ -258,4 +308,35 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
       },
     }),
   };
+}
+
+async function boundedStreams(
+  ctx: GenericQueryCtx<GenericDataModel>,
+  row: { threadId: string; native: ManagedAgent },
+  args?: StreamArgs,
+) {
+  if (!args) return undefined;
+  if (args.kind === "list") {
+    // Accepted upstream exception, like Agent's context reader (spec §9b):
+    // Agent 0.7.7 streams.list reads at most 100 streaming-state metadata docs.
+    return syncStreams(ctx, row.native.component, { threadId: row.threadId, streamArgs: args });
+  }
+  // Deduplicate by id (including cursors at different offsets), keeping the
+  // earliest offset so data isn't skipped. Agent byte-bounds the shared page;
+  // the cursor cap bounds its one metadata-document read per stream.
+  const cursors = new Map<string, number>();
+  for (const { streamId, cursor } of args.cursors) {
+    if (!Number.isSafeInteger(cursor) || cursor < 0)
+      throw new ConvexError({ code: "INVALID_STREAM_CURSOR" });
+    cursors.set(streamId, Math.min(cursors.get(streamId) ?? cursor, cursor));
+  }
+  return syncStreams(ctx, row.native.component, {
+    threadId: row.threadId,
+    streamArgs: {
+      ...args,
+      cursors: [...cursors]
+        .slice(0, LIMITS.streamCursors)
+        .map(([streamId, cursor]) => ({ streamId, cursor })),
+    },
+  });
 }

@@ -3,7 +3,10 @@ import type { LanguageModelV4 } from "@ai-sdk/provider";
 import type { Instructions, LanguageModel, StopCondition, ToolSet } from "ai";
 import type { ManagedAgent } from "./types.js";
 
-type AgentOptions<Tools extends ToolSet> = Config & {
+// Replace the native model property before restating it: intersecting the two
+// gateway id unions exceeds TypeScript's representable union size as the model
+// catalog grows. This preserves every other native configuration option.
+type AgentOptions<Tools extends ToolSet> = Omit<Config, "languageModel"> & {
   name: string;
   languageModel: Extract<LanguageModel, string | LanguageModelV4>;
   instructions?: Instructions;
