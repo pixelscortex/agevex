@@ -1,0 +1,44 @@
+src/component/queue.ts
+  s_2fab373f5bbdc2::t_4a3a0ab1c00a5f 24,643-669,734-741,791-797,801-804,806-809,812,929-930,934,949-950
+src/component/schema.ts
+  s_2fab373f5bbdc2::t_00a0b3d0c71bf7 166-169
+src/component/limits.ts
+  s_2fab373f5bbdc2::t_00a0b3d0c71bf7 92-94
+src/component/approvals.ts
+  s_2fab373f5bbdc2::t_4a3a0ab1c00a5f 20,31-32,36-41
+  s_2fab373f5bbdc2::t_00a0b3d0c71bf7 1-19,21-30,42-47
+  s_2fab373f5bbdc2::t_6ffa3b8108e051 33-35
+tests/bounded-reads.test.ts
+  s_2fab373f5bbdc2::t_a05798d1d1d692 369-389,393-394,410-411
+  s_2fab373f5bbdc2::t_7a0ca9f0f74c7d 338,390-392,526,565-570,575-577,589-591
+  s_2fab373f5bbdc2::t_ac4608e6274ddb 52,85,111,113,181,234,283,295
+  s_2fab373f5bbdc2::t_b23d80dcce3cb0 317-337,339-368,395-409,413,597
+  s_2fab373f5bbdc2::t_ee5bd2dd9ca693 571-574,578-588,592-595
+  s_2fab373f5bbdc2::t_b5ccbbcdcc0dfb 412,414-418,596,598-602
+src/component/cancellation.ts
+  s_2fab373f5bbdc2::t_4a3a0ab1c00a5f 61,72-73,79,83,86-91,94-100,103,108,112-122
+  s_2fab373f5bbdc2::t_3129b2ec42b70a 2,5,7-8,27-31,33,36,51,54,59-60,62-71,74-78,80-81,92-93,101-102,110-111,127-133
+  s_2fab373f5bbdc2::t_6ffa3b8108e051 82,84-85,104-107,109,123-126
+tests/host.ts
+  s_2fab373f5bbdc2::t_4c85e855e142c3 70,177-182
+tests/review-regressions.test.ts
+  s_2fab373f5bbdc2::t_dd7ea60cde4681 126,128,162,1242
+tests/setup.ts
+  s_2fab373f5bbdc2::t_c63e3a3dc5c41e 168
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "64adbc2cb8f0b6c54c4465cd5db1e77124438803",
+  "prompts": {},
+  "sessions": {
+    "s_2fab373f5bbdc2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1700e-cded-7bf0-beac-1da6aae0a1f7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
