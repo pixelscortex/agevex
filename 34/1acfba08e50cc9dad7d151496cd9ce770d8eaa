@@ -1,0 +1,35 @@
+src/client/endpoints.ts
+  s_5250ef74ef299d::t_c2f3b964ea7b08 210
+src/client/runtime.ts
+  s_5250ef74ef299d::t_bffa1269d517de 613-620,654,680-698
+src/component/cancellation.ts
+  s_5250ef74ef299d::t_aabe222f85d248 1,3-4,6-19,21-23,25-49,54-61,63-74
+src/component/queue.ts
+  s_5250ef74ef299d::t_9f1c56e70cbfe8 607-613,624-638,640-660,662-677,820-824
+src/component/schema.ts
+  s_5250ef74ef299d::t_20d437d4cd3ebd 118-126,144
+tests/durable-core.test.ts
+  s_5250ef74ef299d::t_4a22351a992b21 16-20,96,107,153,173,242
+tests/host.ts
+  s_5250ef74ef299d::t_3531a7befec224 57,137
+tests/review-regressions.test.ts
+  s_5250ef74ef299d::t_11555e2527d8ab 3,101-111,133-217,220-229,231-244,256-260,262,264,267-268,270-297,299-305,307-321,323-324,326,328,332,335-337,339,341,343-344,347-353,357,359-360,362-373,375-388,390-392,394-399
+tests/setup.ts
+  s_5250ef74ef299d::t_a65bead36d9920 152
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "341acfba08e50cc9dad7d151496cd9ce770d8eaa",
+  "prompts": {},
+  "sessions": {
+    "s_5250ef74ef299d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16fd1-bb0e-7211-88df-ba1f231dbcab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
