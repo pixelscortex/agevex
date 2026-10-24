@@ -1,4 +1,10 @@
 {
   "title": "Modules",
-  "pages": ["sandbox", "extract", "meter", "tools"]
+  "icon": "Boxes",
+  "pages": [
+    "sandbox",
+    "extract",
+    "meter",
+    "tools"
+  ]
 }

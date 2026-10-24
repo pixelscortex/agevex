@@ -1,4 +1,10 @@
 {
   "title": "Concepts",
-  "pages": ["runtime", "delegation", "idempotency", "limits"]
+  "icon": "Lightbulb",
+  "pages": [
+    "runtime",
+    "delegation",
+    "idempotency",
+    "limits"
+  ]
 }
