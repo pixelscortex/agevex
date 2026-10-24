@@ -1,0 +1,57 @@
+---
+title: Sandbox
+icon: Terminal
+description: A planned provider-neutral sandbox engine with Daytona first.
+status: Planned
+---
+
+`sdk/sandbox` defines tools, binding, bounds, background work and exports once
+against a provider interface. Daytona is the first adapter, over
+`@daytona/convex`. E2B, Tenki and Boat may follow; they are not implemented here.
+
+## Provider and setup shape
+
+The following is the draft contract, including interface shorthand and scope
+alternatives; it is not executable setup code.
+
+```ts title="Planned sandbox API"
+interface SandboxProvider {
+  id: string
+  create(ctx, opts): Promise<{ sandboxId: string }>        // must return before cold start completes
+  resume(ctx, sandboxId): Promise<void>                    // from stopped / archived
+  stop(ctx, sandboxId): Promise<void>
+  delete(ctx, sandboxId): Promise<void>
+  exec(ctx, sandboxId, cmd, { timeoutS, signal }): Promise<{ exitCode; stdout; stderr }>
+  startBackground(ctx, sandboxId, cmd): Promise<{ jobId: string }>
+  poll(ctx, jobId): Promise<{ state: "running" | "done" | "failed"; exitCode?; logTail? }>
+  readFile / writeFile / listFiles / upload / download
+}
+
+const sandbox = defineSandbox({
+  provider: daytona(components.daytona, { autoStopInterval: 15, autoArchiveInterval: 10 }),
+  scope: "thread" | "run" | "subject",       // which work shares one sandbox
+  limits: { commandTimeoutS: 180, outputChars: 6_000, fileReadChars: 160_000, writeChars: 160_000 },
+})
+sandbox.tools()   // sandbox_exec, sandbox_read_file, sandbox_write_file, sandbox_list, sandbox_run_background
+await sandbox.export(ctx, { threadId, path })   // → { storageId, bytes, sha256 }
+```
+
+## Lifecycle and bounds
+
+The tool context’s `threadId`, `runId` or `subject` selects the sandbox. The
+model never supplies a sandbox ID. Persist the ID before cold start finishes;
+resume stopped, archived or errored sandboxes. Never auto-delete: host cleanup
+uses a scheduled TTL job.
+
+Synchronous commands run for at most 180 seconds, with a 540-second action
+budget. Output is tail-truncated; default reads and writes are bounded to
+160,000 characters and command output to 6,000 characters.
+
+`sandbox_run_background` stores the provider job ID and waits through
+`awaitEvent`. A poller or callback sends completion; no action stays open and
+unknown outcomes are not blindly repeated. Lifecycle usage goes to the host
+usage hook.
+
+Command allowlists do not provide isolation. Isolation and network policy come
+from the provider’s sandbox configuration. Files use the Agent component’s
+storage; no separate SDK files component is planned.

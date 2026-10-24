@@ -1,0 +1,31 @@
+---
+title: Tools
+icon: Wrench
+description: Planned optional AI SDK tools distributed as editable source.
+status: Planned
+---
+
+`sdk/tools` and the registry provide plain AI SDK tools. Registry installation
+copies source into the host project, where the host owns and edits it. A few
+core tools are planned for zero-setup package imports as well.
+
+| Tools | State and limits |
+| --- | --- |
+| `todo_read` / `todo_write` | Small table or thread metadata; at most 100 items. |
+| `goal_set` / `goal_check` | Small table or thread metadata; an explicit goal to report against. |
+| `ask_user` | No separate state; bounded questions through native tool approval. |
+| `continue_budget` | No separate state; native approval for continuing after a budget pause. |
+| `read_file` / `search_files` | Agent files and extraction artifacts; bounded text and references. |
+| Sandbox tools | Supplied by `sdk/sandbox`. |
+
+The planned tools use Agent-component storage where possible. Each tool must
+document its state and limits; hosts can ignore any of them. Goals/todos as a
+framework remain deferred: this list describes small individual tools.
+
+The SDK supplies trusted context facts, not tool permissions. The host checks
+ownership and policy inside its tools. Approvals use native
+`tool-approval-request` / `tool-approval-response` message parts, with no new
+approvals table.
+
+See the [registry guide](/docs/registry) for a working, intentionally in-memory
+`todo-tool` example. The example is not the planned durable tool implementation.

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "todo-tool",
+  "title": "Todo tool (in-memory example)",
+  "description": "Preview AI SDK todo_read and todo_write tools. In-memory demonstration only; replace storage and enforce host authorization before real use.",
+  "dependencies": [
+    "ai",
+    "zod"
+  ],
+  "files": [
+    {
+      "path": "registry/todo-tool/todo-tool.ts",
+      "content": "import { tool } from 'ai';\nimport { z } from 'zod';\n\nconst todoSchema = z.object({\n  id: z.string().min(1).max(100),\n  text: z.string().min(1).max(4000),\n  done: z.boolean(),\n});\ntype Todo = z.infer<typeof todoSchema>;\n\n/**\n * Demonstration only: creates one bounded, in-memory list per factory call.\n * Never share this instance between users. State is lost on process restart\n * and is not shared across server instances. Writes replace the whole list.\n * TODO: use the Agent component's storage, scoped to the trusted thread and\n * owner, per spec §8. Enforce host authorization before reads and writes.\n */\nexport function createTodoTools() {\n  let todos: Todo[] = [];\n\n  return {\n    todo_read: tool({\n      description: 'Read the demo todo list (at most 100 items).',\n      inputSchema: z.object({}),\n      execute: async () => ({ todos: structuredClone(todos) }),\n    }),\n    todo_write: tool({\n      description: 'Replace the demo todo list (at most 100 items).',\n      inputSchema: z.object({ todos: z.array(todoSchema).max(100) }),\n      execute: async (input) => {\n        todos = structuredClone(input.todos);\n        return { todos: structuredClone(todos) };\n      },\n    }),\n  };\n}\n",
+      "type": "registry:lib",
+      "target": "lib/tools/todo-tool.ts"
+    }
+  ],
+  "type": "registry:lib"
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "name": "@agevex",
+  "homepage": "http://localhost:3000",
+  "items": [
+    {
+      "name": "todo-tool",
+      "type": "registry:lib",
+      "title": "Todo tool (in-memory example)",
+      "description": "Preview AI SDK todo_read and todo_write tools. In-memory demonstration only; replace storage and enforce host authorization before real use.",
+      "dependencies": [
+        "ai",
+        "zod"
+      ],
+      "files": [
+        {
+          "path": "registry/todo-tool/todo-tool.ts",
+          "type": "registry:lib",
+          "target": "lib/tools/todo-tool.ts"
+        }
+      ]
+    }
+  ]
+}

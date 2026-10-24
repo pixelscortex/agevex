@@ -1,0 +1,69 @@
+---
+title: Getting started
+icon: Rocket
+description: Install from git, mount the components, and review the planned setup.
+status: Planned
+---
+
+**Preview: API in development.** The package is git-only. The mount below is
+available today; the one-screen registration API is planned and is not a
+runnable example against the current package.
+
+## Install from git
+
+Replace `<commit-sha>` with the full commit you want to consume. There is no
+npm release. Pin git dependencies to a commit for repeatable installs.
+
+```sh title="Terminal"
+bun add git+https://github.com/pixelscortex/agevex.git#<commit-sha>
+bun add convex @convex-dev/agent ai
+```
+
+The host must also satisfy the package’s declared peer dependencies. The git
+revision needs built `dist/` output or an install-time build; the current package
+does not have a `prepare` script. If consuming an unbuilt checkout, run
+`bun install` and `bun run build` in that package before using it. This guide
+does not change the package’s distribution pipeline.
+
+## Mount the components (available)
+
+Mount the native Agent component and the SDK separately. The current SDK
+component mounts Workpool; the host owns the native Agent component.
+
+```ts title="convex/convex.config.ts"
+import { defineApp } from "convex/server";
+import nativeAgent from "@convex-dev/agent/convex.config";
+import sdk from "agevex/convex.config";
+
+const app = defineApp();
+app.use(nativeAgent, { name: "agent" });
+app.use(sdk);
+export default app;
+```
+
+Run the host app’s `bunx convex dev` to generate its component bindings. Mount
+optional components only when you use them; their future subpaths are described
+on the [module pages](/docs/modules/sandbox).
+
+## One-screen setup (planned)
+
+This API shape comes from the draft spec. `languageModel`, `instructions`,
+`authorize` and `meter` are supplied by the host; `components` comes from its
+generated bindings. `defineAgents`, `sdk.api()`, `cancel` and `threadCost` are
+not current exports.
+
+```ts title="Planned one-screen setup"
+const researcher = new Agent(components.agent, { name: "Researcher", languageModel, instructions })
+const main = new Agent(components.agent, { name: "Main", languageModel, instructions, subagents: [researcher] })
+
+export const sdk = defineAgents(components.sdk, { agents: [main], authorize, meter })
+export const { open, send, cancel, messages, activity, delegations, threadCost } = sdk.api()
+
+// anywhere in the host
+const cost = await sdk.meter.threadCost(ctx, { threadId })   // { totalNanos, unknown, byAgent, byModel }
+```
+
+The current registration export is `registerAgevex`. It requires host-owned
+`authorize` and `authorizeExecution` callbacks and explicit internal entry
+points. Consult the repository README for the current complete registration.
+The planned lower-level registration is covered in [runtime](/docs/concepts/runtime).
