@@ -192,12 +192,21 @@ export const scope = v.object({
 });
 /**
  * Public coordination projection of one child run, returned by the authorized
- * `delegations` query. Deliberately carries no child thread id, no delivery or
- * execution token, and no task or result text: the result itself lives in the
- * native parent transcript and is reachable through `resultMessageId`.
+ * `delegations` query. The native child thread id lets the owner read its
+ * conversation through the same `messages` endpoint used for roots. Delivery
+ * and execution tokens stay private, and task/result text stays native: the
+ * delivered parent result is reachable through `resultMessageId`.
  */
 export const subagentRun = v.object({
   runId: v.string(),
+  /**
+   * Native child thread to read through `messages`. Null defensively represents
+   * the state between reservation and attachment, and older rows without this
+   * field. The public coordinator commits reserve and attach together today,
+   * so that intermediate state is not publicly observable in its lifecycle.
+   * Callers must wait for a non-null id before reading the child transcript.
+   */
+  childThreadId: v.union(v.string(), v.null()),
   agent: v.string(),
   status: runStatus,
   deliveryStatus,
@@ -360,7 +369,7 @@ export default defineSchema({
     actorAssignmentId: v.id("assignments"),
     /** Child assignment created by the launch; absent until the native thread exists. */
     childAssignmentId: v.optional(v.id("assignments")),
-    /** Native child thread; a reference only, never a child transcript endpoint. */
+    /** Native child thread; returned by `delegations` for the shared `messages` reader. */
     childThreadId: v.optional(v.string()),
     /** Native id of the child's verified final message; never returned publicly. */
     childResultMessageId: v.optional(v.string()),

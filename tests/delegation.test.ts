@@ -1223,14 +1223,13 @@ it("pages run history newest first within the bounded page size", async () => {
   await expect(runs(t, receipt.threadId, 1, "not-a-cursor")).rejects.toThrow("INVALID_CURSOR");
 });
 
-it("never exposes a child thread or a capability in the coordination read", async () => {
+it("never exposes a capability or transcript text in the coordination read", async () => {
   const t = setup();
   state.delegate = true;
   const receipt = await open(t);
   await drain(t);
   await drain(t);
   const raw = JSON.stringify(await runs(t, receipt.threadId));
-  expect(raw).not.toContain("childThreadId");
   expect(raw).not.toContain("deliveryToken");
   expect(raw).not.toContain("childAssignmentId");
   expect(raw).not.toContain("RESEARCHER");
