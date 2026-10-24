@@ -1,0 +1,57 @@
+docs/site/.gitignore
+  s_5c6506e9a2ce71::t_453d51573183c8 3,5-9
+docs/site/README.md
+  s_5c6506e9a2ce71::t_716f8501e5918e 3-5,17-18,24-25,41,51-70
+docs/site/bun.lock
+  s_5c6506e9a2ce71::t_77974e46636ca2 8-9,21,27-28,32,185,187,189,191,193,195,197,199,269-300,353-389,463-464,509-512,521-522,585-586,595-596,603-604,609-610,659-660,709-710,723-724,741-742,775-776,797-798,803-804,855-856,865-866,881,883,885,887,889,891,893,895,897,899,901,903,1063-1066,1079-1080,1115-1116,1131-1132,1197-1200,1217-1220,1255-1256,1309-1310,1315-1316,1339-1342,1349-1350,1361-1364,1367-1368,1375-1376,1409-1410,1425-1432,1451-1452,1491-1512
+docs/site/package.json
+  s_5c6506e9a2ce71::t_d8a387040fe157 4-5,7-10,14-15,27,32-33,36,39-40
+docs/site/scripts/build-registry.ts
+  s_5c6506e9a2ce71::t_ec932cc3104d8b 17-19
+docs/site/src/components/not-found.tsx
+  s_5c6506e9a2ce71::t_eafea0d943ec93 2-3,5,7-9
+docs/site/src/lib/shared.ts
+  s_5c6506e9a2ce71::t_fe70b071208e1c 3-4,8,11-16,18,21-23,25-28
+docs/site/src/lib/source.ts
+  s_5c6506e9a2ce71::t_d377ab19d67310 8,11
+docs/site/src/router.tsx
+  s_5c6506e9a2ce71::t_7ea74c3f882769 1-10
+docs/site/src/routes/__root.tsx
+  s_5c6506e9a2ce71::t_dc6f379218997a 1,3-4,6-25,27,30-32,34-37
+docs/site/src/routes/api/search.ts
+  s_5c6506e9a2ce71::t_2360a1ebfecab5 1,5-16
+docs/site/src/routes/docs/$.tsx
+  s_5c6506e9a2ce71::t_05b578aab915a3 1-4,12-17,19-35,37-59,62,64,66,69,74,80-81,83-89
+docs/site/src/routes/docs/{$}[.]md.ts
+  s_5c6506e9a2ce71::t_0f4c22d1c9ca4a 1,3,5-11,13-18,20-21
+docs/site/src/routes/index.tsx
+  s_5c6506e9a2ce71::t_1259611ec364bb 1,3-7
+docs/site/src/routes/llms-full[.]txt.ts
+  s_5c6506e9a2ce71::t_86f67eae1756dc 1,4-12
+docs/site/src/routes/llms[.]mdx/docs/$.ts
+  s_5c6506e9a2ce71::t_70f4a2f16661fd 1-20
+docs/site/src/routes/llms[.]txt.ts
+  s_5c6506e9a2ce71::t_7d7415cce9a39e 2,4-12
+docs/site/src/start.ts
+  s_5c6506e9a2ce71::t_fef16bf5a519d0 1-35
+docs/site/tsconfig.json
+  s_5c6506e9a2ce71::t_e299979c29963b 2-5,7-11,13-15,17-23,25-26,30-33,36,39-41
+docs/site/vite.config.ts
+  s_5c6506e9a2ce71::t_33848b0cd27935 2-7,9-35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cf114815af8f8e78b657a566212de6b1ea0a9334",
+  "prompts": {},
+  "sessions": {
+    "s_5c6506e9a2ce71": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16f55-195a-7412-8e5a-e23aff60a60f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}

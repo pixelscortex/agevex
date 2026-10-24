@@ -1,0 +1,47 @@
+docs/site/content/docs/concepts/delegation.mdx
+  s_eec9ba5f5ed51c::t_57162d7d9f7699 3
+docs/site/content/docs/concepts/idempotency.mdx
+  s_eec9ba5f5ed51c::t_2ed94ea9634d6b 3
+docs/site/content/docs/concepts/limits.mdx
+  s_eec9ba5f5ed51c::t_c26998360e6e12 3
+docs/site/content/docs/concepts/meta.json
+  s_eec9ba5f5ed51c::t_8bc572a7fc885b 3-9
+docs/site/content/docs/concepts/runtime.mdx
+  s_eec9ba5f5ed51c::t_ec71f447a5d1d5 3
+docs/site/content/docs/getting-started.mdx
+  s_eec9ba5f5ed51c::t_2d19ec9064687c 3
+docs/site/content/docs/index.mdx
+  s_eec9ba5f5ed51c::t_ea14196b4e16c3 3
+docs/site/content/docs/meta.json
+  s_eec9ba5f5ed51c::t_2d8f92fd2d6404 3,5-16
+docs/site/content/docs/modules/extract.mdx
+  s_eec9ba5f5ed51c::t_2386a42e77c517 3
+docs/site/content/docs/modules/meta.json
+  s_eec9ba5f5ed51c::t_bc258b08cc3687 3-9
+docs/site/content/docs/modules/meter.mdx
+  s_eec9ba5f5ed51c::t_d8cc571c855dae 3
+docs/site/content/docs/modules/sandbox.mdx
+  s_eec9ba5f5ed51c::t_822d4885f39276 3
+docs/site/content/docs/modules/tools.mdx
+  s_eec9ba5f5ed51c::t_8c230c4f29316a 3
+docs/site/content/docs/registry.mdx
+  s_eec9ba5f5ed51c::t_d8b6df3c23ceff 3
+docs/site/content/docs/testing.mdx
+  s_eec9ba5f5ed51c::t_468515e82b82ba 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cc8feb7c9f3ff71b3c0662824fe0ec6e930e4bd6",
+  "prompts": {},
+  "sessions": {
+    "s_eec9ba5f5ed51c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16f6a-2f85-7133-8d9f-38ad97fdf064",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
