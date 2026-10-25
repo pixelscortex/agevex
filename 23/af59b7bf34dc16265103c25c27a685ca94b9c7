@@ -1,0 +1,24 @@
+src/testing/expect-journal.ts
+  s_d863bd773ba186::t_7ef1da15b7f73a 1-10,33-34,36,73-77,79-80,85-159
+  s_d863bd773ba186::t_5b1a3b8b043ddb 160-165
+src/testing/bridge.ts
+  s_d863bd773ba186::t_88828bb655f464 1-9,18,20-21,30-31
+src/testing/journal.ts
+  s_d863bd773ba186::t_6c6afb2aa7c359 2-10,29-30,49-53,90-91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "23af59b7bf34dc16265103c25c27a685ca94b9c7",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
