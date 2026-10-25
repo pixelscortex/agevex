@@ -1,0 +1,49 @@
+README.md
+  s_189912c4fd883f::t_9ea6ad789b5b6a 175-185
+src/client/endpoints.ts
+  s_189912c4fd883f::t_2bd14c02a55ec1 104,120-125,316-324
+src/client/types.ts
+  s_189912c4fd883f::t_0d057049e5aaf1 45
+src/component/limits.ts
+  s_fb856f624e63c4::t_a7a7486c05b72e 107-114
+tests/authorization.test.ts
+  s_189912c4fd883f::t_4e4e23e9cbb1ef 36-41
+tests/bounded-reads.test.ts
+  s_189912c4fd883f::t_0d59c554c50d28 693,695,712,714,729,731,759,761,800,802,816-819,821-826,829,834-839,841-875,877-891,918,920
+tests/fixture/api.ts
+  s_189912c4fd883f::t_b1ba25d2d5cf57 26,66
+tests/host-bridge.test.ts
+  s_189912c4fd883f::t_7bf0978654b571 37-42
+tests/host.ts
+  s_189912c4fd883f::t_06e7b3cfe7bdc2 405
+tests/live/convex/agents.ts
+  s_189912c4fd883f::t_35bb47000ff11a 207
+tests/native-readers.test.ts
+  s_189912c4fd883f::t_4e388030fc4dcc 36-37
+tests/registration.test.ts
+  s_189912c4fd883f::t_6d42943d2dfb67 53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8296689172bc3d018ed27f5f787610b2f94cb37c",
+  "prompts": {},
+  "sessions": {
+    "s_189912c4fd883f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17062-ed77-7ef3-9c80-3bb059f3e19d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_fb856f624e63c4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17064-4619-7842-a63f-68a1be944929",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+src/component/queue.ts
+  s_189912c4fd883f::t_2264e8c365fd99 837-841,849-854,858-860
+tests/bounded-reads.test.ts
+  s_189912c4fd883f::t_ac485d8299e024 982-1080
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "25d6de60d0aa3e22e07dd938232f80c93eca524d",
+  "prompts": {},
+  "sessions": {
+    "s_189912c4fd883f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17062-ed77-7ef3-9c80-3bb059f3e19d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}

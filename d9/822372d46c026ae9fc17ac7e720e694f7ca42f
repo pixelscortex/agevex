@@ -1,0 +1,23 @@
+src/client/endpoints.ts
+  s_ca761f50d785e7::t_7bd843684a70dd 400-404
+src/component/limits.ts
+  s_ca761f50d785e7::t_3a9e94c8969370 67
+tests/bounded-reads.test.ts
+  s_ca761f50d785e7::t_1c1f3680aa68fa 1085-1110
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d9822372d46c026ae9fc17ac7e720e694f7ca42f",
+  "prompts": {},
+  "sessions": {
+    "s_ca761f50d785e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17067-cc8b-78b2-9606-d2e117ad4daf",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
