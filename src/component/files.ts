@@ -1,15 +1,24 @@
-import { assertFact } from "./facts.js";
+/**
+ * Registered attachment endpoints: upload grants and message bindings.
+ * Entry file only: the attestation rows and their bounded lookups live in
+ * files/grants.ts.
+ *
+ * The host `register`s a grant from its trusted upload transaction, `attach`es
+ * granted files to a native message in the transaction that saves it, and
+ * checks `owns` / `forMessage` before a model reads an attachment. Table:
+ * `receipts` (`kind: "attachment"`).
+ */
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server.js";
-import { LIMITS } from "./limits.js";
+import { assertFact } from "./facts.js";
+import {
+  assertFileIdentity,
+  assertNativeHandle,
+  bindFiles,
+  messageBindings,
+  uploadGrant,
+} from "./files/grants.js";
 
-function identity(value: string) {
-  if (!value || value.length > LIMITS.fileIdLength) throw new Error("INVALID_FILE_IDENTITY");
-}
-function nativeIdentity(value: string) {
-  if (!value || value.length > LIMITS.functionHandleLength)
-    throw new Error("INVALID_NATIVE_HANDLE");
-}
 /** Host-only upload attestation, not a browser endpoint. The host must call
  * this from its trusted upload transaction, never expose arbitrary file ids as
  * proof of ownership. Agent 0.7.7 files.ts:22-83 has hash dedup but no subject. */
@@ -17,23 +26,18 @@ export const register = mutation({
   args: { native: v.string(), fileId: v.string(), subject: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    identity(args.fileId);
+    assertFileIdentity(args.fileId);
     assertFact(args.subject, "subject");
-    nativeIdentity(args.native);
-    const row = await ctx.db
-      .query("receipts")
-      .withIndex("by_file", (q) =>
-        q
-          .eq("native", args.native)
-          .eq("fileId", args.fileId)
-          .eq("subject", args.subject)
-          .eq("threadId", undefined),
-      )
-      .unique();
+    assertNativeHandle(args.native);
+
+    const row = await uploadGrant(ctx, args.native, args.fileId, args.subject);
     if (!row) await ctx.db.insert("receipts", { kind: "attachment", ...args });
     return null;
   },
 });
+
+/** Whether the subject holds a grant (no `threadId`) or a binding in that
+ * thread for one native file. */
 export const owns = query({
   args: {
     native: v.string(),
@@ -43,10 +47,11 @@ export const owns = query({
   },
   returns: v.boolean(),
   handler: async (ctx, args) => {
-    nativeIdentity(args.native);
-    identity(args.fileId);
+    assertNativeHandle(args.native);
+    assertFileIdentity(args.fileId);
     assertFact(args.subject, "subject");
     if (args.threadId !== undefined) assertFact(args.threadId, "threadId");
+
     return !!(await ctx.db
       .query("receipts")
       .withIndex("by_file", (q) =>
@@ -59,6 +64,8 @@ export const owns = query({
       .first());
   },
 });
+
+/** Bind granted files to one native message; see files/grants.ts. */
 export const attach = mutation({
   args: {
     native: v.string(),
@@ -68,77 +75,20 @@ export const attach = mutation({
     messageId: v.string(),
   },
   returns: v.null(),
-  handler: async (ctx, args) => {
-    nativeIdentity(args.native);
-    assertFact(args.subject, "subject");
-    assertFact(args.threadId, "threadId");
-    identity(args.messageId);
-    if (
-      args.files.length > LIMITS.filesPerMessage ||
-      new Set(args.files).size !== args.files.length
-    )
-      throw new Error("FILE_LIMIT");
-    for (const fileId of args.files) identity(fileId);
-    // At most eight grants + eight message bindings, all <=8 KiB, and
-    // <=8 writes. No file content or native transcript read.
-    const existing = await ctx.db
-      .query("receipts")
-      .withIndex("by_message", (q) => q.eq("native", args.native).eq("messageId", args.messageId))
-      .take(LIMITS.filesPerMessage);
-    // Keep every message at <=filesPerMessage bindings, including across
-    // repeated host calls for one message. By induction the take above then
-    // sees every existing binding (so dedup is exact) and forMessage's take of
-    // the same size never truncates.
-    const added = args.files.filter(
-      (fileId) =>
-        !existing.some(
-          (row) => row.kind === "attachment" && row.fileId === fileId && row.native === args.native,
-        ),
-    );
-    if (existing.length + added.length > LIMITS.filesPerMessage) throw new Error("FILE_LIMIT");
-    for (const fileId of args.files) {
-      const grant = await ctx.db
-        .query("receipts")
-        .withIndex("by_file", (q) =>
-          q
-            .eq("native", args.native)
-            .eq("fileId", fileId)
-            .eq("subject", args.subject)
-            .eq("threadId", undefined),
-        )
-        .unique();
-      if (!grant || grant.kind !== "attachment") throw new Error("FILE_FORBIDDEN");
-      // A separate row per message retains exact ids for durable extraction
-      // admission even when the same file is attached in a later request.
-      if (
-        !existing.some(
-          (row) => row.kind === "attachment" && row.fileId === fileId && row.native === args.native,
-        )
-      )
-        await ctx.db.insert("receipts", {
-          kind: "attachment",
-          native: args.native,
-          fileId,
-          subject: args.subject,
-          threadId: args.threadId,
-          messageId: args.messageId,
-        });
-    }
-    return null;
-  },
+  handler: (ctx, args) => bindFiles(ctx, args),
 });
+
+/** The file ids bound to one message of this subject's thread. */
 export const forMessage = query({
   args: { messageId: v.string(), subject: v.string(), threadId: v.string(), native: v.string() },
   returns: v.array(v.string()),
   handler: async (ctx, args) => {
-    nativeIdentity(args.native);
+    assertNativeHandle(args.native);
     assertFact(args.subject, "subject");
     assertFact(args.threadId, "threadId");
-    identity(args.messageId);
-    const rows = await ctx.db
-      .query("receipts")
-      .withIndex("by_message", (q) => q.eq("native", args.native).eq("messageId", args.messageId))
-      .take(LIMITS.filesPerMessage);
+    assertFileIdentity(args.messageId);
+
+    const rows = await messageBindings(ctx, args.native, args.messageId);
     return rows.flatMap((row) =>
       row.kind === "attachment" && row.subject === args.subject && row.threadId === args.threadId
         ? [row.fileId]
