@@ -1,0 +1,52 @@
+src/modules/meter/component/charge-contracts.ts
+  s_27938b605a4a40::t_4cc668bb1edaac 1-97
+src/modules/meter/component/delivery.ts
+  s_27938b605a4a40::t_34d2292b83202b 21,33-39,43,126-131,164-173
+  s_27938b605a4a40::t_4cc668bb1edaac 1-20,22-32,40-42,44-125,132-163,174-240
+src/modules/meter/component/charges.ts
+  s_27938b605a4a40::t_4cc668bb1edaac 2-5,7-33,43,45-46,49,51-52,55,57-58,61,63-64,67,69-70,73,75-76,79,81-82,85,87-88,91,93-94,97,99-100
+src/modules/meter/component/retention.ts
+  s_27938b605a4a40::t_34d2292b83202b 1-74
+src/modules/meter/component/aggregates.ts
+  s_27938b605a4a40::t_c9244a12a0bd25 1-6,23,194,211,223
+src/modules/meter/component/charge-creation.ts
+  s_27938b605a4a40::t_fc71567b1ba5bf 1-134
+src/modules/meter/component/charge-lookup.ts
+  s_27938b605a4a40::t_b1d05a72595e7a 1-151
+src/modules/meter/component/charge-records.ts
+  s_27938b605a4a40::t_5c4830efd0e188 1-119
+src/modules/meter/component/charge-updates.ts
+  s_27938b605a4a40::t_140c6d82fca180 1-101
+src/modules/meter/component/convex.config.ts
+  s_27938b605a4a40::t_80b3e8cecad74d 1-6
+src/modules/meter/component/jobs.ts
+  s_27938b605a4a40::t_5238e54eec8f60 1-70
+src/modules/meter/component/outbox.ts
+  s_27938b605a4a40::t_b2534d1984e26d 1-77
+src/modules/meter/component/reads.ts
+  s_27938b605a4a40::t_69dcc13abf3a6c 1-6,77,123,139
+src/modules/meter/component/schema.ts
+  s_27938b605a4a40::t_491cec0143a22c 1-6
+src/modules/meter/shared/breakdowns.ts
+  s_27938b605a4a40::t_a2a9ef76721152 1-6,17,27,39
+src/modules/meter/shared/contracts.ts
+  s_27938b605a4a40::t_4fbab651f93628 1-6
+src/modules/meter/shared/limits.ts
+  s_27938b605a4a40::t_119ec55510ded1 1-6,88,95,120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3488601c805c8dac23d561631275834a71845eb0",
+  "prompts": {},
+  "sessions": {
+    "s_27938b605a4a40": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17570-86e1-78b2-9bc4-f311c9e82600",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
