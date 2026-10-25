@@ -37,7 +37,7 @@ async function pending(t: Test, count = 1) {
   return receipt;
 }
 
-it("free-text answer saves one native tool result and resumes the recorded deferred call", async () => {
+it("free-text answer replays its original native result after the deferred call resumes", async () => {
   const t = setup(undefined, undefined, true);
   const receipt = await pending(t);
   const answer = await owner(t).mutation(api.agents.answer, {
@@ -62,13 +62,34 @@ it("free-text answer saves one native tool result and resumes the recorded defer
   await drain(t);
   expect(state.calls).toHaveLength(2);
   expect(JSON.stringify(state.calls[1].prompt)).toContain("Use the green option");
+  const before = await native(t, receipt.threadId);
   await expect(
     owner(t).mutation(api.agents.answer, {
       threadId: receipt.threadId,
       toolCallId: "question-0",
-      text: "again",
+      text: "Use the green option",
     }),
-  ).rejects.toThrow("TOOL_CALL_NOT_FOUND");
+  ).resolves.toEqual(answer);
+  expect(await native(t, receipt.threadId)).toEqual(before);
+  await drain(t);
+  expect(state.calls).toHaveLength(2);
+});
+
+it("answer rejects changed text with typed KEY_CONFLICT and preserves the original result", async () => {
+  const t = setup(undefined, undefined, true);
+  const receipt = await pending(t);
+  const args = { threadId: receipt.threadId, toolCallId: "question-0", text: "original" };
+  const result = await owner(t).mutation(api.agents.answer, args);
+  await drain(t);
+  const before = await native(t, receipt.threadId);
+  await expect(
+    owner(t).mutation(api.agents.answer, { ...args, text: "changed" }),
+  ).rejects.toMatchObject({ data: { code: "KEY_CONFLICT" } });
+  await expect(owner(t).mutation(api.agents.answer, args)).resolves.toEqual(result);
+  await expect(
+    t.withIdentity({ subject: "bob" }).mutation(api.agents.answer, args),
+  ).rejects.toThrow("FORBIDDEN");
+  expect(await native(t, receipt.threadId)).toEqual(before);
 });
 
 it("all sixteen deferred calls must be answered before a continuation, preserving every answer", async () => {

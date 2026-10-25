@@ -1061,6 +1061,52 @@ export const write = mutation({
   },
 });
 
+/**
+ * Native responses commit once with their receipt, so a lost host response can
+ * replay even after the pending-call reference has been consumed. Hash the
+ * tuple and payload instead of copying potentially near-1 MiB native ids or
+ * answer/reason text into the ledger; JSON framing keeps tuple parts distinct.
+ * The indexed lookup reads one <=64 KiB result plus fixed-size metadata. Saving
+ * adds one expiry-head read and one receipt write of the same bound: <256 KiB
+ * total additional I/O, independent of the <=16 calls in a pause. Together with
+ * answer's <13 MiB native/readiness budget below, this remains <13.25 MiB.
+ */
+async function responseReceipt(
+  ctx: MutationCtx,
+  scope: "answer" | "respond",
+  threadId: string,
+  callId: string,
+  payload: string,
+) {
+  const key = await approvalKey(JSON.stringify([threadId, callId]));
+  const fingerprint = await approvalKey(payload);
+  const receipt = await findReceipt(ctx, scope, key);
+  if (receipt && receipt.fingerprint !== fingerprint)
+    throw new ConvexError({ code: "KEY_CONFLICT" });
+  return { scope, key, fingerprint, messageId: receipt?.result as string | undefined };
+}
+
+async function saveResponseReceipt(
+  ctx: MutationCtx,
+  receipt: { scope: string; key: string; fingerprint: string },
+  messageId: string,
+) {
+  // Keep the same result bound and seven-day purge lifecycle as tool/request
+  // receipts. The saved native message remains the only copy of the payload.
+  if (getConvexSize(messageId) > LIMITS.receiptResultBytes) throw new Error("RESULT_TOO_LARGE");
+  await armPurge(ctx);
+  await ctx.db.insert("receipts", {
+    scope: receipt.scope,
+    key: receipt.key,
+    fingerprint: receipt.fingerprint,
+    status: "done",
+    claim: crypto.randomUUID(),
+    leaseUntil: Date.now(),
+    result: messageId,
+    expiresAt: Date.now() + LIMITS.receiptRetentionMs,
+  });
+}
+
 /** Approval responses MUST go through the authorized respond endpoint. A
  * response saved directly through Agent is not seen by this runtime.
  */
@@ -1077,6 +1123,14 @@ export const respond = mutation({
   handler: async (ctx, args) => {
     const row = await ctx.db.get("assignments", args.assignmentId);
     if (!row || row.subject !== args.subject) throw new ConvexError({ code: "FORBIDDEN" });
+    const receipt = await responseReceipt(
+      ctx,
+      "respond",
+      row.threadId,
+      args.approvalId,
+      JSON.stringify([args.approved, args.reason ?? null]),
+    );
+    if (receipt.messageId !== undefined) return { messageId: receipt.messageId };
     const approvals = row.approvals;
     const key = await approvalKey(args.approvalId);
     const index =
@@ -1104,6 +1158,7 @@ export const respond = mutation({
         },
       ],
     );
+    await saveResponseReceipt(ctx, receipt, messageId);
     const resolved = [...approvals.resolved, index];
     await ctx.db.patch("assignments", row._id, {
       approvals: {
@@ -1148,6 +1203,8 @@ export const answer = mutation({
       throw new ConvexError({ code: "INVALID_MESSAGE" });
     if (!args.toolCallId || args.toolCallId.length > LIMITS.nativeCallIdLength)
       throw new ConvexError({ code: "TOOL_CALL_NOT_FOUND" });
+    const receipt = await responseReceipt(ctx, "answer", row.threadId, args.toolCallId, args.text);
+    if (receipt.messageId !== undefined) return { messageId: receipt.messageId };
     const pause = row.approvals;
     const key = await approvalKey(args.toolCallId);
     const index =
@@ -1201,6 +1258,7 @@ export const answer = mutation({
       ],
     })) as { messages: MessageDoc[] };
     const messageId = saved.messages[0]._id;
+    await saveResponseReceipt(ctx, receipt, messageId);
     const remaining = pause.requests
       .map((request, offset) => ({ request, resolved: pause.resolved.includes(offset) }))
       .filter((_, offset) => offset !== index);

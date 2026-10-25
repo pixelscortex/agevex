@@ -180,7 +180,7 @@ it("respond resolves two approvals separately and resumes from the final native 
       approvalId: "approval-0",
       approved: true,
     }),
-  ).rejects.toThrow("APPROVAL_ALREADY_RESOLVED");
+  ).resolves.toEqual(first);
   const last = await alice.mutation(api.agents.respond, {
     threadId: turn.threadId,
     approvalId: "approval-1",
@@ -206,6 +206,46 @@ it("respond resolves two approvals separately and resumes from the final native 
     queuedMessages: 0,
     errorCode: null,
   });
+});
+
+it.each([true, false])(
+  "respond replays its original native result after a %s decision resumes the call",
+  async (approved) => {
+    const t = setup(undefined, undefined, true);
+    const turn = await request(t, 1);
+    const args = {
+      threadId: turn.threadId,
+      approvalId: "approval-0",
+      approved,
+      reason: "original reason",
+    };
+    const result = await owner(t).mutation(api.agents.respond, args);
+    await drain(t);
+    const before = await nativePage(t, turn.threadId);
+    const calls = state.calls.length;
+    await expect(owner(t).mutation(api.agents.respond, args)).resolves.toEqual(result);
+    expect(await nativePage(t, turn.threadId)).toEqual(before);
+    await drain(t);
+    expect(state.calls).toHaveLength(calls);
+  },
+);
+
+it("respond rejects a changed decision or reason with typed KEY_CONFLICT and preserves the original result", async () => {
+  const t = setup(undefined, undefined, true);
+  const turn = await request(t, 1);
+  const args = { threadId: turn.threadId, approvalId: "approval-0", approved: true };
+  const result = await owner(t).mutation(api.agents.respond, args);
+  await drain(t);
+  const before = await nativePage(t, turn.threadId);
+  for (const change of [{ approved: false }, { reason: "changed" }, { reason: "" }])
+    await expect(
+      owner(t).mutation(api.agents.respond, { ...args, ...change }),
+    ).rejects.toMatchObject({ data: { code: "KEY_CONFLICT" } });
+  await expect(owner(t).mutation(api.agents.respond, args)).resolves.toEqual(result);
+  await expect(
+    t.withIdentity({ subject: "bob" }).mutation(api.agents.respond, args),
+  ).rejects.toThrow("FORBIDDEN");
+  expect(await nativePage(t, turn.threadId)).toEqual(before);
 });
 
 it("respond preserves provider-executed flags and rejects other owners", async () => {
