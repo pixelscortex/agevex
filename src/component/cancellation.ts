@@ -1,26 +1,27 @@
-import type { FunctionHandle } from "convex/server";
-import type { MessageDoc } from "@convex-dev/agent";
+/**
+ * Cancellation cleanup that cannot fit in `queue.cancel`'s own budget.
+ * Entry file only: the native cleanup steps live in cancellation/cleanup.ts.
+ *
+ * Cancel schedules one `cleanup` per affected assignment. It aborts the
+ * execution's tracked native stream, fails its pending placeholder message,
+ * and then denies the recorded approval/deferred requests one per transaction
+ * (each reads one exact native message of up to 1 MiB), chaining itself until
+ * none remain and finally releasing the pause. If a native write fails, the
+ * assignment is parked in `recovery_required` with CLEANUP_FAILED rather than
+ * left half-cleaned. `close` is the one stale write a lost turn may still do:
+ * fail its own placeholder. Touches `assignments` only; native writes go
+ * through the recorded Agent handles.
+ */
 import { v } from "convex/values";
-import { internalMutation, type MutationCtx } from "./_generated/server.js";
+import { internalMutation } from "./_generated/server.js";
 import { internal } from "./_generated/api.js";
 import { pendingGeneration } from "./schema.js";
-import { approvalKey, saveResponses } from "./approvals.js";
-import { wake } from "./queue/wake.js";
-
-/** Exactly one recorded placeholder per transaction, including native payload reads. */
-async function finalize(ctx: MutationCtx, pending: typeof pendingGeneration.type) {
-  const [message]: ({ status: string } | null)[] = await ctx.runQuery(
-    pending.getMessages as FunctionHandle<"query">,
-    { messageIds: [pending.messageId] },
-  );
-  // Native ids survive order reuse. Deletion and an already terminal message
-  // are both no-ops; finalizeMessage also compares pending status atomically.
-  if (message?.status === "pending")
-    await ctx.runMutation(pending.finalizeMessage as FunctionHandle<"mutation">, {
-      messageId: pending.messageId,
-      result: { status: "failed", error: "CANCELLED" },
-    });
-}
+import {
+  continueOrRelease,
+  denyFirstRequest,
+  failPendingGeneration,
+  finalize,
+} from "./cancellation/cleanup.js";
 
 /** Backstop for an action that crashed or was killed before its abort listener. */
 const cleanupArgs = {
@@ -29,6 +30,8 @@ const cleanupArgs = {
   approvalEpoch: v.optional(v.number()),
 };
 
+/** Run one cleanup step as a nested savepoint; on failure, park the
+ * assignment with CLEANUP_FAILED if this job still owns the cleanup. */
 export const cleanup = internalMutation({
   args: cleanupArgs,
   returns: v.null(),
@@ -56,28 +59,14 @@ export const cleanup = internalMutation({
   },
 });
 
+/** One cleanup step: the pending generation (if any), then the first
+ * remaining recorded request of the cancelled pause. */
 export const cleanupBatch = internalMutation({
   args: cleanupArgs,
   returns: v.null(),
   handler: async (ctx, { assignmentId, pending, approvalEpoch }) => {
-    // Stream creation is tracked atomically too: never list a thread's streams
-    // after cancellation, when a fresh generation may already own another one.
-    if (pending?.stream) {
-      try {
-        await ctx.runMutation(pending.stream.abort as FunctionHandle<"mutation">, {
-          streamId: pending.stream.id,
-          reason: "CANCELLED",
-        });
-      } catch (error) {
-        // Native deletion may already have removed this exact stream.
-        if (
-          !(error instanceof Error) ||
-          !error.message.includes("Stream not found: " + pending.stream.id)
-        )
-          throw error;
-      }
-    }
-    if (pending) await finalize(ctx, pending);
+    if (pending) await failPendingGeneration(ctx, pending);
+
     const row = await ctx.db.get("assignments", assignmentId);
     if (
       pending &&
@@ -85,79 +74,12 @@ export const cleanupBatch = internalMutation({
       row.pendingGeneration.epoch === pending.epoch
     )
       await ctx.db.patch("assignments", assignmentId, { pendingGeneration: undefined });
+
     const approvals = row?.approvals;
     if (!row || !approvals?.cleanupPending || approvals.epoch !== approvalEpoch) return null;
-    const request = approvals.requests[0];
-    const messageId = request.messageId;
-    // One exact request document per transaction (<= 1 MiB), plus native save
-    // lookups and at most one placeholder/stream: never read sixteen huge docs
-    // together. Chained jobs settle <= approvalsPerPause recorded requests in
-    // total; the guard remains set until the final native save commits.
-    const [message]: (MessageDoc | null)[] = await ctx.runQuery(
-      approvals.getMessages as FunctionHandle<"query">,
-      { messageIds: [messageId] },
-    );
-    const content = message?.message?.content;
-    const responses = [];
-    const deniedCalls = [];
-    if (message?.message?.role === "assistant" && Array.isArray(content)) {
-      for (const part of content) {
-        if (request.deferred) {
-          if (part.type === "tool-call" && (await approvalKey(part.toolCallId)) === request.key) {
-            deniedCalls.push({ toolCallId: part.toolCallId, toolName: part.toolName });
-            break;
-          }
-          continue;
-        }
-        if (part.type !== "tool-approval-request") continue;
-        const key = await approvalKey(part.approvalId);
-        if (key !== request.key) continue;
-        const call = content.find(
-          (candidate) => candidate.type === "tool-call" && candidate.toolCallId === part.toolCallId,
-        );
-        if (call?.type !== "tool-call") throw new Error("APPROVAL_CALL_NOT_FOUND");
-        // Even an answered request has no result until the gated continuation
-        // runs. Cancel terminates that call without repeating its decision.
-        deniedCalls.push({
-          toolCallId: part.toolCallId,
-          toolName: call.toolName,
-          ...(request.providerExecuted ? { providerExecuted: true as const } : {}),
-        });
-        if (!request.resolved)
-          responses.push({
-            approvalId: part.approvalId,
-            approved: false,
-            reason: "cancelled",
-            ...(request.providerExecuted ? { providerExecuted: true as const } : {}),
-          });
-        break;
-      }
-    }
-    if (deniedCalls.length)
-      await saveResponses(
-        ctx,
-        { ...row, messageId, addMessages: approvals.addMessages },
-        responses,
-        deniedCalls,
-      );
-    // Native deletion is also terminal for this exact reference. Never search
-    // another order/message for a replacement after cancellation.
-    const remaining = approvals.requests.slice(1);
-    if (remaining.length) {
-      await ctx.db.patch("assignments", assignmentId, {
-        approvals: { ...approvals, requests: remaining },
-      });
-      await ctx.scheduler.runAfter(0, internal.cancellation.cleanup, {
-        assignmentId,
-        approvalEpoch,
-      });
-    } else {
-      await ctx.db.patch("assignments", assignmentId, {
-        approvals: undefined,
-        approvalBlocked: false,
-      });
-      await wake(ctx, { ...row, approvals: undefined, approvalBlocked: false });
-    }
+
+    await denyFirstRequest(ctx, row, approvals);
+    await continueOrRelease(ctx, row, approvals, approvalEpoch);
     return null;
   },
 });
@@ -181,6 +103,7 @@ export const close = internalMutation({
       pending.epoch !== args.epoch
     )
       return null;
+
     await finalize(ctx, pending);
     await ctx.db.patch("assignments", args.assignmentId, { pendingGeneration: undefined });
     return null;
