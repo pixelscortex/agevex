@@ -37,7 +37,8 @@ const tools = createGoalTools(internal.agevexTools.goalsState);
 set in this run. The model uses that goal to report its progress; the tool does
 not independently verify success.
 
-`GOAL_LIMITS` fix goal text at 4000 characters and every scope string at 1024.
+`GOAL_LIMITS` fix goal text at 4000 characters. Owner, thread and run come from
+`ToolContext`, which core already bounds (`LIMITS.factBytes`, 128 UTF-8 bytes).
 The host table `agevexGoals` stores `subject`, `threadId` and `runId` as the
 composite ownership/run index, plus `goal` for both tools to read. A new user
 run has its own goal. The host owns retention and deletion. Each operation

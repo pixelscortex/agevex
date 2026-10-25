@@ -1,4 +1,4 @@
-import { defineOnceTool } from "agevex";
+import { tool } from "ai";
 import { z } from "zod";
 
 export const ASK_USER_LIMITS = { minChars: 1, questionChars: 2000 } as const;
@@ -7,27 +7,28 @@ export const questionInput = z.strictObject({
 });
 
 /**
- * Agent 0.7.7 persists the native approval request/response. The host answers
- * with core respond({ threadId, approvalId, approved, reason }). This is a
- * yes/no question: AI SDK filters approved reasons from the model prompt
- * (ai/src/prompt/convert-to-language-model-prompt.ts:339-341). Send freeform
- * answers through core send as well. Never scan messages to recover them.
- * Do not save a native response directly: core must wake the waiting turn.
- * Source: @convex-dev/agent/src/approvals.ts:3-7,65-82.
+ * A deferred tool: it has no `execute`, so the model's call is recorded by core
+ * as a pending native tool call and the turn ends idle until a human answers.
+ * The owner answers through the core endpoint
+ * `answer({ threadId, toolCallId, text })`; core authorizes the owner, saves the
+ * text as the native tool result and resumes the turn once every pending call on
+ * the thread is answered. The model sees the text verbatim as the tool result.
+ *
+ * Why no `defineOnceTool`: there is no effect to run, so there is nothing for
+ * the receipts ledger to deduplicate. Core's `answer` is itself idempotent per
+ * `toolCallId` (same text replays the original result; different text is a
+ * typed KEY_CONFLICT) and refuses foreign, unrecorded or already answered calls.
+ *
+ * Bounds: the question is validated by AI SDK before the call is recorded
+ * (blank or oversized input becomes an ordinary tool error and never pauses the
+ * thread). The answer is bounded by core: non-empty, at most 16,000 UTF-16 units
+ * (`LIMITS.messageLength`). Deferred calls share core's 16-call pause bound
+ * (`LIMITS.approvalsPerPause`) with approvals.
  */
 export function createAskUserTool() {
-  const approval = defineOnceTool({
-    name: "ask_user",
-    input: questionInput,
-    run: (input, tc) => {
-      tc.signal.throwIfAborted();
-      // Only approved calls execute. The answer remains on the native
-      // approval-response part; never echo model text as a human answer.
-      return { approved: true, question: questionInput.parse(input).question };
-    },
+  return tool({
+    description:
+      "Ask the user one question and wait for their free-text answer, which is returned as this tool's result.",
+    inputSchema: questionInput,
   });
-  approval.description =
-    "Ask the user one yes/no question and wait for native approval. Freeform answers require a separate user message.";
-  approval.needsApproval = true;
-  return approval;
 }

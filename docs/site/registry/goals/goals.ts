@@ -2,14 +2,11 @@ import { defineOnceTool } from "agevex";
 import type { FunctionReference } from "convex/server";
 import { z } from "zod";
 
-export const GOAL_LIMITS = { minChars: 1, goalChars: 4000, scopeChars: 1024 } as const;
+export const GOAL_LIMITS = { minChars: 1, goalChars: 4000 } as const;
 export const goalText = z.string().trim().min(GOAL_LIMITS.minChars).max(GOAL_LIMITS.goalChars);
-export const goalScope = z.strictObject({
-  subject: z.string().min(GOAL_LIMITS.minChars).max(GOAL_LIMITS.scopeChars),
-  threadId: z.string().min(GOAL_LIMITS.minChars).max(GOAL_LIMITS.scopeChars),
-  runId: z.string().min(GOAL_LIMITS.minChars).max(GOAL_LIMITS.scopeChars),
-});
-type Scope = z.infer<typeof goalScope>;
+// Core validates every ToolContext fact (nonempty, at most LIMITS.factBytes
+// UTF-8 bytes) before a tool runs, so the scope is passed through unchanged.
+type Scope = { subject: string; threadId: string; runId: string };
 export type GoalFunctions = {
   check: FunctionReference<"query", "internal", Scope, { goal: string | null }>;
   set: FunctionReference<"mutation", "internal", Scope & { goal: string }, { goal: string }>;
@@ -23,13 +20,13 @@ export function createGoalTools(refs: GoalFunctions) {
       input: z.strictObject({ goal: goalText }),
       run: async (input, tc) => {
         tc.signal.throwIfAborted();
-        const { goal } = z.strictObject({ goal: goalText }).parse(input);
-        const scope = goalScope.parse({
+        // `input` was validated by AI SDK; ownership comes from ToolContext only.
+        return tc.ctx.runMutation(refs.set, {
           subject: tc.subject,
           threadId: tc.threadId,
           runId: tc.runId,
+          goal: input.goal,
         });
-        return tc.ctx.runMutation(refs.set, { ...scope, goal });
       },
     }),
     goal_check: defineOnceTool({
@@ -37,12 +34,11 @@ export function createGoalTools(refs: GoalFunctions) {
       input: z.strictObject({}),
       run: async (_input, tc) => {
         tc.signal.throwIfAborted();
-        const scope = goalScope.parse({
+        return tc.ctx.runQuery(refs.check, {
           subject: tc.subject,
           threadId: tc.threadId,
           runId: tc.runId,
         });
-        return tc.ctx.runQuery(refs.check, scope);
       },
     }),
   };

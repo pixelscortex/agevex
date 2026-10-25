@@ -1,6 +1,6 @@
 ---
 title: Ask the user
-description: Pause for a bounded yes/no question using native approvals.
+description: Pause for a bounded question and resume with the user's free-text answer.
 status: Available
 ---
 
@@ -22,28 +22,24 @@ const tools = { ask_user: createAskUserTool() };
 // Include ...tools in your Agent's tools and keep host authorization policies.
 ```
 
-`ask_user({ question })` requests approval. `ASK_USER_LIMITS` cap one nonblank,
-trimmed question at 2000 characters. Additional fields, including ownership,
-are rejected. `needsApproval: true` prevents execution before a decision.
-Approved execution returns `{ approved: true, question }` through core's
-idempotent `defineOnceTool` context. Denial produces a native denied execution.
+`ask_user({ question })` is a **deferred tool**: it has no `execute`, so core
+records the call as pending and the turn waits. `ASK_USER_LIMITS` cap one
+nonblank, trimmed question at 2000 characters; blank, oversized or extra fields
+(including ownership) become an ordinary tool error and never pause the thread.
 
-The host displays the native question and answers through its core endpoint:
+Show the pending question from the thread's `messages` (the tool call's
+`input.question`), then answer through core:
 
 ```ts
-await respond({ threadId, approvalId, approved: true, reason: "Optional note" });
+await answer({ threadId, toolCallId, text: "Use the green option" });
 ```
 
-Core authorizes the thread owner, saves the exact native response and wakes
-the waiting turn. Duplicate or foreign responses are rejected. Do not call
-native `approveToolCall` directly: it does not wake core's waiting turn.
+Core authorizes the thread owner, saves `text` as the native tool result and
+resumes once every pending call on the thread is answered. The model sees the
+text verbatim. The text is nonempty and at most 16,000 UTF-16 units. Repeating
+the same answer replays the original result; different text is a typed
+`KEY_CONFLICT`; foreign, unrecorded or cancelled calls are rejected. Deferred
+calls share core's 16-call pause bound with approvals.
 
-This is a **yes/no question**. Free-text answers are coming through a core
-endpoint. AI SDK removes approved `reason` text from the next model prompt,
-so response notes are not free-text answers.
-
-No item table or host schema snippet is needed. Native approval parts store
-the question and decision; core owns pending references and once-tool receipts.
-At most 2000 characters (8000 UTF-8 bytes conservatively) enter the tool result,
-below the 64 KiB receipt cap. The item adds no model calls, paid effects or
-automatic retries. The host's UI and approval policy remain host-owned.
+No item table or host schema snippet is needed, and the item adds no model
+calls, paid effects or retries. The host's UI and authorization stay host-owned.

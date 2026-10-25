@@ -1,6 +1,6 @@
 ---
 title: Continue budget
-description: Ask for consent to continue without changing budget policy.
+description: Ask for spending consent and continue a run core stopped with BUDGET_EXCEEDED.
 status: Available
 ---
 
@@ -22,26 +22,42 @@ const tools = { continue_budget: createContinueBudgetTool() };
 // Include ...tools in your Agent's tools; keep host authorization policies.
 ```
 
-`continue_budget({ reason })` pauses on a native approval. The fixed
-`CONTINUE_BUDGET_LIMITS` allow one trimmed, nonblank reason of at most 2000
-characters. Unknown input fields, including ownership or a proposed numeric
-budget, are rejected. Only approval executes the tool, returning
-`{ approved: true, reason }` through core `defineOnceTool`. Denial never
-returns an approved execution.
+## Ask for consent
 
-The owner answers via core
-`respond({ threadId, approvalId, approved, reason? })`. Core rejects foreign or
-duplicate responses and wakes the waiting turn. Saving a response directly
-through native Agent is insufficient. Approved response notes are retained
-natively but filtered from the model prompt by AI SDK; send a separate core
-message when the model needs those instructions.
+`continue_budget({ reason })` pauses on a native approval. `CONTINUE_BUDGET_LIMITS`
+allow one trimmed, nonblank reason of at most 2000 characters; unknown fields,
+including ownership or a proposed budget, are rejected. The owner answers with
+core `respond({ threadId, approvalId, approved })`. Only approval executes the
+tool; denial never returns an approved execution. **Consent does not raise any
+limit**: the tool changes no meter, budget or core counter.
 
-**Consent does not raise any limit.** This tool does not modify a meter, grant
-credit, reset core run counters or resume a hard-exhausted run. The host applies
-its budget policy separately and should request consent before a hard limit
-prevents the model from calling tools.
+## Continue a stopped run
 
-There are no item tables or schema changes. Native Agent stores the approval
-parts; core stores pending references and idempotent tool receipts. The reason
-is at most 8000 UTF-8 bytes conservatively, below the 64 KiB receipt cap. No
-paid work or automatic retry is added.
+When your `budget` slot denies a slice, core ends the turn with
+`BUDGET_EXCEEDED` in `activity` and leaves the run in `recovery_required`. Core
+never resumes it, because the step that tripped the budget may be an uncertain
+paid step. `resumeAfterBudgetStop` runs the supported sequence from a host
+action:
+
+```ts
+import { resumeAfterBudgetStop } from "./agevexTools/continueBudget.js";
+
+const result = await resumeAfterBudgetStop({
+  consent: approved, // the user's explicit spending consent
+  activity: () => ctx.runQuery(api.agents.activity, { threadId }),
+  raiseBudget: () => ctx.runMutation(internal.budgets.raise, { subject }), // idempotent
+  cancel: () => ctx.runMutation(api.agents.cancel, { threadId }),
+  send: () =>
+    ctx.runMutation(api.agents.send, { threadId, text, requestKey: "after-budget" }),
+});
+// "no-consent" | "not-stopped" | { status: "resumed", receipt }
+```
+
+Order: consent, raise your budget policy, cancel the stopped run (clears its
+recovery state and discards its pending notes), then send a fresh request as a
+new run. Without consent, or if the thread is not stopped for budget, nothing is
+changed or cancelled. A rejected `send` throws its receipt code. If `raiseBudget`
+or `cancel` fails, call again; once `cancel` succeeded, retry core `send` with the
+same `requestKey` (a repeat returns `duplicate`).
+
+No item tables or schema changes. Budget policy and storage stay host-owned.

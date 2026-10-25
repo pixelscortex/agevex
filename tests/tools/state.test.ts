@@ -2,6 +2,8 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import type { LanguageModelV4Content } from "@ai-sdk/provider";
 import { setup, api, state } from "./setup.js";
+import { LIMITS } from "../../src/client/index.js";
+import { requireReceipt } from "../receipt.js";
 import { TODO_LIMITS } from "../../docs/site/registry/todo/todo.js";
 import { GOAL_LIMITS } from "../../docs/site/registry/goals/goals.js";
 
@@ -21,10 +23,12 @@ const call = (toolName: string, toolCallId: string, input: unknown): LanguageMod
   },
 ];
 const todo = (text = "Write the guide") => ({ id: "guide", text, done: false });
-const open = (t: ReturnType<typeof setup>, requestKey = "first", subject = "alice") =>
-  t
-    .withIdentity({ subject })
-    .mutation(api.host.open, { agent: "Tools", prompt: "Use the tools", requestKey });
+const open = async (t: ReturnType<typeof setup>, requestKey = "first", subject = "alice") =>
+  requireReceipt(
+    await t
+      .withIdentity({ subject })
+      .mutation(api.host.open, { agent: "Tools", prompt: "Use the tools", requestKey }),
+  );
 
 function maximumTodos() {
   const todos = Array.from({ length: TODO_LIMITS.items }, (_, i) => ({
@@ -139,11 +143,11 @@ it.each(["todo_write", "goal_set"])(
   },
 );
 
-it("todo admits 100 unique items at exactly 32 KiB and rejects count, UTF-8 byte, field and duplicate-id overflow", async () => {
+it("todo admits 100 unique items at exactly 32 KiB with maximum-size core facts, and rejects count, UTF-8 byte, field and duplicate-id overflow", async () => {
   const t = setup();
   const scope = {
-    subject: "a".repeat(TODO_LIMITS.scopeChars),
-    threadId: "t".repeat(TODO_LIMITS.scopeChars),
+    subject: "a".repeat(LIMITS.factBytes),
+    threadId: "t".repeat(LIMITS.factBytes),
   };
   const todos = maximumTodos();
   expect(await t.mutation(api.todoState.write, { ...scope, todos })).toEqual({ todos });
@@ -162,32 +166,22 @@ it("todo admits 100 unique items at exactly 32 KiB and rejects count, UTF-8 byte
   ];
   for (const input of invalid)
     await expect(t.mutation(api.todoState.write, { ...scope, todos: input })).rejects.toThrow();
-  await expect(
-    t.query(api.todoState.read, { ...scope, subject: "a".repeat(TODO_LIMITS.scopeChars + 1) }),
-  ).rejects.toThrow();
   expect(await t.query(api.todoState.read, scope)).toEqual({ todos });
   expect(await t.mutation(api.todoState.write, { ...scope, todos: [] })).toEqual({ todos: [] });
 });
 
-it("goal state accepts its hard maximum and rejects blank, oversized and unbounded scope values before changing state", async () => {
+it("goal state accepts its hard maximum with maximum-size core facts and rejects blank and oversized goals before changing state", async () => {
   const t = setup();
   const scope = {
-    subject: "a".repeat(GOAL_LIMITS.scopeChars),
-    threadId: "t".repeat(GOAL_LIMITS.scopeChars),
-    runId: "r".repeat(GOAL_LIMITS.scopeChars),
+    subject: "a".repeat(LIMITS.factBytes),
+    threadId: "t".repeat(LIMITS.factBytes),
+    runId: "r".repeat(LIMITS.factBytes),
   };
   const goal = "界".repeat(GOAL_LIMITS.goalChars);
   expect(await t.mutation(api.goalsState.set, { ...scope, goal })).toEqual({ goal });
   expect(await t.query(api.goalsState.check, scope)).toEqual({ goal });
   for (const invalid of ["", "   ", goal + "x"])
     await expect(t.mutation(api.goalsState.set, { ...scope, goal: invalid })).rejects.toThrow();
-  await expect(
-    t.mutation(api.goalsState.set, {
-      ...scope,
-      runId: "r".repeat(GOAL_LIMITS.scopeChars + 1),
-      goal,
-    }),
-  ).rejects.toThrow();
   expect(await t.query(api.goalsState.check, scope)).toEqual({ goal });
 });
 

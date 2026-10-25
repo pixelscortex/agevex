@@ -11,10 +11,12 @@ export const continueInput = z.strictObject({
 });
 
 /**
- * This requests consent only. It neither changes a meter budget nor bypasses
- * the core run limit; the host must apply any budget change under its policy.
- * Agent 0.7.7's native approval (approvals.ts:65-82) owns the decision, and
- * core respond owns the wake-up. No separate budget/approval table is needed.
+ * Model-side half: ask the user for explicit spending consent.
+ *
+ * This only requests consent. It neither changes a budget nor bypasses core's
+ * run limits. The native approval (answered through core `respond`) is the
+ * consent record; denial never executes the tool. The host applies its own
+ * budget policy afterwards (see `resumeAfterBudgetStop`).
  */
 export function createContinueBudgetTool() {
   const approval = defineOnceTool({
@@ -22,11 +24,65 @@ export function createContinueBudgetTool() {
     input: continueInput,
     run: (input, tc) => {
       tc.signal.throwIfAborted();
-      return { approved: true, reason: continueInput.parse(input).reason };
+      return { approved: true, reason: input.reason };
     },
   });
   approval.description =
-    "Request permission to continue before reaching a hard budget limit. Approval is consent only; the host must change its budget policy separately.";
+    "Ask the user for explicit permission to spend more before the budget runs out. Approval is consent only; the host changes its budget policy separately.";
   approval.needsApproval = true;
   return approval;
+}
+
+/** The receipt shape core's `send` returns, reduced to what this flow reads. */
+export type SendReceipt =
+  | { status: "accepted" | "duplicate"; threadId: string }
+  | { status: "rejected"; code: string };
+
+export type ResumeAfterBudgetStop<Receipt extends SendReceipt> = {
+  /** Explicit spending consent from the user (e.g. an approved `continue_budget`). */
+  consent: boolean;
+  /** Core `activity` for the stopped thread. */
+  activity: () => Promise<{ errorCode: string | null }>;
+  /** Host budget policy update. Must be idempotent (set an absolute limit). */
+  raiseBudget: () => Promise<unknown>;
+  /** Core `cancel` for the stopped thread. */
+  cancel: () => Promise<unknown>;
+  /** Core `send` with a stable `requestKey`, so a retried flow cannot duplicate the request. */
+  send: () => Promise<Receipt>;
+};
+
+/**
+ * Host-side half: continue a run that core stopped with `BUDGET_EXCEEDED`.
+ *
+ * Core never resumes a stopped run, because the step that tripped the budget may
+ * have been paid for with an unknown outcome. The only supported path is:
+ *   1. explicit spending consent,
+ *   2. the host updates its budget policy,
+ *   3. cancel the stopped run (clears its recovery state and discards its notes),
+ *   4. send a fresh request (a new run with its own run id).
+ *
+ * The order matters: raising the budget first means a failure leaves the run
+ * stopped and nothing cancelled; cancelling before the raise could leave a
+ * cancelled thread whose next request is denied again. Retrying: if `raiseBudget`
+ * or `cancel` fails, call this again (the thread still reports BUDGET_EXCEEDED;
+ * `raiseBudget` must be idempotent). Once `cancel` succeeded the stop is cleared,
+ * so a failed `send` is retried by calling core `send` directly with the same
+ * `requestKey` (a repeat returns `duplicate`). Nothing runs without consent, and
+ * a thread that is not stopped for budget is left untouched (no cancel of
+ * healthy work).
+ */
+export async function resumeAfterBudgetStop<Receipt extends SendReceipt>(
+  flow: ResumeAfterBudgetStop<Receipt>,
+): Promise<
+  | { status: "no-consent" }
+  | { status: "not-stopped" }
+  | { status: "resumed"; receipt: Exclude<Receipt, { status: "rejected" }> }
+> {
+  if (flow.consent !== true) return { status: "no-consent" };
+  if ((await flow.activity()).errorCode !== "BUDGET_EXCEEDED") return { status: "not-stopped" };
+  await flow.raiseBudget();
+  await flow.cancel();
+  const receipt = await flow.send();
+  if (receipt.status === "rejected") throw new Error(receipt.code);
+  return { status: "resumed", receipt: receipt as Exclude<Receipt, { status: "rejected" }> };
 }

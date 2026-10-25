@@ -65,13 +65,13 @@
       "name": "ask-user",
       "type": "registry:lib",
       "title": "Ask the user",
-      "description": "ask_user requests native Agent approval for one nonblank yes/no question up to 2000 characters. No item tables; native approval parts and core receipts hold state. Answer through core respond; free-text answers are coming through a core endpoint.",
+      "description": "ask_user is a deferred tool (no execute): the model asks one nonblank question up to 2000 characters and the turn waits. The owner answers with core answer({ threadId, toolCallId, text }); the model sees the text. No item tables; native pending-call state and core hold it.",
       "dependencies": [
         "ai@^7.0.153",
         "zod@^4.6.7",
         "convex@^1.47.0"
       ],
-      "docs": "Use a TypeScript host with tsx: true in components.json before installing. Register createAskUserTool() on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. Responses must use core respond, never native approveToolCall directly. See /docs/tools/ask-user.",
+      "docs": "Use a TypeScript host with tsx: true in components.json before installing. Register createAskUserTool() on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. Answer with core answer, never by saving a native tool result directly. See /docs/tools/ask-user.",
       "files": [
         {
           "path": "registry/ask-user/askUser.ts",
@@ -84,13 +84,13 @@
       "name": "continue-budget",
       "type": "registry:lib",
       "title": "Continue budget",
-      "description": "continue_budget requests native Agent approval with a nonblank reason up to 2000 characters. No item tables; native approval parts and core receipts hold state. Consent does not modify any budget. Resume through core respond.",
+      "description": "continue_budget requests native Agent approval with a nonblank reason up to 2000 characters; resumeAfterBudgetStop continues a run core stopped with BUDGET_EXCEEDED (consent, raise host budget, cancel, fresh send). No item tables. Consent alone changes no budget.",
       "dependencies": [
         "ai@^7.0.153",
         "zod@^4.6.7",
         "convex@^1.47.0"
       ],
-      "docs": "Use a TypeScript host with tsx: true in components.json before installing. Register createContinueBudgetTool() on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. Responses must use core respond, never native approveToolCall directly. See /docs/tools/continue-budget.",
+      "docs": "Use a TypeScript host with tsx: true in components.json before installing. Register createContinueBudgetTool() on an agevex Agent with host authorize/authorizeExecution, and call resumeAfterBudgetStop from a host action with your own budget policy update. Requires the host's existing agevex package. Approvals use core respond, never native approveToolCall directly. See /docs/tools/continue-budget.",
       "files": [
         {
           "path": "registry/continue-budget/continueBudget.ts",

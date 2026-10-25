@@ -38,13 +38,14 @@ An item is `{ id: string, text: string, done: boolean }`. IDs must be unique.
 
 The fixed `TODO_LIMITS` allow 100 items, 100 characters per ID, 4000 characters
 per text, and **32 KiB of serialized UTF-8 for the entire list**. All apply
-together. Owner and thread strings are at most 1024 characters. Unknown input
-fields, including model-supplied ownership, are rejected.
+together. Owner and thread come from `ToolContext`, which core already bounds
+(`LIMITS.factBytes`, 128 UTF-8 bytes). Unknown input fields, including
+model-supplied ownership, are rejected.
 
 The host table `agevexTodos` stores only `subject` and `threadId` (the composite
 lookup/ownership scope) and `todos` (read and replaced by the tools). State
 persists across runs in that thread. Each operation reads at most two indexed
-rows to enforce uniqueness; one valid row is at most 41 KiB. There are no native
+rows to enforce uniqueness; one valid row is under 34 KiB. There are no native
 message reads or SDK tables. The host owns deletion and retention.
 
 These are ordinary AI SDK tools built with core `defineOnceTool`. Core supplies

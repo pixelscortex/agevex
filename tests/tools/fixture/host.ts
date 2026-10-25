@@ -25,6 +25,8 @@ import { createContinueBudgetTool } from "../../../docs/site/registry/continue-b
 export const state = {
   steps: [] as LanguageModelV4Content[][],
   calls: [] as LanguageModelV4CallOptions[],
+  /** Fake budget policy owned by the "host": checks past `allowed` are denied. */
+  budget: { allowed: Infinity, checks: 0, runIds: [] as string[] },
 };
 const model = mockModel();
 model.doStream = async (args) => {
@@ -71,10 +73,18 @@ const runtime = registerAgent(component, {
     if (!identity) throw new Error("UNAUTHENTICATED");
     return { subject: identity.subject };
   },
+  budget: {
+    check: async (_ctx, { runId }) => {
+      state.budget.checks++;
+      state.budget.runIds.push(runId);
+      return { allowed: state.budget.checks <= state.budget.allowed };
+    },
+  },
   authorizeExecution: async (_ctx, { subject }) => {
     if (subject !== "alice" && subject !== "bob") throw new Error("REVOKED");
   },
 });
 
 export const { runTurn, coordinate } = runtime.internalFunctions();
-export const { open, send, respond, cancel, messages, activity } = runtime.authorizedEndpoints();
+export const { open, send, respond, answer, cancel, messages, activity } =
+  runtime.authorizedEndpoints();

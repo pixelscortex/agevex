@@ -8,7 +8,6 @@ export const TODO_LIMITS = {
   idChars: 100,
   textChars: 4000,
   listBytes: 32 * 1024,
-  scopeChars: 1024,
 } as const;
 
 export const todoList = z
@@ -29,12 +28,9 @@ export const todoList = z
       ctx.addIssue({ code: "custom", message: "Todo list exceeds 32 KiB" });
   });
 
-export const todoScope = z.strictObject({
-  subject: z.string().min(TODO_LIMITS.minChars).max(TODO_LIMITS.scopeChars),
-  threadId: z.string().min(TODO_LIMITS.minChars).max(TODO_LIMITS.scopeChars),
-});
-
-type Scope = z.infer<typeof todoScope>;
+// Core validates every ToolContext fact (nonempty, at most LIMITS.factBytes
+// UTF-8 bytes) before a tool runs, so the scope is passed through unchanged.
+type Scope = { subject: string; threadId: string };
 type Result = { todos: z.infer<typeof todoList> };
 export type TodoFunctions = {
   read: FunctionReference<"query", "internal", Scope, Result>;
@@ -49,10 +45,7 @@ export function createTodoTools(refs: TodoFunctions) {
       input: z.strictObject({}),
       run: async (_input, tc) => {
         tc.signal.throwIfAborted();
-        return tc.ctx.runQuery(
-          refs.read,
-          todoScope.parse({ subject: tc.subject, threadId: tc.threadId }),
-        );
+        return tc.ctx.runQuery(refs.read, { subject: tc.subject, threadId: tc.threadId });
       },
     }),
     todo_write: defineOnceTool({
@@ -60,11 +53,14 @@ export function createTodoTools(refs: TodoFunctions) {
       input: z.strictObject({ todos: todoList }),
       run: async (input, tc) => {
         tc.signal.throwIfAborted();
-        const { todos } = z.strictObject({ todos: todoList }).parse(input);
-        // Never take an owner or thread from model input. The managed context
-        // routes this internal mutation through core's atomic cancellation fence.
-        const scope = todoScope.parse({ subject: tc.subject, threadId: tc.threadId });
-        return tc.ctx.runMutation(refs.write, { ...scope, todos });
+        // AI SDK already validated `input` against the strict schema above, so
+        // ownership can never come from the model. The managed context routes
+        // this internal mutation through core's atomic cancellation fence.
+        return tc.ctx.runMutation(refs.write, {
+          subject: tc.subject,
+          threadId: tc.threadId,
+          todos: input.todos,
+        });
       },
     }),
   };
