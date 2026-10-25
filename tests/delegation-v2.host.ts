@@ -112,6 +112,7 @@ export const v2api = anyApi as unknown as ApiFromModules<{
     open: typeof open;
     send: typeof send;
     cancel: typeof cancel;
+    respond: typeof respond;
     answer: typeof answer;
     messages: typeof messages;
     activity: typeof activity;

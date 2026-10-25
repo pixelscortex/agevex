@@ -187,6 +187,11 @@ export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = tru
   }
   // Re-evaluate R3 after every blocker-clearing wake, including failed delivery
   // and empty group release. Idle children cannot wait for nonexistent work.
+  // answer/respond retain their inbox anchor until claim consumes it. That
+  // anchor fences R3 even after the last approval is cleared; claim then marks
+  // the turn running and clears lastTurnResult in the same transaction. Never
+  // remove the anchor before publishing the resumed turn, or R3 could settle
+  // the child with a provisional result before its answer is consumed.
   if (await settleIdleParent(ctx, row)) {
     await disarmRecovery(ctx, row);
     return;

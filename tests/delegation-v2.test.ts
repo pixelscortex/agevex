@@ -2391,6 +2391,139 @@ it("an ended Builder releases every empty all cohort at the maximum launch budge
   );
 });
 
+it.each(
+  (["answer", "respond"] as const).flatMap((response) =>
+    (["before", "after"] as const).map((delivery) => ({ response, delivery })),
+  ),
+)(
+  "$response resumes a child before R3 can settle its provisional result with delivery=$delivery",
+  async ({ response, delivery }) => {
+    const t = setup(maxima);
+    const root = await manualRoot(t);
+    const child = await launch(t, root, "Builder");
+    const descendant = await launch(t, child, "Reviewer");
+    const resultMessageId = await nativeSave(
+      t,
+      child,
+      "Builder",
+      "provisional result before pause",
+    );
+    expect(
+      await t.mutation(api.agents.coordinate, {
+        op: "settle",
+        assignmentId: child.assignmentId,
+        turnToken: child.turnToken,
+        runId: child.runId,
+        resultMessageId,
+        errorCode: null,
+      }),
+    ).toMatchObject({ status: "deferred" });
+    await t.run(async (ctx) =>
+      ctx.runMutation(components.agevex.queue.write, {
+        assignmentId: child.assignmentId,
+        executionId: child.turnToken,
+        cancellationEpoch: 0,
+        handle: await createFunctionHandle(components.agent.messages.addMessages),
+        nativeMessages: {
+          getMessages: await createFunctionHandle(components.agent.messages.getMessagesByIds),
+          finalizeMessage: await createFunctionHandle(components.agent.messages.finalizeMessage),
+        },
+        deferredTools: response === "answer" ? ["askHuman"] : [],
+        args: {
+          threadId: child.threadId,
+          agentName: "Builder",
+          failPendingSteps: false,
+          messages: [
+            {
+              message: {
+                role: "assistant",
+                content: [
+                  {
+                    type: "tool-call",
+                    toolCallId: "r3-question",
+                    toolName: "askHuman",
+                    input: { question: "Which revision?" },
+                  },
+                  ...(response === "respond"
+                    ? [
+                        {
+                          type: "tool-approval-request",
+                          approvalId: "r3-approval",
+                          toolCallId: "r3-question",
+                        },
+                      ]
+                    : []),
+                ],
+              },
+            },
+          ],
+        },
+      }),
+    );
+    const failDelivery = async () => {
+      await t.mutation(components.agevex.subagents.settle, {
+        assignmentId: descendant.assignmentId,
+        turnToken: descendant.turnToken,
+        runId: descendant.runId,
+        childResultMessageId: null,
+        errorCode: "GENERATION_FAILED",
+      });
+      // Clearing the last descendant is an R3 re-check without new inbox work.
+      await t.mutation(components.agevex.subagents.deliver, {
+        runId: descendant.runId,
+        deliveryToken: descendant.deliveryToken,
+        deliveryStatus: "failed",
+        parentMessageId: null,
+        errorCode: "DELIVERY_FAILED",
+      });
+      await t.mutation(components.agevex.queue.finish, {
+        assignmentId: descendant.assignmentId,
+        turnToken: descendant.turnToken,
+        errorCode: null,
+      });
+    };
+    const resume = () =>
+      response === "answer"
+        ? owner(t).mutation(api.agents.answer, {
+            threadId: child.threadId,
+            toolCallId: "r3-question",
+            text: "Use the answered revision",
+          })
+        : owner(t).mutation(api.agents.respond, {
+            threadId: child.threadId,
+            approvalId: "r3-approval",
+            approved: false,
+          });
+    if (delivery === "before") await failDelivery();
+    expect((await tree(t, root.threadId))[0].status).toBe("running");
+    const receipt = await resume();
+    expect(await resume()).toEqual(receipt);
+    if (delivery === "after") await failDelivery();
+    expect((await tree(t, root.threadId))[0].status).toBe("running");
+    expect(
+      await t.query(components.agevex.queue.execution, { assignmentId: child.assignmentId }),
+    ).toMatchObject({ turnStatus: "queued", approvalBlocked: false, queuedMessages: 0 });
+    v2.steps.Builder = () => text("final result after response");
+    await t.mutation(components.agevex.queue.finish, {
+      assignmentId: root.assignmentId,
+      turnToken: root.turnToken,
+      errorCode: null,
+    });
+    await drain(t);
+    expect(calls("Builder")).toHaveLength(1);
+    expect(JSON.stringify(calls("Builder")[0].args.prompt)).toContain(
+      response === "answer" ? "Use the answered revision" : "execution-denied",
+    );
+    expect(JSON.stringify(calls("Main")[0].args.prompt)).toContain("final result after response");
+    expect((await tree(t, root.threadId))[0].status).toBe("completed");
+    // Replaying after claim consumed the anchor cannot enqueue or settle again.
+    expect(await resume()).toEqual(receipt);
+    await drain(t);
+    expect(calls("Builder")).toHaveLength(1);
+    expect(calls("Main")).toHaveLength(1);
+  },
+);
+
 it.each([1, HOST_LIMITS.messagesPerChild.max])(
   "a deferred child answer uses reserved capacity at queueLength=%s and stays visible when FIFO heads coalesce",
   async (queueLength) => {
