@@ -30,7 +30,6 @@ const hostModules = import.meta.glob(["../fixture/**/*.ts", "../fixture/**/*.js"
 const extractModules = import.meta.glob("../../src/extract/component/**/*.ts");
 const mounts = components as unknown as {
   agent: AgentComponent;
-  agevex: Parameters<typeof authorizeAttached>[1];
   extract: ComponentApi;
 };
 
@@ -65,7 +64,7 @@ function setup(useSlot = true) {
     storageMetadata,
     backends: [backend],
     // Lazy: registration() and defineExtract reference each other.
-    authorize: authorizeAttached(() => registration(), mounts.agevex),
+    authorize: authorizeAttached(() => registration()),
   });
   if (useSlot) fixture.slots.extract = extract.slot();
   const t = convexTest({
@@ -116,7 +115,7 @@ async function upload(h: Host, content: string, subject = "alice") {
   return file.fileId;
 }
 const artifact = (h: Host, threadId: string, fileId: string) =>
-  h.t.action((ctx) => h.extract.get(ctx, { threadId, fileId }));
+  h.t.action((ctx) => h.extract.get(ctx, { threadId, fileId, subject: "alice" }));
 /** Everything the fake model was shown as tool results, as one string. */
 const toolOutputs = () =>
   JSON.stringify(
@@ -184,8 +183,11 @@ it("read_file refuses a file attached to another thread or another subject", asy
   const mine = await upload(h, "my own file");
   const sameSubjectOtherThread = await upload(h, "private to thread two: kumquat");
   const foreign = await upload(h, "bob only: persimmon", "bob");
+  // One extraction at a time (see the first test's note on the harness limit).
   const first = await open(h, [mine], "t1");
+  await drain(h);
   const second = await open(h, [sameSubjectOtherThread], "t2");
+  await drain(h);
   const bobs = await open(h, [foreign], "t3", "bob");
   await drain(h);
   // Thread two's file really is extracted and readable on its own thread, so a
@@ -222,6 +224,10 @@ it("read_file refuses a file attached to another thread or another subject", asy
     h.t.action((ctx) =>
       h.extract.get(ctx, { threadId: first.threadId, fileId: mine, subject: "bob" }),
     ),
+  ).rejects.toThrow("FORBIDDEN");
+  // A caller that names no subject is denied rather than guessed.
+  await expect(
+    h.t.action((ctx) => h.extract.get(ctx, { threadId: first.threadId, fileId: mine })),
   ).rejects.toThrow("FORBIDDEN");
 });
 

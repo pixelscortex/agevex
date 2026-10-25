@@ -42,7 +42,14 @@ export type Scope = {
   /** Present when the caller knows the thread owner (the agevex slot's tools do). */
   subject?: string;
 };
-export type WorkerArgs = { artifactId: string; attempt: number; claim: string; threadId: string };
+export type WorkerArgs = {
+  artifactId: string;
+  attempt: number;
+  claim: string;
+  threadId: string;
+  /** The subject given to `run`, carried in the workflow args (not the artifacts table). */
+  subject?: string;
+};
 export type ExtractOptions = {
   agent: AgentComponent;
   backends: readonly ExtractBackend[];

@@ -15,6 +15,9 @@ export const extract = manager
       attempt: v.number(),
       claim: v.string(),
       threadId: v.string(),
+      // Thread owner when the caller knew it at admission (agevex slot). It rides
+      // in the workflow args like threadId, so the worker never looks it up.
+      subject: v.optional(v.string()),
       worker: v.string(),
       version: v.number(),
     },
@@ -33,6 +36,7 @@ export const extract = manager
         attempt: args.attempt,
         claim: args.claim,
         threadId: args.threadId,
+        ...(args.subject === undefined ? {} : { subject: args.subject }),
       },
       { retry: false, name: "extract" },
     );

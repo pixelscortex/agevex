@@ -27,6 +27,7 @@ export const admit = mutation({
     ...identity,
     worker: v.string(),
     threadId: v.string(),
+    subject: v.optional(v.string()),
     onComplete: v.optional(v.string()),
   },
   handler: async (
@@ -38,6 +39,7 @@ export const admit = mutation({
     bounded(args.version);
     bounded(args.optionsHash, LIMITS.hashBytes);
     bounded(args.threadId);
+    if (args.subject !== undefined) bounded(args.subject);
     bounded(args.worker, LIMITS.urlBytes);
     if (args.onComplete) bounded(args.onComplete, LIMITS.urlBytes);
     const row = await ctx.db
@@ -80,6 +82,7 @@ export const admit = mutation({
         attempt,
         claim,
         threadId: args.threadId,
+        ...(args.subject === undefined ? {} : { subject: args.subject }),
         worker: args.worker,
         version: LIMITS.workflowVersion,
       },

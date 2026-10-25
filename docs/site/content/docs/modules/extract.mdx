@@ -104,7 +104,7 @@ export const extract = defineExtract(components.agevexExtract, {
   storageMetadata: internal.files.storageMetadata,
   backends: [directText()],
   // Lazy: `runtime` and `extract` reference each other.
-  authorize: authorizeAttached(() => runtime, components.agevex),
+  authorize: authorizeAttached(() => runtime),
 });
 // The annotation breaks the circular type inference.
 export const runtime: ReturnType<typeof registerAgent> = registerAgent(components.agevex, {
@@ -114,13 +114,15 @@ export const runtime: ReturnType<typeof registerAgent> = registerAgent(component
 });
 ```
 
-`authorizeAttached` is the agevex policy for `authorize`: files must be attached to
-the exact thread (`runtime.fileAttached`, an indexed lookup, no scans) for the
-thread's own subject; thread-level operations need a matching `subject`, and the
-search namespace must equal the thread id. The durable worker has no session, so
-the owner is read from the thread's assignment. Upload with
-`runtime.registerFile(...)` in your trusted upload path. `read_file` returns
-`{ status }` until the extraction is `ready`; it never starts one.
+`authorizeAttached` is the agevex policy for `authorize`: every file operation must
+carry the thread owner and pass `runtime.fileAttached` (an indexed exact-attachment
+lookup, no scans); calls without a subject are denied. The slot passes the owner to
+`run`, which stores it in the durable job's arguments, so the background worker
+authorizes without a session or lookup. `search`/`index` are allowed only in the
+thread's own namespace and recheck each file; `fromUrl` is denied (write your own
+`authorize` for it). Upload with `runtime.registerFile(...)` in your trusted upload
+path. `read_file` returns `{ status }` until the extraction is `ready`; it never
+starts one.
 
 ## API
 
@@ -170,7 +172,7 @@ consecutively from 1. Validation strips unknown payload fields.
 ### Acquisition, extraction and reads
 
 - `extract.fromUrl(ctx, { threadId, url })`: first backend with a URL hook fetches HTTP(S), records reported usage, and stores Markdown with native Agent `storeFile`; returns `{ fileId, usage? }`.
-- `extract.run(ctx, { threadId, fileId, backend?, optionsHash?, onComplete? })`: atomically admits durable extraction; returns `{ artifactId, action: "run" | "wait" | "reuse" }`.
+- `extract.run(ctx, { threadId, fileId, subject?, backend?, optionsHash?, onComplete? })`: atomically admits durable extraction; `subject` is forwarded to `authorize` and carried in the job arguments (not the artifacts table) for the worker; returns `{ artifactId, action: "run" | "wait" | "reuse" }`.
 - `extract.get(ctx, { threadId, fileId, backend?, optionsHash? } | { threadId, artifactId })`: returns an exact identity view or `null`; missing explicit artifact ids throw `OBJECT_UNAVAILABLE`.
 - `extract.readText(ctx, { threadId, artifactId, cursor?, maxBytes? })`: returns `{ text, cursor: number | null, done }`; defaults to cursor 0 and a 1 MiB window.
 - `extract.readPages(ctx, { threadId, artifactId, from?, count?, cursor?, maxBytes? })`: returns `{ pages, next: { from, cursor } | null }`; defaults to page 1, 100 pages, cursor 0 and 1 MiB aggregate text.
@@ -194,7 +196,7 @@ for the next character throws `EXTRACT_WINDOW_TOO_SMALL`.
 - `extract.index(ctx, { threadId, artifactId, namespace, key })`: indexes ready artifact text; returns `{ entryId, status: "ready" | "pending", created, replacedEntry: null, usage: { tokens } }`; `entryId` may be absent while waiting.
 - `extract.search(ctx, { threadId, namespace, query, limit? })`: returns `{ text, references: { artifactId, fileId }[], usage }`; defaults to 10 results, no adjacent chunk context, and at most 64 KiB text.
 - `extract.tools({ ctx, threadId, subject? })`: returns AI SDK `read_file` and, only with RAG configured, `search_files`. `subject` is forwarded to `authorize`.
-- `extract.slot(): ExtractSlot`: the agevex `extract` slot ([above](#wire-it-into-agevex)); `authorizeAttached(() => runtime, components.agevex)` builds the matching `authorize`.
+- `extract.slot(): ExtractSlot`: the agevex `extract` slot ([above](#wire-it-into-agevex)); `authorizeAttached(() => runtime)` builds the matching `authorize`.
 - `read_file({ fileId, page?, cursor? })`: reads an existing ready artifact in 64 KiB windows with file/artifact references and `next` arguments; otherwise returns `{ status }` (`missing` when absent). It does not start extraction.
 - `search_files({ query })`: searches the thread namespace with the same text bound and references as `search`.
 

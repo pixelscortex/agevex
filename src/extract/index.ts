@@ -222,7 +222,12 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
       if (!row) throw new ExtractError("OBJECT_UNAVAILABLE");
       fileId = row.fileId;
       backendId = row.backend;
-      await authorize(ctx, { operation: "execute", threadId: args.threadId, fileId });
+      await authorize(ctx, {
+        operation: "execute",
+        threadId: args.threadId,
+        fileId,
+        ...subjectOf(args),
+      });
       const backend = backends.find(
         (value) => value.id === row.backend && value.version === row.version,
       );
@@ -253,7 +258,12 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
         signal: AbortSignal.timeout(LIMITS.providerMs),
       });
       usage = cleanUsage(result.usage);
-      await authorize(ctx, { operation: "execute", threadId: args.threadId, fileId });
+      await authorize(ctx, {
+        operation: "execute",
+        threadId: args.threadId,
+        fileId,
+        ...subjectOf(args),
+      });
       if (!result.ok) {
         // Validate the closed vocabulary before it crosses the component wire;
         // an untrusted backend's arbitrary message never becomes durable state.
@@ -322,6 +332,7 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
       return ctx.runMutation(component.artifacts.admit, {
         ...key,
         threadId: args.threadId,
+        ...subjectOf(args),
         worker: await createFunctionHandle(options.worker),
         ...(args.onComplete ? { onComplete: await createFunctionHandle(args.onComplete) } : {}),
       });
@@ -444,6 +455,7 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
             attempt: v.number(),
             claim: v.string(),
             threadId: v.string(),
+            subject: v.optional(v.string()),
           },
           returns: v.null(),
           handler: execute,

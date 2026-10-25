@@ -442,7 +442,7 @@ receipt until a subsequent cancel successfully settles the recorded work.
 
 Mount `agevex/extract/convex.config` alongside the native Agent component. It
 works standalone, or under agevex via `registerAgent({ extract: extract.slot() })`
-with `authorize: authorizeAttached(() => runtime, components.agevex)`; see the
+with `authorize: authorizeAttached(() => runtime)`; see the
 extract docs page.
 
 ```ts
@@ -494,6 +494,5 @@ to the artifact. Explicit retries delete the exact prior native entry first.
 
 `bun run test:live:extract` loads keys from the main checkout's `.env.local` and
 makes two Firecrawl requests plus one `openrouter/free` OCR request. Explicit
-empty key environment values skip those paid probes. See
-[docs/notes/extract.md](docs/notes/extract.md) for bounds and
-upstream decisions.
+empty key environment values skip those paid probes. See the extract docs page
+for bounds and limits.
