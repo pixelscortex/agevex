@@ -1,0 +1,41 @@
+src/sandbox/component/schema.ts
+  s_d863bd773ba186::t_4360a8adc6e53f 57-58
+src/sandbox/component/state.ts
+  s_d863bd773ba186::t_6b7ee7d4b68851 262,288,349-355,372,375-380,397
+src/sandbox/daytona.ts
+  s_d863bd773ba186::t_8a2bd3ed38686f 163-164,172,175,254,274-277,289-303
+src/sandbox/index.ts
+  s_d863bd773ba186::t_7b2dfb593cc177 12,27,109-115,303-305,308-311,332-334,401,572-579,586-587,590-599,602,607-622,744,836-839,846-847,859,902
+src/sandbox/limits.ts
+  s_d863bd773ba186::t_6b1b9737765dc9 34-36
+src/sandbox/types.ts
+  s_d863bd773ba186::t_5e3eda829ae7cd 58,117-118,136-138
+src/testing/sandbox.ts
+  s_d863bd773ba186::t_4e78a7335c0798 7
+tests/sandbox/daytona.test.ts
+  s_d863bd773ba186::t_7f567fc80fac0a 54-60,93,100,137,283,288,297,624,629,637,675-676,679,687,719,750,764,766-789,793,796-797,799-802,804,806-810,813-819,821
+tests/sandbox/fixture/host.ts
+  s_d863bd773ba186::t_81f516c51eb402 18,45-48,77-78,83,104-119
+tests/sandbox/sandbox.test.ts
+  s_d863bd773ba186::t_65dd5e2291b0c2 21-22,26-28,138,288,613,678,815,820-821,845-851,882-998
+tests/sandbox/setup.ts
+  s_d863bd773ba186::t_2265cbcb2cd5ff 25-26
+tests/sandbox/slot.host.ts
+  s_d863bd773ba186::t_e48ed35ddf4325 25,116-117,170
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3efe5dddd2e01ef8373710ac1751bbbad3165099",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
