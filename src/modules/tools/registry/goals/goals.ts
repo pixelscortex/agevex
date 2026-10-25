@@ -1,4 +1,8 @@
-// Registry source installed into the host Convex app; not an agevex component.
+/**
+ * Host tool factories for setting and checking a durable per-thread goal.
+ * The installing Agent supplies internal state refs; core supplies the fenced
+ * ToolContext, so owner/thread scope never comes from model input.
+ */
 import { defineOnceTool } from "agevex";
 import type { FunctionReference } from "convex/server";
 import { z } from "zod";
@@ -13,7 +17,7 @@ export type GoalFunctions = {
   set: FunctionReference<"mutation", "internal", Scope & { goal: string }, { goal: string }>;
 };
 
-/** One explicit goal per owner and thread, whatever the run. */
+/** Register goal tools on an Agent; fenced ToolContext facts scope one goal per owner/thread across runs. */
 export function createGoalTools(refs: GoalFunctions) {
   const tools = {
     goal_set: defineOnceTool({

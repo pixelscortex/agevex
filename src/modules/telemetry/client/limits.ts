@@ -1,3 +1,8 @@
+/**
+ * Hard ceilings and defensive value traversal for host telemetry.
+ * Attribute writers and attribution validation share these UTF-8 limits.
+ * Bounded copies protect sanitizers and JSON encoding from huge or cyclic inputs.
+ */
 /** Fixed hard ceilings: hosts cannot accidentally turn telemetry into an unbounded log. */
 export const LIMITS = {
   maxSpansPerTurn: 128,
@@ -23,6 +28,7 @@ export const LIMITS = {
 export const TRUNCATED = "[truncated]";
 const encoder = new TextEncoder();
 
+/** Measure encoded UTF-8 bytes wherever character counts cannot enforce export bounds. */
 export const bytes = (value: string) => encoder.encode(value).byteLength;
 
 /** Iterate only the retained prefix, without allocating an encoding of a huge input. */
@@ -47,6 +53,7 @@ export function truncate(value: string, maximum: number): string {
   return prefix;
 }
 
+/** Reject invalid registration/fact strings before the observer retains any state. */
 export function validateString(value: string, name: string, maximum: number): void {
   if (typeof value !== "string" || !value || value.length > maximum || bytes(value) > maximum)
     throw new Error(`Invalid telemetry ${name}`);

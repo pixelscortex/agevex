@@ -1,4 +1,8 @@
-// Host-side module API and helpers; this code is imported by the installing app.
+/**
+ * Portable OTLP JSON shapes, attribute encoding and deterministic identifiers.
+ * Span helpers use the bounded writer before content reaches an exporter.
+ * WebCrypto and TextEncoder work in Convex V8 without a Node tracing SDK.
+ */
 import { LIMITS, TRUNCATED, boundedValue, bytes, truncate } from "./limits.js";
 
 export type AttributeValue =
@@ -28,6 +32,7 @@ export type Sanitize = (value: unknown, attribute: string) => unknown;
 
 const marker: Attribute = { key: "agevex.truncated", value: { boolValue: true } };
 
+/** Mark dropped attributes once so size-ceiling loss remains visible to the reader. */
 export function markTruncated(attributes: Attribute[]): void {
   if (!attributes.some((entry) => entry.key === marker.key)) attributes.push({ ...marker });
 }
@@ -86,6 +91,7 @@ export function attributeWriter(sanitize?: Sanitize) {
   };
 }
 
+/** Wrap a serialized turn in the stable agevex resource/scope envelope for every exporter. */
 export function payload(spans: Span[]): OtlpPayload {
   return {
     resourceSpans: [
@@ -110,4 +116,5 @@ export async function hash(value: string, length: number): Promise<string> {
   return /^0+$/.test(hex) ? hex.slice(0, -1) + "1" : hex;
 }
 
+/** Timestamp span callbacks in OTLP nanoseconds using the host clock. */
 export const now = () => String(BigInt(Date.now()) * BigInt(LIMITS.nanosPerMillisecond));

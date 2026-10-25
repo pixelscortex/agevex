@@ -1,4 +1,8 @@
-// Registry source installed into the host Convex app; not an agevex component.
+/**
+ * Internal host queries and mutations for durable thread goals.
+ * Tool factories call check/set with core-validated ownership facts; host jobs
+ * call cleanup explicitly. All operations retain their indexed read bounds.
+ */
 import {
   internalMutationGeneric,
   internalQueryGeneric,
@@ -13,6 +17,7 @@ const query = internalQueryGeneric as QueryBuilder<GoalDataModel, "internal">;
 const mutation = internalMutationGeneric as MutationBuilder<GoalDataModel, "internal">;
 const scope = { subject: v.string(), threadId: v.string() };
 
+/** Read only this owner/thread goal when goal_check runs; no transcript or history scan. */
 export const check = query({
   args: { subject: v.string(), threadId: v.string() },
   returns: v.object({ goal: v.union(v.string(), v.null()) }),
@@ -36,6 +41,7 @@ export const check = query({
   },
 });
 
+/** Validate and replace the thread goal atomically; the indexed read fences concurrent inserts. */
 export const set = mutation({
   args: { ...scope, goal: v.string() },
   returns: v.object({ goal: v.string() }),
