@@ -795,6 +795,11 @@ export const stalled = internalMutation({
   },
 });
 
+/** `replayed` is true when an identical retry was served from the response
+ * receipt, so a host can tell a first decision from a replay (e.g. to record
+ * single-use consent only once). */
+const vResponseResult = v.object({ messageId: v.string(), replayed: v.boolean() });
+
 export const activity = query({
   args: { threadId: v.string(), subject: v.string() },
   returns: vActivity,
@@ -1244,7 +1249,7 @@ export const respond = mutation({
     reason: v.optional(v.string()),
     addMessages: v.string(),
   },
-  returns: v.object({ messageId: v.string() }),
+  returns: vResponseResult,
   handler: async (ctx, args) => {
     const row = await ctx.db.get("assignments", args.assignmentId);
     if (!row || row.subject !== args.subject) throw new ConvexError({ code: "FORBIDDEN" });
@@ -1255,7 +1260,7 @@ export const respond = mutation({
       args.approvalId,
       JSON.stringify([args.approved, args.reason ?? null]),
     );
-    if (receipt.messageId !== undefined) return { messageId: receipt.messageId };
+    if (receipt.messageId !== undefined) return { messageId: receipt.messageId, replayed: true };
     const approvals = row.approvals;
     const key = await approvalKey(args.approvalId);
     const index =
@@ -1301,7 +1306,7 @@ export const respond = mutation({
       await ctx.db.patch("assignments", row._id, { approvalBlocked: false });
       await wake(ctx, { ...row, approvalBlocked: false });
     }
-    return { messageId };
+    return { messageId, replayed: false };
   },
 });
 
@@ -1320,7 +1325,7 @@ export const answer = mutation({
     toolCallId: v.string(),
     text: v.string(),
   },
-  returns: v.object({ messageId: v.string() }),
+  returns: vResponseResult,
   handler: async (ctx, args) => {
     const row = await ctx.db.get("assignments", args.assignmentId);
     if (!row || row.subject !== args.subject) throw new ConvexError({ code: "FORBIDDEN" });
@@ -1329,7 +1334,7 @@ export const answer = mutation({
     if (!args.toolCallId || args.toolCallId.length > LIMITS.nativeCallIdLength)
       throw new ConvexError({ code: "TOOL_CALL_NOT_FOUND" });
     const receipt = await responseReceipt(ctx, "answer", row.threadId, args.toolCallId, args.text);
-    if (receipt.messageId !== undefined) return { messageId: receipt.messageId };
+    if (receipt.messageId !== undefined) return { messageId: receipt.messageId, replayed: true };
     const pause = row.approvals;
     const key = await approvalKey(args.toolCallId);
     const index =
@@ -1400,7 +1405,7 @@ export const answer = mutation({
     // partial answer. A concurrent answer/respond serializes on this same row.
     await ctx.db.patch("inbox", pause.inboxId, { messageId });
     if (!blocked) await wake(ctx, { ...row, approvals, approvalBlocked: false });
-    return { messageId };
+    return { messageId, replayed: false };
   },
 });
 

@@ -329,7 +329,7 @@ At the hard maximum of 15 descendants, cancel covers 16 assignments, up to
 
 Pending native tool approvals block generation and leave the inbox row
 waiting, avoiding Agent 0.7.7's automatic denial on a new generation.
-Approval responses must go through `respond({ threadId, approvalId, approved, reason? })`; a response saved directly through the Agent component is not seen by the runtime.
+Approval responses must go through `respond({ threadId, approvalId, approved, reason? })`; a response saved directly through the Agent component is not seen by the runtime. `respond` and `answer` return `{ messageId, replayed }`: an identical retry replays the original `messageId` with `replayed: true`, so a host can record single-use effects (such as spending consent) only for the first decision.
 
 ## Effects that must run once
 

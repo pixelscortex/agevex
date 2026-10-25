@@ -43,7 +43,8 @@ the agent or thread, the text, the model map and the file ids.
 A pending native tool approval blocks generation and leaves the inbox row
 waiting. Decisions must go through
 `respond({ threadId, approvalId, approved, reason? })`, which returns
-`{ messageId }`. A response saved directly through the Agent component is not
+`{ messageId, replayed }` (`replayed` is true when an identical retry was served
+from the receipt). A response saved directly through the Agent component is not
 seen by the runtime. An unknown approval throws `APPROVAL_NOT_FOUND`;
 while its receipt is retained, an identical repeated decision replays
 `messageId`, and a changed decision throws `KEY_CONFLICT`.
@@ -52,7 +53,7 @@ while its receipt is retained, an identical repeated decision replays
 
 A tool declared without `execute` uses Agent's native deferred results. The
 owner answers with `answer({ threadId, toolCallId, text })`, which returns
-`{ messageId }` and resumes the turn once every pending call has an answer. The
+`{ messageId, replayed }` and resumes the turn once every pending call has an answer. The
 text must be non-empty and at most 16,000 UTF-16 units. Without a retained response
 receipt, unrecorded, foreign, cancelled and already answered calls throw
 `TOOL_CALL_NOT_FOUND`; retained receipts replay identical answers and reject

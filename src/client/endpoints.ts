@@ -404,7 +404,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
         approved: v.boolean(),
         reason: v.optional(v.string()),
       },
-      returns: v.object({ messageId: v.string() }),
+      returns: v.object({ messageId: v.string(), replayed: v.boolean() }),
       handler: async (ctx, args) => {
         const row = await owned(ctx, args.threadId, "respond");
         return ctx.runMutation(component.queue.respond, {
@@ -419,7 +419,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
     }),
     answer: mutationGeneric({
       args: { threadId: v.string(), toolCallId: v.string(), text: v.string() },
-      returns: v.object({ messageId: v.string() }),
+      returns: v.object({ messageId: v.string(), replayed: v.boolean() }),
       handler: async (ctx, args) => {
         const row = await owned(ctx, args.threadId, "answer");
         return ctx.runMutation(component.queue.answer, {

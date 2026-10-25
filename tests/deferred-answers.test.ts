@@ -69,7 +69,7 @@ it("free-text answer replays its original native result after the deferred call 
       toolCallId: "question-0",
       text: "Use the green option",
     }),
-  ).resolves.toEqual(answer);
+  ).resolves.toEqual({ ...answer, replayed: true });
   expect(await native(t, receipt.threadId)).toEqual(before);
   await drain(t);
   expect(state.calls).toHaveLength(2);
@@ -85,7 +85,10 @@ it("answer rejects changed text with typed KEY_CONFLICT and preserves the origin
   await expect(
     owner(t).mutation(api.agents.answer, { ...args, text: "changed" }),
   ).rejects.toMatchObject({ data: { code: "KEY_CONFLICT" } });
-  await expect(owner(t).mutation(api.agents.answer, args)).resolves.toEqual(result);
+  await expect(owner(t).mutation(api.agents.answer, args)).resolves.toEqual({
+    ...result,
+    replayed: true,
+  });
   await expect(
     t.withIdentity({ subject: "bob" }).mutation(api.agents.answer, args),
   ).rejects.toThrow("FORBIDDEN");
