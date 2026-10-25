@@ -1,0 +1,19 @@
+tests/review-regressions.test.ts
+  s_34bb9d03c667d3::t_753b203113c33a 635,1084
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bf26215116fc47490abf32e503cb85632aeff6d3",
+  "prompts": {},
+  "sessions": {
+    "s_34bb9d03c667d3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17066-d581-7f81-8865-2040a231b243",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
