@@ -59,6 +59,26 @@ Expose host endpoints calling these helpers, never raw component references.
 Pure reads require trusted `ToolContext` in AI SDK 7's `context` or a host-bound
 `sandbox.tools(tc)` factory. Effects use core's `defineOnceTool` receipt binding.
 
+## Wire it into agevex
+
+`sandbox.slot()` is the agevex `sandbox` slot; `sandboxCompletion` forwards a finished
+background job to `runtime.sandboxComplete`. Opt agents in with `new Agent(..., { sandbox: true })`.
+
+```ts title="convex/sandboxes.ts"
+import { defineSandbox, sandboxCompletion } from "agevex/sandbox";
+
+export const sandbox = defineSandbox({
+  /* component, provider, scope, authorize, refs as above */
+  onComplete: sandboxCompletion(() => runtime), // job done -> passive note
+});
+export const runtime = registerAgent(components.agevex, { agents, sandbox: sandbox.slot() /* … */ });
+```
+
+The slot keys each sandbox by the turn's `subject` and **root** thread (a delegated child shares
+its parent's sandbox) and never by anything the model sends. The note is posted to that root
+thread, so its agent must also have `sandbox: true`. Core delivers it at the next safe turn claim
+with `origin: "note"`, `from: "sandbox"`; the log is cut to its last 3,000 characters.
+
 ## API
 
 ### Registration and scope
@@ -212,4 +232,4 @@ budget, 10 s background exec timeout, 1 s control-file acknowledgement wait,
 
 - The provider VM supplies isolation and network policy.
 - Mounting arms no recurring cleanup timer. The host calls `sandbox.cleanup(ctx)` to schedule a finite sweep; active jobs protect files and action leases may delay idle cleanup by up to nine minutes. Deleted bindings remain tombstones; uncertain deletes and lost creates require operator reconciliation.
-- Automatic core sandbox-slot and event-wait wiring remains a separate integration step. The host owns completion delivery and policy; no authoritative Daytona cost is available.
+- Completion reaches the model as a passive note at the next turn, not by waking an idle thread. The host owns policy; no authoritative Daytona cost is available.
