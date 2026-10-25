@@ -1,0 +1,67 @@
+README.md
+  s_d4ae2374a85a52::t_c13ae6aef6d34a 415,439-492
+package.json
+  s_d4ae2374a85a52::t_b6947bc413b9ef 36-47,60-61,64
+src/extract/IMPLEMENTATION.md
+  s_d4ae2374a85a52::t_7b2fe69d63e890 1-173
+src/extract/backends.ts
+  s_d4ae2374a85a52::t_7fc76c52072bdf 1-234
+src/extract/component/_generated/api.ts
+  s_d4ae2374a85a52::t_564842648198b6 1-11
+src/extract/component/_generated/component.ts
+  s_d4ae2374a85a52::t_78b24d01299d88 1-14
+src/extract/component/_generated/dataModel.ts
+  s_d4ae2374a85a52::t_7b717326e73d7d 1-8
+src/extract/component/_generated/server.ts
+  s_d4ae2374a85a52::t_71f9d57ffe1173 1-7
+src/extract/component/artifacts.ts
+  s_d4ae2374a85a52::t_32ab7c9267bb72 1-241
+src/extract/component/convex.config.ts
+  s_d4ae2374a85a52::t_a1633ad16ffc4f 1-5
+src/extract/component/schema.ts
+  s_d4ae2374a85a52::t_0db4f3f94e36a9 1-50
+src/extract/component/workflows.ts
+  s_d4ae2374a85a52::t_96584a90942a34 1-69
+src/extract/index.ts
+  s_d4ae2374a85a52::t_10a5714f496218 1-539
+src/extract/limits.ts
+  s_d4ae2374a85a52::t_3241b068b6d1a0 1-70
+src/extract/payload.ts
+  s_d4ae2374a85a52::t_ae122c5a249f3b 1-63
+src/extract/types.ts
+  s_d4ae2374a85a52::t_7353832adb6318 1-78
+tests/extract/backends.test.ts
+  s_d4ae2374a85a52::t_a32f0b977d239a 1-115
+tests/extract/extract.live.ts
+  s_d4ae2374a85a52::t_31c92adbee6fc8 1-120
+tests/extract/extract.test.ts
+  s_d4ae2374a85a52::t_97c3f1edfc17e4 1-443
+tests/extract/fixture/_generated/api.ts
+  s_d4ae2374a85a52::t_718393b7e9fae8 1-2
+tests/extract/fixture/host.ts
+  s_d4ae2374a85a52::t_94000edbe37a83 1-2
+tests/extract/fixtures/generate.ts
+  s_d4ae2374a85a52::t_1d96f0446e7120 1-61
+tests/extract/rag.test.ts
+  s_d4ae2374a85a52::t_278b4f516b9f94 1-83
+tests/extract/setup.ts
+  s_d4ae2374a85a52::t_6edb1134efa375 1-130
+tests/extract/vite.live.config.ts
+  s_d4ae2374a85a52::t_b7df18a822408e 1-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b857d6be2b8d578ce8816ad7fe0e25889b447ac8",
+  "prompts": {},
+  "sessions": {
+    "s_d4ae2374a85a52": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1704c-35d4-7673-b363-a594c7715c7a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
