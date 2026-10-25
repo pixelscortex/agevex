@@ -115,7 +115,8 @@
     "convex-test": "0.0.61",
     "typescript": "5.9.3",
     "vite-plus": "1.2.0",
-    "zod": "4.6.7"
+    "zod": "4.6.7",
+    "@stylistic/eslint-plugin": "5.10.0"
   },
   "peerDependencies": {
     "@ai-sdk/provider": "^4.0.34",

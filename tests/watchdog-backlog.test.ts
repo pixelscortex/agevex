@@ -4,15 +4,19 @@ import { it, expect, vi, afterEach, beforeEach } from "vite-plus/test";
 import { setup, api, components, state } from "./setup.js";
 
 beforeEach(() => vi.useFakeTimers());
+
 afterEach(() => {
   vi.clearAllTimers();
   vi.useRealTimers();
 });
+
 const drain = (t: ReturnType<typeof setup>) =>
   t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1_000), 2000);
+
 // A healthy generation spends virtual time but stays inside the 90s generation
 // abort budget, so only queue time can exceed the 120s claim-armed watchdog.
 const GENERATION_MS = 60_000;
+
 const open = (alice: ReturnType<ReturnType<typeof setup>["withIdentity"]>, prompt: string) =>
   alice
     .mutation(api.agents.open, { agent: "Main", prompt, requestKey: prompt })
@@ -24,15 +28,19 @@ const open = (alice: ReturnType<ReturnType<typeof setup>["withIdentity"]>, promp
 it("a backlog larger than pool capacity runs every turn exactly once", async () => {
   const t = setup();
   const alice = t.withIdentity({ subject: "alice" });
+
   state.delayMs = GENERATION_MS;
   const receipts = [];
+
   for (let i = 0; i < 17; i++) receipts.push(await open(alice, `turn ${i}`));
+
   // Phase 1a has two root slots, so the last turn waits eight generations
   // (480s) of queue time for a slot: queue time must never count as execution time.
   await drain(t);
 
   expect(state.calls).toHaveLength(17);
   expect(new Set(state.calls.map((call) => JSON.stringify(call.prompt))).size).toBe(17);
+
   for (const receipt of receipts) {
     expect(await alice.query(api.agents.activity, { threadId: receipt.threadId })).toMatchObject({
       turnStatus: "idle",
@@ -47,15 +55,17 @@ it("an expired watchdog timer cannot strand a turn that is still queued", async 
   const t = setup();
   const alice = t.withIdentity({ subject: "alice" });
   const receipt = await open(alice, "queued survivor");
+
   // `stalled` is internal to the queue component, so the test addresses it by
   // path, the way a leftover scheduled timer would.
-  const watchdog = (components.agevex.queue as Record<string, unknown>).stalled as Parameters<
-    typeof t.mutation
-  >[0];
+  const watchdog = (components.agevex.turns.failures as Record<string, unknown>)
+    .stalled as Parameters<typeof t.mutation>[0];
+
   await t.mutation(watchdog, {
     assignmentId: receipt.assignmentId,
     turnToken: `${receipt.assignmentId}:0`,
   });
+
   expect(await alice.query(api.agents.activity, { threadId: receipt.threadId })).toMatchObject({
     turnStatus: "queued",
     errorCode: null,
@@ -63,6 +73,7 @@ it("an expired watchdog timer cannot strand a turn that is still queued", async 
 
   await drain(t);
   expect(state.calls).toHaveLength(1);
+
   expect(await alice.query(api.agents.activity, { threadId: receipt.threadId })).toMatchObject({
     turnStatus: "idle",
     queuedMessages: 0,
@@ -76,20 +87,24 @@ it("a claimed turn keeps the full execution window", async () => {
   const alice = t.withIdentity({ subject: "alice" });
   const receipt = await open(alice, "slow owner");
   const args = { assignmentId: receipt.assignmentId, turnToken: `${receipt.assignmentId}:0` };
-  expect(await t.mutation(components.agevex.queue.claim, args)).not.toBeNull();
+
+  expect(await t.mutation(components.agevex.turns.slices.claim, args)).not.toBeNull();
 
   await vi.advanceTimersByTimeAsync(119_000);
+
   expect(await alice.query(api.agents.activity, { threadId: receipt.threadId })).toMatchObject({
     turnStatus: "running",
     errorCode: null,
   });
 
   await vi.advanceTimersByTimeAsync(2_000);
+
   expect(await alice.query(api.agents.activity, { threadId: receipt.threadId })).toMatchObject({
     turnStatus: "recovery_required",
     errorCode: "EXECUTION_AMBIGUOUS",
   });
+
   // The watchdog only detects: it never takes the turn over or replays it.
   expect(state.calls).toHaveLength(0);
-  expect(await t.mutation(components.agevex.queue.claim, args)).toBeNull();
+  expect(await t.mutation(components.agevex.turns.slices.claim, args)).toBeNull();
 });

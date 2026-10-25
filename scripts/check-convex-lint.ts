@@ -20,11 +20,14 @@ async function lintProbe(): Promise<{ code: number; output: string }> {
     stdout: "pipe",
     stderr: "pipe",
   });
+
   const [stdout, stderr] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
   ]);
+
   await proc.exited;
+
   return { code: proc.exitCode, output: `${stdout}${stderr}` };
 }
 
@@ -40,8 +43,10 @@ async function lintFixture(fixture: string): Promise<{ code: number; output: str
       console.error(`refusing to overwrite existing probe: ${probePath}`);
       process.exit(1);
     }
+
     throw error;
   }
+
   try {
     return await lintProbe();
   } finally {
@@ -52,24 +57,29 @@ async function lintFixture(fixture: string): Promise<{ code: number; output: str
 }
 
 const invalid = await lintFixture("convex-invalid-query.ts.txt");
+
 if (invalid.code === 0) {
   console.error("convex lint gate: invalid fixture passed, Convex rules are not wired");
   console.error(invalid.output);
   process.exit(1);
 }
+
 if (!expectedRulePattern.test(invalid.output)) {
   console.error(`convex lint gate: expected a ${expectedRule} failure, got:`);
   console.error(invalid.output);
   process.exit(1);
 }
+
 console.log(
   `convex lint gate: invalid fixture rejected with ${expectedRule} (exit ${invalid.code})`,
 );
 
 const valid = await lintFixture("convex-valid-query.ts.txt");
+
 if (valid.code !== 0) {
   console.error("convex lint gate: valid fixture failed:");
   console.error(valid.output);
   process.exit(1);
 }
+
 console.log("convex lint gate: valid fixture accepted (exit 0)");

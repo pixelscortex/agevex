@@ -21,6 +21,7 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
   "live structured task, metered turn, delegation, depth-two round trip and passive critic review",
   async () => {
     const scenarios = [];
+
     try {
       const classify = defineTask({
         name: "live-classify",
@@ -30,10 +31,13 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
         model: taskModel,
         repair: 0,
       });
+
       const tasks = convexTest(schema, modules);
+
       agent.register(tasks);
       agevex.register(tasks);
       const beforeTask = live.charges.length;
+
       expect(
         await tasks.action((ctx) =>
           runTask(ctx, classify, "hello", {
@@ -50,27 +54,34 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
           }),
         ),
       ).toMatchObject({ status: "done", value: { answer: expect.any(String) } });
+
       await Promise.all(live.evidence);
       const taskCharge = live.charges[beforeTask];
+
       scenarios.push({ scenario: "structured-task", usage: taskCharge?.usage });
       expect(taskCharge?.usage).toBeTruthy();
+
       for (const scenario of ["plain", "delegation", "depth", "critic"] as const) {
         live.scenario = scenario;
         const delegation = scenario === "delegation";
         const depth = scenario === "depth";
         const critic = scenario === "critic";
+
         live.criticCalls = 0;
         const before = { input: live.inputTokens, output: live.outputTokens };
         const t = convexTest(schema, modules);
+
         agent.register(t);
         agevex.register(t);
         const owner = t.withIdentity({ subject: "live-owner" });
+
         live.delegation = delegation;
         live.depth = depth;
         live.builderCalls = 0;
         live.reviewerCalls = 0;
         live.rootCalls = 0;
         live.childCalls = 0;
+
         const receipt = await owner
           .mutation(api.agents.open, {
             agent: critic ? "Watched" : "Main",
@@ -83,12 +94,15 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
             ...(scenario === "plain" ? { models: { Main: modelId } } : {}),
           })
           .then(requireReceipt);
+
         await expect
           .poll(
             async () => {
               const status = await owner.query(api.agents.activity, { threadId: receipt.threadId });
+
               if (status.turnStatus === "recovery_required")
                 throw new Error(`LIVE_TURN_FAILED:${status.errorCode}`);
+
               return {
                 status: status.turnStatus,
                 active: status.subagents.active,
@@ -109,11 +123,14 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
             queued: 0,
             errorCode: null,
           });
+
         if (scenario === "plain") {
           const charges = live.charges.filter(
             (charge) => charge.facts.threadId === receipt.threadId,
           );
+
           expect(charges).toHaveLength(1);
+
           expect(charges[0]).toMatchObject({
             facts: {
               subject: "live-owner",
@@ -124,8 +141,10 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
             usage: expect.any(Object),
           });
         }
+
         if (critic) {
           expect(live.criticCalls).toBe(1);
+
           // Side delivery admits a pending note without starting another turn.
           // Wait for admission, then claim it with a real follow-up request.
           await expect
@@ -135,35 +154,45 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
                   threadId: receipt.threadId,
                   paginationOpts: { cursor: null, numItems: 20 },
                 });
+
                 const failed = deliveries.page.find(
                   (run) => run.deliveryStatus === "failed" || run.deliveryStatus === "blocked",
                 );
+
                 if (failed) throw new Error(`LIVE_CRITIC_DELIVERY_FAILED:${failed.errorCode}`);
+
                 return deliveries.page.some((run) => run.deliveryStatus === "accepted");
               },
               { timeout: 180_000, interval: 200 },
             )
             .toBe(true);
+
           const beforeClaim = await owner.query(api.agents.messages, {
             threadId: receipt.threadId,
             paginationOpts: { cursor: null, numItems: 20 },
           });
+
           expect(beforeClaim.page.some((message) => message.origin === "note")).toBe(false);
+
           const reviews = await owner.query(api.agents.delegations, {
             threadId: receipt.threadId,
             paginationOpts: { cursor: null, numItems: 20 },
           });
+
           const firstReview = await owner.query(api.agents.messages, {
             threadId: reviews.page[0].childThreadId!,
             paginationOpts: { cursor: null, numItems: 20 },
           });
+
           const reply = firstReview.page.find(
             (message) => message.role === "assistant" && message.text.trim(),
           )!.text;
+
           // A real provider may choose the documented NONE response even when
           // the scenario asks for useful advice. That reply posts no note;
           // every other nonempty review must persist once at the next claim.
           const expectedNotes = reply.trim() === "NONE" ? 0 : 1;
+
           requireReceipt(
             await owner.mutation(api.agents.send, {
               threadId: receipt.threadId,
@@ -171,14 +200,17 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
               requestKey: "consume critic note",
             }),
           );
+
           await expect
             .poll(
               async () => {
                 const status = await owner.query(api.agents.activity, {
                   threadId: receipt.threadId,
                 });
+
                 if (status.turnStatus === "recovery_required")
                   throw new Error(`LIVE_TURN_FAILED:${status.errorCode}`);
+
                 return {
                   status: status.turnStatus,
                   active: status.subagents.active,
@@ -190,10 +222,12 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
               { timeout: 180_000, interval: 200 },
             )
             .toEqual({ status: "idle", active: 0, rootCalls: 2, criticCalls: 2, queued: 0 });
+
           const afterClaim = await owner.query(api.agents.messages, {
             threadId: receipt.threadId,
             paginationOpts: { cursor: null, numItems: 20 },
           });
+
           expect(
             afterClaim.page.filter(
               (message) => message.origin === "note" && message.from === "Critic",
@@ -204,27 +238,34 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
             }),
           ).toHaveLength(expectedNotes);
         }
+
         if (delegation) {
           const runs = await owner.query(api.agents.delegations, {
             threadId: receipt.threadId,
             paginationOpts: { cursor: null, numItems: 20 },
           });
+
           expect(runs.page).toHaveLength(2);
+
           expect(
             runs.page.every(
               (run) => run.status === "completed" && run.deliveryStatus === "accepted",
             ),
           ).toBe(true);
+
           expect(live.childCalls).toBe(2);
         }
+
         if (depth) {
           expect(live.builderCalls).toBe(2);
           expect(live.reviewerCalls).toBe(1);
           const tree = await owner.query(api.agents.runTree, { threadId: receipt.threadId });
+
           const deliveries = await owner.query(api.agents.delegations, {
             threadId: receipt.threadId,
             paginationOpts: { cursor: null, numItems: 20 },
           });
+
           expect(
             tree.map((run) => ({ agent: run.agent, depth: run.depth, status: run.status })),
             JSON.stringify(deliveries.page),
@@ -233,23 +274,29 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
             { agent: "Reviewer", depth: 2, status: "completed" },
           ]);
         }
+
         await Promise.all(live.evidence);
+
         scenarios.push({
           scenario,
           inputTokens: live.inputTokens - before.input,
           outputTokens: live.outputTokens - before.output,
         });
+
         const messages = await owner.query(api.agents.messages, {
           threadId: receipt.threadId,
           paginationOpts: { cursor: null, numItems: 20 },
         });
+
         expect(
           messages.page.some((message) => message.role === "assistant" && message.text.trim()),
         ).toBe(true);
+
         await owner.mutation(api.agents.cancel, { threadId: receipt.threadId });
       }
     } finally {
       await Promise.all(live.evidence);
+
       const evidence = JSON.stringify({
         scenarios,
         requestedModel: modelId,
@@ -262,8 +309,10 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
         outputTokens: live.outputTokens,
         usd: live.costReported ? live.usd : null,
       });
+
       await writeFile(".vite-plus/live-results.json", evidence + "\n");
       console.log(evidence);
+
       expect(live.usd).toBeLessThanOrEqual(
         Number(process.env.OPENROUTER_LIVE_MAX_USD ?? LIVE_LIMITS.maxUsd),
       );

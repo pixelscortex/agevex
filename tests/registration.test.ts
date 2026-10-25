@@ -12,6 +12,7 @@ const coordinator = () =>
     "mutation",
     "internal"
   >;
+
 const policy = {
   refs: {
     runTurn: () => internal.agents.runTurn,
@@ -20,11 +21,13 @@ const policy = {
   authorize: async () => ({ subject: "test" }),
   authorizeExecution: async () => {},
 };
+
 const child = new Agent(components.agent, {
   name: "Child",
   languageModel: mockModel(),
   subagents: [],
 });
+
 const grandchild = new Agent(components.agent, {
   name: "Grandchild",
   languageModel: mockModel(),
@@ -40,7 +43,9 @@ it("registers a Main -> Researcher graph and rejects an unusable one", () => {
   // A shared child definition is resolved through the root's `subagents` and
   // does not have to be a public root itself.
   const runtime = registerAgent(components.agevex, { ...policy, agents: [main] });
+
   expect(Object.keys(runtime.internalFunctions()).sort()).toEqual(["coordinate", "runTurn"]);
+
   expect(Object.keys(runtime.authorizedEndpoints()).sort()).toEqual([
     "activity",
     "answer",
@@ -53,6 +58,7 @@ it("registers a Main -> Researcher graph and rejects an unusable one", () => {
     "send",
     "streams",
   ]);
+
   expect(() => registerAgent(components.agevex, { ...policy, agents: [main, main] })).toThrow(
     "DUPLICATE_AGENT_NAME",
   );
@@ -64,6 +70,7 @@ it("registering the same Agent object as both a root and a child throws ROOT_AS_
     languageModel: mockModel(),
     subagents: [child],
   });
+
   expect(() => registerAgent(components.agevex, { ...policy, agents: [parent, child] })).toThrow(
     "ROOT_AS_CHILD",
   );
@@ -75,6 +82,7 @@ it("rejects an invalid delegation graph instead of pretending collaboration exis
     languageModel: mockModel(),
     subagents: [child],
   });
+
   const deep = new Agent(components.agent, {
     name: "Deep",
     languageModel: mockModel(),
@@ -86,6 +94,7 @@ it("rejects an invalid delegation graph instead of pretending collaboration exis
       }),
     ],
   });
+
   // Collaboration without a coordinator reference.
   expect(() =>
     registerAgent(components.agevex, {
@@ -94,62 +103,76 @@ it("rejects an invalid delegation graph instead of pretending collaboration exis
       agents: [parent],
     }),
   ).toThrow("COORDINATE_REF_REQUIRED");
+
   // A host may lower the supported depth to 1.
   expect(() =>
     registerAgent(components.agevex, { ...policy, agents: [deep], limits: { maxDepth: 1 } }),
   ).toThrow("SUBAGENT_DEPTH");
+
   // A name-only entry is not an executable agent.
   const nameOnly = new Agent(components.agent, {
     name: "NameOnly",
     languageModel: mockModel(),
     subagents: [{ name: "Researcher" } as never],
   });
+
   expect(() => registerAgent(components.agevex, { ...policy, agents: [nameOnly] })).toThrow(
     "UNKNOWN_SUBAGENT",
   );
+
   // The same child name bound to two different objects.
   const otherChild = new Agent(components.agent, {
     name: "Child",
     languageModel: mockModel(),
     subagents: [],
   });
+
   const conflicting = new Agent(components.agent, {
     name: "Conflicting",
     languageModel: mockModel(),
     subagents: [child, otherChild],
   });
+
   expect(() => registerAgent(components.agevex, { ...policy, agents: [conflicting] })).toThrow(
     "DUPLICATE_AGENT_NAME",
   );
+
   // A root is also declared as somebody's child.
   const hostRoot = new Agent(components.agent, {
     name: "HostRoot",
     languageModel: mockModel(),
     subagents: [],
   });
+
   const impostor = new Agent(components.agent, {
     name: "HostRoot",
     languageModel: mockModel(),
     subagents: [],
   });
+
   const parentOfHostRoot = new Agent(components.agent, {
     name: "ParentOfHostRoot",
     languageModel: mockModel(),
     subagents: [impostor],
   });
+
   expect(() =>
     registerAgent(components.agevex, { ...policy, agents: [parentOfHostRoot, hostRoot] }),
   ).toThrow("ROOT_AS_CHILD");
+
   // A self-referencing declaration is a cycle, not a graph.
   const looping = new Agent(components.agent, {
     name: "Looping",
     languageModel: mockModel(),
     subagents: [],
   });
+
   (looping as unknown as { subagents: unknown[] }).subagents = [looping];
+
   expect(() => registerAgent(components.agevex, { ...policy, agents: [looping] })).toThrow(
     "SUBAGENT_CYCLE",
   );
+
   // A host tool may not impersonate the reserved delegation tool.
   const reserved = new Agent(components.agent, {
     name: "Reserved",
@@ -157,6 +180,7 @@ it("rejects an invalid delegation graph instead of pretending collaboration exis
     tools: { agevex_delegate: {} as never },
     subagents: [],
   });
+
   expect(() => registerAgent(components.agevex, { ...policy, agents: [reserved] })).toThrow(
     "RESERVED_TOOL_NAME",
   );
