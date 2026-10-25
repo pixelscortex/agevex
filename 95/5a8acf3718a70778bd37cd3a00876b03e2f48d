@@ -1,0 +1,54 @@
+tests/review-regressions.test.ts
+  s_ddaaba8136483b::t_b8ea68e788f784 635-646
+  s_ddaaba8136483b::t_840ae405585cfc 647-650,676-678,700
+src/component/queue.ts
+  s_ddaaba8136483b::t_148bf629257ade 27,294,474,517-520,626-628,1471-1472,1480-1482
+  s_ddaaba8136483b::t_8afbceb227c640 1358-1361,1368
+  s_ddaaba8136483b::t_2edde81f5684d8 1483-1484,1486
+src/client/runtime.ts
+  s_ddaaba8136483b::t_c33bd82fc4368e 1281,1292-1298,1462-1470
+  s_ddaaba8136483b::t_d31bde248a6a61 1471-1475
+src/client/types.ts
+  s_ddaaba8136483b::t_8afbceb227c640 286
+src/testing/bridge.ts
+  s_ddaaba8136483b::t_b8ea68e788f784 95
+tests/live/runtime.live.ts
+  s_ddaaba8136483b::t_c97dc6f24cbc60 72-73
+tests/hooks.host.ts
+  s_ddaaba8136483b::t_699dfe64463f20 34,106,134,136
+tests/hooks.test.ts
+  s_ddaaba8136483b::t_8afbceb227c640 773
+  s_ddaaba8136483b::t_699dfe64463f20 198-247,280,284,757-772,775,829,831,833-834,838-839
+  s_ddaaba8136483b::t_b8ea68e788f784 248-275,277-279,282-283,777-819,827-828,835,844
+  s_ddaaba8136483b::t_6f8943926a3ae8 774
+  s_ddaaba8136483b::t_27c8f9c8d0773f 276,281,310,776,820-826,830,832,836-837,840-843
+src/component/subagents.ts
+  s_ddaaba8136483b::t_148bf629257ade 392
+src/component/schema.ts
+  s_ddaaba8136483b::t_148bf629257ade 195-200
+README.md
+  s_ddaaba8136483b::t_c33bd82fc4368e 132-135,146-148
+src/component/limits.ts
+  s_ddaaba8136483b::t_148bf629257ade 28-29,54-55,59,61,66-67,75,81-82,102,180
+  s_ddaaba8136483b::t_8afbceb227c640 72
+  s_ddaaba8136483b::t_040480983c52a4 60,68,73-74
+src/component/hooks.ts
+  s_ddaaba8136483b::t_c33bd82fc4368e 69,72,74-89,91,99-100,102-104,238,266,321,325-338
+  s_ddaaba8136483b::t_07645d8e2f15c7 339-344
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "955a8acf3718a70778bd37cd3a00876b03e2f48d",
+  "prompts": {},
+  "sessions": {
+    "s_ddaaba8136483b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a170b9-63ac-71b1-adc4-cc7407877f9e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
