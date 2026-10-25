@@ -50,3 +50,6 @@ export function setup(
   return { t, component, fake };
 }
 export { state };
+
+/** Multi-window export tests take ~14 s on a loaded machine; vitest's default is 5 s. */
+export const EXPORT_TEST_TIMEOUT_MS = 60_000;

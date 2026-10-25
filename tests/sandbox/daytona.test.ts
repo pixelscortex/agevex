@@ -9,7 +9,7 @@ import { daytona } from "../../src/sandbox/daytona.js";
 import { HARD_LIMITS, LIMITS } from "../../src/sandbox/limits.js";
 import type { SandboxContext } from "../../src/sandbox/types.js";
 import { fakeSandboxProvider } from "../../src/testing/sandbox.js";
-import { setup, api, state } from "./setup.js";
+import { setup, api, state, EXPORT_TEST_TIMEOUT_MS } from "./setup.js";
 
 // Mock the component boundary, not the adapter: execute its exact shell/Python
 // commands locally so quoting, detachment and source-side byte bounds are real.
@@ -192,46 +192,52 @@ it("Daytona control-file cancellation terminates the original process group with
   }
 });
 
-it("Daytona transfers a binary across three full windows and a partial window without recording bytes in execution rows or args", async () => {
-  const { ctx, provider, actions, replies } = harness();
-  const directory = await mkdtemp(join(tmpdir(), "agevex-export-"));
-  const path = join(directory, "quote's binary.bin");
-  const bytes = Uint8Array.from({ length: 3 * 512 * 1024 + 17 }, (_, i) => i % 251);
-  await writeFile(path, bytes);
-  const chunks: Uint8Array[] = [];
-  try {
-    let offset = 0;
-    for (;;) {
-      const chunk = await provider.download(ctx, "local", path, {
-        maxBytes: LIMITS.exportChunkBytes,
-        offset,
-        totalSizeLimit: LIMITS.exportBytes,
-      });
-      expect(chunk.length).toBeLessThanOrEqual(LIMITS.exportChunkBytes);
-      chunks.push(chunk);
-      offset += chunk.length;
-      if (chunk.length < LIMITS.exportChunkBytes) break;
+// Moves ~1.5 MiB through four windows and hashes it: ~14 s on a loaded machine, so the
+// default 5 s limit is too tight. The fixture stays three full windows plus a partial one.
+it(
+  "Daytona transfers a binary across three full windows and a partial window without recording bytes in execution rows or args",
+  async () => {
+    const { ctx, provider, actions, replies } = harness();
+    const directory = await mkdtemp(join(tmpdir(), "agevex-export-"));
+    const path = join(directory, "quote's binary.bin");
+    const bytes = Uint8Array.from({ length: 3 * 512 * 1024 + 17 }, (_, i) => i % 251);
+    await writeFile(path, bytes);
+    const chunks: Uint8Array[] = [];
+    try {
+      let offset = 0;
+      for (;;) {
+        const chunk = await provider.download(ctx, "local", path, {
+          maxBytes: LIMITS.exportChunkBytes,
+          offset,
+          totalSizeLimit: LIMITS.exportBytes,
+        });
+        expect(chunk.length).toBeLessThanOrEqual(LIMITS.exportChunkBytes);
+        chunks.push(chunk);
+        offset += chunk.length;
+        if (chunk.length < LIMITS.exportChunkBytes) break;
+      }
+      expect(Buffer.concat(chunks)).toEqual(Buffer.from(bytes));
+      expect(Math.max(...replies)).toBeLessThan(LIMITS.pathChars);
+      for (const [ref, args] of actions.mock.calls) {
+        expect(
+          Object.values(args).some(
+            (value) => value instanceof ArrayBuffer || value instanceof Uint8Array,
+          ),
+        ).toBe(false);
+        if (ref === "read") await expect(access(args.path)).rejects.toThrow();
+      }
+      await expect(
+        provider.download(ctx, "local", path, {
+          maxBytes: LIMITS.exportChunkBytes,
+          totalSizeLimit: bytes.length - 1,
+        }),
+      ).rejects.toThrow("SANDBOX_EXPORT_TOO_LARGE");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
     }
-    expect(Buffer.concat(chunks)).toEqual(Buffer.from(bytes));
-    expect(Math.max(...replies)).toBeLessThan(LIMITS.pathChars);
-    for (const [ref, args] of actions.mock.calls) {
-      expect(
-        Object.values(args).some(
-          (value) => value instanceof ArrayBuffer || value instanceof Uint8Array,
-        ),
-      ).toBe(false);
-      if (ref === "read") await expect(access(args.path)).rejects.toThrow();
-    }
-    await expect(
-      provider.download(ctx, "local", path, {
-        maxBytes: LIMITS.exportChunkBytes,
-        totalSizeLimit: bytes.length - 1,
-      }),
-    ).rejects.toThrow("SANDBOX_EXPORT_TOO_LARGE");
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
-});
+  },
+  EXPORT_TEST_TIMEOUT_MS,
+);
 
 it("default exports reject files above 8 MiB with the Node action option before storing bytes", async () => {
   const s = adapterSetup();

@@ -6,7 +6,7 @@ import type { AgentComponent } from "@convex-dev/agent";
 import { defineSandbox, HARD_LIMITS, LIMITS } from "../../src/sandbox/index.js";
 import { fakeSandboxProvider } from "../../src/testing/sandbox.js";
 import type { SandboxFacts } from "../../src/sandbox/types.js";
-import { setup, api, state } from "./setup.js";
+import { setup, api, state, EXPORT_TEST_TIMEOUT_MS } from "./setup.js";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
@@ -330,46 +330,52 @@ it("a lost launch and throwing callback retain the unknown receipt and job id un
   expect(fake.calls.background).toHaveLength(1);
 });
 
-it("exports a binary across three full windows and a partial window with an exact incremental hash and stores nothing on interruption", async () => {
-  const s = setup();
-  await invoke(s.t, "prepare");
-  const bytes = Uint8Array.from({ length: 3 * 512 * 1024 + 17 }, (_, i) => i % 251);
-  s.fake.sandboxes.get((await row(s))!.sandboxId!)!.files.set("/large.bin", bytes);
-  const download = s.fake.provider.download;
-  const windows: number[] = [];
-  s.fake.provider.download = async (ctx, id, path, opts) => {
-    windows.push(opts.maxBytes);
-    return download(ctx, id, path, opts);
-  };
-  const result = (await invoke(s.t, "export", { path: "/large.bin" })) as {
-    storageId: string;
-    bytes: number;
-    sha256: string;
-  };
-  expect(result.bytes).toBe(bytes.length);
-  expect(result.sha256).toBe(
-    Buffer.from(await crypto.subtle.digest("SHA-256", bytes)).toString("hex"),
-  );
-  expect(
-    new Uint8Array(
-      await s.t.run(async (ctx) =>
-        (await ctx.storage.get(result.storageId as never))!.arrayBuffer(),
+// Moves ~1.5 MiB through four windows and hashes it: ~14 s on a loaded machine, so the
+// default 5 s limit is too tight. The fixture stays three full windows plus a partial one.
+it(
+  "exports a binary across three full windows and a partial window with an exact incremental hash and stores nothing on interruption",
+  async () => {
+    const s = setup();
+    await invoke(s.t, "prepare");
+    const bytes = Uint8Array.from({ length: 3 * 512 * 1024 + 17 }, (_, i) => i % 251);
+    s.fake.sandboxes.get((await row(s))!.sandboxId!)!.files.set("/large.bin", bytes);
+    const download = s.fake.provider.download;
+    const windows: number[] = [];
+    s.fake.provider.download = async (ctx, id, path, opts) => {
+      windows.push(opts.maxBytes);
+      return download(ctx, id, path, opts);
+    };
+    const result = (await invoke(s.t, "export", { path: "/large.bin" })) as {
+      storageId: string;
+      bytes: number;
+      sha256: string;
+    };
+    expect(result.bytes).toBe(bytes.length);
+    expect(result.sha256).toBe(
+      Buffer.from(await crypto.subtle.digest("SHA-256", bytes)).toString("hex"),
+    );
+    expect(
+      new Uint8Array(
+        await s.t.run(async (ctx) =>
+          (await ctx.storage.get(result.storageId as never))!.arrayBuffer(),
+        ),
       ),
-    ),
-  ).toEqual(bytes);
-  expect(windows.length).toBeGreaterThan(1);
-  expect(Math.max(...windows)).toBeLessThanOrEqual(512 * 1024);
-  const before = await s.t.run((ctx) => ctx.db.system.query("_storage").collect());
-  let reads = 0;
-  s.fake.provider.download = async (ctx, id, path, opts) => {
-    if (++reads === 2) throw new Error("interrupted transfer");
-    return download(ctx, id, path, opts);
-  };
-  await expect(invoke(s.t, "export", { path: "/large.bin" })).rejects.toThrow(
-    "interrupted transfer",
-  );
-  expect(await s.t.run((ctx) => ctx.db.system.query("_storage").collect())).toEqual(before);
-});
+    ).toEqual(bytes);
+    expect(windows.length).toBeGreaterThan(1);
+    expect(Math.max(...windows)).toBeLessThanOrEqual(512 * 1024);
+    const before = await s.t.run((ctx) => ctx.db.system.query("_storage").collect());
+    let reads = 0;
+    s.fake.provider.download = async (ctx, id, path, opts) => {
+      if (++reads === 2) throw new Error("interrupted transfer");
+      return download(ctx, id, path, opts);
+    };
+    await expect(invoke(s.t, "export", { path: "/large.bin" })).rejects.toThrow(
+      "interrupted transfer",
+    );
+    expect(await s.t.run((ctx) => ctx.db.system.query("_storage").collect())).toEqual(before);
+  },
+  EXPORT_TEST_TIMEOUT_MS,
+);
 
 it("persistent polling errors retain deadline enforcement without retrying paid work", async () => {
   const s = setup("thread", { pollMinMs: 10, pollMaxMs: 20, jobTimeoutMs: 30 });
