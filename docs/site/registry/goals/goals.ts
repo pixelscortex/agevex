@@ -6,13 +6,18 @@ export const GOAL_LIMITS = { minChars: 1, goalChars: 4000, cleanupBatch: 128 } a
 export const goalText = z.string().trim().min(GOAL_LIMITS.minChars).max(GOAL_LIMITS.goalChars);
 // Core validates every ToolContext fact (nonempty, at most LIMITS.factBytes
 // UTF-8 bytes) before a tool runs, so the scope is passed through unchanged.
-type Scope = { subject: string; threadId: string; runId: string };
+type Scope = { subject: string; threadId: string };
 export type GoalFunctions = {
   check: FunctionReference<"query", "internal", Scope, { goal: string | null }>;
-  set: FunctionReference<"mutation", "internal", Scope & { goal: string }, { goal: string }>;
+  set: FunctionReference<
+    "mutation",
+    "internal",
+    Scope & { runId: string; goal: string },
+    { goal: string }
+  >;
 };
 
-/** One explicit goal per owner and thread, owned by the run that set it. */
+/** One explicit goal per owner and thread; `runId` is only metadata of its setter. */
 export function createGoalTools(refs: GoalFunctions) {
   const tools = {
     goal_set: defineOnceTool({
@@ -34,17 +39,13 @@ export function createGoalTools(refs: GoalFunctions) {
       input: z.strictObject({}),
       run: async (_input, tc) => {
         tc.signal.throwIfAborted();
-        return tc.ctx.runQuery(refs.check, {
-          subject: tc.subject,
-          threadId: tc.threadId,
-          runId: tc.runId,
-        });
+        return tc.ctx.runQuery(refs.check, { subject: tc.subject, threadId: tc.threadId });
       },
     }),
   };
   tools.goal_set.description =
-    "Set the explicit goal for this owner's thread and current user run, replacing any earlier run's goal. Report progress against this goal.";
+    "Set the explicit goal for this owner's thread, replacing any earlier goal. Report progress against this goal.";
   tools.goal_check.description =
-    "Read this run's goal, or null when unset. Assess your work against it; this tool does not independently verify success.";
+    "Read this thread's current goal, or null when unset. Assess your work against it; this tool does not independently verify success.";
   return tools;
 }

@@ -48,11 +48,15 @@ export type ResumeAfterBudgetStop<Receipt extends SendReceipt> = {
   approvalId: string;
   /** Optional extra instruction appended to the consent statement. */
   instruction?: string;
-  /** True only when the host recorded this owner's explicit consent for
-   * `approvalId` on `threadId` (see `continueBudgetState.has`). Consent is host
-   * state: the helper never calls `respond`, so a pending approval can never be
-   * approved on the user's behalf. Must fail closed: anything else is `false`. */
-  isApproved: (args: { threadId: string; approvalId: string }) => Promise<boolean>;
+  /** Spend the host's recorded consent (see `continueBudgetState.consume`): true
+   * exactly once, only for this owner, thread, approval and stopped run. The helper
+   * never calls `respond`, so a pending approval can never be approved on the
+   * user's behalf. Must fail closed: anything else is `false`. */
+  consumeConsent: (args: {
+    threadId: string;
+    approvalId: string;
+    runId: string;
+  }) => Promise<boolean>;
   /** Core `activity`; its `runId` is the id your budget slot received. */
   activity: () => Promise<{ errorCode: string | null; runId?: string | null }>;
   /** Host budget policy write. Runs in the same transaction as cancel and send. */
@@ -68,7 +72,7 @@ export type ResumeAfterBudgetStop<Receipt extends SendReceipt> = {
  *
  * Core never resumes a stopped run, because the step that tripped the budget may
  * have been paid for with an unknown outcome. The only supported path is:
- *   1. explicit spending consent, recorded by the host's approve action,
+ *   1. explicit, single-use spending consent recorded by the host's approve action,
  *   2. the host updates its budget policy,
  *   3. cancel the stopped run (clears its recovery state and discards its notes),
  *   4. send a fresh request (a new run with its own run id).
@@ -80,11 +84,11 @@ export type ResumeAfterBudgetStop<Receipt extends SendReceipt> = {
  * loser either conflicts (OCC) and retries into `not-stopped`, or runs after the
  * winner and sees `not-stopped`. Without this, a second resume that checked the
  * stop before the first committed would cancel the fresh run the first one sent.
- * A rejected `send` throws, which rolls back the budget write and the cancel too.
  *
  * REQUEST KEY. `after-budget:<threadId>:<stoppedRunId>` is unique per stop, so
  * the same thread can be stopped and resumed any number of times. A `duplicate`
- * receipt means this exact stop was already resumed: `already-resumed`.
+ * or `rejected` receipt is never a success: `send` throws, which rolls back the
+ * consent spend, the budget raise and the cancel, leaving the run resumable.
  *
  * MODEL VIEW. Cancel settles the approval call the model made as an
  * `execution-denied` tool result, because core never executes a call whose slice
@@ -96,16 +100,19 @@ export async function resumeAfterBudgetStop<Receipt extends SendReceipt>(
 ): Promise<
   | { status: "no-consent" }
   | { status: "not-stopped" }
-  | { status: "already-resumed" }
   | { status: "resumed"; receipt: Exclude<Receipt, { status: "rejected" | "duplicate" }> }
 > {
   const { errorCode, runId } = await flow.activity();
   if (errorCode !== "BUDGET_EXCEEDED" || !runId) return { status: "not-stopped" };
   let approved = false;
   try {
-    approved = await flow.isApproved({ threadId: flow.threadId, approvalId: flow.approvalId });
+    approved = await flow.consumeConsent({
+      threadId: flow.threadId,
+      approvalId: flow.approvalId,
+      runId,
+    });
   } catch {
-    // Fail closed: an unknown, foreign or conflicting approval is not consent.
+    // Fail closed: an unknown, foreign or unindexable approval is not consent.
   }
   if (!approved) return { status: "no-consent" };
   await flow.raiseBudget();
@@ -114,7 +121,10 @@ export async function resumeAfterBudgetStop<Receipt extends SendReceipt>(
     text: flow.instruction ? `${CONSENT_TEXT} ${flow.instruction}` : CONSENT_TEXT,
     requestKey: `after-budget:${flow.threadId}:${runId}`,
   });
+  // Throwing (not returning) is what rolls back the consent spend, the raise and
+  // the cancel. A duplicate means this stop's key was already used for another
+  // request, so no fresh run was admitted by this call.
   if (receipt.status === "rejected") throw new Error(receipt.code);
-  if (receipt.status === "duplicate") return { status: "already-resumed" };
+  if (receipt.status === "duplicate") throw new Error("DUPLICATE_RESUME");
   return { status: "resumed", receipt: receipt as Exclude<Receipt, { status: "rejected" | "duplicate" }> };
 }

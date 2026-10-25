@@ -114,6 +114,7 @@ const limit = (t: Test, subject: string, value: number) =>
   t.run(async (ctx) => {
     await ctx.db.insert("budgets", { subject, limit: value });
   });
+const consentRows = (t: Test) => t.run((ctx) => ctx.db.query("agevexBudgetConsents").collect());
 const budgetRows = (t: Test) => t.run((ctx) => ctx.db.query("budgets").collect());
 
 /**
@@ -189,6 +190,8 @@ it("with recorded host consent one mutation raises the budget, cancels the stopp
   expect(prompt).toContain("execution-denied");
   expect(state.budget.runIds[state.budget.runIds.length - 1]).not.toBe(stoppedRun);
   expect((await budgetRows(t))[0].limit).toBe(3);
+  // The consent was spent by the resume that used it.
+  expect(await consentRows(t)).toEqual([]);
   expect(await alice.query(api.host.activity, { threadId: receipt.threadId })).toMatchObject({
     turnStatus: "idle",
     errorCode: null,
@@ -243,6 +246,12 @@ it("the same thread can be stopped and resumed again: each stop gets its own req
   ).toMatchObject({
     errorCode: "BUDGET_EXCEEDED",
   });
+  // The first approval was spent by the first resume: it cannot unlock this stop.
+  const limitBefore = (await budgetRows(t))[0].limit;
+  await expect(resume(first.alice, first.receipt.threadId, first.approval)).resolves.toEqual({
+    status: "no-consent",
+  });
+  expect((await budgetRows(t))[0].limit).toBe(limitBefore);
   await expect(resume(first.alice, first.receipt.threadId, second)).resolves.toMatchObject({
     status: "resumed",
     receipt: { status: "accepted" },
@@ -288,8 +297,7 @@ it("a pending, never-approved approval is not consent and resuming responds to n
   );
   await drain(t);
   const approval = await approvalId(t, receipt.assignmentId);
-  const consentRows = () => t.run((ctx) => ctx.db.query("agevexBudgetConsents").collect());
-  expect(await consentRows()).toEqual([]);
+  expect(await consentRows(t)).toEqual([]);
   await expect(resume(alice, receipt.threadId, approval)).resolves.toEqual({
     status: "not-stopped",
   });
@@ -298,7 +306,7 @@ it("a pending, never-approved approval is not consent and resuming responds to n
   const execution = await t.query(managed.queue.execution, { assignmentId: receipt.assignmentId });
   expect(execution?.approvalBlocked).toBe(true);
   expect(["pending", undefined]).toContain(execution?.approvals?.requests[0].state);
-  expect(await consentRows()).toEqual([]);
+  expect(await consentRows(t)).toEqual([]);
   const [request] = await t.query(native.messages.getMessagesByIds, {
     messageIds: [execution!.approvals!.requests[0].messageId],
   });
@@ -307,26 +315,34 @@ it("a pending, never-approved approval is not consent and resuming responds to n
   expect(state.calls).toHaveLength(1);
 });
 
-it("consent is scoped to its owner, thread and approval, and is recorded idempotently", async () => {
+it("consent is single-use and scoped to its owner, thread, approval and run, and is recorded idempotently", async () => {
   const t = setup();
-  const scope = { subject: "alice", threadId: "thread-a", approvalId: "approval-1" };
-  const rows = () => t.run((ctx) => ctx.db.query("agevexBudgetConsents").collect());
-  expect(await t.query(api.continueBudgetState.has, scope)).toBe(false);
+  const scope = {
+    subject: "alice",
+    threadId: "thread-a",
+    approvalId: "approval-1",
+    runId: "run-1",
+  };
+  expect(await t.mutation(api.continueBudgetState.consume, scope)).toBe(false);
   await t.mutation(api.continueBudgetState.record, scope);
   await t.mutation(api.continueBudgetState.record, scope);
-  expect(await rows()).toHaveLength(1);
-  expect(await t.query(api.continueBudgetState.has, scope)).toBe(true);
+  expect(await consentRows(t)).toHaveLength(1);
   for (const other of [
     { ...scope, subject: "bob" },
     { ...scope, threadId: "thread-b" },
     { ...scope, approvalId: "approval-2" },
+    { ...scope, runId: "run-2" },
   ])
-    expect(await t.query(api.continueBudgetState.has, other)).toBe(false);
+    expect(await t.mutation(api.continueBudgetState.consume, other)).toBe(false);
+  expect(await consentRows(t)).toHaveLength(1);
+  expect(await t.mutation(api.continueBudgetState.consume, scope)).toBe(true);
+  expect(await consentRows(t)).toHaveLength(0);
+  expect(await t.mutation(api.continueBudgetState.consume, scope)).toBe(false);
 });
 
 it("consent storage rejects approval ids it cannot index and cleanup deletes one bounded batch", async () => {
   const t = setup();
-  const scope = { subject: "alice", threadId: "thread-a" };
+  const scope = { subject: "alice", threadId: "thread-a", runId: "run-1" };
   for (const approvalId of ["", "x".repeat(CONSENT_LIMITS.approvalIdBytes + 1), "界".repeat(171)])
     await expect(
       t.mutation(api.continueBudgetState.record, { ...scope, approvalId }),
@@ -336,7 +352,12 @@ it("consent storage rejects approval ids it cannot index and cleanup deletes one
   await t.run(async (ctx) => {
     for (let i = 0; i < CONSENT_LIMITS.cleanupBatch; i++)
       await ctx.db.insert("agevexBudgetConsents", { ...scope, approvalId: `a${i}` });
-    await ctx.db.insert("agevexBudgetConsents", { subject: "bob", threadId: "t", approvalId: "a" });
+    await ctx.db.insert("agevexBudgetConsents", {
+      subject: "bob",
+      threadId: "t",
+      approvalId: "a",
+      runId: "run-1",
+    });
   });
   expect(await t.mutation(api.continueBudgetState.cleanup, { subject: "alice" })).toEqual({
     deleted: CONSENT_LIMITS.cleanupBatch,
@@ -370,11 +391,91 @@ it("a rejected fresh request rolls back the budget raise and the cancel so the r
     resume(alice, receipt.threadId, approval, "x".repeat(LIMITS.messageLength)),
   ).rejects.toThrow("INVALID_MESSAGE");
   expect((await budgetRows(t))[0].limit).toBe(1);
+  // The consent spend rolled back with everything else.
+  expect(await consentRows(t)).toHaveLength(1);
   expect(await alice.query(api.host.activity, { threadId: receipt.threadId })).toMatchObject({
     turnStatus: "recovery_required",
     errorCode: "BUDGET_EXCEEDED",
   });
   await expect(resume(alice, receipt.threadId, approval)).resolves.toMatchObject({
     status: "resumed",
+  });
+});
+
+it("a duplicate fresh request is never a successful resume: it throws and rolls back consent, raise and cancel", async () => {
+  const t = setup();
+  await limit(t, "alice", 1);
+  state.steps.push(requestConsent("dup", { reason: "More" }));
+  const alice = t.withIdentity({ subject: "alice" });
+  const receipt = requireReceipt(
+    await alice.mutation(api.host.open, { agent: "Tools", prompt: "Go", requestKey: "dup" }),
+  );
+  await drain(t);
+  // While the approval is pending, an earlier request already used the exact
+  // key and text this stop's resume will send (receipts are keyed by owner and
+  // request key), so core answers the resume's send with `duplicate`.
+  const { runId } = await alice.query(api.host.activity, { threadId: receipt.threadId });
+  await alice.mutation(api.host.send, {
+    threadId: receipt.threadId,
+    text: CONSENT_TEXT,
+    requestKey: `after-budget:${receipt.threadId}:${runId}`,
+  });
+  const approval = await approvalId(t, receipt.assignmentId);
+  await alice.mutation(api.host.approveContinue, {
+    threadId: receipt.threadId,
+    approvalId: approval,
+  });
+  await drain(t);
+  expect(await alice.query(api.host.activity, { threadId: receipt.threadId })).toMatchObject({
+    errorCode: "BUDGET_EXCEEDED",
+  });
+  await expect(resume(alice, receipt.threadId, approval)).rejects.toThrow("DUPLICATE_RESUME");
+  expect((await budgetRows(t))[0].limit).toBe(1);
+  expect(await consentRows(t)).toHaveLength(1);
+  expect(await alice.query(api.host.activity, { threadId: receipt.threadId })).toMatchObject({
+    turnStatus: "recovery_required",
+    errorCode: "BUDGET_EXCEEDED",
+  });
+});
+
+it("an approval recorded during an earlier run cannot resume a later run's stop", async () => {
+  const t = setup();
+  await limit(t, "alice", 1);
+  const first = await stoppedForBudget(t, 2, "first");
+  const r0 = state.budget.runIds[0];
+  await resume(first.alice, first.receipt.threadId, first.approval);
+  // The fresh run (R1) asks again; the user answers through core only, and a
+  // consent row recorded for R0's approval time is all the host has.
+  state.steps.push(requestConsent("consent-second", { reason: "Still need more" }));
+  await drain(t);
+  const second = await approvalId(t, first.receipt.assignmentId);
+  await first.alice.mutation(api.host.respond, {
+    threadId: first.receipt.threadId,
+    approvalId: second,
+    approved: true,
+  });
+  await drain(t);
+  await t.mutation(api.continueBudgetState.record, {
+    subject: "alice",
+    threadId: first.receipt.threadId,
+    approvalId: second,
+    runId: r0,
+  });
+  const { runId: r1 } = await first.alice.query(api.host.activity, {
+    threadId: first.receipt.threadId,
+  });
+  expect(r1).not.toBe(r0);
+  const before = (await budgetRows(t))[0].limit;
+  await expect(resume(first.alice, first.receipt.threadId, second)).resolves.toEqual({
+    status: "no-consent",
+  });
+  expect((await budgetRows(t))[0].limit).toBe(before);
+  // The mismatched row is not spent.
+  expect(await consentRows(t)).toHaveLength(1);
+  expect(
+    await first.alice.query(api.host.activity, { threadId: first.receipt.threadId }),
+  ).toMatchObject({
+    turnStatus: "recovery_required",
+    errorCode: "BUDGET_EXCEEDED",
   });
 });

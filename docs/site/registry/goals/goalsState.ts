@@ -13,11 +13,11 @@ const mutation = internalMutationGeneric as MutationBuilder<GoalDataModel, "inte
 const scope = { subject: v.string(), threadId: v.string(), runId: v.string() };
 
 export const check = query({
-  args: scope,
+  args: { subject: v.string(), threadId: v.string() },
   returns: v.object({ goal: v.union(v.string(), v.null()) }),
   handler: async (ctx, args) => {
     // subject/threadId/runId are core-validated facts (<= LIMITS.factBytes =
-    // 128 UTF-8 bytes each). One row: 4000 × 4 goal bytes + 3 × 128 scope bytes
+    // 128 UTF-8 bytes each). One row: 4000 × 4 goal bytes + 3 × 128 fact bytes
     // + 1 KiB overhead < 18 KiB. unique() takes at most TWO rows then rejects
     // duplicates (convex/src/server/impl/query_impl.ts:334-343): < 36 KiB,
     // two docs and one query. Even two host-corrupted 1 MiB rows fit 16 MiB.
@@ -28,8 +28,9 @@ export const check = query({
         q.eq("subject", args.subject).eq("threadId", args.threadId),
       )
       .unique();
-    // The row belongs to the run that set it; any other run has no goal yet.
-    return { goal: row && row.runId === args.runId ? goalText.parse(row.goal) : null };
+    // The goal belongs to the thread, so it survives a budget resume, a retry or
+    // any later request. `runId` is only metadata of the run that set it.
+    return { goal: row ? goalText.parse(row.goal) : null };
   },
 });
 
@@ -49,7 +50,7 @@ export const set = mutation({
         q.eq("subject", owner.subject).eq("threadId", owner.threadId),
       )
       .unique();
-    // One row per thread: a new run overwrites the previous run's goal.
+    // One row per thread: a later goal_set replaces the goal and records its run.
     if (row) await ctx.db.patch("agevexGoals", row._id, { goal, runId: owner.runId });
     else await ctx.db.insert("agevexGoals", { ...owner, goal });
     return { goal };

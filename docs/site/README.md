@@ -21,15 +21,15 @@ bun run registry:build
 ```
 
 The registry command runs `bunx shadcn build`, writing
-`public/r/todo-tool.json` and copying the index to `public/r/registry.json`.
+one `public/r/<item>.json` per registry item and copying the index to
+`public/r/registry.json`.
 Install from the local server with:
 
 ```sh
-bunx shadcn add http://localhost:3000/r/todo-tool.json
+bunx shadcn add http://localhost:3000/r/todo.json
 ```
 
-The todo tool is a bounded, in-memory demonstration. It needs host
-authorization and Agent-component storage before real use.
+The items are bounded tools with host-owned state; see `content/docs/tools/`.
 
 `site.config.ts` sets the provisional site title and registry namespace.
 When renaming the package, update the plain MDX examples too. The registry

@@ -137,10 +137,13 @@ export const approveContinue = mutationGeneric({
       approvalId,
       approved: true,
     });
+    // Bind the consent to the run active at approval time (the run that asked).
+    const { runId } = await ctx.runQuery(selfApi.host.activity, { threadId });
     await ctx.runMutation(selfApi.continueBudgetState.record, {
       subject: identity.subject,
       threadId,
       approvalId,
+      runId,
     });
     return response;
   },
@@ -164,8 +167,11 @@ export const resumeAfterBudget = mutationGeneric({
       threadId,
       approvalId,
       instruction,
-      isApproved: (args) =>
-        ctx.runQuery(selfApi.continueBudgetState.has, { subject: identity.subject, ...args }),
+      consumeConsent: (args) =>
+        ctx.runMutation(selfApi.continueBudgetState.consume, {
+          subject: identity.subject,
+          ...args,
+        }),
       activity: () => ctx.runQuery(selfApi.host.activity, { threadId }),
       raiseBudget: () =>
         ctx.runMutation(selfApi.host.setBudgetLimit, {

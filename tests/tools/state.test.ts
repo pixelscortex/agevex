@@ -81,7 +81,7 @@ it("todo tools persist across calls and reads, isolate owners and threads, and r
   expect(JSON.stringify(state.calls[state.calls.length - 1]?.prompt)).toContain('"text":"newer"');
 });
 
-it("goal tools replay idempotently, return the current run goal, and isolate runs and owners", async () => {
+it("goal tools replay idempotently, return the thread's current goal, and isolate owners and threads", async () => {
   const t = setup();
   state.steps.push(
     call("goal_set", "original-goal", { goal: "original" }),
@@ -94,11 +94,8 @@ it("goal tools replay idempotently, return the current run goal, and isolate run
   const rows = await t.run((ctx) => ctx.db.query("agevexGoals").collect());
   expect(rows).toHaveLength(1);
   expect(rows[0]).toMatchObject({ subject: "alice", threadId: receipt.threadId, goal: "newer" });
-  const scope = { subject: "alice", threadId: receipt.threadId, runId: rows[0].runId };
+  const scope = { subject: "alice", threadId: receipt.threadId };
   expect(await t.query(api.goalsState.check, scope)).toEqual({ goal: "newer" });
-  expect(await t.query(api.goalsState.check, { ...scope, runId: "another" })).toEqual({
-    goal: null,
-  });
   expect(await t.query(api.goalsState.check, { ...scope, subject: "bob" })).toEqual({ goal: null });
   expect(await t.query(api.goalsState.check, { ...scope, threadId: "another" })).toEqual({
     goal: null,
@@ -107,11 +104,12 @@ it("goal tools replay idempotently, return the current run goal, and isolate run
   state.steps.push(call("goal_check", "new-run", {}));
   await t.withIdentity({ subject: "alice" }).mutation(api.host.send, {
     threadId: receipt.threadId,
-    text: "A new goal?",
+    text: "A new request",
     requestKey: "second",
   });
   await drain(t);
-  expect(JSON.stringify(state.calls[state.calls.length - 1]?.prompt)).toContain('"goal":null');
+  // The goal belongs to the thread: a later run (e.g. after a budget resume) keeps it.
+  expect(JSON.stringify(state.calls[state.calls.length - 1]?.prompt)).toContain('"goal":"newer"');
 });
 
 it.each(["todo_write", "goal_set"])(
@@ -178,11 +176,12 @@ it("goal state accepts its hard maximum with maximum-size core facts and rejects
     runId: "r".repeat(LIMITS.factBytes),
   };
   const goal = "界".repeat(GOAL_LIMITS.goalChars);
+  const { runId: _run, ...owner } = scope;
   expect(await t.mutation(api.goalsState.set, { ...scope, goal })).toEqual({ goal });
-  expect(await t.query(api.goalsState.check, scope)).toEqual({ goal });
+  expect(await t.query(api.goalsState.check, owner)).toEqual({ goal });
   for (const invalid of ["", "   ", goal + "x"])
     await expect(t.mutation(api.goalsState.set, { ...scope, goal: invalid })).rejects.toThrow();
-  expect(await t.query(api.goalsState.check, scope)).toEqual({ goal });
+  expect(await t.query(api.goalsState.check, owner)).toEqual({ goal });
 });
 
 it("concurrent first writes retain one host row per owner scope", async () => {
@@ -233,7 +232,7 @@ it("maximum todo and goal payloads round-trip through managed tools and core rec
   expect(readResult).toMatchObject({ output: { type: "json", value: { todos } } });
 });
 
-it("goal_set keeps one row per owner and thread: a later run overwrites the earlier run's goal", async () => {
+it("goal_set keeps one row per owner and thread: a later run replaces the goal and the table does not grow", async () => {
   const t = setup();
   state.steps.push(call("goal_set", "first-run", { goal: "first" }));
   const receipt = await open(t);
@@ -250,16 +249,12 @@ it("goal_set keeps one row per owner and thread: a later run overwrites the earl
     requestKey: "second",
   });
   await drain(t);
-  // The new run saw no goal before setting its own, and the table did not grow.
-  expect(JSON.stringify(state.calls[state.calls.length - 2].prompt)).toContain('"goal":null');
+  // The new run first saw the thread's goal, then replaced it in the same row.
+  expect(JSON.stringify(state.calls[state.calls.length - 2].prompt)).toContain('"goal":"first"');
   const rows = await t.run((ctx) => ctx.db.query("agevexGoals").collect());
   expect(rows).toHaveLength(1);
   expect(rows[0]).toMatchObject({ goal: "next" });
   expect(rows[0].runId).not.toBe(firstRow.runId);
-  const scope = { subject: "alice", threadId: receipt.threadId };
-  expect(await t.query(api.goalsState.check, { ...scope, runId: firstRow.runId })).toEqual({
-    goal: null,
-  });
 });
 
 it.each(["todoState", "goalsState"] as const)(
