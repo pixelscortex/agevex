@@ -46,10 +46,14 @@ Lookup providers require `workers.lookup`; sinks require `workers.deliver`.
 Authorize public wrappers with the host's ownership policy.
 
 Host `authorize(ctx, scope)` guards host-facing calls: `scope`, `threadCost`,
-`subjectCost`, `breakdown`, `check`, `retrySinks` and `prune`. The slot
-adapters (`usageSlot`, including `tc.meter`, and `budgetSlot`) skip it: their
-attribution is server-derived, core authorized the turn, and they run in
-background actions without user identity.
+`subjectCost`, `breakdown`, `check` and `retrySinks`. The slot adapters
+(`usageSlot`, including `tc.meter`, and `budgetSlot`) skip it: they trust
+whatever attribution core passes and run in background actions without user
+identity. Core derives that attribution for managed turns, but
+`runtime.runTask(ctx, task, input, { attribution })` forwards host-supplied
+attribution, which must therefore be server-derived, never client input.
+`prune` is a host admin operation, like extract's `purge`: it performs no
+`authorize`; expose it only behind your own admin check.
 
 ## Wire it into agevex
 
@@ -76,7 +80,7 @@ Core passes the Agent's stored `message.provider`, the AI SDK provider id
 (`"openrouter.chat"` for `@openrouter/ai-sdk-provider`), else `"model"`. The
 slot resolves an exact registered name, then an explicit
 `usageSlot({ providers: { "<sdk id>": "<registered name>" } })` mapping, then
-the prefix before the first `.`, so `openrouter: inline()` prices
+the longest registered dotted prefix (`google.vertex.chat` resolves to `google.vertex` before `google`), so `openrouter: inline()` prices
 `"openrouter.chat"`. An unresolved name is recorded `unknown` and denies the
 next slice. A model id over 128 bytes is stored as `sha256:<hex>`.
 Use `usageHandlerFor` only for standalone Agent calls outside this registration
@@ -108,8 +112,7 @@ recorded `unknown` with a `reason` and `check` denies. Reasons: `NO_COST`,
 Budgeting and billing differ: `unknown` always denies `check`, but a known
 amount is still billed. A `THREAD_CAPACITY` charge with a settled/inline
 amount and an `OVER_CAP` charge (its full amount is kept) are delivered to
-sinks; unknown estimates are not. `correct`/`settle` above $90 likewise become
-`unknown` / `OVER_CAP` with the amount, instead of throwing.
+sinks; unknown estimates are not. `correct`/`settle` and lookup results above $90 likewise become `unknown` / `OVER_CAP` with the amount, instead of throwing. Reads under-report them: `threadCost`, `subjectCost` and `breakdown` count at most $90 per `OVER_CAP` charge, while sinks bill the full amount.
 
 ### Charge lifecycle and keys
 
@@ -176,7 +179,7 @@ from `@convex-dev/agent`.
 | `meter.breakdown(ctx: ReadCtx, args: { subject: string; from: number; to: number; by: "day" \| "agent" \| "model" \| "provider"; cursor?: string })` | Read bounded aggregate pages. |
 | `meter.check(ctx: ReadCtx, args: { subject: string; runId?: string })` | Return totals, `allowed` and `maxNanos` (null without a budget). |
 | `meter.retrySinks(ctx: WriteCtx, args: { key: string; subject: string }): Promise<null>` | Resume pending deliveries after checking the stored subject. |
-| `meter.prune(ctx: WriteCtx, args: { before: number; limit?: number }): Promise<{ deleted: number; more: boolean }>` | Retention for host crons: delete settled, fully delivered charges created before `before`. |
+| `meter.prune(ctx: WriteCtx, args: { before: number; limit?: number }): Promise<{ deleted: number; more: boolean }>` | Host admin retention (no `authorize`; keep behind your own admin check): delete settled, fully delivered charges created before `before`. |
 | `meter.internalFunctions()` | Return internal `meterLookup` and `meterDeliver` actions for host export. |
 | `openRouterCost(providerMetadata: unknown): number \| undefined` | Extract finite nonnegative OpenRouter USD evidence, including zero. |
 | `usageHandlerFor(meter: Meter, options: { provider?: string; identity: (args: Parameters<UsageHandler>[1]) => Pick<Attribution, "subject" \| "rootThreadId" \| "runId"> & { messageId: string; step: number } }): UsageHandler` | Record saved Agent steps using host identity. |
@@ -241,14 +244,13 @@ stale operations do no aggregate writes. Each mutation handles one charge.
 
 Custom sinks implement `{ name?: string, deliver(batch: SinkEvent[]): Promise<void> }`.
 Keep unnamed sinks in stable array order; give multiple built-in sinks unique
-names. Corrected estimates and settled charges enter a durable outbox; recording
+names. Billable charges (corrected, settled, and unknown ones with a known amount) enter a durable outbox; recording
 does not wait for HTTP delivery. One delivery job sends up to 100 due events of
 one sink in one `deliver` call (one Polar request); new events wait one second
 so bursts share it. Failures back off and stop after `limits.maxAttempts`. A 429
 with `Retry-After` reschedules once without consuming an attempt; the next
 consecutive 429 consumes one. A crashed or cancelled job counts as one failed
-attempt for the events it claimed and charges no other event; a job that died
-before claiming is retried without charging. Failed events stay pending for explicit `retrySinks` recovery.
+attempt for the events it claimed and charges no other event; a job that died before claiming is retried without charging, up to `maxAttempts - 1` times, then its sink's due rows take one attempt, so a worker that can never run still drives them to `failed`. Failed events stay pending for explicit `retrySinks` recovery.
 
 The first external id is the charge key. Later events use `key:delta:revision`
 and signed `nanos` deltas, with `totalNanos` holding the new absolute amount.
@@ -301,7 +303,7 @@ or random identity fallback is used.
 `meter.prune(ctx, { before, limit })` deletes up to `limit` (default 100, max
 500) settled charges whose sinks all acknowledged, created before `before`, and
 their aggregate contributions. It stops early at its transaction budget and
-returns `{ deleted, more }`; call it from a host cron until `more` is false. It
+returns `{ deleted, more }`; call it from a host cron (it performs no `authorize`) until `more` is false. It
 never reschedules itself. Totals then cover retained charges only; pick `before`
 past any replay window, since a pruned key recorded again is a new charge.
 `before` must precede every active run and budget window: pruning lowers

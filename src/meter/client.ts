@@ -414,7 +414,8 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
     },
     check: (ctx: ReadCtx, args: { subject: string; runId?: string }) => check(ctx, args),
     /**
-     * Retention for host crons (server-only; never expose it to clients).
+     * Retention for host crons. A host admin operation like extract's
+     * `purge`: it performs no `authorize`; expose it only behind an admin check.
      * Deletes up to `limit` (default 100, max 500) settled charges whose sinks
      * all acknowledged, created before `before`, and their aggregate entries.
      * It also stops at its transaction budget; call again while `more`. Choose

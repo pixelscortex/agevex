@@ -52,7 +52,7 @@ Core passes the Agent's stored `message.provider`, the AI SDK provider id
 (`"openrouter.chat"` for `@openrouter/ai-sdk-provider`), else `"model"`. The
 slot resolves an exact registered name, then an explicit
 `usageSlot({ providers: { "<sdk id>": "<registered name>" } })` mapping, then
-the prefix before the first `.`, so `openrouter: inline()` prices
+the longest registered dotted prefix (`google.vertex.chat` resolves to `google.vertex` before `google`), so `openrouter: inline()` prices
 `"openrouter.chat"`. An unresolved name is recorded `unknown` and denies the
 next slice. A model id over 128 bytes is stored as `sha256:<hex>`.
 
@@ -131,8 +131,7 @@ later USD `settle` resolves it. Malformed keys, names and quantities still throw
 Budgeting and billing differ: `unknown` always denies `check`, but a known
 amount is still billed. A `THREAD_CAPACITY` charge with a settled/inline
 amount and an `OVER_CAP` charge (its full amount is kept) are delivered to
-sinks; unknown estimates are not. `correct`/`settle` above $90 likewise become
-`unknown` / `OVER_CAP` with the amount, instead of throwing.
+sinks; unknown estimates are not. `correct`/`settle` and lookup results above $90 likewise become `unknown` / `OVER_CAP` with the amount, instead of throwing. Reads under-report them: `threadCost`, `subjectCost` and `breakdown` count at most $90 per `OVER_CAP` charge, while sinks bill the full amount.
 
 Reads return integer `totalNanos`, `settledNanos`, `estimatedNanos`, `unknown`,
 `unknownNanos`, plus convenience USD fields. Unknowns retain their last known
@@ -171,10 +170,14 @@ wrapper using the host's ownership policy. Background workers are internal,
 and charges are addressed by stored keys.
 
 Host `authorize(ctx, scope)` guards host-facing calls: `scope`, `threadCost`,
-`subjectCost`, `breakdown`, `check`, `retrySinks` and `prune`. The slot
-adapters (`usageSlot`, including `tc.meter`, and `budgetSlot`) skip it: their
-attribution is server-derived, core authorized the turn, and they run in
-background actions without user identity.
+`subjectCost`, `breakdown`, `check` and `retrySinks`. The slot adapters
+(`usageSlot`, including `tc.meter`, and `budgetSlot`) skip it: they trust
+whatever attribution core passes and run in background actions without user
+identity. Core derives that attribution for managed turns, but
+`runtime.runTask(ctx, task, input, { attribution })` forwards host-supplied
+attribution, which must therefore be server-derived, never client input.
+`prune` is a host admin operation, like extract's `purge`: it performs no
+`authorize`; expose it only behind your own admin check.
 
 ## Saved Agent steps
 
@@ -208,15 +211,14 @@ already in flight may still settle the unknown exactly once. Replayed attempt
 callbacks cannot create duplicate retry chains. No
 provider operation that incurs cost is invoked by this module.
 
-Only settled/corrected charges enter the durable sink outbox (`deliveries`).
+Billable charges enter the durable sink outbox (`deliveries`): settled and corrected ones, plus unknown charges with a known amount (`THREAD_CAPACITY` with a settled/inline/lookup amount, `OVER_CAP`).
 One delivery job drains up to 100 due events of one sink into one `deliver`
 call, i.e. one Polar ingest request; new events wait one second so bursts
 share a request. Sink errors retry with backoff and stable external ids, at
 most eight attempts. A 429 with `Retry-After` reschedules once at that delay
 without consuming an attempt; the next consecutive 429 consumes one. A
 crashed or cancelled job counts as one failed attempt for the rows it claimed
-(Workpool `onComplete`, with a claim marker) and charges no other row; a job
-that died before claiming is retried up to seven times without charging.
+(Workpool `onComplete`, with a claim marker) and charges no other row; a job that died before claiming is retried up to seven times without charging, then its sink's due rows take one attempt, so a worker that can never run still drives them to `failed`.
 Recording does not wait for the sink. Failed deliveries stay pending;
 `retrySinks(ctx, { key, subject })` resumes them. Jobs run only on demand.
 
@@ -237,8 +239,7 @@ the same ids/deltas. Acknowledgements are recorded 16 per mutation.
 `meter.prune(ctx, { before, limit? })` deletes up to `limit` (default 100,
 max 500) settled charges whose sinks all acknowledged, created before
 `before`, with their aggregate contributions; it returns `{ deleted, more }`
-and also stops early at its transaction budget. Call it from a host cron
-(server-only) until `more` is false; it never reschedules itself. Totals then
+and also stops early at its transaction budget. Call it from a host cron (server-only; it performs no `authorize`) until `more` is false; it never reschedules itself. Totals then
 cover retained charges only. Choose `before` past any replay window: a pruned
 key recorded again is a new charge. `before` must precede every active run and budget window: pruning lowers
 run and subject totals. `prune` refuses a cutoff newer than now minus
