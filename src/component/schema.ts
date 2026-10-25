@@ -204,9 +204,6 @@ export default defineSchema({
     completedTurns: v.number(),
     // Read by note admission/claim/cancel; never charged to ready work.
     notesPending: v.number(),
-    // Read by beforeTurn: a continuation has its own prompt, while generation
-    // remains bounded by the original ready-work anchor below.
-    logicalPromptMessageId: v.optional(v.string()),
     // Only the first slice owns the shared routing bit; terminal fences settle it.
     routingAgentIndex: v.optional(v.number()),
     // Read by claim, cancel and deferChildFailure: an afterTurn continuation is
@@ -245,6 +242,10 @@ export default defineSchema({
     nextSequence: v.number(),
     nextTurn: v.number(),
     turnToken: v.optional(v.string()),
+    // The turn's prompt: set by wake to the reserved head, moved by claim to
+    // the newest merged result and by a hook continuation to its saved prompt.
+    // Claim returns it; the host reads it for beforeTurn and anchors native
+    // generation context on it.
     promptMessageId: v.optional(v.string()),
     // Set by wake with the reserved head; read by claim and write.
     turnOrigin: v.optional(turnOrigin),
@@ -445,14 +446,17 @@ export default defineSchema({
     coordinateHandle: v.string(),
     createdAt: v.number(),
     sequence: v.number(),
+    // Set by the first claim of the child's first turn; never derived, because
+    // the "started" event of that turn leaves the event ring after 3 turns.
     startedAt: v.optional(v.number()),
-    finishedAt: v.optional(v.number()),
-    deliveryAt: v.optional(v.number()),
     resultMessageId: v.optional(v.string()),
     // Native notifications can share a millisecond; this parent-local order
     // selects the latest exact anchor when the closed group is released.
     // Written on accepted join members only; read only by releaseGroup.
     resultSequence: v.optional(v.number()),
+    // The newest LIMITS.runEvents transitions (subagents/runs.ts appendEvent).
+    // The public finishedAt/deliveryAt are derived from it (`runTimes`): the
+    // terminal and delivery events are always the newest two.
     events: v.array(runEvent),
   })
     .index("by_result_message", ["resultMessageId"])

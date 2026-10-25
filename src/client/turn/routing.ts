@@ -39,14 +39,15 @@ export async function selectTurnModel(rt: RuntimeContext, gen: Generation) {
 }
 
 /**
- * Run `beforeTurn` on the turn's logical prompt. Returns the model it picked
+ * Run `beforeTurn` on the turn's prompt (a continuation's own prompt
+ * after an afterTurn continuation). Returns the model it picked
  * (validated against the allowlist and persisted), if any.
  */
 async function runBeforeTurn(rt: RuntimeContext, gen: Generation) {
   const { turn, hc, hook, fence } = gen;
   const { claimed, managed } = turn;
   const docs = await turn.rawCtx.runQuery(managed.component.messages.getMessagesByIds, {
-    messageIds: [claimed.logicalPromptMessageId],
+    messageIds: [claimed.promptMessageId],
   });
   const before = await hook(
     () =>

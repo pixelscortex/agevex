@@ -155,6 +155,8 @@ export const LIMITS = {
   queueLength: HOST_LIMITS.queueLength.default,
   messageLength: 16_000,
   requestKeyLength: 200,
+  // At least 2: subagents/runs.ts `runTimes` reads the terminal and delivery
+  // events, which are always the newest two entries of the ring.
   runEvents: 4,
   maxDelegationPage: 50,
   // Bound approval coordination metadata even when native approval ids are huge:

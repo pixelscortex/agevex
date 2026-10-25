@@ -109,11 +109,7 @@ async function finalizeControl(
 
   if (control.row.kind === "continue") {
     row.promptMessageId = message._id;
-    row.logicalPromptMessageId = message._id;
-    await ctx.db.patch("assignments", row._id, {
-      promptMessageId: message._id,
-      logicalPromptMessageId: message._id,
-    });
+    await ctx.db.patch("assignments", row._id, { promptMessageId: message._id });
   }
   return message;
 }

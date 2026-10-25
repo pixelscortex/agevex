@@ -101,6 +101,42 @@ it("Main → Builder → Reviewer returns verified results to each immediate par
   ]);
 });
 
+it("a child that runs four turns still reports when it finished and when its result was delivered", async () => {
+  const t = setup();
+  let finalTurnAt = 0;
+  v2.steps.Main = (n) => (n === 0 ? [delegate("Builder")] : text("Main finished"));
+  // Each delegation ends a Builder turn; each Reviewer result starts the next.
+  v2.steps.Builder = (n) => {
+    if (n < 3) return [delegate("Reviewer")];
+    finalTurnAt = Date.now();
+    return text("Builder finished");
+  };
+  const receipt = await open(t);
+  await drain(t);
+  expect(calls("Builder")).toHaveLength(4);
+
+  const page = await owner(t).query(api.agents.delegations, {
+    threadId: receipt.threadId,
+    paginationOpts: { cursor: null, numItems: 20 },
+  });
+  const run = page.page.find((row) => row.agent === "Builder")!;
+  // Four "started" events pushed "queued" and the first two starts out of the
+  // ring; the terminal and delivery events are still its newest two.
+  expect(run.events.map((event) => event.phase)).toEqual([
+    "started",
+    "started",
+    "completed",
+    "result_accepted",
+  ]);
+  expect(run).toMatchObject({ status: "completed", deliveryStatus: "accepted" });
+  expect(run.finishedAt).toBeGreaterThanOrEqual(finalTurnAt);
+  expect(run.deliveryAt).toBeGreaterThanOrEqual(run.finishedAt!);
+  // startedAt is the first turn's claim, older than every start left in the ring.
+  expect(run.startedAt).toBeLessThan(run.events[0].at);
+  const node = (await tree(t, receipt.threadId)).find((row) => row.agent === "Builder")!;
+  expect(node.finishedAt).toBe(run.finishedAt);
+});
+
 it("registration rejects depth three, cycles and all reserved tools while sharing one child across parents", () => {
   expect(() => registration()).not.toThrow();
   const extra = new Agent(components.agent, {
@@ -2431,12 +2467,24 @@ it.each([1, HOST_LIMITS.queueLength.max])(
         paginationOpts: { cursor: null, numItems: 50 },
       })
     ).page;
-    for (const runId of failed)
-      expect(runs.find((run) => run.runId === runId)).toMatchObject({
+    for (const runId of failed) {
+      const run = runs.find((row) => row.runId === runId)!;
+      expect(run).toMatchObject({
         status: "failed",
         errorCode: "ROOT_UNAVAILABLE",
         deliveryStatus: "blocked",
       });
+      // Failed before the cancel; its blocked delivery is a later event.
+      expect(run.deliveryAt).toBeGreaterThan(run.finishedAt!);
+    }
+    for (const child of live) {
+      const run = runs.find((row) => row.runId === child.run.runId)!;
+      expect(run).toMatchObject({ status: "failed", deliveryStatus: "blocked" });
+      // Cancel blocks a live run's delivery without a delivery event: it ended
+      // with the terminal transition, so both report that moment.
+      expect(run.finishedAt).toEqual(expect.any(Number));
+      expect(run.deliveryAt).toBe(run.finishedAt);
+    }
     expect(calls("Reviewer")).toHaveLength(0);
   },
   30_000,

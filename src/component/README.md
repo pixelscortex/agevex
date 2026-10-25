@@ -110,8 +110,8 @@ What each table and field holds:
   one execution token and cancellation epoch, the next-run model policy, and
   bounded native approval/deferred-call references, exact message references,
   side-review boundaries and note/turn counters.
-  `logicalPromptMessageId` identifies the prompt read by `beforeTurn`, including
-  a continuation. `promptMessageId` bounds native generation context.
+  `promptMessageId` is the turn's prompt: read by `beforeTurn` (including a
+  continuation's own prompt) and the anchor of native generation context.
   Posted notes wait for the next turn claim with no decided approvals awaiting
   committed results; ordinary tool slices never drain them. `beforeTurn` hook
   notes are saved before the first generation.

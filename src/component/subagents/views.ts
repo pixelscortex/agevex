@@ -16,7 +16,7 @@ import type { QueryCtx } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
 import { runErrorCode } from "../schema.js";
 import { LIMITS } from "../limits.js";
-import { runById } from "./runs.js";
+import { runById, runTimes } from "./runs.js";
 import { settlementBlocked } from "./settle.js";
 
 /** The root context of a running turn that wants to delegate: who the root
@@ -207,8 +207,7 @@ function delegationView(run: Doc<"subagentRuns">) {
     deliveryStatus: run.deliveryStatus,
     createdAt: run.createdAt,
     startedAt: run.startedAt ?? null,
-    finishedAt: run.finishedAt ?? null,
-    deliveryAt: run.deliveryAt ?? null,
+    ...runTimes(run),
     resultMessageId: run.resultMessageId ?? null,
     errorCode: run.errorCode,
     events: run.events.map((event) => ({
@@ -233,6 +232,6 @@ function treeNode(run: Doc<"subagentRuns">) {
     childThreadId: run.childThreadId ?? null,
     createdAt: run.createdAt,
     startedAt: run.startedAt ?? null,
-    finishedAt: run.finishedAt ?? null,
+    finishedAt: runTimes(run).finishedAt,
   };
 }

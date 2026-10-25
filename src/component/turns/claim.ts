@@ -20,7 +20,7 @@ import { scope, turnOrigin as vTurnOrigin } from "../schema.js";
 import { LIMITS } from "../limits.js";
 import { claimNotes, noteHandles } from "../hooks/notes.js";
 import { firstReady } from "./inbox.js";
-import { runById } from "../subagents/runs.js";
+import { appendEvent, runById } from "../subagents/runs.js";
 import { assertAgentIndex } from "../hooks/routing.js";
 import { disarmRecovery } from "./recovery.js";
 import { disarmSlice } from "./boundaries.js";
@@ -41,7 +41,6 @@ export const claimArgs = {
 export const vClaim = v.object({
   ...scope.fields,
   promptMessageId: v.string(),
-  logicalPromptMessageId: v.string(),
   runId: v.string(),
   modelId: v.optional(v.string()),
   isTurnStart: v.boolean(),
@@ -108,7 +107,6 @@ export async function claimSlice(ctx: MutationCtx, args: ClaimArgs): Promise<Cla
     subject: row.subject,
     agent: row.agent,
     promptMessageId: row.promptMessageId!,
-    logicalPromptMessageId: first ? row.promptMessageId! : row.logicalPromptMessageId!,
     runId: row.runId!,
     modelId,
     isTurnStart: first || !!row.hookContinue,
@@ -243,11 +241,6 @@ async function markRunning(
   await ctx.db.patch("assignments", row._id, {
     turnStatus: "running",
     hookContinue: false,
-    ...(first
-      ? {
-          logicalPromptMessageId: row.promptMessageId,
-        }
-      : {}),
     lastSlice: args.sliceId,
     inboxId: undefined,
   });
@@ -318,9 +311,7 @@ async function claimChild(
       lastTurnResult: undefined,
       status: "running",
       startedAt: run.startedAt ?? Date.now(),
-      events: [...run.events, { phase: "started" as const, at: Date.now(), errorCode: null }].slice(
-        -LIMITS.runEvents,
-      ),
+      events: appendEvent(run.events, "started", Date.now(), null),
     });
 
   return {

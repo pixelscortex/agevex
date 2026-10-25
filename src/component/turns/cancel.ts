@@ -15,7 +15,7 @@ import type { WorkflowId } from "@convex-dev/workflow";
 import { internal } from "../_generated/api.js";
 import { type MutationCtx, mutation } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
-import { LIMITS } from "../limits.js";
+import { appendEvent } from "../subagents/runs.js";
 import { childLane, rootLane } from "../workflows/lanes.js";
 import { readyRows } from "./inbox.js";
 import { disarmRecovery } from "./recovery.js";
@@ -50,12 +50,9 @@ export async function cancelRoot(
       deliveryStatus: "blocked",
       errorCode: "ROOT_UNAVAILABLE",
       lastTurnResult: undefined,
-      finishedAt: Date.now(),
-      deliveryAt: Date.now(),
-      events: [
-        ...run.events,
-        { phase: "failed" as const, at: Date.now(), errorCode: "ROOT_UNAVAILABLE" as const },
-      ].slice(-LIMITS.runEvents),
+      // No delivery event: a blocked delivery ends with this terminal event,
+      // which is where `runTimes` reads its deliveryAt.
+      events: appendEvent(run.events, "failed", Date.now(), "ROOT_UNAVAILABLE"),
     });
   }
   await ctx.db.patch("assignments", root._id, {
@@ -126,7 +123,6 @@ function cancelledState(row: Doc<"assignments">, approvalCleanup: boolean) {
     pinged: false,
     queuedMessages: 0,
     notesPending: 0,
-    logicalPromptMessageId: undefined,
     hookContinue: false,
     approvalBlocked: !!approvalCleanup,
     approvals: approvalCleanup ? { ...row.approvals!, cleanupPending: true } : undefined,

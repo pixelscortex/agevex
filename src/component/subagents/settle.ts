@@ -113,7 +113,6 @@ export async function settleRunState(
     // Only idle settlement reads the deferred outcome, and only before the run
     // is terminal; a terminal run never needs it again.
     lastTurnResult: undefined,
-    finishedAt: at,
     ...(childResultMessageId ? { childResultMessageId } : {}),
     events: appendEvent(run.events, status, at, errorCode),
   });

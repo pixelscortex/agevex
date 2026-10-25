@@ -111,7 +111,6 @@ export const fillHookMetadata = internalMutationGeneric({
         boundary: turn,
       })),
       completedTurns: LIMITS.turnsPerLoop,
-      logicalPromptMessageId: crypto.randomUUID(),
     });
     return null;
   },

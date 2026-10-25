@@ -58,7 +58,6 @@ export async function applyDelivery(ctx: MutationCtx, args: Delivery) {
   const at = Date.now();
   await ctx.db.patch("subagentRuns", run._id, {
     deliveryStatus: args.deliveryStatus,
-    deliveryAt: at,
     errorCode: args.errorCode ?? run.errorCode,
     ...(args.parentMessageId ? { resultMessageId: args.parentMessageId } : {}),
     // Only releaseGroup orders a joined cohort by it; "each" rows never need it.
