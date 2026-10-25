@@ -1,0 +1,23 @@
+bun.lock
+  s_d863bd773ba186::t_e45893360a593d 18,29-30,32,261-262,415,417,621-622,629
+package.json
+  s_d863bd773ba186::t_f7b3e215e0b802 62
+vite.config.ts
+  s_d863bd773ba186::t_a184c592373220 11-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "59fa79ae1d235214f28c88eafbcda05349f43f19",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "unknown"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
