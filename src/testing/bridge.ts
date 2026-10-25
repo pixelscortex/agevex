@@ -1,5 +1,12 @@
-// Test-only forwarding preserves Convex's real nested component boundary.
-// A childComponent reference addresses one component level, not a slash path.
+// Test-only bridge mounted into the component as `agevexTest` by `agevex/test`
+// (`src/test.ts`); never part of the production component.
+//
+// `read` / `write` forward a call one component level down (Workflow, Workpool),
+// preserving Convex's real nested component boundary: a childComponent reference
+// addresses one component level, not a slash path. The remaining queries and
+// mutations are bounded white-box inspections and fixtures that tests use to
+// observe component tables (assignments, inbox, runs, receipts) directly.
+
 import {
   componentsGeneric,
   internalMutationGeneric,
@@ -8,7 +15,10 @@ import {
 } from "convex/server";
 import { v } from "convex/values";
 import { LIMITS } from "../component/limits.js";
+
 const args = { lane: v.string(), module: v.string(), name: v.string(), args: v.any() };
+
+/** Forward one query to `components[lane][module][name]` of this component. */
 export const read = internalQueryGeneric({
   args,
   handler: (ctx, a) =>
@@ -17,6 +27,8 @@ export const read = internalQueryGeneric({
       a.args,
     ),
 });
+
+/** Forward one mutation to `components[lane][module][name]` of this component. */
 export const write = internalMutationGeneric({
   args,
   handler: (ctx, a) =>

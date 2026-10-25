@@ -1,3 +1,11 @@
+// Deterministic keys: canonical fingerprints and opaque identities.
+//
+// `fingerprint` hashes canonical JSON (object key order ignored) for idempotency
+// payload checks; `opaqueKey` hashes domain-separated parts into a fixed 64-byte
+// identity for receipts, meters and telemetry. Both are stable across Workflow
+// and receipt replay, which is what makes replayed calls idempotent. Used across
+// the client (receipts, usage keys, turn keys); touches no tables.
+
 /** Stable JSON for fingerprints: object property order is not part of an input. */
 export async function fingerprint(input: unknown): Promise<string> {
   const canonical = (value: unknown): unknown =>

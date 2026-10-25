@@ -1,3 +1,11 @@
+// The managed `Agent` class hosts construct their agents with.
+//
+// It is the native `@convex-dev/agent` Agent plus the metadata the managed
+// runtime reads at registration: a name, declared tools, `subagents`,
+// `sideAgents`, `hooks` and the sandbox opt-in. Generation, tools, threads and
+// streams stay entirely native. `registerAgent` (`registration/graph.ts`)
+// validates the graph these fields describe. Touches no tables.
+
 import { Agent as NativeAgent, type AgentComponent, type Config } from "@convex-dev/agent";
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import type { Instructions, LanguageModel, StopCondition, ToolSet } from "ai";
