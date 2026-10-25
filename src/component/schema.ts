@@ -14,6 +14,7 @@ export const turnStatus = v.union(
 );
 export const errorCode = v.union(
   v.null(),
+  v.literal("BUDGET_EXCEEDED"),
   v.literal("HOOK_FAILED"),
   v.literal("GENERATION_FAILED"),
   v.literal("SLICE_LIMIT"),
@@ -24,6 +25,7 @@ export const errorCode = v.union(
 );
 export const runErrorCode = v.union(
   v.null(),
+  v.literal("BUDGET_EXCEEDED"),
   v.literal("HOOK_FAILED"),
   v.literal("GENERATION_FAILED"),
   v.literal("SLICE_LIMIT"),
@@ -103,6 +105,7 @@ export const receipt = v.union(
       v.literal("INVALID_REQUEST_KEY"),
       v.literal("UNKNOWN_AGENT"),
       v.literal("INVALID_MODELS"),
+      v.literal("ATTACHMENT_LIMIT"),
       v.literal("RECOVERY_REQUIRED"),
     ),
   }),
@@ -120,6 +123,10 @@ export const activity = v.object({
   turnStatus,
   queuedMessages: v.number(),
   errorCode,
+  /** The thread's current (or last) user run: the same `runId` slot facts and
+   * budget checks receive, so a host can key a recovery step to the exact
+   * stopped run. Absent before the first request is admitted. */
+  runId: v.optional(v.string()),
   subagents: subagentCounts,
 });
 export const scope = v.object({
@@ -169,6 +176,9 @@ export default defineSchema({
   // owns messages; this row holds only references and coordination facts.
   assignments: defineTable({
     // Fixed-size references only: the native component continues to own bodies.
+    // Exact step identity captured with the native save, consumed by usage
+    // recording. Scalar reference only, never a copy of model output.
+    modelStep: v.optional(v.object({ messageId: v.string(), stepOrder: v.number() })),
     contextSequence: v.optional(v.number()),
     contextMessages: v.optional(
       v.array(
@@ -318,23 +328,44 @@ export default defineSchema({
     hops: v.number(),
     cancelled: v.boolean(),
   }),
-  receipts: defineTable({
-    scope: v.string(),
-    key: v.string(),
-    fingerprint: v.string(),
-    status: v.union(
-      v.literal("running"),
-      v.literal("done"),
-      v.literal("failed"),
-      v.literal("unknown"),
+  // Both are durable facts, with separate indexed lifecycles. Effect receipts
+  // expire; attachment attestations are excluded from effect cleanup.
+  // The union avoids dummy lease/result fields on ownership records and adds
+  // no table. Native Agent still owns file bytes, metadata and refcounts.
+  receipts: defineTable(
+    v.union(
+      v.object({
+        kind: v.literal("effect"),
+        scope: v.string(),
+        key: v.string(),
+        fingerprint: v.string(),
+        status: v.union(
+          v.literal("running"),
+          v.literal("done"),
+          v.literal("failed"),
+          v.literal("unknown"),
+        ),
+        claim: v.string(),
+        leaseUntil: v.number(),
+        result: v.optional(v.any()),
+        expiresAt: v.number(),
+      }),
+      v.object({
+        kind: v.literal("attachment"),
+        native: v.string(),
+        fileId: v.string(),
+        subject: v.string(),
+        // Absent: trusted upload grant. Present: exact native attachment saved
+        // atomically with that message, read by extraction admission and policy.
+        threadId: v.optional(v.string()),
+        messageId: v.optional(v.string()),
+      }),
     ),
-    claim: v.string(),
-    leaseUntil: v.number(),
-    result: v.optional(v.any()),
-    expiresAt: v.number(),
-  })
+  )
     .index("by_scope_key", ["scope", "key"])
-    .index("by_expiry", ["expiresAt"]),
+    .index("by_expiry", ["kind", "expiresAt"])
+    .index("by_file", ["native", "fileId", "subject", "threadId"])
+    .index("by_message", ["native", "messageId"]),
   subagentRuns: defineTable({
     side: v.optional(v.boolean()),
     runId: v.string(),

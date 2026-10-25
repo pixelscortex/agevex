@@ -2499,7 +2499,7 @@ it.each(
     if (delivery === "before") await failDelivery();
     expect((await tree(t, root.threadId))[0].status).toBe("running");
     const receipt = await resume();
-    expect(await resume()).toEqual(receipt);
+    expect(await resume()).toEqual({ ...receipt, replayed: true });
     if (delivery === "after") await failDelivery();
     expect((await tree(t, root.threadId))[0].status).toBe("running");
     expect(
@@ -2519,7 +2519,7 @@ it.each(
     expect(JSON.stringify(calls("Main")[0].args.prompt)).toContain("final result after response");
     expect((await tree(t, root.threadId))[0].status).toBe("completed");
     // Replaying after claim consumed the anchor cannot enqueue or settle again.
-    expect(await resume()).toEqual(receipt);
+    expect(await resume()).toEqual({ ...receipt, replayed: true });
     await drain(t);
     expect(calls("Builder")).toHaveLength(1);
     expect(calls("Main")).toHaveLength(1);

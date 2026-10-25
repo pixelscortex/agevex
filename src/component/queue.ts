@@ -347,6 +347,7 @@ export const accept = mutation({
     // external effect can outlive an abandoned claim, so request receipts enter
     // the same ledger already done rather than leasing an action-shaped claim.
     const receiptId = await ctx.db.insert("receipts", {
+      kind: "effect",
       scope: `request:${args.subject}`,
       key: args.requestKey,
       fingerprint: args.fingerprint,
@@ -794,6 +795,11 @@ export const stalled = internalMutation({
   },
 });
 
+/** `replayed` is true when an identical retry was served from the response
+ * receipt, so a host can tell a first decision from a replay (e.g. to record
+ * single-use consent only once). */
+const vResponseResult = v.object({ messageId: v.string(), replayed: v.boolean() });
+
 export const activity = query({
   args: { threadId: v.string(), subject: v.string() },
   returns: vActivity,
@@ -811,6 +817,7 @@ export const activity = query({
       turnStatus: row.turnStatus,
       queuedMessages: row.queuedMessages,
       errorCode: row.errorCode,
+      runId: row.runId,
       subagents: {
         active: row.activeRuns ?? 0,
         history: row.historyRuns ?? 0,
@@ -866,6 +873,7 @@ export const write = mutation({
     args: v.any(),
     rejectStale: v.optional(v.boolean()),
     nativeStream: v.optional(v.string()),
+    trackUsage: v.optional(v.boolean()),
     deferredTools: v.optional(v.array(v.string())),
     nativeMessages: v.optional(
       v.object({
@@ -971,6 +979,13 @@ export const write = mutation({
       // metadata in the SAME transaction as the native placeholder creation.
       const messages = (result as { messages: MessageDoc[] }).messages;
       await recordMessages(ctx, row, messages);
+      const modelStep = args.trackUsage
+        ? messages.find((message) => message.usage && message.status === "success")
+        : undefined;
+      if (modelStep)
+        await ctx.db.patch("assignments", row._id, {
+          modelStep: { messageId: String(modelStep._id), stepOrder: modelStep.stepOrder },
+        });
       // Claiming a continuation never consumes a decision: cancel can still
       // win while the tool/provider awaits I/O. Retire only with its native save.
       // Agent 0.7.7 src/vercel/client/prepareApprovalContext.ts:23-30 treats a
@@ -1210,6 +1225,7 @@ async function saveResponseReceipt(
   if (getConvexSize(messageId) > LIMITS.receiptResultBytes) throw new Error("RESULT_TOO_LARGE");
   await armPurge(ctx);
   await ctx.db.insert("receipts", {
+    kind: "effect",
     scope: receipt.scope,
     key: receipt.key,
     fingerprint: receipt.fingerprint,
@@ -1233,7 +1249,7 @@ export const respond = mutation({
     reason: v.optional(v.string()),
     addMessages: v.string(),
   },
-  returns: v.object({ messageId: v.string() }),
+  returns: vResponseResult,
   handler: async (ctx, args) => {
     const row = await ctx.db.get("assignments", args.assignmentId);
     if (!row || row.subject !== args.subject) throw new ConvexError({ code: "FORBIDDEN" });
@@ -1244,7 +1260,7 @@ export const respond = mutation({
       args.approvalId,
       JSON.stringify([args.approved, args.reason ?? null]),
     );
-    if (receipt.messageId !== undefined) return { messageId: receipt.messageId };
+    if (receipt.messageId !== undefined) return { messageId: receipt.messageId, replayed: true };
     const approvals = row.approvals;
     const key = await approvalKey(args.approvalId);
     const index =
@@ -1290,7 +1306,7 @@ export const respond = mutation({
       await ctx.db.patch("assignments", row._id, { approvalBlocked: false });
       await wake(ctx, { ...row, approvalBlocked: false });
     }
-    return { messageId };
+    return { messageId, replayed: false };
   },
 });
 
@@ -1309,7 +1325,7 @@ export const answer = mutation({
     toolCallId: v.string(),
     text: v.string(),
   },
-  returns: v.object({ messageId: v.string() }),
+  returns: vResponseResult,
   handler: async (ctx, args) => {
     const row = await ctx.db.get("assignments", args.assignmentId);
     if (!row || row.subject !== args.subject) throw new ConvexError({ code: "FORBIDDEN" });
@@ -1318,7 +1334,7 @@ export const answer = mutation({
     if (!args.toolCallId || args.toolCallId.length > LIMITS.nativeCallIdLength)
       throw new ConvexError({ code: "TOOL_CALL_NOT_FOUND" });
     const receipt = await responseReceipt(ctx, "answer", row.threadId, args.toolCallId, args.text);
-    if (receipt.messageId !== undefined) return { messageId: receipt.messageId };
+    if (receipt.messageId !== undefined) return { messageId: receipt.messageId, replayed: true };
     const pause = row.approvals;
     const key = await approvalKey(args.toolCallId);
     const index =
@@ -1389,7 +1405,7 @@ export const answer = mutation({
     // partial answer. A concurrent answer/respond serializes on this same row.
     await ctx.db.patch("inbox", pause.inboxId, { messageId });
     if (!blocked) await wake(ctx, { ...row, approvals, approvalBlocked: false });
-    return { messageId };
+    return { messageId, replayed: false };
   },
 });
 

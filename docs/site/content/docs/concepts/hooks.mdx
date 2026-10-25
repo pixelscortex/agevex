@@ -1,0 +1,79 @@
+---
+title: Hooks
+icon: Webhook
+description: Turn and tool hooks, model routing, passive notes and side agents.
+status: Available
+---
+
+Hooks belong to an `Agent` and run inside the existing action, adding no
+Workflow steps. The five hooks are `beforeTurn`, `afterTurn`, `beforeTool`,
+`afterTool` and `beforeDelegate`. Each returns one `HookResult`: `note`,
+`block`, `input`, `output`, `continue` or `model`, with a `HookContext` that
+omits `toolCallId`.
+
+```ts title="Hooks and a side agent"
+const critic = new Agent(components.agent, {
+  name: "Critic",
+  languageModel,
+  instructions: "Review the delta. Return a short note, or NONE.",
+})
+const main = new Agent(components.agent, {
+  name: "Main",
+  languageModel,
+  hooks: {
+    beforeTurn: (_hc, { prompt }) =>
+      prompt.trim() ? undefined : { block: "A prompt is required." },
+    afterTool: (_hc, { output }) => ({ output: redact(output) }),
+  },
+  sideAgents: [{ agent: critic, every: { turns: 3 }, sees: "delta" }],
+})
+```
+
+`beforeTool` may replace the input with `input`, and `afterTool` may replace
+the output with `output`; a streaming output is reshaped value by value. A
+`block` denies the tool with `{ status: "denied", code: "HOOK_BLOCKED" }`. A
+throwing hook fails the turn with `HOOK_FAILED`, and its details stay outside
+the transcript.
+
+## Model routing at run start
+
+`beforeTurn` may return `model` only when `isRunStart` is true. The id must be
+in the registered allowlist, and the choice persists for that agent's run.
+Concurrent siblings share the first routing attempt: if its owner is denied,
+fails or is cancelled, the siblings use the committed model or their default.
+The classifier is never retried.
+
+## Bounded continuation
+
+`afterTurn.continue` requests another turn with the returned prompt. A run
+admits 3 continuations by default and 8 at the hard maximum; the prompt is at
+most 16,000 UTF-16 units and is staged for the next safe claim.
+
+## Notes and origins
+
+`runtime.note(ctx, { threadId, text, from })` authorizes the `note` operation
+and accepts at most 4,000 UTF-16 units of raw text, then escapes it and wraps it
+in a user-role `<note from="…">` message. The `notesPending` cap is the single admission limit, 8
+by default and 24 at the hard maximum, independent of `queueLength`. At
+capacity, `runtime.note` throws a typed `NOTES_PENDING_LIMIT` error.
+
+Notes wait for the next safe turn claim: a claim with no decided approval
+awaiting a committed tool result. That claim saves every pending note in
+arrival order, after prior tool results. Ordinary tool-step slices never drain
+notes, and a note never starts a turn or schedules work.
+
+The authorized `messages` reader adds `origin: user | result | note | continue`
+with `from` for notes and `runId` for results; unclassified messages use `user`.
+
+## Side agents
+
+A side agent reviews the parent conversation on a cadence: `every: { turns: N }`
+or `every: { minutes: N }`, checked after a turn without a cron. It sees the
+delta only: recorded native ids, at most 24 recent messages and 48 KiB of
+text, tool output stripped. A skipped review keeps its delta.
+
+Side runs use the child lane and the root run's attribution, capped at 2 per
+run and 8 at the hard maximum. Their replies become passive notes; an empty
+reply and `NONE` add nothing. A side run never holds the parent's settlement
+fence, never fails the parent, and cancels with the root. Side agents keep
+their own configured model, so root model overrides do not apply to them.

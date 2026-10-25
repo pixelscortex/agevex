@@ -19,6 +19,7 @@ import {
   type PaginationResult,
 } from "convex/server";
 import { ConvexError, getConvexSize, v, type Validator } from "convex/values";
+import { assertFact } from "../component/facts.js";
 import { fingerprint } from "./once.js";
 import { LIMITS, resolveLimits } from "../component/limits.js";
 import type { ComponentApi } from "../component/_generated/component.js";
@@ -112,10 +113,12 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
     threadId: string,
     operation: "send" | "respond" | "answer" | "cancel" | "messages" | "streams" | "activity",
   ) {
+    assertFact(threadId, "threadId");
     const row = await ctx.runQuery(component.queue.assignment, { threadId });
     if (!row) throw new Error("FORBIDDEN");
     const trusted = await config.authorize(ctx, { operation, agent: row.agent, threadId });
-    if (!trusted.subject || trusted.subject !== row.subject) throw new Error("FORBIDDEN");
+    assertFact(trusted.subject, "subject");
+    if (trusted.subject !== row.subject) throw new Error("FORBIDDEN");
     // Ownership permits reading a child's transcript and resolving its recorded
     // approvals. Child turns belong to the coordinator's bounded delegation and
     // settlement path; accepting a public send could start another child turn
@@ -154,6 +157,88 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
       )
     );
   }
+  function validateFiles(files: string[] = []) {
+    if (
+      files.length > LIMITS.filesPerMessage ||
+      new Set(files).size !== files.length ||
+      files.some((fileId) => !fileId || fileId.length > LIMITS.fileIdLength)
+    )
+      throw new Error("INVALID_FILES");
+  }
+  async function attachment(
+    ctx: GenericMutationCtx<GenericDataModel>,
+    managed: ManagedAgent,
+    subject: string,
+    text: string,
+    files: string[] = [],
+  ) {
+    validateFiles(files);
+    const native = await createFunctionHandle(managed.component.files.get);
+    const parts: import("ai").UserContent = [{ type: "text", text }];
+    // At the hard maximum: eight <=4 KiB native file metadata rows, eight
+    // <=1 KiB storage metadata rows and eight <=8 KiB grants. An invalid oversized native row aborts immediately after
+    // at most one <=1 MiB read, before any native write. Native attachment saves
+    // reread <=8*4 KiB for refcounts; total attachment-specific admission <1 MiB plus
+    // existing queue/Workflow bookkeeping. Storage holds all actual file bytes.
+    let bytes = 0;
+    for (const fileId of files) {
+      if (!(await ctx.runQuery(component.files.owns, { native, fileId, subject })))
+        throw new Error("FILE_FORBIDDEN");
+      const file = await ctx.runQuery(managed.component.files.get, { fileId });
+      if (!file || getConvexSize(file) > LIMITS.fileMetadataBytes) throw new Error("INVALID_FILE");
+      // Agent metadata has no size. Read actual Convex storage metadata, never
+      // file content, before native saves/refcount writes in this transaction.
+      const metadata = await ctx.db.system.get(
+        "_storage",
+        file.storageId as import("convex/values").GenericId<"_storage">,
+      );
+      if (!metadata) throw new Error("INVALID_FILE");
+      bytes += metadata.size;
+      if (bytes > limits.attachmentBytes) return { rejected: true as const };
+      if (!config.extract) {
+        // Agent getFile (vercel/client/files.ts:167-194) uses this exact native
+        // metadata + storage URL shape. Read it once here, so ownership and byte
+        // validation precede native refcount writes in this same transaction.
+        const url = await ctx.storage.getUrl(
+          file.storageId as import("convex/values").GenericId<"_storage">,
+        );
+        if (!url) throw new Error("INVALID_FILE");
+        parts.push({
+          type: "file",
+          data: new URL(url),
+          mediaType: file.mediaType ?? file.mimeType ?? "application/octet-stream",
+          ...(file.filename ? { filename: file.filename } : {}),
+        });
+      }
+    }
+    if (config.extract && files.length)
+      parts.push({
+        type: "text",
+        text: `Attached files: ${files.join(", ")}. Use read_file or search_files to inspect them.`,
+      });
+    return {
+      native,
+      message: { role: "user" as const, content: files.length ? parts : text },
+      metadata: { fileIds: files },
+    };
+  }
+  async function recordAttachments(
+    ctx: GenericMutationCtx<GenericDataModel>,
+    native: string,
+    files: string[] | undefined,
+    subject: string,
+    threadId: string,
+    messageId: string,
+  ) {
+    if (files?.length)
+      await ctx.runMutation(component.files.attach, {
+        native,
+        files,
+        subject,
+        threadId,
+        messageId,
+      });
+  }
   return {
     open: mutationGeneric({
       args: {
@@ -161,11 +246,13 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
         prompt: v.string(),
         requestKey: v.string(),
         models: v.optional(modelOverrides),
+        files: v.optional(v.array(v.string())),
       },
       returns: receipt,
       handler: async (ctx, args) => {
         const { subject } = await config.authorize(ctx, { operation: "open", agent: args.agent });
-        if (!subject) throw new Error("FORBIDDEN");
+        assertFact(subject, "subject");
+        assertFact(args.agent, "agent");
         const invalid = validateInput(args.prompt, args.requestKey);
         if (invalid) return { status: "rejected" as const, code: invalid };
         if (!config.agents.some((a) => a.name === args.agent))
@@ -173,23 +260,34 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
         const native = agent(args.agent);
         if (!validModels(args.models, native))
           return { status: "rejected" as const, code: "INVALID_MODELS" as const };
-        if (subject.length > LIMITS.requestKeyLength) throw new Error("INVALID_SUBJECT");
-        const hash = await fingerprint(["open", args.agent, args.prompt, args.models ?? null]);
+        validateFiles(args.files);
+        const hash = await fingerprint([
+          "open",
+          args.agent,
+          args.prompt,
+          args.models ?? null,
+          args.files ?? [],
+        ]);
         const duplicate = await ctx.runQuery(component.queue.lookupReceipt, {
           subject,
           requestKey: args.requestKey,
           fingerprint: hash,
         });
         if (duplicate) return duplicate;
+        const attached = await attachment(ctx, native, subject, args.prompt, args.files);
+        if ("rejected" in attached)
+          return { status: "rejected" as const, code: "ATTACHMENT_LIMIT" as const };
         const runTurn = await createFunctionHandle(config.refs.runTurn());
         const threadId = await createThread(ctx, native.component, { userId: subject });
         const { messageId, message } = await saveMessage(ctx, native.component, {
           threadId,
-          prompt: args.prompt,
+          message: attached.message,
+          metadata: attached.metadata,
           // Reserve order zero for notes posted before the first turn claim.
           order: LIMITS.firstPromptOrder,
           userId: subject,
         });
+        await recordAttachments(ctx, attached.native, args.files, subject, threadId, messageId);
         const accepted = await ctx.runMutation(component.queue.accept, {
           subject,
           agent: args.agent,
@@ -225,6 +323,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
         text: v.string(),
         requestKey: v.string(),
         models: v.optional(modelOverrides),
+        files: v.optional(v.array(v.string())),
       },
       returns: receipt,
       handler: async (ctx, args) => {
@@ -233,7 +332,14 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
         if (invalid) return { status: "rejected" as const, code: invalid };
         if (!validModels(args.models, row.native))
           return { status: "rejected" as const, code: "INVALID_MODELS" as const };
-        const hash = await fingerprint(["send", args.threadId, args.text, args.models ?? null]);
+        validateFiles(args.files);
+        const hash = await fingerprint([
+          "send",
+          args.threadId,
+          args.text,
+          args.models ?? null,
+          args.files ?? [],
+        ]);
         const duplicate = await ctx.runQuery(component.queue.lookupReceipt, {
           subject: row.subject,
           requestKey: args.requestKey,
@@ -245,11 +351,23 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           subject: row.subject,
         });
         if (refusal) return refusal;
+        const attached = await attachment(ctx, row.native, row.subject, args.text, args.files);
+        if ("rejected" in attached)
+          return { status: "rejected" as const, code: "ATTACHMENT_LIMIT" as const };
         const { messageId, message } = await saveMessage(ctx, row.native.component, {
           threadId: args.threadId,
-          prompt: args.text,
+          message: attached.message,
+          metadata: attached.metadata,
           userId: row.subject,
         });
+        await recordAttachments(
+          ctx,
+          attached.native,
+          args.files,
+          row.subject,
+          args.threadId,
+          messageId,
+        );
         const accepted = await ctx.runMutation(component.queue.accept, {
           subject: row.subject,
           agent: row.agent,
@@ -286,7 +404,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
         approved: v.boolean(),
         reason: v.optional(v.string()),
       },
-      returns: v.object({ messageId: v.string() }),
+      returns: v.object({ messageId: v.string(), replayed: v.boolean() }),
       handler: async (ctx, args) => {
         const row = await owned(ctx, args.threadId, "respond");
         return ctx.runMutation(component.queue.respond, {
@@ -301,7 +419,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
     }),
     answer: mutationGeneric({
       args: { threadId: v.string(), toolCallId: v.string(), text: v.string() },
-      returns: v.object({ messageId: v.string() }),
+      returns: v.object({ messageId: v.string(), replayed: v.boolean() }),
       handler: async (ctx, args) => {
         const row = await owned(ctx, args.threadId, "answer");
         return ctx.runMutation(component.queue.answer, {

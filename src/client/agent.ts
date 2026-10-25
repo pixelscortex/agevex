@@ -19,6 +19,7 @@ type AgentOptions<Tools extends ToolSet> = Omit<Config, "languageModel"> & {
    * from each root (or one when limits.maxDepth is lowered).
    */
   subagents?: readonly ManagedAgent[];
+  sandbox?: boolean;
   hooks?: AgentHooks;
   sideAgents?: readonly SideAgent[];
 };
@@ -45,6 +46,7 @@ export class Agent<
   /** Type-only marker: managed registration cannot supply required custom context. */
   declare readonly _agevexContext: (ctx: CustomCtx) => void;
   readonly name: string;
+  readonly sandbox: boolean;
   readonly subagents: readonly ManagedAgent[];
   readonly hooks?: AgentHooks;
   readonly sideAgents: readonly SideAgent[];
@@ -59,6 +61,7 @@ export class Agent<
   constructor(component: AgentComponent, options: AgentOptions<AgentTools>) {
     super(component, options);
     this.name = options.name;
+    this.sandbox = options.sandbox ?? false;
     this.subagents = options.subagents ?? [];
     this.hooks = options.hooks;
     this.sideAgents = options.sideAgents ?? [];
