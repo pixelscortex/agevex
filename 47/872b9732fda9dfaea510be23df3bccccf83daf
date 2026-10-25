@@ -1,0 +1,23 @@
+tests/meter/usage-slot.test.ts
+  s_d863bd773ba186::t_b86596df03aacf 1-83
+src/meter/client.ts
+  s_d863bd773ba186::t_424b0af21d420a 17,161-182,189,194,205,221,235-237,258-260,284-307,312,314-316,341-358,368-371
+src/meter/helpers.ts
+  s_d863bd773ba186::t_630564d4c3d8cb 6-11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "47872b9732fda9dfaea510be23df3bccccf83daf",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}

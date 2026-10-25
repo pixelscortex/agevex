@@ -1,0 +1,53 @@
+src/meter/component/charges.ts
+  s_d863bd773ba186::t_8213bbf623fd90 1,3,13,16-22,33,55-63,72-100,104,106-110,115-153,160,176,178,181,191-193,215-216,218-220,222-229,237,241-243,249-250,280,285,472-562,564-572,575,578-587,589-611,622-637,641-690
+src/meter/limits.ts
+  s_d863bd773ba186::t_e08cb65786be05 13-20,22-28,41,43-60,66-69,71,98,103
+src/meter/component/aggregates.ts
+  s_d863bd773ba186::t_40c01b468ab3bc 17,25-46,50-54,56-64,70,78,81-92,97-112,123-136,142,146-166,177-180,182-184,186-187,191-197
+src/meter/component/contracts.ts
+  s_d863bd773ba186::t_03401b712010a6 16-17
+tests/meter/delivery.test.ts
+  s_d863bd773ba186::t_0cfc183365077e 1-86
+  s_d863bd773ba186::t_7b9dad12e42fa2 87-92
+tests/meter/retention.test.ts
+  s_d863bd773ba186::t_73990c31ac8ce6 1-86
+  s_d863bd773ba186::t_897b5d8ddaa74c 87
+src/meter/client.ts
+  s_d863bd773ba186::t_e1fc8fc2acbd5d 14,45-93,124,126,129-131,154-156,170-171,179,197,204-205,208,211,219,221,223,226,230,232,241,243,245,248,260-262,266,334-345,391-394,397,401,404-407,409-420
+src/meter/component/reads.ts
+  s_d863bd773ba186::t_d22471cb94ffd4 6,18-26,36,44-45,47-49,51,57,87-91,108-109,112,149,157-162
+src/meter/component/schema.ts
+  s_d863bd773ba186::t_9e9f61b3341bfd 39-59,83,89-92,98,104-130
+src/meter/index.ts
+  s_d863bd773ba186::t_af9354a07fbedc 18
+src/meter/sinks.ts
+  s_d863bd773ba186::t_0f1d7718f0df6d 23-24,26-29,72,93-94
+src/meter/types.ts
+  s_d863bd773ba186::t_a5b5e61ed19c6b 2,4,15-21
+tests/meter/bounds.test.ts
+  s_d863bd773ba186::t_820d4b322046f8 10,56,60,75,132-136,149-150,154-155,177,243,250,332-340,346-355
+tests/meter/breakdowns.test.ts
+  s_d863bd773ba186::t_001cf83b7903e0 34-35
+tests/meter/meter.test.ts
+  s_d863bd773ba186::t_1d1c4814627786 2,5,594-597,743-866
+tests/meter/setup.ts
+  s_d863bd773ba186::t_a2e5d16fcf692d 4-10,21-28,34,56-57
+tests/meter/sinks.test.ts
+  s_d863bd773ba186::t_e20c45176a0bce 2,42,66-115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bfe2f997f9ea8647534d05931c11dd09bfc54ddc",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}

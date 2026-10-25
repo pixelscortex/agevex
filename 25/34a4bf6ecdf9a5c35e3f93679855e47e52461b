@@ -1,0 +1,29 @@
+src/meter/client.ts
+  s_d863bd773ba186::t_b449cb1f9911c1 38-39,42,45-53,82,98,195,228,250
+src/meter/component/aggregates.ts
+  s_d863bd773ba186::t_7ac25d6d34f40f 25-31,129
+src/meter/component/charges.ts
+  s_d863bd773ba186::t_519509afe4bc11 52-63,133,202-207,319-322,361,363-364
+src/meter/limits.ts
+  s_d863bd773ba186::t_dbdbf6e90694b4 21-26,90-92,94
+src/meter/sinks.ts
+  s_d863bd773ba186::t_b535934e8e2233 12-14
+tests/meter/meter.test.ts
+  s_d863bd773ba186::t_b44255bb36002d 867-937
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2534a4bf6ecdf9a5c35e3f93679855e47e52461b",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
