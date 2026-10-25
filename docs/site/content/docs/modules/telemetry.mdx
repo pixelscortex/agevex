@@ -5,13 +5,9 @@ description: Bounded, action-scoped AI SDK 7 traces with Langfuse and Braintrust
 status: Available
 ---
 
-`agevex/telemetry` buffers AI SDK 7 agent, step, model and tool spans for one
-turn, then exports OTLP JSON. It requires no component mount, tables, Node APIs
-or additional dependencies.
-
 ## Setup
 
-Create a fresh buffer per turn and register its integration on the SDK call.
+No component mount is required. Create a fresh buffer per turn and register its integration on the SDK call.
 Consume the stream before flushing in `finally`. Wiring into managed turns
 comes with core and is not available yet; use the SDK integration directly.
 
@@ -53,8 +49,7 @@ export async function tracedTurn(options: {
 ```
 
 Supply `subject`, `rootThreadId`, `threadId`, `runId`, `agent` and `turnKey`
-as nonempty strings in `facts`. Agent 0.7.7 forwards the same `telemetry`
-option in its `streamText` arguments. Per-call integrations replace AI SDK
+as nonempty strings in `facts`. Agent 0.7.7 passes unknown `streamText` arguments through unchanged, so `telemetry` reaches the AI SDK. Per-call integrations replace AI SDK
 global integrations; AI SDK 7 has no `tracer` option.
 
 ## API
@@ -129,17 +124,13 @@ than 2.25 MiB.
 
 ## Guarantees
 
-- Input/output content stays absent by default; SDK recording opt-outs still apply after module opt-in.
-- Sanitizers cover dynamic agent, model and tool span names as well as attributes; throwing sanitizers do not interrupt execution or expose raw values.
-- Stable `runId`, `turnKey` and call order produce deterministic SHA-256 trace/span IDs despite random SDK call IDs. Integrations sharing a buffer allocate distinct span paths and preserve ancestry.
-- Flush is one-shot. Empty buffers and pre-aborted flushes send nothing; unfinished spans are exported as errors.
-- Provider errors, interrupted finish reasons and incomplete model streams mark affected model, step and agent spans as errors with safe reasons.
-- Export is fail-open: network failures, non-2xx responses, exporter exceptions and timeouts are ignored. Exporters run concurrently, with one attempt each, cancellation and a 3 s deadline even if an asynchronous exporter ignores its signal.
-- Encoded attribute and span ceilings preserve truncation markers and valid parent links.
+- Stable `runId`, `turnKey` and call order yield deterministic SHA-256 IDs; [integrations](#api) sharing a buffer use distinct span paths.
+- Empty buffers and pre-aborted [flushes](#api) send nothing; unfinished spans export as errors.
+- Provider errors, interrupted finishes and incomplete streams mark affected spans as errors with safe reasons; see [recording](#api).
+- [Export](#api) fails open on network errors, non-2xx responses, exceptions and timeouts; exporters run concurrently with one attempt each.
 
 ## Known limits
 
-- Managed-turn wiring comes with core and is not available yet.
-- The buffer is action-scoped and in memory, with no durable outbox or export retries. Flush after consuming the stream; callbacks after flush are ignored.
+- The buffer is action-scoped and in memory, with no durable outbox or export retries. Callbacks after flush are ignored.
 - Stable IDs do not guarantee exactly-once delivery: action retries can export duplicates, and Langfuse v4 does not guarantee deduplication by ID. Hosts needing exactly-once export must use their own durable outbox.
 - The 3 s bound applies to export, not model execution. Synchronous host code, including sanitizers or custom exporters, must return control for cancellation and timers to run.
