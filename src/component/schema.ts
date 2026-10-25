@@ -198,6 +198,7 @@ export default defineSchema({
     logicalPromptMessageId: v.optional(v.string()),
     // Only the first slice owns the shared routing bit; terminal fences settle it.
     routingAgentIndex: v.optional(v.number()),
+    // Read by claim and cancel: an afterTurn continuation is staged at inboxId.
     hookContinue: v.optional(v.boolean()),
     subject: v.string(),
     agent: v.string(),
@@ -230,6 +231,7 @@ export default defineSchema({
     nextTurn: v.number(),
     turnToken: v.optional(v.string()),
     promptMessageId: v.optional(v.string()),
+    // Set by wake with the reserved head; read by claim and write.
     turnOrigin: v.optional(turnOrigin),
     inboxId: v.optional(v.id("inbox")),
     approvalBlocked: v.optional(v.boolean()),
@@ -292,10 +294,13 @@ export default defineSchema({
     from: v.optional(v.string()),
     messageSequence: v.optional(v.number()),
     // A joined group generates from its newest result, but notes precede its
-    // earliest native member. Optional for previously queued/replayed work.
+    // earliest native member. Set only on group releases; read by claim.
     earliestMessageId: v.optional(v.string()),
     earliestMessageSequence: v.optional(v.number()),
     runId: v.id("runs"),
+    // Read by wake (result/note/parent make a subagent_result turn), claim (those
+    // kinds merge consecutively; a user row ends the merge) and hooks.origins
+    // (note and continue label their message, result falls through to its run).
     kind: v.union(
       v.literal("user"),
       v.literal("result"),
