@@ -36,6 +36,7 @@ export async function finalize(ctx: MutationCtx, pending: PendingGeneration) {
     pending.getMessages as FunctionHandle<"query">,
     { messageIds: [pending.messageId] },
   );
+
   // Native ids survive order reuse. Deletion and an already terminal message
   // are both no-ops; finalizeMessage also compares pending status atomically.
   if (message?.status === "pending")
@@ -77,6 +78,7 @@ export async function denyFirstRequest(
 ) {
   const request = approvals.requests[0];
   const messageId = request.messageId;
+
   // One exact request document per transaction (<= 1 MiB), plus native save
   // lookups and at most one placeholder/stream: never read sixteen huge docs
   // together. Chained jobs settle <= approvalsPerPause recorded requests in
@@ -87,6 +89,7 @@ export async function denyFirstRequest(
   );
 
   const { responses, deniedCalls } = await cancelledDecision(message, request);
+
   if (deniedCalls.length)
     await saveResponses(
       ctx,
@@ -106,6 +109,7 @@ async function cancelledDecision(
   const content = message?.message?.content;
   const responses = [];
   const deniedCalls = [];
+
   if (message?.message?.role === "assistant" && Array.isArray(content)) {
     for (const part of content) {
       if (request.deferred) {
@@ -113,15 +117,22 @@ async function cancelledDecision(
           deniedCalls.push({ toolCallId: part.toolCallId, toolName: part.toolName });
           break;
         }
+
         continue;
       }
+
       if (part.type !== "tool-approval-request") continue;
+
       const key = await approvalKey(part.approvalId);
+
       if (key !== request.key) continue;
+
       const call = content.find(
         (candidate) => candidate.type === "tool-call" && candidate.toolCallId === part.toolCallId,
       );
+
       if (call?.type !== "tool-call") throw new Error("APPROVAL_CALL_NOT_FOUND");
+
       // Even an answered request has no result until the gated continuation
       // runs. Cancel terminates that call without repeating its decision.
       deniedCalls.push({
@@ -129,6 +140,7 @@ async function cancelledDecision(
         toolName: call.toolName,
         ...(request.providerExecuted ? { providerExecuted: true as const } : {}),
       });
+
       if (!request.resolved)
         responses.push({
           approvalId: part.approvalId,
@@ -136,9 +148,11 @@ async function cancelledDecision(
           reason: "cancelled",
           ...(request.providerExecuted ? { providerExecuted: true as const } : {}),
         });
+
       break;
     }
   }
+
   return { responses, deniedCalls };
 }
 
@@ -155,10 +169,12 @@ export async function continueOrRelease(
   // Native deletion is also terminal for this exact reference. Never search
   // another order/message for a replacement after cancellation.
   const remaining = approvals.requests.slice(1);
+
   if (remaining.length) {
     await ctx.db.patch("assignments", assignmentId, {
       approvals: { ...approvals, requests: remaining },
     });
+
     await ctx.scheduler.runAfter(0, internal.cancellation.cleanup.cleanup, {
       assignmentId,
       approvalEpoch,
@@ -168,6 +184,7 @@ export async function continueOrRelease(
       approvals: undefined,
       approvalBlocked: false,
     });
+
     await wake(ctx, { ...row, approvals: undefined, approvalBlocked: false });
   }
 }
@@ -191,6 +208,7 @@ export const cleanup = internalMutation({
       await ctx.runMutation(internal.cancellation.cleanup.cleanupBatch, args);
     } catch {
       const row = await ctx.db.get("assignments", args.assignmentId);
+
       if (
         row &&
         ((row.approvals?.cleanupPending && row.approvals.epoch === args.approvalEpoch) ||
@@ -204,6 +222,7 @@ export const cleanup = internalMutation({
           approvals: row.approvals ? { ...row.approvals, cleanupPending: false } : undefined,
         });
     }
+
     return null;
   },
 });
@@ -217,6 +236,7 @@ export const cleanupBatch = internalMutation({
     if (pending) await failPendingGeneration(ctx, pending);
 
     const row = await ctx.db.get("assignments", assignmentId);
+
     if (
       pending &&
       row?.pendingGeneration?.messageId === pending.messageId &&
@@ -225,10 +245,12 @@ export const cleanupBatch = internalMutation({
       await ctx.db.patch("assignments", assignmentId, { pendingGeneration: undefined });
 
     const approvals = row?.approvals;
+
     if (!row || !approvals?.cleanupPending || approvals.epoch !== approvalEpoch) return null;
 
     await denyFirstRequest(ctx, row, approvals);
     await continueOrRelease(ctx, row, approvals, approvalEpoch);
+
     return null;
   },
 });
@@ -245,6 +267,7 @@ export const close = internalMutation({
   handler: async (ctx, args) => {
     const row = await ctx.db.get("assignments", args.assignmentId);
     const pending = row?.pendingGeneration;
+
     if (
       !pending ||
       pending.messageId !== args.messageId ||
@@ -255,6 +278,7 @@ export const close = internalMutation({
 
     await finalize(ctx, pending);
     await ctx.db.patch("assignments", args.assignmentId, { pendingGeneration: undefined });
+
     return null;
   },
 });

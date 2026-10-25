@@ -47,13 +47,19 @@ export function createEndpointContext(
 ): EndpointContext {
   const limits = resolveLimits(config.limits);
   const managedAgents = new Map<string, ManagedAgent>();
+
   function include(managed: ManagedAgent) {
     if (managedAgents.has(managed.name)) return;
+
     managedAgents.set(managed.name, managed);
+
     for (const child of managed.subagents) include(child);
+
     for (const side of managed.sideAgents ?? []) include(side.agent);
   }
+
   for (const root of config.agents) include(root);
+
   return { component, config, limits, managedAgents };
 }
 
@@ -65,7 +71,9 @@ export function createEndpointContext(
  */
 export function rootAgent(ep: EndpointContext, name: string) {
   const found = ep.config.agents.find((a) => a.name === name);
+
   if (!found) throw new Error("UNKNOWN_AGENT");
+
   return found;
 }
 
@@ -82,10 +90,13 @@ export async function ownedThread(
 ) {
   assertFact(threadId, "threadId");
   const row = await ctx.runQuery(ep.component.turns.send.assignment, { threadId });
+
   if (!row) throw new Error("FORBIDDEN");
 
   const trusted = await ep.config.authorize(ctx, { operation, agent: row.agent, threadId });
+
   assertFact(trusted.subject, "subject");
+
   if (trusted.subject !== row.subject) throw new Error("FORBIDDEN");
 
   // Ownership permits reading a child's transcript and resolving its recorded
@@ -108,7 +119,9 @@ export async function ownedThread(
     throw new Error("FORBIDDEN");
 
   const native = ep.managedAgents.get(row.agent);
+
   if (!native) throw new Error("UNKNOWN_AGENT");
+
   return { ...row, native };
 }
 

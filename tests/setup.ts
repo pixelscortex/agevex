@@ -72,10 +72,13 @@ function notificationSaveFault(native: NativeAddMessages) {
     returns: native._returns as never,
     handler: async (ctx, args) => {
       const nativeArgs = args as unknown as AddMessagesArgs;
+
       const isNotification =
         nativeArgs.agentName !== undefined &&
         nativeArgs.messages.some((entry) => entry.message.role === "user");
+
       if (isNotification) throw new Error("injected notification save failure");
+
       return (await native._handler(ctx as unknown as MutationCtx, nativeArgs)) as never;
     },
   });
@@ -103,11 +106,14 @@ function childFinishFault(real: AgevexMutation) {
   return mutationGeneric({
     handler: async (ctx, args) => {
       const finishArgs = args as FinishArgs;
+
       const row = await (ctx as MutationCtx).db.get(
         "assignments",
         finishArgs.assignmentId as Id<"assignments">,
       );
+
       if (row?.childRunId) throw new Error("injected child finish failure");
+
       return (await real._handler(ctx, finishArgs)) as never;
     },
   });
@@ -133,8 +139,10 @@ function acceptedDeliveryFault(real: AgevexMutation) {
   return mutationGeneric({
     handler: async (ctx, args) => {
       const deliverArgs = args as DeliverArgs;
+
       if (deliverArgs.deliveryStatus === "accepted")
         throw new Error("injected queue acceptance failure");
+
       return (await real._handler(ctx, deliverArgs)) as never;
     },
   });
@@ -199,6 +207,7 @@ export function setup(
   state.release = undefined;
   state.childGate = undefined;
   state.childRelease = undefined;
+
   const t = convexTest({
     schema,
     transactionLimits,
@@ -207,15 +216,18 @@ export function setup(
       "./fixture/agents.ts": async () => {
         const host = await import("./host.js");
         const runtime = fixtureRuntime(limits);
+
         return { ...host, ...runtime.internalFunctions(), ...runtime.authorizedEndpoints() };
       },
     },
   });
+
   const failure = mutationGeneric({
     handler: async () => {
       throw new Error("injected failure");
     },
   });
+
   if (fault === "save") {
     t.registerComponent("agent", agent.schema, {
       ...agent.modules,
@@ -231,6 +243,7 @@ export function setup(
         const real = (await agent.modules["./component/messages.ts"]()) as {
           addMessages: NativeAddMessages;
         };
+
         return {
           ...real,
           addMessages: mutationGeneric({
@@ -238,15 +251,18 @@ export function setup(
             returns: real.addMessages._returns as never,
             handler: async (ctx, args) => {
               const nativeArgs = args as unknown as AddMessagesArgs;
+
               const saved = await real.addMessages._handler(
                 ctx as unknown as MutationCtx,
                 nativeArgs,
               );
+
               if (
                 state.cleanupFails &&
                 nativeArgs.messages.some(({ message }) => message.role === "tool")
               )
                 throw new Error("injected cleanup save failure");
+
               return saved as never;
             },
           }),
@@ -260,6 +276,7 @@ export function setup(
         const real = (await agent.modules["./component/messages.ts"]()) as {
           addMessages: NativeAddMessages;
         };
+
         return { ...real, addMessages: notificationSaveFault(real.addMessages) };
       },
     });
@@ -271,6 +288,7 @@ export function setup(
           string,
           NativeAddMessages
         >;
+
         const wrapped = Object.fromEntries(
           ["getMessagesByIds", "listMessagesByThreadId"].map((name) => [
             name,
@@ -279,7 +297,9 @@ export function setup(
               returns: real[name]._returns as never,
               handler: async (ctx, args) => {
                 state.transcriptReads++;
+
                 if (state.forbidTranscriptReads) throw new Error("TRANSCRIPT_READ_FORBIDDEN");
+
                 return (await real[name]._handler(
                   ctx as unknown as MutationCtx,
                   args as AddMessagesArgs,
@@ -288,10 +308,12 @@ export function setup(
             }),
           ]),
         );
+
         return { ...real, ...wrapped };
       },
     });
   } else agent.register(t);
+
   // Each blanket fault replaces one registered function in the module that
   // defines it; each conditional fault wraps one instead.
   const blanketFault = (
@@ -303,12 +325,14 @@ export function setup(
       settle: { module: "./component/subagents/settle.ts", name: "settle" },
     } as const
   )[fault as "accept" | "finish" | "attach" | "deliver" | "settle"];
+
   const conditionalFault =
     fault === "childFinish"
       ? { module: "./component/turns/slices.ts", name: "finish" as const }
       : fault === "acceptedDelivery"
         ? { module: "./component/subagents/deliver.ts", name: "deliver" as const }
         : undefined;
+
   if (blanketFault || conditionalFault) {
     // A conditional fault wraps one real component mutation instead of replacing
     // it, so every other call on the same path stays real.
@@ -319,12 +343,15 @@ export function setup(
               string,
               AgevexMutation
             >;
+
             const wrap =
               conditionalFault.name === "finish" ? childFinishFault : acceptedDeliveryFault;
+
             return { ...real, [conditionalFault.name]: wrap(real[conditionalFault.name]) };
           },
         }
       : {};
+
     const blanketOverride = blanketFault
       ? {
           [blanketFault.module]: async () => ({
@@ -333,15 +360,18 @@ export function setup(
           }),
         }
       : {};
+
     t.registerComponent("agevex", agevex.schema, {
       ...agevex.modules,
       ...conditionalOverride,
       ...blanketOverride,
     });
+
     // Preserve the real nested bridge even for failure injection.
     registerWorkflow(t, "agevex/rootWorkflow");
     registerWorkflow(t, "agevex/childWorkflow");
   } else agevex.register(t);
+
   if (fault === "lostPing" || fault === "delayedWait") {
     t.registerComponent("agevex/rootWorkflow", workflow.schema, {
       ...workflow.modules,
@@ -353,6 +383,7 @@ export function setup(
                 string,
                 NativeAddMessages
               >;
+
               return {
                 ...real,
                 onComplete: mutationGeneric({
@@ -363,7 +394,9 @@ export function setup(
                       context: { stepId: GenericId<"steps">; delayed?: boolean };
                       result: { kind: string; returnValue?: unknown };
                     };
+
                     const entry = await ctx.db.get(completion.context.stepId);
+
                     if (
                       !completion.context.delayed &&
                       entry?.step.name === "turns/loop:next" &&
@@ -377,8 +410,10 @@ export function setup(
                         makeFunctionReference<"mutation">("pool:onComplete"),
                         { ...completion, context: { ...completion.context, delayed: true } },
                       );
+
                       return null as never;
                     }
+
                     return (await real.onComplete._handler(
                       ctx as unknown as MutationCtx,
                       args as AddMessagesArgs,
@@ -394,6 +429,7 @@ export function setup(
           string,
           NativeAddMessages
         >;
+
         return {
           ...real,
           send: mutationGeneric({
@@ -402,15 +438,19 @@ export function setup(
             handler: async (ctx, args) => {
               if (state.dropPing && (args as { name?: string }).name === "ping") {
                 state.dropPing = false;
+
                 // Model a lost doorbell without disturbing the existing awaited event.
                 const id = await ctx.db.insert("events", {
                   workflowId: (args as { workflowId: string }).workflowId,
                   name: "ping",
                   state: { kind: "created" },
                 });
+
                 await ctx.db.delete(id);
+
                 return id as never;
               }
+
               return (await real.send._handler(
                 ctx as unknown as MutationCtx,
                 args as AddMessagesArgs,
@@ -421,6 +461,7 @@ export function setup(
       },
     });
   }
+
   return t;
 }
 export { api, internal, components, rawAssignment } from "./fixture/api.js";

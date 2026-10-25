@@ -231,16 +231,21 @@ export function resolveLimits(overrides: Partial<Limits> = {}): Limits {
       value <= 0
     )
       throw new Error("INVALID_LIMITS: expected positive integer host bounds");
+
     const maximum = HOST_LIMITS[key as keyof Limits].max;
+
     if (value > maximum) throw new Error(`INVALID_LIMITS: ${key} exceeds maximum ${maximum}`);
   }
+
   const merged = Object.fromEntries(
     Object.keys(limitsValidator.fields).map((key) => [
       key,
       overrides[key as keyof Limits] ?? LIMITS[key as keyof Limits],
     ]),
   ) as Limits;
+
   if (merged.rootLane + merged.childLane > PLATFORM.scheduledConcurrency)
     throw new Error("INVALID_LIMITS: lanes exceed scheduled concurrency");
+
   return merged;
 }

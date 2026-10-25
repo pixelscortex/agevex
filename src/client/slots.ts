@@ -86,6 +86,7 @@ export type ScopedMeter = {
     args: { key?: string; usage?: unknown; providerMetadata?: unknown },
   ): Promise<MeterCharge>;
 };
+
 const noCharge: MeterCharge = {
   key: "noop",
   attach: async () => {},
@@ -93,6 +94,7 @@ const noCharge: MeterCharge = {
   settle: async () => {},
   get: async () => null,
 };
+
 export const noopMeter: ScopedMeter = {
   estimate: async () => noCharge,
   record: async () => noCharge,
@@ -107,11 +109,14 @@ export const noopMeter: ScopedMeter = {
  */
 export function scopedMeter(backend: MeterBackend | undefined, callKey: string): ScopedMeter {
   if (!backend) return noopMeter;
+
   // Counters are local to one deterministic invocation. Method suffixes prevent
   // attach/correct/settle from colliding in the meter's shared operation ledger.
   let ordinal = 0;
+
   const wrap = (charge: MeterChargeBackend): MeterCharge => {
     const counts = { attach: 0, correct: 0, settle: 0 };
+
     return {
       key: charge.key,
       get: () => charge.get(),
@@ -132,6 +137,7 @@ export function scopedMeter(backend: MeterBackend | undefined, callKey: string):
         }),
     };
   };
+
   return {
     estimate: async (provider, args) =>
       wrap(

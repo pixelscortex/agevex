@@ -20,6 +20,7 @@ import { firstReady } from "./inbox.js";
  * transaction) owns itself and must not be cancelled. */
 export async function cancelIfPending(ctx: MutationCtx, jobId: Id<"_scheduled_functions">) {
   const job = await ctx.db.system.get(jobId);
+
   if (job?.state.kind === "pending") await ctx.scheduler.cancel(jobId);
 }
 
@@ -38,10 +39,12 @@ export async function armRecovery(
   if (row.recoveryAt !== undefined) return;
 
   const recoveryAt = Date.now() + delayMs;
+
   const recoveryJobId = await ctx.scheduler.runAt(recoveryAt, internal.turns.loop.reconcile, {
     assignmentId: row._id,
     recoveryAt,
   });
+
   await ctx.db.patch("assignments", row._id, {
     recoveryAt,
     recoveryJobId,

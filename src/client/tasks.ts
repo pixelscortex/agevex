@@ -72,6 +72,7 @@ export function defineTask<Input, Output>(task: Task<Input, Output>): Task<Input
     (task.repair !== undefined && task.repair !== 0 && task.repair !== LIMITS.taskRepairs)
   )
     throw new Error("INVALID_TASK");
+
   return { ...task };
 }
 
@@ -120,19 +121,25 @@ export async function runTask<Input, Output>(
   options: TaskOptions = {},
 ): Promise<TaskOutcome<Output>> {
   const call = await prepareTask(context, task, input, options);
+
   if (call.signal?.aborted) return { status: "denied", code: "CANCELLED" };
 
   const { attribution, binding, ctx, component } = call;
   const scope = `task:${await fingerprint([attribution.subject, attribution.threadId, task.name])}`;
   const receipt: Receipt = { scope, key: call.key, ...binding?.fence };
   const admission = await beginTask(call, receipt);
+
   if (admission.status === "done" || admission.status === "failed")
     return admission.result as TaskOutcome<Output>;
+
   if (admission.status === "conflict") return { status: "denied", code: "KEY_CONFLICT" };
+
   if (admission.status === "stale") return { status: "denied", code: "CANCELLED" };
+
   if (admission.status !== "claimed") return { status: admission.status };
 
   const result = await generateWithRepair(call, receipt, admission);
+
   if (result.status === "unknown") return result;
 
   await ctx.runMutation(component.receipts.effects.complete, {
@@ -141,11 +148,14 @@ export async function runTask<Input, Output>(
     result,
     failed: result.status === "failed",
   });
+
   // complete refuses late claims. Read the same receipt admission back rather
   // than claiming a result that was discarded after lease expiry/cancellation.
   const committed = await beginTask(call, receipt);
+
   if (committed.status === "done" || committed.status === "failed")
     return committed.result as TaskOutcome<Output>;
+
   return committed.status === "stale"
     ? { status: "denied", code: "CANCELLED" }
     : { status: "unknown" };
@@ -165,6 +175,7 @@ async function prepareTask<Input, Output>(
   const binding = bindings.get(ctx);
   const component = binding?.component ?? options.component;
   const attribution = binding?.attribution ?? options.attribution;
+
   if (!component || !attribution) throw new Error("TASK_CONTEXT_REQUIRED");
 
   const key =
@@ -172,21 +183,30 @@ async function prepareTask<Input, Output>(
     (binding
       ? await opaqueKey("hook-task", attribution.runId, binding.turnKey, task.name)
       : undefined);
+
   if (!key || key.length > LIMITS.requestKeyLength) throw new Error("INVALID_TASK_KEY");
+
   for (const key of ["subject", "rootThreadId", "threadId", "runId", "agent"] as const) {
     assertFact(attribution[key], key, "INVALID_TASK_ATTRIBUTION");
   }
+
   const leaseMs = options.leaseMs ?? LIMITS.leaseMs;
+
   if (!Number.isSafeInteger(leaseMs) || leaseMs <= 0 || leaseMs > HOST_LIMITS.leaseMs.max)
     throw new Error("INVALID_TASK_LEASE");
+
   const model = options.model ?? task.model;
+
   if (!model) throw new Error("TASK_MODEL_REQUIRED");
 
   const parsed = await task.input.parseAsync(input);
   const prompt = task.prompt(parsed);
+
   if (!prompt.trim() || prompt.length > LIMITS.taskPromptLength)
     throw new Error("INVALID_TASK_PROMPT");
+
   const signal = "ctx" in context ? context.signal : options.signal;
+
   return {
     ctx,
     binding,
@@ -210,6 +230,7 @@ async function prepareTask<Input, Output>(
  */
 async function beginTask<Input, Output>(call: TaskCall<Input, Output>, receipt: Receipt) {
   const { model } = call;
+
   return call.ctx.runMutation(call.component.receipts.effects.begin, {
     ...receipt,
     fingerprint: await fingerprint([
@@ -236,8 +257,10 @@ async function generateWithRepair<Input, Output>(
 ): Promise<TaskOutcome<Output>> {
   const { ctx, component, task, signal } = call;
   let result: TaskOutcome<Output> = { status: "failed", code: "TASK_FAILED" };
+
   try {
     let repairText: string | undefined;
+
     for (let attempt = 0; attempt <= (task.repair ?? LIMITS.taskRepairs); attempt++) {
       // Admission owns the authoritative deadline. A known invalid first answer
       // does not authorize another paid attempt after that claim has expired.
@@ -246,8 +269,10 @@ async function generateWithRepair<Input, Output>(
           ...receipt,
           claim: admission.claim,
         });
+
         return { status: "unknown" };
       }
+
       try {
         result = await generateOnce(call, receipt, attempt, repairText);
         break;
@@ -256,8 +281,10 @@ async function generateWithRepair<Input, Output>(
           await recordTaskUsage(call, receipt, attempt, undefined, undefined);
           throw error;
         }
+
         await recordTaskUsage(call, receipt, attempt, error.usage, undefined);
         result = { status: "failed", code: "INVALID_OUTPUT" };
+
         // Only invalid structured output permits one intentional re-ask. A
         // transport error/unknown paid outcome is never repaired or retried.
         if (
@@ -266,6 +293,7 @@ async function generateWithRepair<Input, Output>(
           signal?.aborted
         )
           break;
+
         repairText = error.text;
       }
     }
@@ -274,8 +302,10 @@ async function generateWithRepair<Input, Output>(
       ...receipt,
       claim: admission.claim,
     });
+
     return { status: "unknown" };
   }
+
   return result;
 }
 
@@ -301,16 +331,20 @@ async function generateOnce<Input, Output>(
     maxOutputTokens: LIMITS.outputTokens,
     abortSignal: call.signal,
   });
+
   // Output validation can throw. Read it before recording so an invalid
   // answer is charged only by the repair/error path below.
   const value = generated.output;
+
   await recordTaskUsage(call, receipt, attempt, generated.usage, generated.providerMetadata);
   // Convex validates the serializable result and its byte bound before
   // persistence. A huge response never becomes a >1 MiB receipt document.
   convexToJson(value as Value);
   const result: TaskOutcome<Output> = { status: "done", value };
+
   if (getConvexSize(result as Value) > LIMITS.receiptResultBytes)
     return { status: "failed", code: "INVALID_OUTPUT" };
+
   return result;
 }
 
@@ -323,8 +357,10 @@ async function recordTaskUsage<Input, Output>(
   providerMetadata: unknown,
 ) {
   const { model, attribution, binding, options, ctx } = call;
+
   try {
     const provider = typeof model === "string" ? model.split("/")[0] : model.provider;
+
     await (binding?.usage ?? options.usage)
       ?.scope(ctx, { ...attribution, model: typeof model === "string" ? model : model.modelId })
       .record(provider, {

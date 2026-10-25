@@ -49,10 +49,12 @@ export async function saveResponses(
       })),
     ],
   };
+
   // Cleanup sends one response/result pair at a time. Reserve native envelope
   // space too, then check the actual returned document before committing.
   if (deniedCalls.length && getConvexSize(message) + 4096 > LIMITS.cleanupMessageBytes)
     throw new Error("CLEANUP_MESSAGE_TOO_LARGE");
+
   const saved = (await ctx.runMutation(target.addMessages as FunctionHandle<"mutation">, {
     threadId: target.threadId,
     agentName: target.agent,
@@ -60,10 +62,12 @@ export async function saveResponses(
     failPendingSteps: false,
     messages: [{ message }],
   })) as { messages: MessageDoc[] };
+
   if (
     deniedCalls.length &&
     saved.messages.some((doc) => getConvexSize(doc) > LIMITS.cleanupMessageBytes)
   )
     throw new Error("CLEANUP_MESSAGE_TOO_LARGE");
+
   return saved.messages[0]._id;
 }

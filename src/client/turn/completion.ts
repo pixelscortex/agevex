@@ -28,9 +28,11 @@ export async function completeGeneration(
 ): Promise<TurnOutcome | null> {
   const { turn, fence, state } = gen;
   const { args, child } = turn;
+
   const snapshot = await turn.rawCtx.runQuery(rt.component.turns.slices.execution, {
     assignmentId: args.assignmentId,
   });
+
   if (!stillOwns(snapshot, turn)) return null;
 
   if (child && state.asked) {
@@ -39,8 +41,10 @@ export async function completeGeneration(
       turnToken: args.turnToken,
       errorCode: null,
     });
+
     return null;
   }
+
   if (
     reason === "tool-calls" &&
     !state.delegated &&
@@ -53,8 +57,11 @@ export async function completeGeneration(
     executionId: args.turnToken,
     complete: true,
   });
+
   const after = await runAfterTurn(gen, completedTurn, result);
+
   await launchSideReviews(rt, gen, completedTurn);
+
   if (await continueFromHook(rt, gen, after)) return null;
 
   return { errorCode: null, ...childResult(turn, result) };
@@ -73,6 +80,7 @@ function savedAssistantMessages(result: StepResult) {
  */
 async function continueAfterToolCalls(rt: RuntimeContext, turn: Turn, result: StepResult) {
   const last = result.savedMessages?.[result.savedMessages.length - 1];
+
   if (!last) return false;
 
   await turn.rawCtx.runMutation(rt.component.turns.slices.continueTurn, {
@@ -81,15 +89,18 @@ async function continueAfterToolCalls(rt: RuntimeContext, turn: Turn, result: St
     cancellationEpoch: turn.claimed.cancellationEpoch,
     messageId: String(last._id),
   });
+
   return true;
 }
 
 /** Run `afterTurn` with the completed turn number and the step's saved text. */
 function runAfterTurn(gen: Generation, completedTurn: number, result: StepResult) {
   const { managed } = gen.turn;
+
   const savedText = savedAssistantMessages(result)
     .map((message) => message.text ?? "")
     .join("\n");
+
   return gen.hook(
     managed.hooks?.afterTurn
       ? () => managed.hooks!.afterTurn!(gen.hc, { turn: completedTurn, text: savedText })
@@ -107,6 +118,7 @@ function runAfterTurn(gen: Generation, completedTurn: number, result: StepResult
  */
 async function launchSideReviews(rt: RuntimeContext, gen: Generation, completedTurn: number) {
   const { turn, fence } = gen;
+
   for (const side of turn.managed.sideAgents ?? []) {
     try {
       await fence.ctx.runMutation(coordinateRef(rt), {
@@ -130,6 +142,7 @@ async function launchSideReviews(rt: RuntimeContext, gen: Generation, completedT
  */
 async function continueFromHook(rt: RuntimeContext, gen: Generation, after: HookResult) {
   const { turn, fence } = gen;
+
   const continuation = after?.continue
     ? await fence.ctx.runMutation(rt.component.hooks.state.continueAdmission, {
         assignmentId: turn.claimed.assignmentId,
@@ -137,6 +150,7 @@ async function continueFromHook(rt: RuntimeContext, gen: Generation, after: Hook
         prompt: after.continue,
       })
     : null;
+
   if (!continuation) return false;
 
   await fence.ctx.runMutation(rt.component.turns.slices.continueTurn, {
@@ -145,6 +159,7 @@ async function continueFromHook(rt: RuntimeContext, gen: Generation, after: Hook
     cancellationEpoch: turn.claimed.cancellationEpoch,
     messageId: continuation,
   });
+
   return true;
 }
 
@@ -161,6 +176,8 @@ function childResult(turn: Turn, result: StepResult): Omit<TurnOutcome, "errorCo
 
   const saved = savedAssistantMessages(result);
   const final = saved[saved.length - 1];
+
   if (!final?.text || !final.text.trim()) return { childError: "EMPTY_RESULT" };
+
   return { childError: null, childResultMessageId: String(final._id) };
 }

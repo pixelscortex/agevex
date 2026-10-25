@@ -45,6 +45,7 @@ export const recoveryJobs = internalQueryGeneric({
     const jobs = (await ctx.db.system.query("_scheduled_functions").collect()).filter(
       (job) => job.name === "turns/loop:reconcile",
     );
+
     return {
       total: jobs.length,
       pending: jobs.filter((job) => job.state.kind === "pending" || job.state.kind === "inProgress")
@@ -74,6 +75,7 @@ export const assignment = internalQueryGeneric({
   args: { assignmentId: v.string() },
   handler: async (ctx, { assignmentId }) => {
     const id = ctx.db.normalizeId("assignments", assignmentId);
+
     return id ? await ctx.db.get(id) : null;
   },
 });
@@ -112,6 +114,7 @@ export const fillHookMetadata = internalMutationGeneric({
       })),
       completedTurns: LIMITS.turnsPerLoop,
     });
+
     return null;
   },
 });

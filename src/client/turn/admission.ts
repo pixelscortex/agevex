@@ -38,6 +38,7 @@ export async function admitExecution(
 
   if (rt.config.budget && !(await withinBudget(rt, turn, rt.config.budget)))
     return "BUDGET_EXCEEDED";
+
   // Admission failure (including a full pending-note cap) preserves
   // the typed denial. Admitted notes wait for the next safe turn
   // claim; a slice boundary cannot deliver them between tool calls.
@@ -47,6 +48,7 @@ export async function admitExecution(
 /** The trusted scope `authorizeExecution` receives; every field is persisted state. */
 function executionScope(turn: Turn): ExecutionScope {
   const { claimed, child } = turn;
+
   return {
     subject: claimed.subject,
     agent: claimed.agent,
@@ -77,6 +79,7 @@ async function withinBudget(rt: RuntimeContext, turn: Turn, budget: BudgetSlot) 
       subject: turn.facts.subject,
       runId: turn.facts.runId,
     });
+
     if (verdict.allowed) return true;
 
     await turn.rawCtx.runMutation(rt.component.turns.slices.write, {
@@ -90,5 +93,6 @@ async function withinBudget(rt: RuntimeContext, turn: Turn, budget: BudgetSlot) 
   } catch {
     // Fall through: an unavailable budget slot refuses rather than spends.
   }
+
   return false;
 }

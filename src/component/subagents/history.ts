@@ -18,6 +18,7 @@ export const delegations = query({
   returns: vPaginationResult(subagentRun),
   handler: async (ctx, args) => {
     const root = await assignmentByThread(ctx, args.threadId);
+
     if (!root || root.subject !== args.subject) throw new Error("FORBIDDEN");
 
     return delegationPage(ctx, root, args.paginationOpts);
@@ -29,6 +30,7 @@ export const runTree = query({
   args: { threadId: v.string(), subject: v.string() },
   handler: async (ctx, args) => {
     const root = await assignmentByThread(ctx, args.threadId);
+
     if (!root || root.subject !== args.subject || root.childRunId) throw new Error("FORBIDDEN");
 
     return requestTree(ctx, root);

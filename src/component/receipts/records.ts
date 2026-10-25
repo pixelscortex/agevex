@@ -22,6 +22,7 @@ export async function findReceipt(ctx: Pick<QueryCtx, "db">, scope: string, key:
     .query("receipts")
     .withIndex("by_scope_key", (q) => q.eq("scope", scope).eq("key", key))
     .unique();
+
   return row?.kind === "effect" ? row : null;
 }
 

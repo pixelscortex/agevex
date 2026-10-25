@@ -26,6 +26,7 @@ export type { OriginMessage } from "./reads.js";
 /** Build every public endpoint for one registration. */
 export function authorizedEndpoints(component: ComponentApi, config: Registration) {
   const ep = createEndpointContext(component, config);
+
   return {
     open: openEndpoint(ep),
     send: sendEndpoint(ep),

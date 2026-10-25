@@ -47,13 +47,16 @@ export async function requestReceipt(
   fingerprint: string,
 ) {
   const row = await findReceipt(ctx, `request:${subject}`, requestKey);
+
   if (!row) return null;
+
   if (row.fingerprint !== fingerprint)
     return { status: "rejected" as const, code: "KEY_CONFLICT" as const };
 
   // The stored result omits receiptId and status: both are properties of the
   // ledger row itself, so they are derived here rather than written twice.
   const stored = row.result as { assignmentId: string; threadId: string; position: number };
+
   return { ...stored, receiptId: row._id, status: "duplicate" as const };
 }
 
@@ -61,21 +64,30 @@ export async function requestReceipt(
  * save) for a foreign thread, recovery_required or a full ready queue. */
 export async function acceptSend(ctx: MutationCtx, args: ObjectType<typeof acceptArgs>) {
   if (args.models && !validModelOverrides(args.models)) throw new Error("INVALID_MODELS");
+
   const duplicate = await requestReceipt(ctx, args.subject, args.requestKey, args.fingerprint);
+
   if (duplicate) return duplicate;
 
   let row = await assignmentByThread(ctx, args.threadId);
+
   if (!row) {
     const id = await ctx.db.insert("assignments", newRootAssignment(args));
+
     row = (await ctx.db.get("assignments", id))!;
   }
+
   if (row.subject !== args.subject || row.agent !== args.agent) throw new Error("FORBIDDEN");
+
   if (args.trackContext && !row.contextMessages) {
     await ctx.db.patch("assignments", row._id, { contextMessages: [] });
     row = { ...row, contextMessages: [] };
   }
+
   if (row.turnStatus === "recovery_required") throw new Error("RECOVERY_REQUIRED");
+
   if (row.queuedMessages >= row.limits.queueLength) throw new Error("QUEUE_LIMIT");
+
   if (row.cancelled) {
     await ctx.db.patch("assignments", row._id, { cancelled: false });
     row = { ...row, cancelled: false };
@@ -87,6 +99,7 @@ export async function acceptSend(ctx: MutationCtx, args: ObjectType<typeof accep
   const position = row.queuedMessages + (row.inboxId ? 1 : 0);
   const models = args.models ?? row.models;
   const runId = await ctx.db.insert("runs", newRun(models));
+
   await ctx.db.insert("inbox", {
     assignmentId: row._id,
     messageId: args.promptMessageId,
@@ -94,14 +107,17 @@ export async function acceptSend(ctx: MutationCtx, args: ObjectType<typeof accep
     kind: "user",
     runId,
   });
+
   await ctx.db.patch("assignments", row._id, {
     models,
     queuedMessages: row.queuedMessages + 1,
     nextSequence: row.nextSequence + 1,
   });
+
   if (args.savedMessage) await recordRefs(ctx, row, [args.savedMessage]);
 
   await armPurge(ctx);
+
   // Acceptance and the host's native prompt save share one transaction: no
   // external effect can outlive an abandoned claim, so request receipts enter
   // the same ledger already done rather than leasing an action-shaped claim.
@@ -116,6 +132,7 @@ export async function acceptSend(ctx: MutationCtx, args: ObjectType<typeof accep
   );
 
   await wake(ctx, { ...row, queuedMessages: row.queuedMessages + 1 });
+
   return {
     assignmentId: row._id,
     threadId: args.threadId,
@@ -141,6 +158,7 @@ export const admission = query({
   returns: v.union(v.null(), vReceipt),
   handler: async (ctx, args) => {
     const row = await assignmentByThread(ctx, args.threadId);
+
     if (!row || row.subject !== args.subject) throw new Error("FORBIDDEN");
 
     if (row.turnStatus === "recovery_required")
@@ -148,8 +166,10 @@ export const admission = query({
         status: "rejected" as const,
         code: row.cancelled ? ("CANCELLED" as const) : ("RECOVERY_REQUIRED" as const),
       };
+
     if (row.queuedMessages >= row.limits.queueLength)
       return { status: "rejected" as const, code: "QUEUE_FULL" as const };
+
     return null;
   },
 });
@@ -160,6 +180,7 @@ export const assignment = query({
   returns: v.union(v.null(), v.object({ ...scope.fields, root: v.boolean() })),
   handler: async (ctx, { threadId }) => {
     const row = await assignmentByThread(ctx, threadId);
+
     return row ? assignmentScope(row, threadId) : null;
   },
 });
@@ -177,6 +198,7 @@ export const activity = query({
   returns: vActivity,
   handler: async (ctx, args) => {
     const row = await assignmentByThread(ctx, args.threadId);
+
     if (!row || row.subject !== args.subject) throw new Error("FORBIDDEN");
 
     return activityView(row);

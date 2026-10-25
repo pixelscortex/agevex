@@ -24,6 +24,7 @@ export async function buildTurnTools(rt: RuntimeContext, gen: Generation): Promi
   const eligible = (rt.graph.edges.get(claimed.agent)?.size ?? 0) > 0;
 
   const merged = mergeSlotTools(managed.declaredTools, ...(await slotToolBags(rt, turn, hc)));
+
   const tools = Object.fromEntries(
     Object.entries(merged).map(([name, declared]) => [
       name,
@@ -50,10 +51,12 @@ export async function buildTurnTools(rt: RuntimeContext, gen: Generation): Promi
   // delegation has its own beforeDelegate interception point.
   for (const [name, declared] of Object.entries(tools)) {
     if (!declared.execute) continue; // Deferred/provider-owned effects execute outside this action.
+
     tools[name] = withToolHooks(gen, name, declared);
   }
 
   installCollaborationTools(rt, gen, tools, eligible);
+
   return tools;
 }
 
@@ -64,12 +67,15 @@ export async function buildTurnTools(rt: RuntimeContext, gen: Generation): Promi
  */
 function mergeSlotTools(...bags: ToolSet[]): ToolSet {
   const merged: ToolSet = {};
+
   for (const bag of bags)
     for (const [name, value] of Object.entries(bag)) {
       if (name in merged || RESERVED_TOOL_NAMES.includes(name))
         throw new Error("SLOT_TOOL_COLLISION");
+
       merged[name] = value;
     }
+
   return merged;
 }
 
@@ -84,6 +90,7 @@ function withToolHooks(gen: Generation, name: string, declared: Tool): Tool {
   const { turn, hc, hook, backend, fence } = gen;
   const { managed, facts } = turn;
   const execute = declared.execute!;
+
   return {
     ...declared,
     execute: async function (input: unknown, options: ToolExecutionOptions<any>) {
@@ -92,16 +99,19 @@ function withToolHooks(gen: Generation, name: string, declared: Tool): Tool {
           ? () => managed.hooks!.beforeTool!(hc, { tool: name, input })
           : undefined,
       );
+
       if (before?.block) return { status: "denied", code: "HOOK_BLOCKED", reason: before.block };
 
       const actual = before && "input" in before ? before.input : input;
       const callKey = await opaqueKey("tool-call", facts.runId, facts.threadId, options.toolCallId);
+
       const tc = {
         ...hc,
         toolCallId: callKey,
         nativeToolCallId: options.toolCallId,
         meter: scopedMeter(backend, callKey),
       };
+
       // Plain AI tools receive options.context; native createTool
       // receives its normal action context plus the managed facts.
       // Preserve native dynamic `this` injection (createTool.ts:315).
@@ -109,6 +119,7 @@ function withToolHooks(gen: Generation, name: string, declared: Tool): Tool {
         ...this,
         ctx: { ...(this as { ctx?: object }).ctx, ...fence.ctx, ...tc },
       };
+
       const output = await execute.call(receiver, actual, {
         ...options,
         toolCallId: callKey,
@@ -121,8 +132,10 @@ function withToolHooks(gen: Generation, name: string, declared: Tool): Tool {
             ? () => managed.hooks!.afterTool!(hc, { tool: name, input: actual, output })
             : undefined,
         );
+
         return after && "output" in after ? after.output : output;
       };
+
       if (output && typeof output === "object" && Symbol.asyncIterator in output) {
         // Preserve native streaming/backpressure; every published
         // value passes redaction before the model can consume it.
@@ -130,6 +143,7 @@ function withToolHooks(gen: Generation, name: string, declared: Tool): Tool {
           for await (const value of output) yield await reshape(value);
         })();
       }
+
       return reshape(output);
     },
   } as Tool;

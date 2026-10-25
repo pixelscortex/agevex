@@ -34,9 +34,11 @@ export function buildRunTurn(rt: RuntimeContext): RegisteredAction<"internal", T
  */
 async function runTurn(rt: RuntimeContext, ctx: RunnerCtx, args: TurnArgs): Promise<null> {
   const loaded = await loadExecution(rt, ctx, args);
+
   if (!loaded) return null;
 
   const turn = await claimTurn(rt, ctx, args, loaded.queued, loaded.managed);
+
   if (!turn) return null;
 
   try {
@@ -54,6 +56,7 @@ async function runTurn(rt: RuntimeContext, ctx: RunnerCtx, args: TurnArgs): Prom
  */
 async function executeTurn(rt: RuntimeContext, turn: Turn): Promise<null> {
   const { claimed, managed } = turn;
+
   await observe(rt, turn.rawCtx, {
     type: "turn.claimed",
     assignmentId: claimed.assignmentId,
@@ -63,9 +66,11 @@ async function executeTurn(rt: RuntimeContext, turn: Turn): Promise<null> {
   });
 
   const refused = await admitExecution(rt, turn);
+
   const outcome: TurnOutcome | null = refused
     ? { errorCode: refused, childError: refused }
     : await generateTurn(rt, turn);
+
   if (!outcome) return null;
 
   // Authorization runs before the generation try/finally. A denial

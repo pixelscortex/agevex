@@ -122,6 +122,7 @@ function defineTurn(manager: WorkflowManager) {
           },
           { name: "agentStep", retry: false },
         );
+
         if (!(await betweenSlices(step, args.assignmentId, args.executionId))) return null;
       }
 
@@ -129,6 +130,7 @@ function defineTurn(manager: WorkflowManager) {
         assignmentId: args.assignmentId,
         executionId: args.executionId,
       });
+
       return null;
     });
 }
@@ -143,6 +145,7 @@ function defineLoop(manager: WorkflowManager, child: boolean) {
       const executionId: string | null = await step.runMutation(internal.turns.loop.next, {
         assignmentId: args.assignmentId,
       });
+
       if (executionId)
         await step.runWorkflow(
           child ? internal.workflows.lanes.childTurn : internal.workflows.lanes.rootTurn,
@@ -153,6 +156,7 @@ function defineLoop(manager: WorkflowManager, child: boolean) {
         );
       else await step.awaitEvent({ name: "ping" });
     }
+
     return null;
   });
 }
@@ -170,6 +174,7 @@ function defineDone(manager: WorkflowManager, child: boolean) {
     returns: v.null(),
     handler: async (ctx, { workflowId, result, context }): Promise<null> => {
       const row = await ctx.db.get("assignments", context.assignmentId);
+
       if (!row || row.workflowId !== workflowId || row.cancelled) return null;
 
       await ctx.db.patch("assignments", row._id, {
@@ -184,12 +189,14 @@ function defineDone(manager: WorkflowManager, child: boolean) {
             assignmentId: row._id,
             executionId: row.turnToken,
           });
+
         return null;
       }
 
       // Rotate bounded loops before the journal reaches 8 MiB. Idle loops stay
       // asleep on events; rotation consumes no model work or inbox rows.
       const nextId = await startLoop(ctx, row, child);
+
       await ctx.db.patch("assignments", row._id, { workflowId: nextId });
 
       // 0.4.10 exposes no event deletion API, and cleanup deletes only events
@@ -197,6 +204,7 @@ function defineDone(manager: WorkflowManager, child: boolean) {
       // to a sleeping loop with no pending ping; next clears that flag after
       // consumption. Therefore rotation has no surplus SDK events to delete.
       await manager.cleanup(ctx, workflowId as WorkflowId);
+
       return null;
     },
   });
@@ -205,6 +213,7 @@ function defineDone(manager: WorkflowManager, child: boolean) {
 /** The turn, loop and done registrations of one lane. */
 function lane(child: boolean) {
   const manager = child ? childLane : rootLane;
+
   return {
     turn: defineTurn(manager),
     loop: defineLoop(manager, child),
@@ -214,6 +223,7 @@ function lane(child: boolean) {
 
 const root = lane(false);
 const child = lane(true);
+
 export const rootTurn = root.turn;
 export const rootLoop = root.loop;
 export const rootDone = root.done;

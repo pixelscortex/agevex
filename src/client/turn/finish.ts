@@ -26,14 +26,17 @@ export async function finishTurn(
   const current = await turn.rawCtx.runQuery(rt.component.turns.slices.execution, {
     assignmentId: turn.args.assignmentId,
   });
+
   if (!stillOwns(current, turn)) return null;
 
   if (!turn.child) {
     // A root turn owns nothing but its own queue state.
     await finishQueueTurn(rt, turn, outcome.errorCode);
     await observeFinished(rt, turn, outcome.errorCode);
+
     return null;
   }
+
   return finishChildTurn(rt, turn, turn.child, outcome);
 }
 
@@ -76,6 +79,7 @@ async function finishChildTurn(
   await deliverTerminalRun(rt, turn.rawCtx, child.runId, child.deliveryToken);
   await finishQueueTurn(rt, turn, outcome.errorCode);
   await observeFinished(rt, turn, outcome.errorCode);
+
   return null;
 }
 
@@ -97,11 +101,13 @@ async function settleChildRun(
     ...(outcome.childResultMessageId ? { resultMessageId: outcome.childResultMessageId } : {}),
     errorCode: outcome.childError,
   });
+
   if (settlement?.status === "deferred") {
     // This verified outcome is retained while descendants/inbox
     // fence settlement. New work replaces it on the next claim; if
     // delivery leaves no work, clearing the fence settles it as-is.
     await finishQueueTurn(rt, turn, null);
+
     return true;
   }
 
@@ -112,6 +118,7 @@ async function settleChildRun(
     agent: child.agent,
     outcome: outcome.childError ? "failed" : "completed",
   });
+
   return false;
 }
 

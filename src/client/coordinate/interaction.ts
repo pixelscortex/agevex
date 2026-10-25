@@ -42,6 +42,7 @@ export async function interact(
   // either transaction stays <8 MiB, <600 reads and <128 writes.
   // No backlog or transcript body scan participates in admission.
   const text = (args.op === "message" ? args.text : args.question).trim();
+
   if (!text || text.length > rt.limits.taskLength)
     return { status: "denied" as const, code: "TASK_LIMIT" as const };
 
@@ -51,15 +52,20 @@ export async function interact(
     op: args.op,
     ...(args.op === "message" ? { runId: args.runId } : {}),
   });
+
   if (target.kind === "denied") return { status: "denied" as const, code: target.code };
+
   if (args.op === "message" && !rt.graph.edges.get(target.actorAgent)?.size) return forbidden;
 
   const childAgent = rt.graph.children.get(target.agent);
   const parent = rt.graph.byName.get(target.actorAgent);
+
   if (!childAgent || !parent) return forbidden;
+
   if (!(await interactionAuthorized(rt, ctx, args.op, target, text))) return forbidden;
 
   if (args.op === "message") return messageChild(rt, ctx, args, target, childAgent, text);
+
   return askParent(rt, ctx, args, target, childAgent, text);
 }
 
@@ -103,6 +109,7 @@ async function interactionAuthorized(
             runId: target.runId,
           },
     );
+
     return authorized.subject === target.subject;
   } catch {
     return false;
@@ -123,6 +130,7 @@ async function messageChild(
     prompt: text,
     userId: target.subject,
   });
+
   return ctx.runMutation(rt.component.subagents.messages.messageChild, {
     assignmentId: args.assignmentId,
     turnToken: args.turnToken,
@@ -152,7 +160,9 @@ async function askParent(
   });
 
   const parentAgent = rt.graph.byName.get(target.parentAgent);
+
   if (!parentAgent) throw new Error("FORBIDDEN");
+
   const { messageId: parentMessageId } = await saveTrackedMessage(rt, ctx, parentAgent.component, {
     threadId: target.parentThreadId,
     prompt: target.agent + " asks (run " + target.runId + "):\n\n" + text,
@@ -166,9 +176,11 @@ async function askParent(
     questionMessageId,
     parentMessageId,
   });
+
   const recorded = await ctx.runQuery(rt.component.subagents.messages.questionContext, {
     runId: target.runId,
   });
+
   if (
     !recorded ||
     !(await verifyChildMessage(rt, ctx, {
@@ -179,5 +191,6 @@ async function askParent(
     }))
   )
     throw new Error("RESULT_UNVERIFIED");
+
   return response;
 }

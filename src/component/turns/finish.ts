@@ -31,11 +31,13 @@ export async function finishTurn(
   args: { assignmentId: Id<"assignments">; turnToken: string; errorCode: ErrorCode },
 ) {
   const row = await ctx.db.get("assignments", args.assignmentId);
+
   if (!row || row.cancelled || row.turnToken !== args.turnToken || row.turnStatus !== "running")
     return null;
 
   await disarmSlice(ctx, row);
   await sealGroups(ctx, row);
+
   if (args.errorCode && (await deferChildFailure(ctx, row, args.errorCode))) return null;
 
   if (args.errorCode) {
@@ -47,8 +49,10 @@ export async function finishTurn(
       turnToken: undefined,
       promptMessageId: undefined,
     });
+
     await wake(ctx, { ...row, turnStatus: "idle" });
   }
+
   return null;
 }
 
@@ -60,6 +64,7 @@ export async function detectStall(
   args: { assignmentId: Id<"assignments">; turnToken: string; sliceId?: string },
 ) {
   const row = await ctx.db.get("assignments", args.assignmentId);
+
   if (
     !row ||
     row.cancelled ||
@@ -78,6 +83,7 @@ export async function detectStall(
   await markRecoveryRequired(ctx, row, "EXECUTION_AMBIGUOUS");
   await disarmSlice(ctx, row);
   await failChild(ctx, row, "EXECUTION_AMBIGUOUS");
+
   return null;
 }
 
@@ -119,6 +125,7 @@ export async function deferChildFailure(
   // (once as the "staged continuation", once in its ready loop) and throw.
   // Delete it here, as cancel does, and drop both pointers.
   if (row.hookContinue && row.inboxId) await ctx.db.delete("inbox", row.inboxId);
+
   await ctx.db.patch("assignments", row._id, {
     turnStatus: "idle",
     turnToken: undefined,
@@ -128,6 +135,7 @@ export async function deferChildFailure(
   });
 
   await wake(ctx, (await ctx.db.get("assignments", row._id))!);
+
   return true;
 }
 
@@ -140,6 +148,7 @@ export async function failChild(ctx: MutationCtx, row: Doc<"assignments">, code:
     runId: row.childRunId,
     errorCode: code,
   });
+
   return null;
 }
 
@@ -153,6 +162,7 @@ export async function markAmbiguous(
   turnToken: string,
 ) {
   const row = await ctx.db.get("assignments", assignmentId);
+
   if (
     !row ||
     row.cancelled ||
@@ -167,7 +177,9 @@ export async function markAmbiguous(
   // the same head a second time. The token/status fence makes duplicates no-ops.
   if (row.turnStatus === "queued" && row.inboxId) {
     const head = await ctx.db.get("inbox", row.inboxId);
+
     if (head) await ctx.db.delete("inbox", head._id);
+
     await ctx.db.patch("assignments", row._id, { inboxId: undefined });
     row.inboxId = undefined;
   }
@@ -178,5 +190,6 @@ export async function markAmbiguous(
   await disarmSlice(ctx, row);
   await disarmRecovery(ctx, row);
   await failChild(ctx, row, "EXECUTION_AMBIGUOUS");
+
   return null;
 }

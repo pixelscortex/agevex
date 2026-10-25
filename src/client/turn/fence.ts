@@ -46,12 +46,14 @@ function functionKey(ref: Parameters<RunnerCtx["runMutation"]>[0]): string {
 export function startTurnFence(rt: RuntimeContext, turn: Turn): TurnFence {
   const controller = new AbortController();
   const state: FenceState = { fencedOut: false };
+
   const fenceOut = () => {
     state.fencedOut = true;
     controller.abort();
   };
 
   const timer = setTimeout(() => controller.abort(), LIMITS.generationAbortMs);
+
   const poll = setInterval(() => {
     void turn.rawCtx
       .runQuery(rt.component.turns.slices.execution, { assignmentId: turn.args.assignmentId })
@@ -65,15 +67,18 @@ export function startTurnFence(rt: RuntimeContext, turn: Turn): TurnFence {
   // Polling aborts cooperative providers; this fence also catches an
   // uncooperative provider that returns after cancellation.
   const nativeCtx = nativeWriteContext(rt, turn, state);
+
   const assertActive = async () => {
     const row = await turn.rawCtx.runQuery(rt.component.turns.slices.execution, {
       assignmentId: turn.args.assignmentId,
     });
+
     if (controller.signal.aborted || !stillRunning(row, turn)) {
       fenceOut();
       throw new ConvexError({ code: "CANCELLED" });
     }
   };
+
   const ctx = fencedContext(rt, turn, nativeCtx, assertActive, controller);
 
   return {
@@ -97,12 +102,14 @@ export function startTurnFence(rt: RuntimeContext, turn: Turn): TurnFence {
 function nativeWriteContext(rt: RuntimeContext, turn: Turn, state: FenceState): RunnerCtx {
   const { rawCtx, args, claimed, managed } = turn;
   const finalizeKey = functionKey(managed.component.messages.finalizeMessage);
+
   return {
     ...rawCtx,
     runMutation: (async (ref: Parameters<RunnerCtx["runMutation"]>[0], payload: unknown) => {
       // An abort listener may only close its own recorded placeholder.
       // turns.slices.write verifies the exact handle, id, execution and epoch.
       if (state.fencedOut && functionKey(ref) !== finalizeKey) return null;
+
       return rawCtx.runMutation(rt.component.turns.slices.write, {
         assignmentId: args.assignmentId,
         executionId: args.turnToken,
@@ -136,30 +143,38 @@ function fencedContext(
   controller: AbortController,
 ): RunnerCtx {
   const { rawCtx, managed } = turn;
+
   const nativeFinalizers = new Set(
     [managed.component.messages.finalizeMessage, managed.component.streams.abort].map(functionKey),
   );
+
   const addMessagesKey = functionKey(managed.component.messages.addMessages);
 
   return {
     ...nativeCtx,
     runAction: (async (ref, ...payload) => {
       await assertActive();
+
       return rawCtx.runAction(ref, ...payload);
     }) as RunnerCtx["runAction"],
     runMutation: (async (ref, payload) => {
       if (nativeFinalizers.has(functionKey(ref))) return nativeCtx.runMutation(ref, payload);
+
       await assertActive();
+
       try {
         const saved = await rawCtx.runMutation(
           rt.component.turns.slices.write,
           await fencedWriteArgs(rt, turn, ref, payload),
         );
+
         if (rt.config.usage && functionKey(ref) === addMessagesKey)
           await recordStepUsage(rt, turn, rt.config.usage, saved);
+
         return saved;
       } catch (error) {
         if (error instanceof ConvexError && error.data?.code === "CANCELLED") controller.abort();
+
         throw error;
       }
     }) as RunnerCtx["runMutation"],
@@ -183,6 +198,7 @@ async function fencedWriteArgs(
 ) {
   const { args, claimed, managed } = turn;
   const key = functionKey(ref);
+
   return {
     assignmentId: args.assignmentId,
     executionId: args.turnToken,

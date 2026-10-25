@@ -15,7 +15,9 @@ export const dispatch = internalAction({
   returns: v.null(),
   handler: async (ctx, args): Promise<null> => {
     const row = await ctx.runQuery(api.turns.slices.execution, { assignmentId: args.assignmentId });
+
     if (!row || row.cancelled || row.turnToken !== args.executionId) return null;
+
     try {
       await ctx.runAction(
         row.runTurn as FunctionHandle<
@@ -31,6 +33,7 @@ export const dispatch = internalAction({
         turnToken: args.executionId,
       });
     }
+
     return null;
   },
 });

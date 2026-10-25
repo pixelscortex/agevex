@@ -47,15 +47,20 @@ const deliveryPhase = {
  * The delivery token is the capability; a repeated delivery is a no-op. */
 export async function applyDelivery(ctx: MutationCtx, args: Delivery) {
   const run = await runById(ctx, args.runId);
+
   if (!run || run.deliveryToken !== args.deliveryToken) throw new Error("FORBIDDEN");
+
   if (!isSettled(run.status)) throw new Error("INVALID_DELIVERY");
+
   if (run.deliveryStatus !== "pending") return null;
 
   const root = await ctx.db.get("assignments", run.rootAssignmentId);
   const parent = await ctx.db.get("assignments", run.actorAssignmentId);
+
   if (args.deliveryStatus === "accepted") assertDeliverable(run, root, parent, args);
 
   const at = Date.now();
+
   await ctx.db.patch("subagentRuns", run._id, {
     deliveryStatus: args.deliveryStatus,
     errorCode: args.errorCode ?? run.errorCode,
@@ -64,9 +69,11 @@ export async function applyDelivery(ctx: MutationCtx, args: Delivery) {
     ...(args.parentMessageId && run.join ? { resultSequence: parent?.nextSequence } : {}),
     events: appendEvent(run.events, deliveryPhase[args.deliveryStatus], at, args.errorCode),
   });
+
   if (run.side) return null;
 
   const budget = await spendDeliveryHop(ctx, run, args);
+
   if (
     !parent ||
     !root ||
@@ -75,6 +82,7 @@ export async function applyDelivery(ctx: MutationCtx, args: Delivery) {
     root.cancellationEpoch !== run.rootCancellationEpoch
   )
     return null;
+
   if (
     args.deliveryStatus === "accepted" &&
     (!budget || budget.cancelled || budget.hops >= root.limits.runHops)
@@ -85,6 +93,7 @@ export async function applyDelivery(ctx: MutationCtx, args: Delivery) {
   else if (args.deliveryStatus === "accepted" && args.parentMessageId)
     await enqueueResult(ctx, run, parent, root, args.parentMessageId);
   else await wake(ctx, parent);
+
   return null;
 }
 
@@ -98,6 +107,7 @@ function assertDeliverable(
   args: Delivery,
 ) {
   if ((!args.parentMessageId && !run.side) || !root || !parent) throw new Error("INVALID_DELIVERY");
+
   if (
     root.cancelled ||
     parent.cancelled ||
@@ -113,10 +123,12 @@ function assertDeliverable(
  * check compares that pre-delivery count. */
 async function spendDeliveryHop(ctx: MutationCtx, run: Doc<"subagentRuns">, args: Delivery) {
   const budget = await ctx.db.get("runs", run.parentRunId);
+
   if (budget)
     await ctx.db.patch("runs", budget._id, {
       hops: args.deliveryStatus === "accepted" ? budget.hops + 1 : budget.hops,
     });
+
   return budget;
 }
 
@@ -138,6 +150,7 @@ async function deliverJoinMember(
     { parentRunId: run.parentRunId, actorAssignmentId: parent._id, group: run.group ?? "" },
     root.limits.activeChildrenPerRoot,
   );
+
   if (args.deliveryStatus === "accepted") {
     await ctx.db.patch("assignments", parent._id, { nextSequence: parent.nextSequence + 1 });
     parent.nextSequence++;
@@ -165,11 +178,13 @@ async function enqueueResult(
     kind: "result",
     runId: run.parentRunId,
   });
+
   const backlogged = {
     ...parent,
     queuedMessages: parent.queuedMessages + 1,
     nextSequence: parent.nextSequence + 1,
   };
+
   await ctx.db.patch("assignments", parent._id, {
     queuedMessages: backlogged.queuedMessages,
     nextSequence: backlogged.nextSequence,
@@ -195,6 +210,7 @@ export const deliveryContext = query({
   returns: v.union(v.null(), v.object(deliveryContextFields)),
   handler: async (ctx, args) => {
     const run = await runById(ctx, args.runId);
+
     if (!run || run.deliveryToken !== args.deliveryToken) return null;
 
     return terminalContext(ctx, run);
@@ -224,6 +240,7 @@ export const notify = internalAction({
         // Nothing is claimed here: the run stays terminal and undelivered.
       }
     }
+
     return null;
   },
 });

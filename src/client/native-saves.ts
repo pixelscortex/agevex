@@ -41,10 +41,12 @@ export async function saveTrackedMessage(
   args: Parameters<typeof saveMessage>[2],
 ) {
   const saved = await saveMessage(ctx, native, args);
+
   if (rt.watching)
     await ctx.runMutation(rt.component.hooks.reviews.capture, {
       threadId: args.threadId,
       savedMessage: savedMessageRef(saved.messageId, saved.message),
     });
+
   return saved;
 }

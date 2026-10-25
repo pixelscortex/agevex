@@ -42,6 +42,7 @@ export async function closeSlice(
   },
 ) {
   const row = await ctx.db.get("assignments", args.assignmentId);
+
   if (
     !row ||
     row.cancelled ||
@@ -62,6 +63,7 @@ export async function closeSlice(
   // Workflow sequence remains untouched. A running slice cannot be claimed
   // again by wake, so its normal between-slice continuation still owns it.
   await wake(ctx, { ...row, watchdogId: undefined });
+
   return null;
 }
 
@@ -73,6 +75,7 @@ export async function admitNextSlice(
   args: { assignmentId: Id<"assignments">; executionId: string },
 ) {
   const row = await ctx.db.get("assignments", args.assignmentId);
+
   if (
     !row ||
     row.cancelled ||
@@ -85,11 +88,13 @@ export async function admitNextSlice(
 
   await disarmSlice(ctx, row);
   const run = row.runId ? await ctx.db.get("runs", row.runId) : null;
+
   if (!run || run.cancelled) return null;
 
   // Exhausting delegation budget never prevents a final answer. Admission of
   // additional effects checks launches/hops transactionally in reserve.
   if (run.launches > row.limits.runLaunches || run.hops > row.limits.runHops)
     throw new Error("RUN_BUDGET");
+
   return args.executionId;
 }

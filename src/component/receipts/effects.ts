@@ -40,6 +40,7 @@ export async function fenceHolds(ctx: MutationCtx, fence: TurnFence) {
   if (!fence.assignmentId) return true;
 
   const row = await ctx.db.get("assignments", fence.assignmentId);
+
   return !!(
     row &&
     !row.cancelled &&
@@ -65,30 +66,40 @@ export async function beginEffect(
   if (!(await fenceHolds(ctx, args))) return { status: "stale" as const };
 
   const row = await findReceipt(ctx, args.scope, args.key);
+
   if (row && row.fingerprint !== args.fingerprint)
     return { status: "conflict" as const, code: "KEY_CONFLICT" as const };
+
   if (row?.status === "done" || row?.status === "failed")
     return { status: row.status, result: row.result ?? null };
+
   if (row?.status === "running" && row.leaseUntil! > Date.now())
     return { status: "running" as const };
+
   if (row && !args.repeatSafe) {
     if (row.status === "running")
       await ctx.db.patch("receipts", row._id, { ...unclaimed, status: "unknown" });
+
     return { status: "unknown" as const };
   }
 
   const leaseMs = args.leaseMs ?? LIMITS.leaseMs;
+
   if (!Number.isFinite(leaseMs) || leaseMs <= 0) throw new Error("INVALID_LEASE");
+
   const claim = crypto.randomUUID();
+
   const fields = {
     status: "running" as const,
     claim,
     leaseUntil: Date.now() + leaseMs,
     expiresAt: Date.now() + Math.max(leaseMs, LIMITS.receiptRetentionMs),
   };
+
   if (row) await ctx.db.patch("receipts", row._id, fields);
   else {
     await armPurge(ctx);
+
     await ctx.db.insert("receipts", {
       kind: "effect",
       scope: args.scope,
@@ -97,6 +108,7 @@ export async function beginEffect(
       ...fields,
     });
   }
+
   return { status: "claimed" as const, claim, leaseUntil: fields.leaseUntil };
 }
 
@@ -109,20 +121,25 @@ export async function completeEffect(
   if (!(await fenceHolds(ctx, args))) return null;
 
   const row = await findReceipt(ctx, args.scope, args.key);
+
   // Lease expiry is an unknown outcome even if a late action subsequently
   // answers. A repeat-safe reclaim rotates the claim, fencing the old action.
   if (!row || row.claim !== args.claim || row.status !== "running") return null;
+
   if (row.leaseUntil! <= Date.now()) {
     await ctx.db.patch("receipts", row._id, { ...unclaimed, status: "unknown" });
+
     return null;
   }
 
   if (getConvexSize(args.result) > LIMITS.receiptResultBytes) throw new Error("RESULT_TOO_LARGE");
+
   await ctx.db.patch("receipts", row._id, {
     ...unclaimed,
     status: args.failed ? "failed" : "done",
     result: args.result,
   });
+
   return null;
 }
 
@@ -169,6 +186,7 @@ export const purge = internalMutation({
       .query("receipts")
       .withIndex("by_expiry", (q) => q.eq("kind", "effect").lte("expiresAt", Date.now()))
       .take(LIMITS.purgeBatch);
+
     for (const row of expired) await ctx.db.delete("receipts", row._id);
 
     if (
@@ -182,6 +200,7 @@ export const purge = internalMutation({
         internal.receipts.effects.purge,
         {},
       );
+
     return null;
   },
 });
@@ -201,8 +220,10 @@ export const unknown = mutation({
     if (!(await fenceHolds(ctx, args))) return null;
 
     const row = await findReceipt(ctx, args.scope, args.key);
+
     if (row?.status === "running" && row.claim === args.claim)
       await ctx.db.patch("receipts", row._id, { ...unclaimed, status: "unknown" });
+
     return null;
   },
 });

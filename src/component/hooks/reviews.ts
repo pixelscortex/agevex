@@ -42,7 +42,9 @@ export const capture = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const row = await assignmentByThread(ctx, args.threadId);
+
     if (row) await recordRefs(ctx, row, [args.savedMessage]);
+
     return null;
   },
 });

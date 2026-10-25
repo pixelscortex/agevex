@@ -80,12 +80,15 @@ type Claim = Infer<typeof vClaim>;
 export async function claimSlice(ctx: MutationCtx, args: ClaimArgs): Promise<Claim | null> {
   const { assignmentId, turnToken, sliceId } = args;
   const row = await ctx.db.get("assignments", assignmentId);
+
   if (!row || row.cancelled || row.approvalBlocked || row.turnToken !== turnToken) return null;
+
   // An open question is a valid pause, never corrupt execution state. This
   // guard also protects repeated/stale dispatches before any inbox deletion.
   if (await isAsking(ctx, row)) return null;
 
   const first = row.turnStatus === "queued";
+
   if (
     !first &&
     // A running turn without a watchdog is between slices: continueTurn
@@ -95,12 +98,14 @@ export async function claimSlice(ctx: MutationCtx, args: ClaimArgs): Promise<Cla
     return null;
 
   const noteAnchor = first && row.inboxId ? await consumeHead(ctx, row) : row.promptMessageId;
+
   await flushNotes(ctx, row, first, noteAnchor, args.notes);
   await markRunning(ctx, row, first, args);
 
   const budget = row.runId ? await ctx.db.get("runs", row.runId) : null;
   const modelId = budget?.models?.[row.agent];
   const isRunStart = await markRunStart(ctx, row, budget, args);
+
   const claim: Claim = {
     assignmentId,
     threadId: row.threadId,
@@ -116,6 +121,7 @@ export async function claimSlice(ctx: MutationCtx, args: ClaimArgs): Promise<Cla
     turnOrigin: row.turnOrigin!,
     subagent: null,
   };
+
   return row.childRunId ? claimChild(ctx, row, first, claim) : claim;
 }
 
@@ -124,10 +130,13 @@ export async function claimSlice(ctx: MutationCtx, args: ClaimArgs): Promise<Cla
  * message after which pending notes are placed. */
 async function consumeHead(ctx: MutationCtx, row: Doc<"assignments">) {
   const head = await ctx.db.get("inbox", row.inboxId!);
+
   if (!head) return row.promptMessageId;
 
   const noteAnchor = head.join?.earliestId ?? head.messageId;
+
   await ctx.db.delete("inbox", head._id);
+
   if (head.kind !== "result" && head.kind !== "note" && head.kind !== "parent") return noteAnchor;
 
   return mergeConsecutive(ctx, row, head, noteAnchor);
@@ -156,32 +165,40 @@ async function mergeConsecutive(
   let newest = head.join?.newestSequence ?? head.sequence;
   let earliest = head.join?.earliestSequence ?? newest;
   const bound = row.limits.queueLength + row.limits.runLaunches + 1;
+
   for (let count = 0; count < bound; count++) {
     await ctx.runMutation(api.subagents.deliver.releaseGroups, {
       assignmentId: row._id,
       parentRunId: head.runId,
     });
+
     const item = await firstReady(ctx, row._id);
+
     if (!item || item.runId !== head.runId || item.kind === "user") break;
 
     await ctx.db.delete("inbox", item._id);
     const order = item.join?.newestSequence ?? item.sequence;
     const noteOrder = item.join?.earliestSequence ?? order;
+
     if (noteOrder < earliest) {
       earliest = noteOrder;
       noteAnchor = item.join?.earliestId ?? item.messageId;
     }
+
     if (order > newest) {
       newest = order;
       row.promptMessageId = item.messageId;
     }
+
     const current = (await ctx.db.get("assignments", row._id))!;
+
     await ctx.db.patch("assignments", row._id, {
       queuedMessages: current.queuedMessages - 1,
     });
   }
 
   await ctx.db.patch("assignments", row._id, { promptMessageId: row.promptMessageId });
+
   return noteAnchor;
 }
 
@@ -208,13 +225,16 @@ async function flushNotes(
     )
   )
     return;
+
   if (!notes) throw new Error("NOTE_HANDLES_REQUIRED");
 
   const continuation =
     row.hookContinue && row.inboxId ? await ctx.db.get("inbox", row.inboxId) : null;
+
   const [anchor] = (await ctx.runQuery(notes.getMessages as FunctionHandle<"query">, {
     messageIds: [noteAnchor],
   })) as (MessageDoc | null)[];
+
   if (!anchor || anchor.threadId !== row.threadId) throw new Error("CONTROL_ANCHOR_MISSING");
 
   // User/result prompts already have a fresh integer order; append notes to
@@ -244,6 +264,7 @@ async function markRunning(
     lastSlice: args.sliceId,
     inboxId: undefined,
   });
+
   await disarmRecovery(ctx, row);
 
   const watchdogId = await ctx.scheduler.runAfter(
@@ -255,6 +276,7 @@ async function markRunning(
       sliceId: args.sliceId ?? args.turnToken,
     },
   );
+
   await ctx.db.patch("assignments", row._id, { watchdogId });
   row.watchdogId = watchdogId;
 }
@@ -272,6 +294,7 @@ async function markRunStart(
 
   const bit = 1n << BigInt(agentIndex ?? 0);
   const isRunStart = !!budget && (budget.startedAgents & bit) === 0n;
+
   if (budget && isRunStart)
     await ctx.db.patch("runs", budget._id, {
       startedAgents: BigInt.asIntN(LIMITS.agents, budget.startedAgents | bit),
@@ -279,10 +302,12 @@ async function markRunStart(
         ? { routingAgents: BigInt.asIntN(LIMITS.agents, budget.routingAgents | bit) }
         : {}),
     });
+
   if (budget && isRunStart && routeModel) {
     await ctx.db.patch("assignments", row._id, { routingAgentIndex: agentIndex ?? 0 });
     row.routingAgentIndex = agentIndex ?? 0;
   }
+
   return isRunStart;
 }
 
@@ -296,12 +321,14 @@ async function claimChild(
 ): Promise<Claim | null> {
   const run = await runById(ctx, row.childRunId!);
   const root = row.rootAssignmentId ? await ctx.db.get("assignments", row.rootAssignmentId) : null;
+
   if (!run || !root || (run.status !== "queued" && run.status !== "running")) {
     // A launch without a resolvable run is a corrupt state; escalate rather
     // than generate against an untrackable child.
     await disarmSlice(ctx, row);
     await failChild(ctx, row, "EXECUTION_AMBIGUOUS");
     await markRecoveryRequired(ctx, row, "EXECUTION_AMBIGUOUS");
+
     return null;
   }
 

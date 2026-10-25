@@ -43,9 +43,11 @@ export async function verifyChildMessage(
   target: ChildResultTarget,
 ): Promise<string | null> {
   const child = rt.graph.children.get(target.agentName);
+
   if (!child) return null;
 
   const thread = await getThreadMetadata(ctx, child.component, { threadId: target.threadId });
+
   if (!thread || thread.userId !== target.subject) return null;
 
   // An untrusted reported id can fail the native id validator. Treat that
@@ -58,6 +60,7 @@ export async function verifyChildMessage(
       ([message]) => message,
       () => null,
     );
+
   if (
     !found ||
     found.threadId !== target.threadId ||
@@ -69,5 +72,6 @@ export async function verifyChildMessage(
 
   // `text` is the native extraction of this saved message's text parts.
   const text = found.text;
+
   return text && text.trim() ? text : null;
 }

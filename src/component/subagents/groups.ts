@@ -66,23 +66,28 @@ export async function releaseGroup(
     )
   )
     return false;
+
   if (members.some((member) => member.join === "joined")) return false;
 
   const accepted = members
     .filter((member) => member.deliveryStatus === "accepted" && member.resultMessageId)
     .sort((a, b) => (a.resultSequence ?? 0) - (b.resultSequence ?? 0));
+
   if (accepted.length && parent.queuedMessages >= root.limits.queueLength) return false;
 
   // Mark all <=15 members "joined" so the by_join fence probes retire the
   // entire cohort, including failures. No delivered body is read or copied.
   for (const member of members) await ctx.db.patch("subagentRuns", member._id, { join: "joined" });
+
   if (!accepted.length) return true;
 
   await ctx.db.insert("inbox", joinedRelease(parent, accepted, members[0].parentRunId));
+
   await ctx.db.patch("assignments", parent._id, {
     queuedMessages: parent.queuedMessages + 1,
     nextSequence: parent.nextSequence + 1,
   });
+
   return true;
 }
 
@@ -96,6 +101,7 @@ function joinedRelease(
 ) {
   const earliest = accepted[0];
   const newest = accepted[accepted.length - 1];
+
   return {
     assignmentId: parent._id,
     messageId: newest.resultMessageId!,
@@ -138,6 +144,7 @@ export async function sealGroups(ctx: MutationCtx, parent: Doc<"assignments">) {
   const root = parent.rootAssignmentId
     ? await ctx.db.get("assignments", parent.rootAssignmentId)
     : parent;
+
   if (!root) return;
 
   const members = await ctx.db
@@ -150,12 +157,14 @@ export async function sealGroups(ctx: MutationCtx, parent: Doc<"assignments">) {
         .eq("parentRunId", parent.runId!),
     )
     .take(parent.limits.runLaunches);
+
   for (const member of members) {
     await ctx.db.patch("subagentRuns", member._id, { join: "sealed" });
     member.join = "sealed";
   }
 
   const groups = new Set(members.map((member) => member.group ?? ""));
+
   // Partition the <=50 just-sealed rows in memory; no repeated group queries.
   for (const group of groups)
     await markGroupReady(
@@ -176,12 +185,14 @@ export async function releaseReadyCohort(
   args: { assignmentId: Id<"assignments">; parentRunId?: Id<"runs"> },
 ) {
   const parent = await ctx.db.get("assignments", args.assignmentId);
+
   if (!parent || parent.cancelled || parent.queuedMessages >= parent.limits.queueLength)
     return false;
 
   const root = parent.rootAssignmentId
     ? await ctx.db.get("assignments", parent.rootAssignmentId)
     : parent;
+
   if (!root || root.cancelled) return false;
 
   const candidate = await ctx.db
@@ -191,9 +202,11 @@ export async function releaseReadyCohort(
         .eq("actorAssignmentId", parent._id)
         .eq("rootCancellationEpoch", root.cancellationEpoch)
         .eq("join", "ready");
+
       return args.parentRunId ? ready.eq("parentRunId", args.parentRunId) : ready;
     })
     .first();
+
   if (!candidate) return false;
 
   const members = await groupMembers(
@@ -205,7 +218,10 @@ export async function releaseReadyCohort(
     },
     root.limits.activeChildrenPerRoot,
   );
+
   const released = await releaseGroup(ctx, parent, root, members);
+
   if (released) await settleIdleParent(ctx, (await ctx.db.get("assignments", parent._id))!);
+
   return released;
 }

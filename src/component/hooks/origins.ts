@@ -26,14 +26,17 @@ export async function messageOrigins(
   if (args.messageIds.length > LIMITS.messagePage) throw new Error("INVALID_PAGE");
 
   const row = await ctx.db.get("assignments", args.assignmentId);
+
   if (!row || row.subject !== args.subject) throw new Error("FORBIDDEN");
 
   const origins: Record<string, Origin> = {};
+
   for (const id of args.messageIds) {
     const control = await ctx.db
       .query("inbox")
       .withIndex("by_message", (q) => q.eq("messageId", id))
       .unique();
+
     if (
       control?.assignmentId === row._id &&
       (control.kind === "note" || control.kind === "continue")
@@ -42,6 +45,7 @@ export async function messageOrigins(
         origin: control.kind,
         ...(control.kind === "note" ? { from: control.from! } : {}),
       };
+
       continue;
     }
 
@@ -49,9 +53,11 @@ export async function messageOrigins(
       .query("subagentRuns")
       .withIndex("by_result_message", (q) => q.eq("resultMessageId", id))
       .unique();
+
     if (result?.actorAssignmentId === row._id)
       origins[id] = { origin: "result", runId: result.runId };
   }
+
   return origins;
 }
 

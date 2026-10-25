@@ -34,6 +34,7 @@ export async function isAsking(ctx: MutationCtx, row: Doc<"assignments">) {
   if (!row.childRunId) return false;
 
   const child = await runById(ctx, row.childRunId);
+
   return child?.status === "asking";
 }
 
@@ -52,6 +53,7 @@ export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = tru
   // live descendants, so no descendant-result holding or bypass is necessary.
   if (await isAsking(ctx, row)) {
     await disarmRecovery(ctx, row);
+
     return;
   }
 
@@ -66,6 +68,7 @@ export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = tru
   // the child with a provisional result before its answer is consumed.
   if (await settleIdleParent(ctx, row)) {
     await disarmRecovery(ctx, row);
+
     return;
   }
 
@@ -73,12 +76,14 @@ export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = tru
   // Such a doorbell would immediately lose its coalescing flag in
   // disarmRecovery and accumulate unconsumed events across loop rotation.
   const hasWork = await needsRecovery(ctx, row);
+
   await reserveHead(ctx, row);
   await startOrRing(ctx, row, ring && hasWork);
 
   // wake may have reserved the head or started a loop; use its committed row
   // so recovery follows inbox ownership even before the first awaited ping.
   const current = (await ctx.db.get("assignments", row._id))!;
+
   if (await needsRecovery(ctx, current)) await armRecovery(ctx, current);
   else await disarmRecovery(ctx, current);
 }
@@ -94,12 +99,16 @@ export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = tru
  */
 async function drainEmptyCohorts(ctx: MutationCtx, row: Doc<"assignments">) {
   const releases = row.childRunId ? row.limits.runLaunches : 1;
+
   for (let i = 0; i < releases; i++) {
     if (!(await ctx.runMutation(api.subagents.deliver.releaseGroups, { assignmentId: row._id })))
       break;
+
     row = (await ctx.db.get("assignments", row._id))!;
+
     if (await needsRecovery(ctx, row)) break;
   }
+
   return row;
 }
 
@@ -111,6 +120,7 @@ async function reserveHead(ctx: MutationCtx, row: Doc<"assignments">) {
   if (row.turnStatus !== "idle" || row.approvalBlocked) return;
 
   const next = await firstReady(ctx, row._id);
+
   if (!next) return;
 
   await ctx.db.patch("assignments", row._id, {
@@ -131,7 +141,9 @@ async function reserveHead(ctx: MutationCtx, row: Doc<"assignments">) {
 async function startOrRing(ctx: MutationCtx, row: Doc<"assignments">, ring: boolean) {
   if (!row.workflowId) {
     const workflowId = await startLoop(ctx, row, !!row.childRunId);
+
     await ctx.db.patch("assignments", row._id, { workflowId });
+
     return;
   }
 
@@ -143,6 +155,7 @@ async function startOrRing(ctx: MutationCtx, row: Doc<"assignments">, ring: bool
     row.turnStatus !== "running"
   ) {
     const manager = laneManager(!!row.childRunId, row.limits);
+
     await manager.sendEvent(ctx, { workflowId: row.workflowId as WorkflowId, name: "ping" });
     await ctx.db.patch("assignments", row._id, { pinged: true });
   }
@@ -155,25 +168,31 @@ export async function nextQueuedTurn(
   assignmentId: Id<"assignments">,
 ): Promise<string | null> {
   let row = await ctx.db.get("assignments", assignmentId);
+
   if (!row || row.cancelled || row.turnStatus === "recovery_required") return null;
+
   if (row.approvalBlocked) {
     // The loop awaits ping for every null result, including approval pauses.
     // Publish that wait before returning so a fresh send can ring the loop
     // after the native approval response is recorded. No journal step changes.
     await ctx.db.patch("assignments", row._id, { pinged: false, loopWaiting: true });
+
     return null;
   }
 
   // next runs after the previous ping was consumed, or after a turn ended.
   // Keep this in the existing mutation so the versioned step order is fixed.
   await ctx.db.patch("assignments", row._id, { pinged: false, loopWaiting: false });
+
   if (row.turnStatus === "idle") {
     await wake(ctx, row, false);
     row = await ctx.db.get("assignments", assignmentId);
   }
 
   if (row?.turnStatus === "queued") return row.turnToken!;
+
   if (row) await ctx.db.patch("assignments", row._id, { loopWaiting: true });
+
   return null;
 }
 
@@ -191,15 +210,19 @@ export async function reconcileDoorbell(
   recoveryAt: number | undefined,
 ) {
   const row = await ctx.db.get("assignments", assignmentId);
+
   if (!row || (recoveryAt !== undefined && row.recoveryAt !== recoveryAt)) return null;
+
   if (!(await needsRecovery(ctx, row))) {
     await disarmRecovery(ctx, row);
+
     return null;
   }
 
   // Retire this check before arming its successor in this same transaction.
   // A stale scheduled invocation must not clear a newer check's marker.
   if (row.recoveryJobId) await cancelIfPending(ctx, row.recoveryJobId);
+
   await ctx.db.patch("assignments", row._id, {
     recoveryAt: undefined,
     recoveryJobId: undefined,
@@ -208,6 +231,7 @@ export async function reconcileDoorbell(
   const status = row.workflowId
     ? await laneManager(!!row.childRunId, row.limits).status(ctx, row.workflowId as WorkflowId)
     : null;
+
   if (
     status?.type === "inProgress" &&
     status.running.some((step) => step.kind === "event" && step.name === "ping")
@@ -217,5 +241,6 @@ export async function reconcileDoorbell(
   } else {
     await armRecovery(ctx, { ...row, recoveryAt: undefined }, nextRecoveryDelay(row));
   }
+
   return null;
 }

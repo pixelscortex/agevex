@@ -7,11 +7,13 @@ afterEach(() => {
   vi.clearAllTimers();
   vi.useRealTimers();
 });
+
 describe("nested Workflow to host/native Agent bridge", () => {
   it("accepts, dispatches through a host function handle and streams a native transcript", async () => {
     vi.useFakeTimers();
     const t = setup();
     const alice = t.withIdentity({ subject: "alice" });
+
     const receipt = await alice
       .mutation(api.agents.open, {
         agent: "Main",
@@ -19,21 +21,26 @@ describe("nested Workflow to host/native Agent bridge", () => {
         requestKey: "one",
       })
       .then(requireReceipt);
+
     expect(receipt.status).toBe("accepted");
     await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100));
     expect(state.calls).toHaveLength(1);
     const activity = await alice.query(api.agents.activity, { threadId: receipt.threadId });
+
     expect(activity).toMatchObject({
       assignmentStatus: "open",
       turnStatus: "idle",
       errorCode: null,
     });
+
     const messages = await alice.query(api.agents.messages, {
       threadId: receipt.threadId,
       paginationOpts: { cursor: null, numItems: 20 },
     });
+
     expect(messages.page.map((m) => m.text)).toContain("DEMO deterministic native reply");
     expect(messages.page.map((m) => m.text)).toContain("hello");
+
     expect(
       await alice.query(api.agents.streams, {
         threadId: receipt.threadId,

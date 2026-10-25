@@ -36,6 +36,7 @@ export type OriginMessage = UIMessage & {
   from?: string;
   runId?: string;
 };
+
 const uiMessage = v.object({
   origin: v.union(v.literal("user"), v.literal("result"), v.literal("note"), v.literal("continue")),
   from: v.optional(v.string()),
@@ -58,6 +59,7 @@ const uiMessage = v.object({
   text: v.string(),
   _creationTime: v.number(),
 }) as unknown as Validator<OriginMessage>;
+
 const messagesReturn = v.object({
   page: v.array(uiMessage),
   isDone: v.boolean(),
@@ -78,15 +80,18 @@ export function messagesEndpoint(ep: EndpointContext) {
     returns: messagesReturn,
     handler: async (ctx, args): Promise<PaginationResult<OriginMessage>> => {
       const row = await ownedThread(ep, ctx, args.threadId, "messages");
+
       const page: PaginationResult<UIMessage> = await listUIMessages(ctx, row.native.component, {
         ...args,
         paginationOpts: clampPage(args.paginationOpts),
       });
+
       const origins = await ctx.runQuery(ep.component.hooks.origins.origins, {
         assignmentId: row.assignmentId,
         subject: row.subject,
         messageIds: page.page.map((message) => message.id),
       });
+
       return {
         ...page,
         page: page.page.map((message) => ({
@@ -105,10 +110,12 @@ export function messagesEndpoint(ep: EndpointContext) {
  */
 function clampPage(paginationOpts: PaginationOptions) {
   const { numItems, maximumBytesRead, maximumRowsRead } = paginationOpts;
+
   for (const value of [numItems, maximumBytesRead, maximumRowsRead]) {
     if (value !== undefined && (!Number.isSafeInteger(value) || value < 0))
       throw new ConvexError({ code: "INVALID_PAGINATION" });
   }
+
   return {
     ...paginationOpts,
     numItems: Math.min(numItems, LIMITS.messagePage),
@@ -127,6 +134,7 @@ export function streamsEndpoint(ep: EndpointContext) {
     returns: v.object({ streams: vStreamMessagesReturnValue.fields.streams }),
     handler: async (ctx, args) => {
       const row = await ownedThread(ep, ctx, args.threadId, "streams");
+
       return { streams: await boundedStreams(ctx, row, args.streamArgs) };
     },
   });
@@ -142,12 +150,14 @@ async function boundedStreams(
   args?: StreamArgs,
 ) {
   if (!args) return undefined;
+
   if (args.kind === "list") {
     if (
       args.startOrder !== undefined &&
       (!Number.isSafeInteger(args.startOrder) || args.startOrder < 0)
     )
       throw new ConvexError({ code: "INVALID_STREAM_ORDER" });
+
     // Accepted upstream exception, like Agent's context reader (spec §9b):
     // Agent 0.7.7 streams.list reads at most 100 streaming-state metadata docs.
     return syncStreams(ctx, row.native.component, { threadId: row.threadId, streamArgs: args });
@@ -157,11 +167,14 @@ async function boundedStreams(
   // earliest offset so data isn't skipped. Agent byte-bounds the shared page;
   // the cursor cap bounds its one metadata-document read per stream.
   const cursors = new Map<string, number>();
+
   for (const { streamId, cursor } of args.cursors) {
     if (!Number.isSafeInteger(cursor) || cursor < 0)
       throw new ConvexError({ code: "INVALID_STREAM_CURSOR" });
+
     cursors.set(streamId, Math.min(cursors.get(streamId) ?? cursor, cursor));
   }
+
   return syncStreams(ctx, row.native.component, {
     threadId: row.threadId,
     streamArgs: {
@@ -180,6 +193,7 @@ export function activityEndpoint(ep: EndpointContext) {
     returns: activity,
     handler: async (ctx, args) => {
       const row = await ownedThread(ep, ctx, args.threadId, "activity");
+
       return ctx.runQuery(ep.component.turns.send.activity, {
         threadId: args.threadId,
         subject: row.subject,
@@ -194,6 +208,7 @@ export function runTreeEndpoint(ep: EndpointContext) {
     args: { threadId: v.string() },
     handler: async (ctx, args) => {
       const row = await ownedThread(ep, ctx, args.threadId, "activity");
+
       return ctx.runQuery(ep.component.subagents.history.runTree, {
         threadId: args.threadId,
         subject: row.subject,
@@ -223,6 +238,7 @@ export function delegationsEndpoint(ep: EndpointContext) {
     returns: vPaginationResult(subagentRun),
     handler: async (ctx, args) => {
       const row = await ownedThread(ep, ctx, args.threadId, "activity");
+
       return ctx.runQuery(ep.component.subagents.history.delegations, {
         threadId: args.threadId,
         subject: row.subject,

@@ -44,11 +44,15 @@ export async function recordRefs(
 
   const refs = [...row.contextMessages];
   let sequence = latestSequence(row.contextMessages);
+
   for (const message of messages) {
     const existing = refs.findIndex((ref) => ref.id === message.id);
+
     if (existing >= 0) refs.splice(existing, 1);
+
     refs.push({ ...message, sequence: ++sequence });
   }
+
   refs.sort((a, b) => a.sequence - b.sequence);
 
   await ctx.db.patch("assignments", row._id, {
@@ -100,30 +104,38 @@ export async function reviewWindow(
   },
 ) {
   const row = await ctx.db.get("assignments", args.assignmentId);
+
   if (!row || row.cancelled || row.turnToken !== args.executionId || row.turnStatus !== "running")
     return null;
 
   const last = row.reviewed?.find((review) => review.agent === args.agent);
+
   const due =
     args.turns !== undefined
       ? row.completedTurns - (last?.turn ?? 0) >= args.turns
       : Date.now() - (last?.at ?? row._creationTime) >= args.minutes! * LIMITS.minuteMs;
+
   if (!due) return null;
 
   let bytes = 0;
+
   const refs = (row.contextMessages ?? [])
     .filter((ref) => !last || ref.sequence > last.boundary)
     .reverse()
     .filter((ref) => {
       if (bytes + ref.bytes > LIMITS.contextReadBytes) return false;
+
       bytes += ref.bytes;
+
       return true;
     })
     .reverse();
+
   // Native orders are NOT save order: later user prompts may already be
   // queued when an earlier assistant response commits. A monotonic capture
   // boundary retains that response for the next review rather than losing it.
   refs.sort((a, b) => a.order - b.order || a.stepOrder - b.stepOrder);
+
   return { refs, boundary: latestSequence(row.contextMessages) };
 }
 
@@ -134,10 +146,13 @@ export async function markReviewed(
   args: { assignmentId: Id<"assignments">; executionId: string; agent: string; boundary: number },
 ) {
   const row = await ctx.db.get("assignments", args.assignmentId);
+
   if (!row || row.cancelled || row.turnToken !== args.executionId) throw new Error("STALE_TURN");
 
   const reviewed = (row.reviewed ?? []).filter((review) => review.agent !== args.agent);
+
   if (reviewed.length >= LIMITS.sideAgents) throw new Error("SIDE_AGENT_LIMIT");
+
   reviewed.push({
     agent: args.agent,
     turn: row.completedTurns,
@@ -146,5 +161,6 @@ export async function markReviewed(
   });
 
   await ctx.db.patch("assignments", row._id, { reviewed });
+
   return null;
 }

@@ -21,6 +21,7 @@ export function respondEndpoint(ep: EndpointContext) {
     returns: v.object({ messageId: v.string(), replayed: v.boolean() }),
     handler: async (ctx, args) => {
       const row = await ownedThread(ep, ctx, args.threadId, "respond");
+
       return ctx.runMutation(ep.component.turns.approvals.respond, {
         assignmentId: row.assignmentId,
         subject: row.subject,
@@ -40,6 +41,7 @@ export function answerEndpoint(ep: EndpointContext) {
     returns: v.object({ messageId: v.string(), replayed: v.boolean() }),
     handler: async (ctx, args) => {
       const row = await ownedThread(ep, ctx, args.threadId, "answer");
+
       return ctx.runMutation(ep.component.turns.approvals.answer, {
         assignmentId: row.assignmentId,
         subject: row.subject,
@@ -57,10 +59,12 @@ export function cancelEndpoint(ep: EndpointContext) {
     returns: v.null(),
     handler: async (ctx, args) => {
       const row = await ownedThread(ep, ctx, args.threadId, "cancel");
+
       await ctx.runMutation(ep.component.turns.cancel.cancel, {
         assignmentId: row.assignmentId,
         subject: row.subject,
       });
+
       return null;
     },
   });

@@ -35,6 +35,7 @@ export function awaitingApprovalResults(row: Doc<"assignments">) {
  * role or a plain-text content string. */
 function assistantParts(message: { message?: MessageDoc["message"] }) {
   const native = message.message;
+
   return native?.role === "assistant" && Array.isArray(native.content) ? native.content : null;
 }
 
@@ -62,7 +63,9 @@ export function countPauseRequests(
 ) {
   return messages.reduce((total, message) => {
     const content = assistantParts(message);
+
     if (!content) return total;
+
     return (
       total +
       content.filter(
@@ -82,11 +85,14 @@ export async function retireConsumedApprovals(
   messages: MessageDoc[],
 ) {
   const resulted = new Set<string>();
+
   for (const message of messages) {
     if (message.message?.role !== "tool" || !Array.isArray(message.message.content)) continue;
+
     for (const part of message.message.content)
       if (part.type === "tool-result") resulted.add(await approvalKey(part.toolCallId));
   }
+
   const providerConsumed = messages.some(
     (message) =>
       message.message?.role === "assistant" &&
@@ -102,6 +108,7 @@ export async function retireConsumedApprovals(
       !(providerConsumed && request.providerExecuted && request.resolved) &&
       !resulted.has(keyString(request.toolCallKey)),
   );
+
   row.approvals = remaining.length ? { ...row.approvals!, requests: remaining } : undefined;
   await ctx.db.patch("assignments", row._id, { approvals: row.approvals });
 }
@@ -111,22 +118,28 @@ export async function retireConsumedApprovals(
  * not fit in one bounded cancellation cleanup document. */
 export async function collectPause(messages: MessageDoc[], deferredTools: Set<string>) {
   const pause: Pause = { requests: [], count: 0 };
+
   await addApprovalRequests(pause, messages);
   await addDeferredCalls(pause, messages, deferredTools);
+
   return pause;
 }
 
 async function addApprovalRequests(pause: Pause, messages: MessageDoc[]) {
   for (const message of messages) {
     const content = assistantParts(message);
+
     if (!content) continue;
 
     for (const part of content) {
       if (part.type !== "tool-approval-request") continue;
+
       pause.requestMessageId ??= message._id;
       pause.count++;
       const key = await approvalKey(part.approvalId);
+
       if (pause.requests.some((request) => request.key === key)) continue;
+
       pause.requests.push({
         key,
         messageId: message._id,
@@ -148,12 +161,14 @@ async function addApprovalRequests(pause: Pause, messages: MessageDoc[]) {
 async function addDeferredCalls(pause: Pause, messages: MessageDoc[], deferredTools: Set<string>) {
   for (const message of messages) {
     const content = assistantParts(message);
+
     if (!content) continue;
 
     for (const part of content) {
       if (part.type !== "tool-call" || !isDeferredCall(part, content, deferredTools)) continue;
 
       const key = await approvalKey(part.toolCallId);
+
       const alreadyResulted = messages.some(
         (doc) =>
           doc.message?.role === "tool" &&
@@ -161,6 +176,7 @@ async function addDeferredCalls(pause: Pause, messages: MessageDoc[], deferredTo
             (result) => result.type === "tool-result" && result.toolCallId === part.toolCallId,
           ),
       );
+
       if (
         alreadyResulted ||
         pause.requests.some((request) => request.key === key && request.deferred)
@@ -175,6 +191,7 @@ async function addDeferredCalls(pause: Pause, messages: MessageDoc[], deferredTo
         LIMITS.cleanupMessageBytes
       )
         throw new Error("DEFERRED_CALL_TOO_LARGE");
+
       pause.requests.push({
         key,
         messageId: message._id,
@@ -182,6 +199,7 @@ async function addDeferredCalls(pause: Pause, messages: MessageDoc[], deferredTo
         providerExecuted: false,
         deferred: true,
       });
+
       pause.requestMessageId ??= message._id;
       pause.count++;
     }
@@ -199,7 +217,9 @@ export async function suspendForApprovals(
 ) {
   await disarmSlice(ctx, row);
   await disarmRecovery(ctx, row);
+
   if (row.approvalBlocked) throw new Error("APPROVAL_ALREADY_PENDING");
+
   if (row.approvals?.requests.length) throw new Error("APPROVAL_RESULTS_MISSING");
 
   // This is the suspended turn's control continuation, so it uses the
@@ -209,6 +229,7 @@ export async function suspendForApprovals(
   // within the 102-row per-assignment cancel bound in limits.ts.
   // The response continuation must precede unrelated queued sends.
   const head = await firstReady(ctx, row._id);
+
   const inboxId = await ctx.db.insert("inbox", {
     assignmentId: row._id,
     runId: row.runId!,

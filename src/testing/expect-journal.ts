@@ -43,6 +43,7 @@ export async function workflowCall<Result, Schema extends AnySchema>(
 ): Promise<Result> {
   const [component, lane] = path.split("/");
   const payload = { lane, module, name, args };
+
   if (type === "query")
     return t.query(
       componentsGeneric()[component].agevexTest.read as unknown as FunctionReference<
@@ -53,6 +54,7 @@ export async function workflowCall<Result, Schema extends AnySchema>(
       >,
       payload,
     );
+
   return t.mutation(
     componentsGeneric()[component].agevexTest.write as unknown as FunctionReference<
       "mutation",
@@ -78,6 +80,7 @@ export async function expectJournalUnchanged<Schema extends AnySchema>(
   const turns = await workflowCall<Turn[], Schema>(t, path, "query", "agevexJournal", "turns");
 
   const normalized = turns.map(normalizeTurn);
+
   if (canonical(normalized) !== canonical(fixture))
     throw new Error(
       `Workflow journal changed. Expected ${JSON.stringify(fixture)}; recorded ${JSON.stringify(normalized)}`,
@@ -96,11 +99,15 @@ function normalizeTurn(turn: Turn) {
       return (
         turn.args.executionId ? value.replaceAll(turn.args.executionId, "$execution") : value
       ).replaceAll(turn.args.assignmentId, "$assignment");
+
     if (Array.isArray(value)) return value.map(replace);
+
     if (value && typeof value === "object")
       return Object.fromEntries(Object.entries(value).map(([key, v]) => [key, replace(v)]));
+
     return value;
   };
+
   return {
     kind: turn.kind,
     version: turn.args.version,
@@ -149,6 +156,7 @@ async function expectReplay<Schema extends AnySchema>(
       workflowId: turn.id,
     },
   );
+
   const result = await workflowCall<{ kind: string; error?: string } | null, Schema>(
     t,
     path,
@@ -157,6 +165,7 @@ async function expectReplay<Schema extends AnySchema>(
     "result",
     { workflowId: replayId },
   );
+
   if (
     turn.kind === "loop"
       ? result?.kind !== "failed" || !result.error?.includes(REPLAY_BOUNDARY)

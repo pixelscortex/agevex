@@ -42,6 +42,7 @@ export type { SandboxCompletion };
  */
 export function registerAgent(component: ComponentApi, config: Registration) {
   const rt = createRuntimeContext(component, config);
+
   return {
     /** Run a structured task outside a turn, metered by the registration's usage slot. */
     runTask: <Input, Output>(
@@ -64,6 +65,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
     internalFunctions: () => {
       const coordinate = buildCoordinate(rt);
       const runTurn = buildRunTurn(rt);
+
       return { runTurn, coordinate };
     },
   };

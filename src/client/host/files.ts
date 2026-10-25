@@ -30,9 +30,11 @@ export async function registerFile(
   assertFact(args.subject, "subject");
   assertFact(args.agent, "agent");
   const managed = rt.graph.byName.get(args.agent);
+
   if (!managed) throw new Error("UNKNOWN_AGENT");
 
   const file = await ctx.runQuery(managed.component.files.get, { fileId: args.fileId });
+
   if (!file || getConvexSize(file) > LIMITS.fileMetadataBytes) throw new Error("INVALID_FILE");
 
   await ctx.runMutation(rt.component.files.attachments.register, {
@@ -53,10 +55,13 @@ export async function fileAttached(
 ) {
   assertFact(args.subject, "subject");
   assertFact(args.threadId, "threadId");
+
   const assignment = await ctx.runQuery(rt.component.turns.send.assignment, {
     threadId: args.threadId,
   });
+
   const managed = assignment && rt.graph.byName.get(assignment.agent);
+
   if (!managed || assignment.subject !== args.subject) return false;
 
   return ctx.runQuery(rt.component.files.attachments.owns, {

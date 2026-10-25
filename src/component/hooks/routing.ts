@@ -36,6 +36,7 @@ export async function settleRouting(ctx: MutationCtx, row: Doc<"assignments">) {
   if (row.routingAgentIndex === undefined || !row.runId) return;
 
   const run = await ctx.db.get("runs", row.runId);
+
   if (run)
     await ctx.db.patch("runs", run._id, {
       routingAgents: BigInt.asIntN(
@@ -57,6 +58,7 @@ export async function routingState(
 
   const row = await ctx.db.get("assignments", args.assignmentId);
   const run = row?.runId ? await ctx.db.get("runs", row.runId) : null;
+
   if (!row || !run || row.cancelled || run.cancelled) return null;
 
   return {
@@ -74,9 +76,11 @@ export async function completeRoutingFor(
   assertAgentIndex(args.agentIndex);
 
   const row = await ctx.db.get("assignments", args.assignmentId);
+
   if (!row || row.cancelled || row.turnToken !== args.executionId || !row.runId) return null;
 
   if (row.routingAgentIndex === args.agentIndex) await settleRouting(ctx, row);
+
   return null;
 }
 

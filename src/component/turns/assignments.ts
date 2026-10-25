@@ -71,6 +71,7 @@ export function newChildAssignment(fields: {
   trackContext?: boolean;
 }): AssignmentRow {
   const { root, run } = fields;
+
   return {
     // Side reviews read this ring; unwatched children never allocate it.
     contextMessages: fields.trackContext ? [] : undefined,

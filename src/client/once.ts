@@ -32,6 +32,7 @@ export type ToolContext = {
   meter: ScopedMeter;
 };
 const ONCE = Symbol("agevex.once");
+
 type OnceConfig<Input, Output> = {
   name: string;
   /** What the model reads when choosing the tool; defaults to `name`. */
@@ -83,6 +84,7 @@ export function bindOnceTool(
   backend?: MeterBackend,
 ): Tool {
   const config = (declared as Tool & { [ONCE]?: OnceConfig<unknown, Value> })[ONCE];
+
   if (!config) return declared;
 
   return {
@@ -99,13 +101,16 @@ export function bindOnceTool(
       const scope = await opaqueKey("tool", tc.subject, tc.threadId, config.name);
       const key = await opaqueKey("once", config.key?.(input, tc) ?? tc.toolCallId);
       const common = { scope, key, ...fence };
+
       const admission = await rawCtx.runMutation(component.receipts.effects.begin, {
         ...common,
         fingerprint: await fingerprint(input),
         repeatSafe: config.repeatSafe,
         leaseMs: config.leaseMs ?? leaseMs,
       });
+
       if (admission.status === "done" || admission.status === "failed") return admission.result;
+
       if (admission.status !== "claimed")
         return admission.status === "conflict"
           ? { status: "denied", code: "KEY_CONFLICT" }
@@ -113,20 +118,24 @@ export function bindOnceTool(
 
       try {
         const result = await config.run(input, tc);
+
         await rawCtx.runMutation(component.receipts.effects.complete, {
           ...common,
           claim: admission.claim,
           result,
         });
+
         return result;
       } catch {
         const result = { status: "failed", code: "TOOL_FAILED" };
+
         await rawCtx.runMutation(component.receipts.effects.complete, {
           ...common,
           claim: admission.claim,
           result,
           failed: true,
         });
+
         return result;
       }
     },

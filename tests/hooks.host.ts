@@ -56,19 +56,24 @@ export const call = (name: string, input: unknown): LanguageModelV4Content[] => 
 ];
 function model(name: string) {
   const model = mockModel();
+
   // This fake provider accepts storage URLs as native file parts. The SDK
   // therefore never downloads test storage or touches the network.
   Object.defineProperty(model, "supportedUrls", {
     get: () =>
       fixture.supportsUrls ? { "*": [/^https:\/\/some-deployment\.convex\.cloud\//] } : {},
   });
+
   model.doStream = async (args) => {
     const n = fixture.calls.filter((call) => call.agent === name).length;
+
     fixture.calls.push({ agent: name, args });
+
     return scriptedModel([
       (await fixture.steps[name]?.(n, args)) ?? text(`${name} answer ${n}`),
     ]).doStream(args);
   };
+
   return model;
 }
 export const critic = new Agent(components.agent, {
@@ -81,13 +86,16 @@ export const builder = new Agent(components.agent, {
   subagents: [critic],
   sideAgents: [{ agent: critic, every: { turns: 1 }, sees: "delta" }],
 });
+
 const echo = {
   inputSchema: z.object({ text: z.string() }),
   execute: ({ text }: { text: string }) => {
     fixture.effects.push(text);
+
     return text;
   },
 };
+
 export const main = new Agent(components.agent, {
   name: "Main",
   languageModel: model("Main"),
@@ -98,7 +106,9 @@ export const main = new Agent(components.agent, {
       inputSchema: z.object({}),
       execute: async (_input, options) => {
         const tc = options.context as ToolContext;
+
         fixture.toolContext = tc;
+
         return (await fixture.toolWork?.(tc)) ?? "done";
       },
     }),
@@ -107,6 +117,7 @@ export const main = new Agent(components.agent, {
       input: z.object({}),
       run: async (_input, tc) => {
         fixture.toolContext = tc;
+
         return ((await fixture.toolWork?.(tc)) as string) ?? "done";
       },
     }),
@@ -115,6 +126,7 @@ export const main = new Agent(components.agent, {
       ...echo,
       execute: async (ctx, input) => {
         if (!ctx.runMutation) throw new Error("MISSING_NATIVE_CONTEXT");
+
         return echo.execute(input);
       },
     }),
@@ -170,20 +182,26 @@ export function registration(limits?: Registration["limits"]) {
         scope.operation === "sandbox"
       ) {
         if (scope.subject !== "alice") throw new Error("FORBIDDEN");
+
         return { subject: scope.subject };
       }
+
       const user = await ctx.auth.getUserIdentity();
+
       if (!user) throw new Error("FORBIDDEN");
+
       return { subject: user.subject };
     },
     authorizeExecution: async (ctx, scope) => {
       if (scope.subject !== "alice") throw new Error("FORBIDDEN");
+
       await fixture.authorizeExecution?.(ctx, scope);
     },
   });
 }
 export function exports(limits?: Registration["limits"]) {
   const runtime = registration(limits);
+
   return {
     ...runtime.internalFunctions(),
     ...runtime.authorizedEndpoints(),

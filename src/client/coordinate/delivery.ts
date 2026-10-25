@@ -60,6 +60,7 @@ export async function notifyRun(
     runId: args.runId,
     deliveryToken: args.deliveryToken,
   });
+
   if (!context) return null;
 
   return attemptDelivery(rt, ctx, context, args.deliveryToken);
@@ -94,20 +95,26 @@ async function attemptDelivery(
     });
 
   if (!context.rootAvailable) return blockDelivery(rt, ctx, context, record, "ROOT_UNAVAILABLE");
+
   if (context.side && context.status === "failed" && context.errorCode === "EMPTY_RESULT") {
     await record("failed", context.errorCode);
+
     return null;
   }
 
   const text = await deliveryText(rt, ctx, context, record);
+
   if (text === null) return null;
 
   const root = rt.graph.byName.get(context.parentAgent);
+
   if (!root) return blockDelivery(rt, ctx, context, record, "ROOT_UNAVAILABLE");
+
   if (!(await deliveryAuthorized(rt, ctx, context)))
     return blockDelivery(rt, ctx, context, record, "AUTHORIZATION_DENIED");
 
   if (context.side) return deliverSideNote(rt, ctx, context, record, text);
+
   return deliverParentMessage(rt, ctx, context, record, root, text);
 }
 
@@ -121,6 +128,7 @@ async function blockDelivery(
 ): Promise<null> {
   await record("blocked", code);
   await observeDelivered(rt, ctx, context, "blocked");
+
   return null;
 }
 
@@ -146,11 +154,14 @@ async function deliveryText(
           subject: context.subject,
         })
       : null;
+
     if (!verified) {
       await record("failed", "RESULT_UNVERIFIED");
       await observeDelivered(rt, ctx, context, "failed");
+
       return null;
     }
+
     return context.side
       ? verified
       : `${context.agent} completed the delegated task.\n\n${verified}`;
@@ -158,8 +169,10 @@ async function deliveryText(
 
   if (context.side) {
     await record("failed", context.errorCode);
+
     return null;
   }
+
   return `${context.agent} failed the delegated task (${
     context.errorCode ?? "GENERATION_FAILED"
   }). No result was accepted.`;
@@ -175,6 +188,7 @@ async function deliveryAuthorized(
   context: DeliveryContext,
 ): Promise<boolean> {
   let subject = "";
+
   try {
     ({ subject } = await rt.config.authorize(ctx, {
       operation: "deliver",
@@ -190,6 +204,7 @@ async function deliveryAuthorized(
   } catch {
     subject = "";
   }
+
   return !!subject && subject === context.subject;
 }
 
@@ -209,6 +224,7 @@ async function deliverSideNote(
     const row = await ctx.runQuery(rt.component.turns.send.assignment, {
       threadId: context.parentThreadId,
     });
+
     const accepted =
       row &&
       (await postNote(ctx, rt.component, row.assignmentId, {
@@ -216,13 +232,16 @@ async function deliverSideNote(
         text: text.slice(0, LIMITS.noteLength),
         from: context.agent,
       }));
+
     if (!accepted) {
       await record("failed", "DELIVERY_FAILED");
+
       return null;
     }
   }
 
   await record("accepted", null);
+
   return null;
 }
 
@@ -241,8 +260,10 @@ async function deliverParentMessage(
     userId: context.subject,
     agentName: context.agent,
   });
+
   await record("accepted", null, messageId);
   await observeDelivered(rt, ctx, context, "accepted");
+
   return null;
 }
 

@@ -51,11 +51,13 @@ export async function recordStepUsage(
 ) {
   const messages = (saved as { messages?: MessageDoc[] } | null)?.messages ?? [];
   const step = messages.find((message) => message.usage && message.status === "success");
+
   if (!step?.usage) return;
 
   const captured = await turn.rawCtx.runQuery(rt.component.turns.slices.execution, {
     assignmentId: turn.claimed.assignmentId,
   });
+
   if (
     !(
       captured?.modelStep?.messageId === String(step._id) &&
@@ -85,6 +87,7 @@ export async function recordStepUsage(
  */
 export async function extractAttachedFiles(rt: RuntimeContext, turn: Turn, fence: TurnFence) {
   const { claimed, managed } = turn;
+
   if (!rt.config.extract || !claimed.isTurnStart) return;
 
   const files = await fence.ctx.runQuery(rt.component.files.attachments.forMessage, {
@@ -93,6 +96,7 @@ export async function extractAttachedFiles(rt: RuntimeContext, turn: Turn, fence
     threadId: claimed.threadId,
     native: await createFunctionHandle(managed.component.files.get),
   });
+
   for (const fileId of files)
     await rt.config.extract.run(fence.ctx, {
       fileId,
@@ -113,10 +117,13 @@ export async function slotToolBags(
 ): Promise<ToolSet[]> {
   const { config } = rt;
   const bags: ToolSet[] = [];
+
   if (turn.managed.sandbox && config.sandbox)
     bags.push(config.sandbox.tools({ ...hc, toolCallId: await slotCallKey(turn) }));
+
   if (config.extract)
     bags.push(config.extract.tools({ ...hc, toolCallId: await slotCallKey(turn) }));
+
   return bags;
 }
 
@@ -145,6 +152,7 @@ export async function flushTelemetry(config: Registration, facts: SlotFacts, tur
 
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
+
   try {
     await Promise.race([
       Promise.resolve().then(() =>

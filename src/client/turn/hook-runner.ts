@@ -31,8 +31,11 @@ export function hookRunner(
   return async (invoke, allowModel = false) => {
     try {
       const result = await invoke?.();
+
       assertHookResult(rt, turn.claimed, result, allowModel);
+
       if (result?.note) await postHookNote(rt, turn, fence, result.note, allowModel);
+
       return result;
     } catch {
       // The hook's own error is never persisted: nothing reads it and
@@ -62,9 +65,11 @@ function assertHookResult(
     ["model", LIMITS.modelIdLength],
   ] as const) {
     const value = result?.[key];
+
     if (value !== undefined && (typeof value !== "string" || !value.trim() || value.length > max))
       throw new Error(`INVALID_HOOK_${key.toUpperCase()}`);
   }
+
   if (result?.model !== undefined && (!allowModel || !claimed.isTurnStart || !claimed.isRunStart))
     throw new Error("MODEL_ONLY_AT_RUN_START");
 }
@@ -78,6 +83,7 @@ async function postHookNote(
   beforeTurn: boolean,
 ) {
   const { claimed, managed } = turn;
+
   await fence.ctx.runMutation(
     beforeTurn ? rt.component.hooks.notes.beforeTurnNote : rt.component.hooks.notes.addNote,
     {

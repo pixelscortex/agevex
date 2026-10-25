@@ -78,7 +78,10 @@ export function buildCoordinate(
 /** Dispatch one coordinator call to its op. Anything else is a `notify`. */
 async function coordinate(rt: RuntimeContext, ctx: CoordinatorCtx, args: CoordinateArgs) {
   if (args.op === "launch") return launchChild(rt, ctx, args);
+
   if (args.op === "message" || args.op === "ask") return interact(rt, ctx, args);
+
   if (args.op === "settle") return settleRun(rt, ctx, args);
+
   return notifyRun(rt, ctx, args);
 }

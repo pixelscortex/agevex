@@ -50,11 +50,14 @@ const denied = (
  */
 export async function interaction(ctx: QueryCtx | MutationCtx, args: InteractionArgs) {
   const scope = await interactionRun(ctx, args);
+
   if (scope.kind === "denied") return scope;
+
   const { actor, root, run } = scope;
 
   const child = await ctx.db.get("assignments", run.childAssignmentId!);
   const parent = await ctx.db.get("assignments", run.actorAssignmentId);
+
   if (
     !child ||
     !parent ||
@@ -64,8 +67,11 @@ export async function interaction(ctx: QueryCtx | MutationCtx, args: Interaction
     parent.turnStatus === "recovery_required"
   )
     return denied("FORBIDDEN");
+
   if (args.op === "message" && child._id === actor._id) return denied("FORBIDDEN");
+
   if (args.op === "ask" && child._id !== actor._id) return denied("FORBIDDEN");
+
   if (args.op === "message" && run.messagesReceived >= root.limits.messagesPerChild)
     return denied("MESSAGE_LIMIT");
 
@@ -73,6 +79,7 @@ export async function interaction(ctx: QueryCtx | MutationCtx, args: Interaction
   // One extra slot is reserved exclusively for the answer to an open question.
   // A new question cannot reserve another while that extra slot is occupied.
   const answering = args.op === "message" && run.status === "asking";
+
   if (
     (!answering && target.queuedMessages >= root.limits.queueLength) ||
     (args.op === "ask" && child.queuedMessages > root.limits.queueLength)
@@ -80,8 +87,10 @@ export async function interaction(ctx: QueryCtx | MutationCtx, args: Interaction
     return denied("QUEUE_LIMIT");
 
   const budget = await ctx.db.get("runs", run.parentRunId);
+
   if (!budget || budget.cancelled || budget.hops >= root.limits.runHops)
     return denied("RUN_BUDGET");
+
   return { kind: "ready" as const, actor, root, run, child, parent, budget };
 }
 
@@ -91,6 +100,7 @@ export async function interaction(ctx: QueryCtx | MutationCtx, args: Interaction
  * while the asker has live children, and finished children. */
 async function interactionRun(ctx: QueryCtx | MutationCtx, args: InteractionArgs) {
   const actor = await ctx.db.get("assignments", args.assignmentId);
+
   if (
     !actor ||
     actor.cancelled ||
@@ -102,9 +112,11 @@ async function interactionRun(ctx: QueryCtx | MutationCtx, args: InteractionArgs
   const root = actor.rootAssignmentId
     ? await ctx.db.get("assignments", actor.rootAssignmentId)
     : actor;
+
   if (!root || root.cancelled) return denied("FORBIDDEN");
 
   const run = await runById(ctx, args.op === "ask" ? (actor.childRunId ?? "") : (args.runId ?? ""));
+
   if (
     !run ||
     run.rootAssignmentId !== root._id ||
@@ -112,11 +124,15 @@ async function interactionRun(ctx: QueryCtx | MutationCtx, args: InteractionArgs
     run.rootCancellationEpoch !== root.cancellationEpoch
   )
     return denied("FORBIDDEN");
+
   if (args.op === "ask" && run.status === "asking") return denied("ASK_PENDING");
+
   if (args.op === "ask" && (await hasPendingChildren(ctx, actor, true)))
     return denied("ASK_WITH_CHILDREN");
+
   if (run.status !== "running" && !(args.op === "message" && run.status === "asking"))
     return denied("CHILD_FINISHED");
+
   if (!run.childAssignmentId) return denied("FORBIDDEN");
 
   return { kind: "run" as const, actor, root, run };
@@ -143,11 +159,13 @@ export async function post(
     kind,
     sequence: target.nextSequence,
   });
+
   const next = {
     ...target,
     queuedMessages: target.queuedMessages + 1,
     nextSequence: target.nextSequence + 1,
   };
+
   await ctx.db.patch("assignments", target._id, {
     queuedMessages: next.queuedMessages,
     nextSequence: next.nextSequence,
@@ -160,9 +178,11 @@ export async function post(
  * the threads and agents on both ends, or the admission denial. */
 export async function interactionTarget(ctx: QueryCtx, args: InteractionArgs) {
   const value = await interaction(ctx, args);
+
   if (value.kind === "denied") return value;
 
   const { run, root, parent, child, actor } = value;
+
   return {
     kind: "ready" as const,
     runId: run.runId,
@@ -191,16 +211,20 @@ export async function sendToChild(
   },
 ) {
   const value = await interaction(ctx, { ...args, op: "message" });
+
   if (value.kind === "denied") throw new Error(value.code);
 
   const { child, run, budget } = value;
+
   await ctx.db.patch("subagentRuns", run._id, {
     status: "running",
     questionMessageId: undefined,
     messagesReceived: run.messagesReceived + 1,
   });
+
   await ctx.db.patch("runs", budget._id, { hops: budget.hops + 1 });
   await post(ctx, child, budget._id, args.messageId, "parent", run.status === "asking");
+
   return { status: "accepted" as const, runId: run.runId };
 }
 
@@ -218,15 +242,19 @@ export async function askParentRun(
   },
 ) {
   const value = await interaction(ctx, { ...args, op: "ask" });
+
   if (value.kind === "denied") throw new Error(value.code);
 
   const { run, budget, parent } = value;
+
   await ctx.db.patch("subagentRuns", run._id, {
     status: "asking",
     questionMessageId: args.questionMessageId,
   });
+
   await ctx.db.patch("runs", budget._id, { hops: budget.hops + 1 });
   await post(ctx, parent, budget._id, args.parentMessageId, "note");
+
   return { status: "accepted" as const, runId: run.runId };
 }
 
@@ -263,6 +291,7 @@ export const questionContext = query({
   args: { runId: v.string() },
   handler: async (ctx, args) => {
     const run = await runById(ctx, args.runId);
+
     return run?.status === "asking" ? (run.questionMessageId ?? null) : null;
   },
 });

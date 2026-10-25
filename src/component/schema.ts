@@ -38,6 +38,7 @@ export const errorCode = v.union(
 // delegated run can have. Deriving from errorCode keeps one source of truth, so
 // a new turn failure code can never be missing from run reports.
 const [, ...turnFailureCodes] = errorCode.members;
+
 export const runErrorCode = v.union(
   v.null(),
   ...turnFailureCodes,
@@ -91,11 +92,13 @@ export const runEvent = v.object({
   at: v.number(),
   errorCode: runErrorCode,
 });
+
 const receiptIdentity = {
   assignmentId: v.string(),
   threadId: v.string(),
   receiptId: v.string(),
 };
+
 export const receipt = v.union(
   v.object({ ...receiptIdentity, status: v.literal("accepted"), position: v.number() }),
   v.object({ ...receiptIdentity, status: v.literal("duplicate"), position: v.number() }),

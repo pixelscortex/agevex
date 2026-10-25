@@ -26,10 +26,13 @@ export async function delegateScope(
   args: { assignmentId: Id<"assignments">; turnToken: string },
 ) {
   const row = await ctx.db.get("assignments", args.assignmentId);
+
   if (!row || row.turnToken !== args.turnToken || row.turnStatus !== "running") return null;
+
   if (row.cancelled) return null;
 
   const root = row.rootAssignmentId ? await ctx.db.get("assignments", row.rootAssignmentId) : row;
+
   if (!root || root.cancelled) return null;
 
   return {
@@ -57,13 +60,17 @@ export async function settlementScope(
   args: { assignmentId: Id<"assignments">; turnToken: string; runId: string },
 ) {
   const child = await ctx.db.get("assignments", args.assignmentId);
+
   if (!child || child.childRunId !== args.runId || child.turnToken !== args.turnToken) return null;
+
   if (child.cancelled || child.turnStatus !== "running") return null;
 
   const run = await runById(ctx, args.runId);
+
   // The run must still be the one this child turn claimed, and still be the
   // non-terminal run it is allowed to finish.
   if (!run || run.childAssignmentId !== child._id || run.status !== "running") return null;
+
   if (!run.childThreadId) return null;
 
   return {
@@ -100,10 +107,12 @@ export const deliveryContextFields = {
  * the run is not terminal, already delivered, or its root/parent is gone. */
 export async function terminalContext(ctx: QueryCtx, run: Doc<"subagentRuns">) {
   if (run.status !== "completed" && run.status !== "failed") return null;
+
   if (run.deliveryStatus !== "pending") return null;
 
   const root = await ctx.db.get("assignments", run.rootAssignmentId);
   const parent = await ctx.db.get("assignments", run.actorAssignmentId);
+
   if (!root || !parent) return null;
 
   return {
@@ -135,7 +144,9 @@ function decodeCursor(cursor: string | null): number | null {
   if (!cursor) return null;
 
   const sequence = Number(cursor);
+
   if (!Number.isInteger(sequence) || sequence < 0) throw new Error("INVALID_CURSOR");
+
   return sequence;
 }
 
@@ -148,6 +159,7 @@ export async function delegationPage(
 ) {
   const size = Math.min(Math.max(1, paginationOpts.numItems), LIMITS.maxDelegationPage);
   const cursor = decodeCursor(paginationOpts.cursor);
+
   // <=51 metadata rows *4 KiB + ownership/root metadata <256 KiB;
   // at most 55 document reads, independent of accumulated history.
   const rows = await ctx.db
@@ -161,6 +173,7 @@ export async function delegationPage(
     .take(size + 1);
 
   const page = rows.slice(0, size);
+
   return {
     page: page.map(delegationView),
     isDone: rows.length <= size,
@@ -190,7 +203,9 @@ export async function requestTree(ctx: QueryCtx, root: Doc<"assignments">) {
     .query("subagentRuns")
     .withIndex("by_group", (q) => q.eq("parentRunId", root.runId!))
     .take(root.limits.runLaunches + root.limits.sideRunsPerRun);
+
   rows.sort((a, b) => a.sequence - b.sequence);
+
   return rows.map(treeNode);
 }
 

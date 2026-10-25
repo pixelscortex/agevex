@@ -52,6 +52,7 @@ export async function claimNotes(
       q.eq("assignmentId", row._id).eq("passive", true).eq("noteEpoch", row.cancellationEpoch),
     )
     .take(row.limits.notesPending);
+
   if (!notes.length && !continuation) return;
 
   const controls = [
@@ -65,6 +66,7 @@ export async function claimNotes(
         ]
       : []),
   ];
+
   const saved = (await ctx.runMutation(handles.addMessages as FunctionHandle<"mutation">, {
     threadId: row.threadId,
     order,
@@ -76,6 +78,7 @@ export async function claimNotes(
   })) as { messages: MessageDoc[] };
 
   const finalized: MessageDoc[] = [];
+
   for (let index = 0; index < controls.length; index++) {
     finalized.push(
       await finalizeControl(ctx, row, handles, controls[index], saved.messages[index]._id),
@@ -111,6 +114,7 @@ async function finalizeControl(
     row.promptMessageId = message._id;
     await ctx.db.patch("assignments", row._id, { promptMessageId: message._id });
   }
+
   return message;
 }
 
@@ -126,10 +130,13 @@ async function finalizeControl(
  */
 export async function controlOrder(ctx: MutationCtx, row: Doc<"assignments">, getMessages: string) {
   const anchor = row.promptMessageId;
+
   const [message] = (await ctx.runQuery(getMessages as FunctionHandle<"query">, {
     messageIds: [anchor],
   })) as (MessageDoc | null)[];
+
   if (!message || message.threadId !== row.threadId) throw new Error("CONTROL_ANCHOR_MISSING");
+
   return message.order;
 }
 
@@ -141,6 +148,7 @@ function noteMessage(text: string, from: string) {
       /[&<>"']/g,
       (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[char]!,
     );
+
   return { role: "user" as const, content: `<note from="${escape(from)}">${escape(text)}</note>` };
 }
 
@@ -159,6 +167,7 @@ export async function saveNote(
     agentName: from,
     messages: [{ message: noteMessage(text, from) }],
   })) as { messages: MessageDoc[] };
+
   return saved.messages[0];
 }
 
@@ -181,7 +190,9 @@ export async function queueNote(
   args: { assignmentId: Id<"assignments">; text: string; from: string },
 ) {
   const row = await ctx.db.get("assignments", args.assignmentId);
+
   if (!row || row.cancelled || !validNote(args.text, args.from)) throw new Error("INVALID_NOTE");
+
   if (row.notesPending >= row.limits.notesPending)
     throw new ConvexError({ code: "NOTES_PENDING_LIMIT" });
 
@@ -198,10 +209,12 @@ export async function queueNote(
     noteEpoch: row.cancellationEpoch,
     text: args.text,
   });
+
   await ctx.db.patch("assignments", row._id, {
     notesPending: row.notesPending + 1,
     nextSequence: row.nextSequence + 1,
   });
+
   return true;
 }
 
@@ -220,6 +233,7 @@ export async function saveBeforeTurnNote(
   },
 ) {
   const row = await ctx.db.get("assignments", args.assignmentId);
+
   if (
     !row ||
     row.cancelled ||
@@ -235,11 +249,13 @@ export async function saveBeforeTurnNote(
       text: args.text,
       from: args.from,
     });
+
     return;
   }
 
   const order = await controlOrder(ctx, row, args.getMessages);
   const message = await saveNote(ctx, row, args.addMessages, order, args.text, args.from);
+
   await ctx.db.insert("inbox", {
     assignmentId: row._id,
     messageId: message._id,
@@ -249,6 +265,7 @@ export async function saveBeforeTurnNote(
     passive: false,
     from: args.from,
   });
+
   await recordMessages(ctx, row, [message]);
   await ctx.db.patch("assignments", row._id, { nextSequence: row.nextSequence + 1 });
 }
@@ -266,6 +283,7 @@ export async function dropCancelledNotes(
   epoch: number,
 ) {
   const row = await ctx.db.get("assignments", assignmentId);
+
   if (!row) return;
 
   const notes = await ctx.db
@@ -274,6 +292,7 @@ export async function dropCancelledNotes(
       q.eq("assignmentId", assignmentId).eq("passive", true).eq("noteEpoch", epoch),
     )
     .take(row.limits.notesPending);
+
   for (const note of notes) {
     await ctx.db.delete("inbox", note._id);
   }

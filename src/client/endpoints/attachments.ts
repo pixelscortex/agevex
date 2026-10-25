@@ -53,17 +53,23 @@ export async function attachment(
   // reread <=8*4 KiB for refcounts; total attachment-specific admission <1 MiB plus
   // existing turn/Workflow bookkeeping. Storage holds all actual file bytes.
   let bytes = 0;
+
   for (const fileId of files) {
     if (!(await ctx.runQuery(ep.component.files.attachments.owns, { native, fileId, subject })))
       throw new Error("FILE_FORBIDDEN");
+
     const file = await ctx.runQuery(managed.component.files.get, { fileId });
+
     if (!file || getConvexSize(file) > LIMITS.fileMetadataBytes) throw new Error("INVALID_FILE");
 
     // Agent metadata has no size. Read actual Convex storage metadata, never
     // file content, before native saves/refcount writes in this transaction.
     const metadata = await ctx.db.system.get("_storage", file.storageId as GenericId<"_storage">);
+
     if (!metadata) throw new Error("INVALID_FILE");
+
     bytes += metadata.size;
+
     if (bytes > ep.limits.attachmentBytes) return { rejected: true as const };
 
     if (!ep.config.extract) parts.push(await filePart(ctx, file));
@@ -74,6 +80,7 @@ export async function attachment(
       type: "text",
       text: `Attached files: ${files.join(", ")}. Use read_file or search_files to inspect them.`,
     });
+
   return {
     native,
     message: { role: "user" as const, content: files.length ? parts : text },
@@ -97,7 +104,9 @@ type NativeFile = {
  */
 async function filePart(ctx: MutationCtx, file: NativeFile) {
   const url = await ctx.storage.getUrl(file.storageId as GenericId<"_storage">);
+
   if (!url) throw new Error("INVALID_FILE");
+
   return {
     type: "file" as const,
     data: new URL(url),

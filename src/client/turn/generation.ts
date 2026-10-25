@@ -41,11 +41,13 @@ import { buildTurnTools } from "./tools.js";
 export async function generateTurn(rt: RuntimeContext, turn: Turn): Promise<TurnOutcome | null> {
   const gen = startGeneration(rt, turn);
   const { state } = gen;
+
   try {
     await extractAttachedFiles(rt, turn, gen.fence);
     const model = await selectTurnModel(rt, gen);
     const tools = await buildTurnTools(rt, gen);
     const { result, reason } = await streamGeneration(rt, gen, tools, model);
+
     return await completeGeneration(rt, gen, result, reason);
   } catch {
     return {
@@ -58,6 +60,7 @@ export async function generateTurn(rt: RuntimeContext, turn: Turn): Promise<Turn
     };
   } finally {
     gen.fence.stop();
+
     if (turn.claimed.isRunStart && turn.managed.hooks?.beforeTurn) await completeRouting(rt, turn);
   }
 }
@@ -70,6 +73,7 @@ export async function generateTurn(rt: RuntimeContext, turn: Turn): Promise<Turn
 function startGeneration(rt: RuntimeContext, turn: Turn): Generation {
   const { args, claimed, facts, turnKey } = turn;
   const fence = startTurnFence(rt, turn);
+
   bindTaskContext(fence.ctx, {
     component: rt.component,
     attribution: facts,
@@ -83,19 +87,23 @@ function startGeneration(rt: RuntimeContext, turn: Turn): Generation {
   });
 
   const backend = meterBackend(rt.config, fence.ctx, facts);
+
   const state: GenerationState = {
     hookFailed: false,
     hookBlocked: false,
     delegated: false,
     asked: false,
   };
+
   const hc: HookContext = {
     ctx: fence.ctx,
     ...facts,
     signal: fence.controller.signal,
     meter: scopedMeter(backend, `${sliceKey(turn)}:hook`),
   };
+
   const hook = hookRunner(rt, turn, fence, state);
+
   return { turn, fence, hc, hook, backend, state };
 }
 
@@ -113,6 +121,7 @@ async function streamGeneration(
 ) {
   const { turn, fence, state } = gen;
   const { config } = rt;
+
   const result = await turn.managed.streamText(
     fence.ctx,
     { threadId: turn.claimed.threadId },
@@ -140,13 +149,16 @@ async function streamGeneration(
   );
 
   let streamError = false;
+
   await result.consumeStream({
     onError: () => {
       streamError = true;
     },
   });
+
   const reason = await result.finishReason;
   const accepted = ["stop", "length", "tool-calls"];
+
   if (
     state.hookFailed ||
     streamError ||
@@ -154,6 +166,7 @@ async function streamGeneration(
     !accepted.includes(reason)
   )
     throw new Error("INCOMPLETE_GENERATION");
+
   return { result, reason };
 }
 
@@ -161,5 +174,6 @@ async function streamGeneration(
 function resolveModel(config: Registration, selectedModel: string) {
   if (!config.models || !config.modelAllowlist?.includes(selectedModel))
     throw new Error("MODEL_NOT_ALLOWED");
+
   return config.models(selectedModel);
 }

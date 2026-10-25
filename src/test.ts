@@ -5,6 +5,7 @@ import workflow from "@convex-dev/workflow/test";
 import workpool from "@convex-dev/workpool/test";
 import type { ComponentApi } from "./component/_generated/component.js";
 import schema from "./component/schema.js";
+
 const modules: Record<string, () => Promise<unknown>> = {
   ...import.meta.glob("./component/**/*.ts"),
   "./component/agevexTest.ts": () => import("./testing/bridge.js"),
@@ -18,6 +19,7 @@ export function register<Schema extends SchemaDefinition<GenericSchema, boolean>
   t.registerComponent(name, schema, modules);
   registerWorkflow(t, `${name}/rootWorkflow`);
   registerWorkflow(t, `${name}/childWorkflow`);
+
   return componentsGeneric()[name] as unknown as ComponentApi;
 }
 export default { register, schema, modules };
@@ -33,15 +35,18 @@ import type { LanguageModelV4Content } from "@ai-sdk/provider";
 export function scriptedModel(steps: LanguageModelV4Content[][]) {
   const model = mockModel({ contentSteps: steps });
   const stream = model.doStream.bind(model);
+
   model.doStream = async (args) => {
     const result = await stream(args);
     let calledTool = false;
+
     return {
       ...result,
       stream: result.stream.pipeThrough(
         new TransformStream({
           transform(part, controller) {
             if (part.type === "tool-call") calledTool = true;
+
             controller.enqueue(
               part.type === "finish" && calledTool
                 ? { ...part, finishReason: { unified: "tool-calls", raw: "tool_calls" } }
@@ -52,6 +57,7 @@ export function scriptedModel(steps: LanguageModelV4Content[][]) {
       ),
     };
   };
+
   return model;
 }
 
@@ -64,6 +70,7 @@ export function registerWorkflow<Schema extends SchemaDefinition<GenericSchema, 
     ...workflow.modules,
     "./component/agevexJournal.ts": () => import("./testing/journal.js"),
   });
+
   workpool.register(t, `${name}/workpool`);
 }
 export { expectJournalUnchanged } from "./testing/expect-journal.js";

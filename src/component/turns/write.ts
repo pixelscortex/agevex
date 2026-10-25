@@ -57,9 +57,11 @@ type WriteArgs = ObjectType<typeof writeArgs>;
 export async function fencedWrite(ctx: MutationCtx, args: WriteArgs): Promise<unknown> {
   const loaded = await ctx.db.get("assignments", args.assignmentId);
   const row = await liveWriter(ctx, loaded, args);
+
   if (!row) return staleWrite(ctx, loaded, args);
 
   const deferredTools = new Set(args.deferredTools ?? []);
+
   if (
     deferredTools.size > LIMITS.approvalsPerPause ||
     [...deferredTools].some((name) => !name || name.length > LIMITS.requestKeyLength)
@@ -73,11 +75,15 @@ export async function fencedWrite(ctx: MutationCtx, args: WriteArgs): Promise<un
     return rejectApprovalOverflow(ctx, row);
 
   const result = await ctx.runMutation(args.handle as FunctionHandle<"mutation">, args.args);
+
   if (args.nativeMessages) {
     const messages = (result as { messages: MessageDoc[] }).messages;
+
     await recordNativeSave(ctx, row, args, messages, deferredTools);
   }
+
   if (args.nativeStream) await trackStream(ctx, row, args, result as string);
+
   return result;
 }
 
@@ -90,9 +96,11 @@ export async function fencedWrite(ctx: MutationCtx, args: WriteArgs): Promise<un
 async function liveWriter(ctx: MutationCtx, row: Doc<"assignments"> | null, args: WriteArgs) {
   const root = row?.rootAssignmentId ? await ctx.db.get("assignments", row.rootAssignmentId) : null;
   const run = row?.childRunId ? await runById(ctx, row.childRunId) : null;
+
   const rootRevoked =
     !!row?.childRunId &&
     (!root || root.cancelled || !run || run.rootCancellationEpoch !== root.cancellationEpoch);
+
   if (
     !row ||
     row.cancelled ||
@@ -102,6 +110,7 @@ async function liveWriter(ctx: MutationCtx, row: Doc<"assignments"> | null, args
     row.cancellationEpoch !== args.cancellationEpoch
   )
     return null;
+
   return row;
 }
 
@@ -110,6 +119,7 @@ async function liveWriter(ctx: MutationCtx, row: Doc<"assignments"> | null, args
  * everything else is refused or silently dropped. */
 async function staleWrite(ctx: MutationCtx, row: Doc<"assignments"> | null, args: WriteArgs) {
   const pending = row?.pendingGeneration;
+
   if (
     pending &&
     pending.executionId === args.executionId &&
@@ -126,6 +136,7 @@ async function staleWrite(ctx: MutationCtx, row: Doc<"assignments"> | null, args
     });
 
   if (args.rejectStale) throw new ConvexError({ code: "CANCELLED" });
+
   return null; // Agent's asynchronous void abort listeners must resolve.
 }
 
@@ -136,14 +147,17 @@ async function staleWrite(ctx: MutationCtx, row: Doc<"assignments"> | null, args
 async function rejectApprovalOverflow(ctx: MutationCtx, row: Doc<"assignments">) {
   await disarmSlice(ctx, row);
   await disarmRecovery(ctx, row);
+
   if (await deferChildFailure(ctx, row, "APPROVAL_LIMIT")) return null;
 
   await failChild(ctx, row, "APPROVAL_LIMIT");
+
   await ctx.db.patch("assignments", row._id, {
     turnStatus: "recovery_required",
     errorCode: "APPROVAL_LIMIT",
     turnToken: undefined,
   });
+
   return null;
 }
 
@@ -161,9 +175,11 @@ async function recordNativeSave(
   // its id (vercel/client/saveInputMessages.ts). Record only coordination
   // metadata in the SAME transaction as the native placeholder creation.
   await recordMessages(ctx, row, messages);
+
   const modelStep = args.trackUsage
     ? messages.find((message) => message.usage && message.status === "success")
     : undefined;
+
   if (modelStep)
     await ctx.db.patch("assignments", row._id, {
       modelStep: { messageId: String(modelStep._id), stepOrder: modelStep.stepOrder },
@@ -175,10 +191,13 @@ async function recordNativeSave(
   // subsequent assistant response as consumption of provider-owned decisions,
   // even without a tool-result. Pending placeholders are not responses.
   if (row.approvals) await retireConsumedApprovals(ctx, row, messages);
+
   if (row.childRunId) await recordChildResult(ctx, row, messages);
+
   await trackPendingGeneration(ctx, row, args, messages);
 
   const pause = await collectPause(messages, deferredTools);
+
   if (pause.count)
     await suspendForApprovals(ctx, row, pause, {
       getMessages: args.nativeMessages!.getMessages,
@@ -194,11 +213,14 @@ async function recordChildResult(
   messages: MessageDoc[],
 ) {
   const run = await runById(ctx, row.childRunId!);
+
   const finals = messages.filter(
     (message) =>
       message.message?.role === "assistant" && message.status === "success" && message.text?.trim(),
   );
+
   const final = finals[finals.length - 1];
+
   if (run && final)
     await ctx.db.patch("subagentRuns", run._id, { childResultMessageId: final._id });
 }
@@ -212,6 +234,7 @@ async function trackPendingGeneration(
   messages: MessageDoc[],
 ) {
   const pending = messages.filter((message) => message.status === "pending");
+
   if (pending.length > 1) throw new Error("MULTIPLE_PENDING_GENERATIONS");
 
   if (pending.length)
@@ -237,6 +260,7 @@ async function trackStream(
   streamId: string,
 ) {
   const pending = row.pendingGeneration;
+
   if (
     !pending ||
     pending.executionId !== args.executionId ||

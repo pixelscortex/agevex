@@ -29,9 +29,11 @@ export async function cancelRoot(
   args: { assignmentId: Id<"assignments">; subject: string },
 ) {
   const root = await ctx.db.get("assignments", args.assignmentId);
+
   if (!root || root.subject !== args.subject || root.childRunId) throw new Error("FORBIDDEN");
 
   const children = await liveChildren(ctx, root);
+
   const affected = [
     root,
     ...(
@@ -42,6 +44,7 @@ export async function cancelRoot(
       )
     ).filter((row): row is Doc<"assignments"> => row !== null),
   ];
+
   for (const row of affected) await cancelAssignment(ctx, row);
 
   for (const run of children) {
@@ -55,9 +58,11 @@ export async function cancelRoot(
       events: appendEvent(run.events, "failed", Date.now(), "ROOT_UNAVAILABLE"),
     });
   }
+
   await ctx.db.patch("assignments", root._id, {
     activeRuns: 0,
   });
+
   return affected.map((row) => ({ threadId: row.threadId, agent: row.agent }));
 }
 
@@ -86,22 +91,27 @@ async function cancelAssignment(ctx: MutationCtx, row: Doc<"assignments">) {
   await disarmRecovery(ctx, row);
 
   const approvalCleanup = !!row.approvals?.requests.length;
+
   await ctx.db.patch("assignments", row._id, cancelledState(row, approvalCleanup));
 
   // Only ready rows are read here. Raw passive bodies are cleared by one
   // bounded job per assignment, preserving the 12,680 KiB cancel ceiling.
   const inbox = await readyRows(ctx, row._id, row.limits.queueLength + 2);
+
   // A staged hook continuation is addressed directly, never included in a
   // backlog scan. <=16 assignments * (64 KiB text +1 KiB metadata) read
   // for deletion adds <=1,040 KiB to the 12,680 KiB cancel budget: <14 MiB.
   if (row.hookContinue && row.inboxId) await ctx.db.delete("inbox", row.inboxId);
+
   await scheduleCleanup(ctx, row, approvalCleanup);
 
   for (const item of inbox) {
     await ctx.db.patch("runs", item.runId, { cancelled: true });
     await ctx.db.delete("inbox", item._id);
   }
+
   if (row.runId) await ctx.db.patch("runs", row.runId, { cancelled: true });
+
   if (row.workflowId)
     await (row.childRunId ? childLane : rootLane).cancel(ctx, row.workflowId as WorkflowId);
 }
@@ -142,6 +152,7 @@ async function scheduleCleanup(
       assignmentId: row._id,
       epoch: row.cancellationEpoch,
     });
+
   if (row.pendingGeneration || approvalCleanup)
     await ctx.scheduler.runAfter(0, internal.cancellation.cleanup.cleanup, {
       assignmentId: row._id,

@@ -44,6 +44,7 @@ export type RuntimeContext = {
 export function createRuntimeContext(component: ComponentApi, config: Registration) {
   const limits = resolveLimits(config.limits);
   const graph = resolveGraph(config);
+
   assertSlots(config);
   assertModelRegistration(config);
   assertDeferredTools(graph);
@@ -51,11 +52,14 @@ export function createRuntimeContext(component: ComponentApi, config: Registrati
   const collaboration =
     [...graph.edges.values()].some((allowed) => allowed.size > 0) ||
     [...graph.byName.values()].some((agent) => agent.sideAgents?.length);
+
   const agentIndexes = new Map([...graph.byName.keys()].sort().map((name, index) => [name, index]));
+
   if (collaboration && !config.refs.coordinate) throw new Error("COORDINATE_REF_REQUIRED");
 
   const watching = [...graph.byName.values()].some((agent) => agent.sideAgents?.length);
   const rt: RuntimeContext = { component, config, limits, graph, agentIndexes, watching };
+
   return rt;
 }
 
@@ -103,6 +107,7 @@ function assertModelRegistration(config: Registration) {
 function assertDeferredTools(graph: Graph) {
   for (const agent of graph.byName.values()) {
     const deferred = deferredToolNames(agent);
+
     if (
       deferred.length > LIMITS.approvalsPerPause ||
       deferred.some((name) => !name || name.length > LIMITS.requestKeyLength)

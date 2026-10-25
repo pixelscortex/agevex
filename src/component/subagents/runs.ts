@@ -59,8 +59,10 @@ const deliveryPhases = new Set(["result_accepted", "delivery_failed", "delivery_
 export function runTimes(run: Pick<SubagentRun, "events" | "deliveryStatus">) {
   let finishedAt: number | null = null;
   let deliveryAt: number | null = null;
+
   for (const event of run.events) {
     if (terminalPhases.has(event.phase)) finishedAt = event.at;
+
     if (deliveryPhases.has(event.phase)) deliveryAt = event.at;
   }
 
@@ -108,6 +110,7 @@ export function newSubagentRun(fields: {
   now: number;
 }): WithoutSystemFields<SubagentRun> {
   const { request, actor, root, now } = fields;
+
   return {
     runId: fields.runId,
     side: request.side || undefined,

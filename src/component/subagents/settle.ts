@@ -42,6 +42,7 @@ export async function hasPendingChildren(
       q.eq("actorAssignmentId", parent._id).eq("side", undefined).eq("deliveryStatus", "pending"),
     )
     .first());
+
   if (ordinary || !includeSide) return ordinary;
 
   return !!(await ctx.db
@@ -61,11 +62,13 @@ export async function hasPendingChildren(
  */
 export async function settlementBlocked(ctx: QueryCtx | MutationCtx, parent: Doc<"assignments">) {
   if (await firstReady(ctx, parent._id)) return true;
+
   if (await hasPendingChildren(ctx, parent)) return true;
 
   const root = parent.rootAssignmentId
     ? await ctx.db.get("assignments", parent.rootAssignmentId)
     : parent;
+
   if (!root) return false;
 
   // Any not-yet-joined wait "all" member of this epoch fences settlement. One
@@ -84,6 +87,7 @@ export async function settlementBlocked(ctx: QueryCtx | MutationCtx, parent: Doc
         .first()
     )
       return true;
+
   return false;
 }
 
@@ -104,9 +108,11 @@ export async function settleRunState(
   const child = run.childAssignmentId
     ? await ctx.db.get("assignments", run.childAssignmentId)
     : null;
+
   if (child && (await settlementBlocked(ctx, child))) return false;
 
   const at = Date.now();
+
   await ctx.db.patch("subagentRuns", run._id, {
     status,
     errorCode,
@@ -118,6 +124,7 @@ export async function settleRunState(
   });
 
   const root = await ctx.db.get("assignments", run.rootAssignmentId);
+
   if (root) {
     await ctx.db.patch("assignments", root._id, {
       activeRuns: Math.max(0, root.activeRuns - 1),
@@ -130,8 +137,10 @@ export async function settleRunState(
   // an idle watched run before its own verified outcome is ready.
   if (!run.side) {
     const parent = await ctx.db.get("assignments", run.actorAssignmentId);
+
     if (parent) await settleIdleParent(ctx, parent);
   }
+
   return true;
 }
 
@@ -161,14 +170,18 @@ export async function settleIdleParent(ctx: MutationCtx, parent: Doc<"assignment
   if (parent.cancelled || parent.turnStatus !== "idle" || !parent.childRunId) return false;
 
   const run = await runById(ctx, parent.childRunId);
+
   if (!run || run.status === "asking") return false;
+
   if (isSettled(run.status)) return true;
 
   const root = await ctx.db.get("assignments", run.rootAssignmentId);
+
   if (!root || root.cancelled || root.cancellationEpoch !== run.rootCancellationEpoch) return false;
 
   const result = run.lastTurnResult;
   const errorCode = result?.errorCode ?? (result?.messageId ? null : "RESULT_UNVERIFIED");
+
   const settled = await settleRunState(
     ctx,
     run,
@@ -176,9 +189,11 @@ export async function settleIdleParent(ctx: MutationCtx, parent: Doc<"assignment
     errorCode,
     result?.messageId,
   );
+
   if (!settled) return false;
 
   await scheduleNotify(ctx, run);
+
   return true;
 }
 
@@ -197,12 +212,15 @@ export async function recordTurnOutcome(
   },
 ) {
   const child = await ctx.db.get("assignments", args.assignmentId);
+
   if (!child || child.childRunId !== args.runId || child.turnToken !== args.turnToken)
     throw new Error("FORBIDDEN");
+
   // A released or escalated turn cannot report an outcome any more.
   if (child.cancelled || child.turnStatus !== "running") throw new Error("FORBIDDEN");
 
   const run = await runById(ctx, args.runId);
+
   if (!run || run.childAssignmentId !== child._id) throw new Error("FORBIDDEN");
 
   // Verification and the deferred outcome commit together, even while the
@@ -213,6 +231,7 @@ export async function recordTurnOutcome(
       errorCode: args.errorCode,
     },
   });
+
   await settleRunState(
     ctx,
     run,
@@ -220,6 +239,7 @@ export async function recordTurnOutcome(
     args.errorCode,
     args.childResultMessageId ?? undefined,
   );
+
   return null;
 }
 
@@ -233,15 +253,19 @@ export async function escalateRun(
   code: Doc<"subagentRuns">["errorCode"] | undefined,
 ) {
   const run = await runById(ctx, runId);
+
   if (!run || isSettled(run.status)) return null;
 
   await ctx.db.patch("subagentRuns", run._id, {
     lastTurnResult: { errorCode: code ?? "EXECUTION_AMBIGUOUS" },
   });
+
   const first = await settleRunState(ctx, run, "failed", code ?? "EXECUTION_AMBIGUOUS", undefined);
+
   if (!first) return null;
 
   await scheduleNotify(ctx, run);
+
   return null;
 }
 

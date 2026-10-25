@@ -62,27 +62,34 @@ export async function bindFiles(
   assertFact(args.subject, "subject");
   assertFact(args.threadId, "threadId");
   assertFileIdentity(args.messageId);
+
   if (args.files.length > LIMITS.filesPerMessage || new Set(args.files).size !== args.files.length)
     throw new Error("FILE_LIMIT");
+
   for (const fileId of args.files) assertFileIdentity(fileId);
 
   // At most eight grants + eight message bindings, all <=8 KiB, and
   // <=8 writes. No file content or native transcript read.
   const existing = await messageBindings(ctx, args.native, args.messageId);
+
   const bound = (fileId: string) =>
     existing.some(
       (row) => row.kind === "attachment" && row.fileId === fileId && row.native === args.native,
     );
+
   // Keep every message at <=filesPerMessage bindings, including across
   // repeated host calls for one message. By induction the take above then
   // sees every existing binding (so dedup is exact) and forMessage's take of
   // the same size never truncates.
   const added = args.files.filter((fileId) => !bound(fileId));
+
   if (existing.length + added.length > LIMITS.filesPerMessage) throw new Error("FILE_LIMIT");
 
   for (const fileId of args.files) {
     const grant = await uploadGrant(ctx, args.native, fileId, args.subject);
+
     if (!grant || grant.kind !== "attachment") throw new Error("FILE_FORBIDDEN");
+
     // A separate row per message retains exact ids for durable extraction
     // admission even when the same file is attached in a later request.
     if (!bound(fileId))
@@ -95,6 +102,7 @@ export async function bindFiles(
         messageId: args.messageId,
       });
   }
+
   return null;
 }
 
@@ -110,7 +118,9 @@ export const register = mutation({
     assertNativeHandle(args.native);
 
     const row = await uploadGrant(ctx, args.native, args.fileId, args.subject);
+
     if (!row) await ctx.db.insert("receipts", { kind: "attachment", ...args });
+
     return null;
   },
 });
@@ -129,6 +139,7 @@ export const owns = query({
     assertNativeHandle(args.native);
     assertFileIdentity(args.fileId);
     assertFact(args.subject, "subject");
+
     if (args.threadId !== undefined) assertFact(args.threadId, "threadId");
 
     return !!(await ctx.db
@@ -168,6 +179,7 @@ export const forMessage = query({
     assertFileIdentity(args.messageId);
 
     const rows = await messageBindings(ctx, args.native, args.messageId);
+
     return rows.flatMap((row) =>
       row.kind === "attachment" && row.subject === args.subject && row.threadId === args.threadId
         ? [row.fileId]

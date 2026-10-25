@@ -59,10 +59,13 @@ export async function sandboxComplete(
   assertFact(event.subject, "subject");
   assertFact(event.threadId, "threadId");
   assertFact(event.runId, "runId");
+
   const assignment = await ctx.runQuery(rt.component.turns.send.assignment, {
     threadId: event.threadId,
   });
+
   const managed = assignment && rt.graph.byName.get(assignment.agent);
+
   // Any managed thread of this registration may receive a completion: a
   // job started by an opted-in child reports to its root conversation,
   // whose own agent need not use sandbox tools. The trust gate is the
@@ -77,7 +80,9 @@ export async function sandboxComplete(
     subject: assignment.subject,
     runId: event.runId,
   });
+
   if (subject !== assignment.subject) throw new Error("FORBIDDEN");
+
   if (!validSandboxCompletion(event)) throw new Error("INVALID_SANDBOX_COMPLETION");
 
   return postNote(ctx, rt.component, assignment.assignmentId, {
@@ -104,6 +109,7 @@ function validSandboxCompletion(event: SandboxCompletion): boolean {
 /** One-line job status plus the log tail, clipped to `LIMITS.noteLength`. */
 function sandboxNoteText(event: SandboxCompletion): string {
   const exit = event.exitCode === undefined ? "" : ` (exit ${event.exitCode})`;
+
   return `Job ${event.jobId}: ${event.state}${exit}\n${event.logTail ?? ""}`.slice(
     0,
     LIMITS.noteLength,
@@ -124,6 +130,7 @@ export async function note(
 ): Promise<boolean> {
   assertFact(args.threadId, "threadId");
   const scope = await ctx.runQuery(rt.component.turns.send.assignment, { threadId: args.threadId });
+
   if (!scope) throw new Error("FORBIDDEN");
 
   const { subject } = await rt.config.authorize(ctx, {
@@ -131,9 +138,11 @@ export async function note(
     agent: scope.agent,
     threadId: args.threadId,
   });
+
   assertFact(subject, "subject");
   const owned = scope.subject === subject ? scope : null;
   const managed = rt.graph.byName.get(scope.agent);
+
   if (!owned || !managed) throw new Error("FORBIDDEN");
 
   return postNote(ctx, rt.component, owned.assignmentId, args);

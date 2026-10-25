@@ -18,10 +18,12 @@ export async function fingerprint(input: unknown): Promise<string> {
               .map(([k, v]) => [k, canonical(v)]),
           )
         : value;
+
   const digest = await crypto.subtle.digest(
     "SHA-256",
     new TextEncoder().encode(JSON.stringify(canonical(input))),
   );
+
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 

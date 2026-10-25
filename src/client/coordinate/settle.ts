@@ -35,13 +35,16 @@ export async function settleRun(rt: RuntimeContext, ctx: CoordinatorCtx, args: S
     turnToken: args.turnToken,
     runId: args.runId,
   });
+
   if (!settlement) throw new Error("FORBIDDEN");
 
   let errorCode: RunErrorCode = args.errorCode;
   let childResultMessageId: string | null = null;
+
   if (!errorCode) {
     const reported =
       args.resultMessageId === settlement.childResultMessageId ? args.resultMessageId : undefined;
+
     const verified = reported
       ? await verifyChildMessage(rt, ctx, {
           threadId: settlement.childThreadId,
@@ -50,6 +53,7 @@ export async function settleRun(rt: RuntimeContext, ctx: CoordinatorCtx, args: S
           subject: settlement.subject,
         })
       : null;
+
     if (verified && reported) childResultMessageId = reported;
     else errorCode = "RESULT_UNVERIFIED";
   }
@@ -61,6 +65,8 @@ export async function settleRun(rt: RuntimeContext, ctx: CoordinatorCtx, args: S
     childResultMessageId,
     errorCode,
   });
+
   if (settlement.blocked) return { status: "deferred" as const, runId: args.runId };
+
   return null;
 }

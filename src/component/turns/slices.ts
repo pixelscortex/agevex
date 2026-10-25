@@ -52,6 +52,7 @@ export const execution = query({
   returns: v.union(v.null(), vExecution),
   handler: async (ctx, args) => {
     const row = await ctx.db.get("assignments", args.assignmentId);
+
     return row ? executionView(row) : null;
   },
 });
@@ -98,6 +99,7 @@ export const sliceLimit = internalMutation({
       turnToken: args.executionId,
       errorCode: "SLICE_LIMIT",
     });
+
     return null;
   },
 });

@@ -30,6 +30,7 @@ type SavedMessage = Awaited<ReturnType<typeof saveMessage>>;
 /** A non-empty bounded message and a bounded request key; else the rejection code. */
 function validateInput(text: string, requestKey: string) {
   if (!text.trim() || text.length > LIMITS.messageLength) return "INVALID_MESSAGE" as const;
+
   if (!requestKey || requestKey.length > LIMITS.requestKeyLength)
     return "INVALID_REQUEST_KEY" as const;
 }
@@ -44,13 +45,18 @@ function validModels(
   root: ManagedAgent,
 ) {
   if (models === undefined) return true;
+
   const reachable = new Set<string>();
+
   function visit(agent: ManagedAgent) {
     if (reachable.has(agent.name)) return;
+
     reachable.add(agent.name);
+
     for (const child of agent.subagents) visit(child);
   }
   visit(root);
+
   return (
     validModelOverrides(models) &&
     Object.entries(models).every(
@@ -84,6 +90,7 @@ async function acceptRequest(
   request: AcceptedRequest,
 ) {
   const { messageId, message } = request.saved;
+
   const accepted = await ctx.runMutation(ep.component.turns.send.accept, {
     subject: request.subject,
     agent: request.agent,
@@ -97,6 +104,7 @@ async function acceptRequest(
     limits: ep.limits,
     models: request.models,
   });
+
   if (accepted.status !== "accepted") throw new Error("ADMISSION_CHANGED");
 
   await observe(ep, ctx, {
@@ -106,6 +114,7 @@ async function acceptRequest(
     threadId: accepted.threadId,
     agent: request.agent,
   });
+
   return accepted;
 }
 
@@ -122,31 +131,42 @@ export function openEndpoint(ep: EndpointContext) {
     returns: receipt,
     handler: async (ctx, args) => {
       const { subject } = await ep.config.authorize(ctx, { operation: "open", agent: args.agent });
+
       assertFact(subject, "subject");
       assertFact(args.agent, "agent");
       const invalid = validateInput(args.prompt, args.requestKey);
+
       if (invalid) return { status: "rejected" as const, code: invalid };
+
       if (!ep.config.agents.some((a) => a.name === args.agent))
         return { status: "rejected" as const, code: "UNKNOWN_AGENT" as const };
+
       const native = rootAgent(ep, args.agent);
+
       if (!validModels(ep, args.models, native))
         return { status: "rejected" as const, code: "INVALID_MODELS" as const };
+
       validateFiles(args.files);
 
       const { prompt, models, files } = args;
       const hash = await fingerprint(["open", args.agent, prompt, models ?? null, files ?? []]);
+
       const duplicate = await ctx.runQuery(ep.component.turns.send.lookupReceipt, {
         subject,
         requestKey: args.requestKey,
         fingerprint: hash,
       });
+
       if (duplicate) return duplicate;
 
       const attached = await attachment(ep, ctx, native, subject, prompt, files);
+
       if ("rejected" in attached)
         return { status: "rejected" as const, code: "ATTACHMENT_LIMIT" as const };
+
       const runTurn = await createFunctionHandle(ep.config.refs.runTurn());
       const threadId = await createThread(ctx, native.component, { userId: subject });
+
       const saved = await saveMessage(ctx, native.component, {
         threadId,
         message: attached.message,
@@ -155,9 +175,11 @@ export function openEndpoint(ep: EndpointContext) {
         order: LIMITS.firstPromptOrder,
         userId: subject,
       });
+
       await recordAttachments(ep, ctx, attached.native, files, subject, threadId, saved.messageId);
 
       const request = { subject, agent: args.agent, native, threadId, models };
+
       return acceptRequest(ep, ctx, {
         ...request,
         operation: "open",
@@ -184,34 +206,44 @@ export function sendEndpoint(ep: EndpointContext) {
     handler: async (ctx, args) => {
       const row = await ownedThread(ep, ctx, args.threadId, "send");
       const invalid = validateInput(args.text, args.requestKey);
+
       if (invalid) return { status: "rejected" as const, code: invalid };
+
       if (!validModels(ep, args.models, row.native))
         return { status: "rejected" as const, code: "INVALID_MODELS" as const };
+
       validateFiles(args.files);
 
       const { threadId, text, models, files } = args;
       const hash = await fingerprint(["send", threadId, text, models ?? null, files ?? []]);
+
       const duplicate = await ctx.runQuery(ep.component.turns.send.lookupReceipt, {
         subject: row.subject,
         requestKey: args.requestKey,
         fingerprint: hash,
       });
+
       if (duplicate) return duplicate;
+
       const refusal = await ctx.runQuery(ep.component.turns.send.admission, {
         threadId,
         subject: row.subject,
       });
+
       if (refusal) return refusal;
 
       const attached = await attachment(ep, ctx, row.native, row.subject, text, files);
+
       if ("rejected" in attached)
         return { status: "rejected" as const, code: "ATTACHMENT_LIMIT" as const };
+
       const saved = await saveMessage(ctx, row.native.component, {
         threadId,
         message: attached.message,
         metadata: attached.metadata,
         userId: row.subject,
       });
+
       await recordAttachments(
         ep,
         ctx,
@@ -223,6 +255,7 @@ export function sendEndpoint(ep: EndpointContext) {
       );
 
       const runTurn = await createFunctionHandle(ep.config.refs.runTurn());
+
       const request = {
         subject: row.subject,
         agent: row.agent,
@@ -230,6 +263,7 @@ export function sendEndpoint(ep: EndpointContext) {
         threadId,
         models,
       };
+
       return acceptRequest(ep, ctx, {
         ...request,
         operation: "send",

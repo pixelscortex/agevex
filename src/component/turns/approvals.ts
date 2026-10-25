@@ -46,8 +46,10 @@ async function responseReceipt(
   const key = await approvalKey(JSON.stringify([threadId, callId]));
   const fingerprint = await approvalKey(payload);
   const receipt = await findReceipt(ctx, scope, key);
+
   if (receipt && receipt.fingerprint !== fingerprint)
     throw new ConvexError({ code: "KEY_CONFLICT" });
+
   return { scope, key, fingerprint, messageId: receipt?.result as string | undefined };
 }
 
@@ -55,6 +57,7 @@ async function saveResponseReceipt(ctx: MutationCtx, receipt: ResponseReceipt, m
   // Keep the same result bound and seven-day purge lifecycle as tool/request
   // receipts. The saved native message remains the only copy of the payload.
   if (getConvexSize(messageId) > LIMITS.receiptResultBytes) throw new Error("RESULT_TOO_LARGE");
+
   await armPurge(ctx);
   await ctx.db.insert("receipts", newDoneReceipt({ ...receipt, result: messageId }));
 }
@@ -75,6 +78,7 @@ export async function respondToApproval(
   },
 ) {
   const row = await ctx.db.get("assignments", args.assignmentId);
+
   if (!row || row.subject !== args.subject) throw new ConvexError({ code: "FORBIDDEN" });
 
   const receipt = await responseReceipt(
@@ -84,15 +88,20 @@ export async function respondToApproval(
     args.approvalId,
     JSON.stringify([args.approved, args.reason ?? null]),
   );
+
   if (receipt.messageId !== undefined) return { messageId: receipt.messageId, replayed: true };
 
   const approvals = row.approvals;
   const key = await approvalKey(args.approvalId);
+
   const index =
     approvals?.requests.findIndex((request) => !request.deferred && request.key === key) ?? -1;
+
   const decision = approvals?.requests[index];
+
   if (!row.approvalBlocked || row.cancelled || !approvals || approvals.cleanupPending || !decision)
     throw new ConvexError({ code: "APPROVAL_NOT_FOUND" });
+
   if (decision.resolved) throw new ConvexError({ code: "APPROVAL_ALREADY_RESOLVED" });
 
   const messageId = await saveResponses(
@@ -107,17 +116,21 @@ export async function respondToApproval(
       },
     ],
   );
+
   await saveResponseReceipt(ctx, receipt, messageId);
 
   const requests = approvals.requests.map((request, offset) =>
     offset === index ? { ...request, resolved: true as const } : request,
   );
+
   await ctx.db.patch("assignments", row._id, { approvals: { ...approvals, requests } });
+
   if (requests.every((request) => request.resolved)) {
     await ctx.db.patch("inbox", approvals.inboxId, { messageId });
     await ctx.db.patch("assignments", row._id, { approvalBlocked: false });
     await wake(ctx, { ...row, approvalBlocked: false });
   }
+
   return { messageId, replayed: false };
 }
 
@@ -134,20 +147,27 @@ export async function answerDeferredCall(
   args: { assignmentId: Id<"assignments">; subject: string; toolCallId: string; text: string },
 ) {
   const row = await ctx.db.get("assignments", args.assignmentId);
+
   if (!row || row.subject !== args.subject) throw new ConvexError({ code: "FORBIDDEN" });
+
   if (!args.text.trim() || args.text.length > LIMITS.messageLength)
     throw new ConvexError({ code: "INVALID_MESSAGE" });
+
   if (!args.toolCallId || args.toolCallId.length > LIMITS.nativeCallIdLength)
     throw new ConvexError({ code: "TOOL_CALL_NOT_FOUND" });
 
   const receipt = await responseReceipt(ctx, "answer", row.threadId, args.toolCallId, args.text);
+
   if (receipt.messageId !== undefined) return { messageId: receipt.messageId, replayed: true };
 
   const pause = row.approvals;
   const key = await approvalKey(args.toolCallId);
+
   const index =
     pause?.requests.findIndex((request) => request.deferred && request.key === key) ?? -1;
+
   const request = pause?.requests[index];
+
   if (
     !pause ||
     !request ||
@@ -159,21 +179,26 @@ export async function answerDeferredCall(
     throw new ConvexError({ code: "TOOL_CALL_NOT_FOUND" });
 
   const toolName = await deferredToolName(ctx, row, pause, request.messageId, args.toolCallId);
+
   const messageId = await saveToolResult(ctx, row, pause, request.messageId, {
     toolCallId: args.toolCallId,
     toolName,
     text: args.text,
   });
+
   await saveResponseReceipt(ctx, receipt, messageId);
 
   const remaining = pause.requests.filter((_, offset) => offset !== index);
   const approvals = remaining.length ? { ...pause, requests: remaining } : undefined;
   const blocked = remaining.some((entry) => !entry.resolved);
+
   await ctx.db.patch("assignments", row._id, { approvals, approvalBlocked: blocked });
   // Always retain the last saved result as the future prompt, including a
   // partial answer. A concurrent answer/respond serializes on this same row.
   await ctx.db.patch("inbox", pause.inboxId, { messageId });
+
   if (!blocked) await wake(ctx, { ...row, approvals, approvalBlocked: false });
+
   return { messageId, replayed: false };
 }
 
@@ -192,15 +217,19 @@ async function deferredToolName(
     pause.getMessages as FunctionHandle<"query">,
     { messageIds: [messageId] },
   );
+
   const content = message?.message?.content;
+
   const call =
     message?.threadId === row.threadId &&
     message.message?.role === "assistant" &&
     Array.isArray(content)
       ? content.find((part) => part.type === "tool-call" && part.toolCallId === toolCallId)
       : undefined;
+
   if (!call || call.type !== "tool-call" || call.providerExecuted)
     throw new ConvexError({ code: "TOOL_CALL_NOT_FOUND" });
+
   return call.toolName;
 }
 
@@ -237,6 +266,7 @@ async function saveToolResult(
       },
     ],
   })) as { messages: MessageDoc[] };
+
   return saved.messages[0]._id;
 }
 

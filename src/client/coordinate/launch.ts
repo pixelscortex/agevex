@@ -38,20 +38,26 @@ type Reservation = FunctionReturnType<
  */
 export async function launchChild(rt: RuntimeContext, ctx: CoordinatorCtx, args: LaunchArgs) {
   const task = args.task.trim();
+
   if (!task || task.length > rt.limits.taskLength) return denied("TASK_LIMIT");
 
   const owned = await ctx.runQuery(rt.component.subagents.launch.delegateContext, {
     assignmentId: args.assignmentId,
     turnToken: args.turnToken,
   });
+
   if (!owned) return denied("STALE_TURN");
+
   if (!mayLaunch(rt, owned, args)) return denied("FORBIDDEN");
+
   if (!(await launchAuthorized(rt, ctx, owned, args.agent, task))) return denied("FORBIDDEN");
 
   const child = rt.graph.children.get(args.agent);
+
   if (!child) return denied("FORBIDDEN");
 
   const side = args.side ? sideAgentFor(rt, owned, args.agent) : undefined;
+
   const review = side
     ? await ctx.runQuery(rt.component.hooks.reviews.reviewContext, {
         assignmentId: args.assignmentId,
@@ -60,12 +66,15 @@ export async function launchChild(rt: RuntimeContext, ctx: CoordinatorCtx, args:
         ...side.every,
       })
     : null;
+
   if (args.side && !review) return denied("RUN_BUDGET");
 
   const reservation = await reserveRun(rt, ctx, args, owned, task);
+
   if (reservation.kind === "denied") {
     return { status: "denied" as const, code: reservation.code };
   }
+
   if (reservation.kind === "replay")
     return { status: "queued" as const, runId: reservation.runId, agent: args.agent };
 
@@ -73,13 +82,16 @@ export async function launchChild(rt: RuntimeContext, ctx: CoordinatorCtx, args:
   // can never create a second child thread. Everything below runs in
   // this same transaction as `reserve`.
   const childTask = review ? await withReviewDelta(rt, ctx, args, owned, review, task) : task;
+
   await startChildThread(rt, ctx, child, owned, reservation.runId, childTask);
+
   await observe(rt, ctx, {
     type: "delegation.queued",
     runId: reservation.runId,
     rootAssignmentId: owned.rootAssignmentId,
     agent: args.agent,
   });
+
   return { status: "queued" as const, runId: reservation.runId, agent: args.agent };
 }
 
@@ -114,6 +126,7 @@ async function launchAuthorized(
   task: string,
 ): Promise<boolean> {
   let subject = "";
+
   try {
     ({ subject } = await rt.config.authorize(ctx, {
       operation: "delegate",
@@ -129,6 +142,7 @@ async function launchAuthorized(
   } catch {
     subject = "";
   }
+
   return !!subject && subject === owned.subject;
 }
 
@@ -179,9 +193,11 @@ async function withReviewDelta(
   // Metadata admits <=2 MiB of source docs; text-only output is
   // UTF-8 clipped to 48 KiB. Tools/reasoning never enter the fork.
   const parent = rt.graph.byName.get(owned.actorAgent)!;
+
   const docs = await ctx.runQuery(parent.component.messages.getMessagesByIds, {
     messageIds: review.refs.map((ref) => ref.id),
   });
+
   const childTask = task + "\n\n" + clipReviewDelta(docs).join("\n");
 
   await ctx.runMutation(rt.component.hooks.reviews.reviewed, {
@@ -190,6 +206,7 @@ async function withReviewDelta(
     agent: args.agent,
     boundary: review.boundary,
   });
+
   return childTask;
 }
 
@@ -202,18 +219,23 @@ type ReviewDoc = { message?: { role?: string }; text?: string } | null;
 function clipReviewDelta(docs: ReviewDoc[]): string[] {
   let remaining = LIMITS.contextBytes;
   const chunks: string[] = [];
+
   for (const doc of docs.reverse()) {
     if (!doc || !["user", "assistant"].includes(doc.message?.role ?? "") || remaining <= 0)
       continue;
+
     const bytes = new TextEncoder().encode(`${doc.message!.role}: ${doc.text ?? ""}`);
+
     // stream:true drops an incomplete trailing UTF-8 code point;
     // replacement characters must not push output over the cap.
     const chunk = new TextDecoder().decode(bytes.slice(0, remaining), {
       stream: true,
     });
+
     chunks.unshift(chunk);
     remaining -= new TextEncoder().encode(chunk).byteLength + 1;
   }
+
   return chunks;
 }
 
@@ -230,12 +252,14 @@ async function startChildThread(
   childTask: string,
 ) {
   const threadId = await createThread(ctx, child.component, { userId: owned.subject });
+
   const { messageId, message } = await saveTrackedMessage(rt, ctx, child.component, {
     threadId,
     prompt: childTask,
     order: LIMITS.firstPromptOrder,
     userId: owned.subject,
   });
+
   await ctx.runMutation(rt.component.subagents.launch.attach, {
     runId,
     childThreadId: threadId,

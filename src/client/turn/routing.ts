@@ -32,9 +32,12 @@ export async function completeRouting(rt: RuntimeContext, turn: Turn) {
 export async function selectTurnModel(rt: RuntimeContext, gen: Generation) {
   const { claimed, managed } = gen.turn;
   let selectedModel = claimed.modelId;
+
   if (claimed.isTurnStart && managed.hooks?.beforeTurn)
     selectedModel = (await runBeforeTurn(rt, gen)) ?? selectedModel;
+
   if (managed.hooks?.beforeTurn) selectedModel = (await awaitRoutedModel(rt, gen)) ?? selectedModel;
+
   return selectedModel;
 }
 
@@ -46,9 +49,11 @@ export async function selectTurnModel(rt: RuntimeContext, gen: Generation) {
 async function runBeforeTurn(rt: RuntimeContext, gen: Generation) {
   const { turn, hc, hook, fence } = gen;
   const { claimed, managed } = turn;
+
   const docs = await turn.rawCtx.runQuery(managed.component.messages.getMessagesByIds, {
     messageIds: [claimed.promptMessageId],
   });
+
   const before = await hook(
     () =>
       managed.hooks!.beforeTurn!(hc, {
@@ -59,22 +64,27 @@ async function runBeforeTurn(rt: RuntimeContext, gen: Generation) {
   );
 
   let model: string | undefined;
+
   if (before?.model) {
     await hook(async () => {
       if (!rt.config.models || !rt.config.modelAllowlist?.includes(before.model!))
         throw new Error("MODEL_NOT_ALLOWED");
+
       await fence.ctx.runMutation(rt.component.hooks.state.hookState, {
         assignmentId: claimed.assignmentId,
         executionId: turn.args.turnToken,
         model: before.model,
       });
     });
+
     model = before.model;
   }
+
   if (before?.block) {
     gen.state.hookBlocked = true;
     throw new Error("HOOK_BLOCKED");
   }
+
   return model;
 }
 
@@ -89,6 +99,7 @@ async function runBeforeTurn(rt: RuntimeContext, gen: Generation) {
 async function awaitRoutedModel(rt: RuntimeContext, gen: Generation) {
   const { turn, fence } = gen;
   const { claimed } = turn;
+
   if (claimed.isRunStart) await completeRouting(rt, turn);
 
   const readRouting = () =>
@@ -96,11 +107,14 @@ async function awaitRoutedModel(rt: RuntimeContext, gen: Generation) {
       assignmentId: claimed.assignmentId,
       agentIndex: rt.agentIndexes.get(claimed.agent)!,
     });
+
   let routing = await readRouting();
+
   while (routing?.pending) {
     await new Promise((resolve) => setTimeout(resolve, LIMITS.cancelPollMs));
     await fence.assertActive();
     routing = await readRouting();
   }
+
   return routing?.modelId;
 }

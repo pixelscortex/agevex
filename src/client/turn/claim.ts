@@ -21,15 +21,18 @@ export async function loadExecution(rt: RuntimeContext, ctx: RunnerCtx, args: Tu
   const queued = await ctx.runQuery(rt.component.turns.slices.execution, {
     assignmentId: args.assignmentId,
   });
+
   if (!queued || queued.cancelled || queued.turnToken !== args.turnToken) return null;
 
   const managed = rt.graph.byName.get(queued.agent);
+
   if (!managed) throw new Error("UNKNOWN_AGENT");
 
   // Agent 0.7.7 auto-denies unresolved approvals at generation start.
   // Only our recorded request can block a managed turn. Native history
   // is never searched to discover requests.
   if (queued.approvalBlocked) return null;
+
   return { queued, managed };
 }
 
@@ -58,10 +61,12 @@ export async function claimTurn(
       updateMessage: await createFunctionHandle(managed.component.messages.updateMessage),
     },
   });
+
   if (!claimed) return null;
 
   const child = claimed.subagent;
   const turnKey = await opaqueKey("turn", args.sliceId ?? args.turnToken);
+
   const facts = {
     subject: claimed.subject,
     rootThreadId: child?.rootThreadId ?? claimed.threadId,
@@ -69,5 +74,6 @@ export async function claimTurn(
     runId: claimed.runId,
     agent: claimed.agent,
   };
+
   return { rawCtx: ctx, args, queued, managed, claimed, child, turnKey, facts };
 }

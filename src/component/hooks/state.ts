@@ -28,18 +28,22 @@ export async function recordHookState(
   },
 ) {
   const row = await ctx.db.get("assignments", args.assignmentId);
+
   if (!row || row.cancelled || row.turnToken !== args.executionId || row.turnStatus !== "running")
     throw new Error("STALE_TURN");
 
   if (args.model && row.runId) {
     const run = await ctx.db.get("runs", row.runId);
     const models = { ...run?.models, [row.agent]: args.model };
+
     if (!run || !validModelOverrides(models)) throw new Error("INVALID_MODELS");
+
     await ctx.db.patch("runs", run._id, { models });
   }
 
   if (args.complete)
     await ctx.db.patch("assignments", row._id, { completedTurns: row.completedTurns + 1 });
+
   return row.completedTurns + (args.complete ? 1 : 0);
 }
 
@@ -55,6 +59,7 @@ export async function stageContinuation(
 
   const row = await ctx.db.get("assignments", args.assignmentId);
   const run = row?.runId ? await ctx.db.get("runs", row.runId) : null;
+
   if (
     !row ||
     row.cancelled ||
@@ -78,12 +83,15 @@ export async function stageContinuation(
     kind: "continue",
     passive: false,
   });
+
   await ctx.db.patch("runs", run._id, { continues: run.continues + 1 });
+
   await ctx.db.patch("assignments", row._id, {
     hookContinue: true,
     nextSequence: row.nextSequence + 1,
     inboxId: messageId,
   });
+
   return messageId;
 }
 

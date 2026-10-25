@@ -57,17 +57,22 @@ const denied = <Code extends Denial["code"]>(code: Code) => ({ kind: "denied" as
  */
 export async function reserveRun(ctx: MutationCtx, args: ReserveArgs) {
   const scope = await reservationScope(ctx, args);
+
   if (scope.kind === "denied") return scope;
+
   const { row, root, depth } = scope;
 
   const dedupKey = `${row._id}:${args.turnToken}:${await approvalKey(args.toolCallId)}`;
+
   const duplicate = await ctx.db
     .query("subagentRuns")
     .withIndex("by_dedup", (q) => q.eq("dedupKey", dedupKey))
     .unique();
+
   if (duplicate) {
     if (duplicate.payloadFingerprint !== args.payloadFingerprint)
       return denied("DELEGATION_CONFLICT");
+
     return { kind: "replay" as const, runId: duplicate.runId, agent: duplicate.agent };
   }
 
@@ -76,13 +81,16 @@ export async function reserveRun(ctx: MutationCtx, args: ReserveArgs) {
   // A delivered-result turn retains this run id: completing a child cannot
   // replenish launches, and a new caller prompt alone creates a new budget.
   const budget = row.runId ? await ctx.db.get("runs", row.runId) : null;
+
   if (!budget || budget.cancelled || budgetSpent(budget, row, args.side))
     return denied("RUN_BUDGET");
 
   const wait = args.wait ?? "each";
   const group = args.group ?? (wait === "all" ? "" : undefined);
+
   if (group !== undefined) {
     const refusal = await cohortRefusal(ctx, budget._id, row, root, group, wait);
+
     if (refusal) return refusal;
   }
 
@@ -93,9 +101,11 @@ export async function reserveRun(ctx: MutationCtx, args: ReserveArgs) {
       ? { sideRuns: budget.sideRuns + 1 }
       : { launches: budget.launches + 1, hops: budget.hops + 1 },
   );
+
   const runId = crypto.randomUUID();
   const now = Date.now();
   const sequence = root.nextRunSequence + 1;
+
   await ctx.db.insert(
     "subagentRuns",
     newSubagentRun({
@@ -112,10 +122,12 @@ export async function reserveRun(ctx: MutationCtx, args: ReserveArgs) {
       now,
     }),
   );
+
   await ctx.db.patch("assignments", root._id, {
     activeRuns: root.activeRuns + 1,
     nextRunSequence: sequence,
   });
+
   return { kind: "reserved" as const, runId };
 }
 
@@ -124,11 +136,13 @@ export async function reserveRun(ctx: MutationCtx, args: ReserveArgs) {
  * root's epoch, the depth bound holds and side/group arguments are valid. */
 async function reservationScope(ctx: MutationCtx, args: ReserveArgs) {
   const row = await ctx.db.get("assignments", args.assignmentId);
+
   if (!row || row.turnToken !== args.turnToken || row.turnStatus !== "running")
     return denied("STALE_TURN");
 
   const root = row.rootAssignmentId ? await ctx.db.get("assignments", row.rootAssignmentId) : row;
   const parent = row.childRunId ? await runById(ctx, row.childRunId) : null;
+
   if (
     row.cancelled ||
     !root ||
@@ -141,9 +155,12 @@ async function reservationScope(ctx: MutationCtx, args: ReserveArgs) {
     return denied("FORBIDDEN");
 
   const depth = parent ? parent.depth + 1 : 1;
+
   if (depth > root.limits.maxDepth) return denied("DEPTH_LIMIT");
+
   if (args.side && (args.group !== undefined || args.wait !== undefined))
     return denied("GROUP_CONFLICT");
+
   if ((args.group?.length ?? 0) > LIMITS.groupLength) return denied("TASK_LIMIT");
 
   return { kind: "scope" as const, row, root, depth };
@@ -175,6 +192,7 @@ async function cohortRefusal(
     { parentRunId: budgetId, actorAssignmentId: row._id, group },
     wait === "all" ? root.limits.activeChildrenPerRoot : 1,
   );
+
   if (members.some((member) => (member.join ? "all" : "each") !== wait))
     return denied("GROUP_CONFLICT");
 
@@ -182,8 +200,10 @@ async function cohortRefusal(
   // "open" means the launching slice already closed this cohort.
   if (members.some((member) => member.join && member.join !== "open"))
     return denied("GROUP_CLOSED");
+
   if (wait === "all" && members.length >= root.limits.activeChildrenPerRoot)
     return denied("GROUP_LIMIT");
+
   return null;
 }
 
@@ -204,10 +224,13 @@ export const attachArgs = {
  */
 export async function attachChild(ctx: MutationCtx, args: ObjectType<typeof attachArgs>) {
   const run = await runById(ctx, args.runId);
+
   if (!run || run.childAssignmentId) return null;
+
   if (run.status !== "queued") throw new Error("INVALID_LAUNCH");
 
   const root = await ctx.db.get("assignments", run.rootAssignmentId);
+
   if (!root || root.cancelled || root.cancellationEpoch !== run.rootCancellationEpoch)
     throw new Error("ROOT_UNAVAILABLE");
 
@@ -220,6 +243,7 @@ export async function attachChild(ctx: MutationCtx, args: ObjectType<typeof atta
       trackContext: args.trackContext,
     }),
   );
+
   await ctx.db.insert("inbox", {
     assignmentId: childId,
     messageId: args.promptMessageId,
@@ -227,14 +251,17 @@ export async function attachChild(ctx: MutationCtx, args: ObjectType<typeof atta
     kind: "user",
     runId: run.parentRunId,
   });
+
   await ctx.db.patch("subagentRuns", run._id, {
     childAssignmentId: childId,
     childThreadId: args.childThreadId,
   });
+
   if (args.savedMessage)
     await recordRefs(ctx, (await ctx.db.get("assignments", childId))!, [args.savedMessage]);
 
   await wake(ctx, (await ctx.db.get("assignments", childId))!);
+
   return null;
 }
 

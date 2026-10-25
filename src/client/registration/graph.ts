@@ -62,29 +62,38 @@ export function deferredToolNames(agent: ManagedAgent): string[] {
 export function resolveGraph(config: Registration): Graph {
   const graph: Graph = { byName: new Map(), children: new Map(), edges: new Map() };
   const roots = new Set(config.agents.map((root) => root.name));
+
   if (roots.size !== config.agents.length) throw new Error("DUPLICATE_AGENT_NAME");
 
   const maxDepth = resolveLimits(config.limits).maxDepth;
+
   function visit(agent: ManagedAgent, depth: number, path: Set<ManagedAgent>) {
     assertAgentFits(graph, roots, maxDepth, agent, depth, path);
 
     graph.byName.set(agent.name, agent);
+
     if (depth) graph.children.set(agent.name, agent);
+
     graph.edges.set(agent.name, new Set(agent.subagents.map((child) => child.name)));
 
     // Walk every path, even through a shared object: its longest path must fit.
     const next = new Set(path).add(agent);
     const sides = agent.sideAgents ?? [];
+
     assertSideAgentSet(sides);
+
     for (const side of sides) {
       assertSideCadence(side);
       visit(side.agent, depth + 1, next);
     }
+
     for (const child of agent.subagents) visit(child, depth + 1, next);
   }
+
   for (const root of config.agents) visit(root, 0, new Set());
 
   if (graph.byName.size > LIMITS.agents) throw new Error("AGENT_LIMIT");
+
   return graph;
 }
 
@@ -104,15 +113,22 @@ function assertAgentFits(
   path: Set<ManagedAgent>,
 ) {
   if (!isManagedAgent(agent)) throw new Error("UNKNOWN_SUBAGENT");
+
   if (agent.sandbox !== undefined && typeof agent.sandbox !== "boolean")
     throw new Error("INVALID_SANDBOX_OPT_IN");
+
   assertFact(agent.name, "agent");
+
   if (path.has(agent)) throw new Error("SUBAGENT_CYCLE");
+
   if (depth > maxDepth) throw new Error("SUBAGENT_DEPTH");
+
   if (depth && roots.has(agent.name)) throw new Error("ROOT_AS_CHILD");
 
   const existing = graph.byName.get(agent.name);
+
   if (existing && existing !== agent) throw new Error("DUPLICATE_AGENT_NAME");
+
   if (RESERVED_TOOL_NAMES.some((name) => name in agent.declaredTools))
     throw new Error("RESERVED_TOOL_NAME");
 }
@@ -133,6 +149,7 @@ function assertSideAgentSet(sides: readonly SideAgent[]) {
  */
 function assertSideCadence(side: SideAgent) {
   const values = Object.values(side.every);
+
   if (
     side.sees !== "delta" ||
     values.length !== 1 ||

@@ -34,6 +34,7 @@ export const turns = internalQueryGeneric({
   handler: async (ctx) => {
     const workflows = (await ctx.db.query("workflows").collect()) as Workflow[];
     const entries = (await ctx.db.query("steps").collect()) as Entry[];
+
     return workflows
       .sort((a, b) => a._creationTime - b._creationTime)
       .map((row) => ({
@@ -57,13 +58,17 @@ export const clone = internalMutationGeneric({
   returns: v.string(),
   handler: async (ctx, { workflowId }) => {
     const source = await ctx.db.get(workflowId);
+
     if (!source) throw new Error("WORKFLOW_NOT_FOUND");
+
     const id = await ctx.db.insert("workflows", {
       workflowHandle: source.workflowHandle,
       args: source.args,
       generationNumber: 0,
     });
+
     const entries = (await ctx.db.query("steps").collect()) as Entry[];
+
     for (const entry of entries.filter((entry) => entry.workflowId === workflowId))
       await ctx.db.insert("steps", {
         workflowId: id,
@@ -81,10 +86,12 @@ export const clone = internalMutationGeneric({
             }
           : entry.step,
       });
+
     await ctx.runMutation(source.workflowHandle as FunctionHandle<"mutation">, {
       workflowId: id,
       generationNumber: 0,
     });
+
     return id;
   },
 });
@@ -103,6 +110,7 @@ export const dropPings = internalMutationGeneric({
     for (const row of await ctx.db.query("events").collect())
       if (row.workflowId === workflowId && row.name === "ping" && row.state.kind === "sent")
         await ctx.db.delete(row._id);
+
     return null;
   },
 });
@@ -113,7 +121,9 @@ export const events = internalQueryGeneric({
   handler: async (ctx) => {
     const events = await ctx.db.query("events").collect();
     let orphaned = 0;
+
     for (const event of events) if (!(await ctx.db.get(event.workflowId))) orphaned++;
+
     return { orphaned, total: events.length };
   },
 });

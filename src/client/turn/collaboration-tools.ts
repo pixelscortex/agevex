@@ -34,7 +34,9 @@ export function installCollaborationTools(
   eligible: boolean,
 ) {
   if (eligible) tools[DELEGATE_TOOL_NAME] = delegateTool(rt, gen);
+
   if (eligible) tools[MESSAGE_CHILD_TOOL_NAME] = messageChildTool(rt, gen);
+
   if (gen.turn.child) tools[ASK_PARENT_TOOL_NAME] = askParentTool(rt, gen);
 }
 
@@ -45,6 +47,7 @@ export function installCollaborationTools(
 function delegateTool(rt: RuntimeContext, gen: Generation) {
   const { turn, hc, hook, fence, state } = gen;
   const { args, managed } = turn;
+
   return tool({
     description:
       "Delegate one bounded task to a registered child agent. Its result arrives later. A result continuation may delegate again within the same run budget.",
@@ -59,10 +62,12 @@ function delegateTool(rt: RuntimeContext, gen: Generation) {
               })
           : undefined,
       );
+
       if (before?.block) return { status: "denied", code: "HOOK_BLOCKED", reason: before.block };
 
       const rewritten =
         before && "input" in before ? await delegateInput.parseAsync(before.input) : input;
+
       const launch = await fence.ctx.runMutation(coordinateRef(rt), {
         op: "launch",
         assignmentId: args.assignmentId,
@@ -73,7 +78,9 @@ function delegateTool(rt: RuntimeContext, gen: Generation) {
         group: rewritten.group,
         wait: rewritten.wait,
       });
+
       if (launch?.status === "queued") state.delegated = true;
+
       return launch;
     },
   });
@@ -82,6 +89,7 @@ function delegateTool(rt: RuntimeContext, gen: Generation) {
 /** `agevex_message_child`: a bounded follow-up or answer to a running child. */
 function messageChildTool(rt: RuntimeContext, gen: Generation) {
   const { args } = gen.turn;
+
   return tool({
     description:
       "Send a bounded follow-up or answer to a child run in this root. Finished runs refuse messages.",
@@ -102,6 +110,7 @@ function messageChildTool(rt: RuntimeContext, gen: Generation) {
 /** `agevex_ask_parent`: a child's one open question; the child pauses until answered. */
 function askParentTool(rt: RuntimeContext, gen: Generation) {
   const { args } = gen.turn;
+
   return tool({
     description:
       "Ask your parent one question and pause until it answers with message_child. Only one question may be open.",
@@ -113,7 +122,9 @@ function askParentTool(rt: RuntimeContext, gen: Generation) {
         turnToken: args.turnToken,
         ...input,
       });
+
       if (response?.status === "accepted") gen.state.asked = true;
+
       return response;
     },
   });
