@@ -1,0 +1,23 @@
+tests/sandbox/daytona.test.ts
+  s_d863bd773ba186::t_1c66d64aa8abd3 12,195-236,238-240
+tests/sandbox/sandbox.test.ts
+  s_d863bd773ba186::t_b18fcb03f20706 9,333-361,363-378
+tests/sandbox/setup.ts
+  s_d863bd773ba186::t_6fb574dc396a17 53-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "361eed9147e03fd62ba1d3c50713302f6bd922ce",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}

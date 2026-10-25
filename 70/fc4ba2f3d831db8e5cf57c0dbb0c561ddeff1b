@@ -1,0 +1,27 @@
+src/sandbox/types.ts
+  s_d863bd773ba186::t_153e909db2e871 14-20
+src/sandbox/index.ts
+  s_d863bd773ba186::t_2d52a0942c7e9e 15-16,19,38-89,232,292,329,341,359,377,430-433,435,439,455,462,473,484,489-511,673,703,709,748
+src/sandbox/limits.ts
+  s_d863bd773ba186::t_1097af742102f3 5-11
+tests/sandbox/fixture/host.ts
+  s_d863bd773ba186::t_9ccb545f559cd0 11,116-118
+tests/sandbox/fixture/seed.ts
+  s_d863bd773ba186::t_7c1bbc0cf04ffe 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "70fc4ba2f3d831db8e5cf57c0dbb0c561ddeff1b",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}

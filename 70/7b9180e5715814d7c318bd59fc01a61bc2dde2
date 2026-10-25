@@ -1,0 +1,42 @@
+tests/sandbox/daytona.test.ts
+  s_55e1f80d7cabf4::t_517dd3bf2cc64e 195
+  s_55e1f80d7cabf4::t_31f7e927c968ef 349
+  s_55e1f80d7cabf4::t_6233cd1ee82891 176,306
+  s_55e1f80d7cabf4::t_e62a12a4b9d46f 3,360-365,408-413,420,425-428,432-434,447-451
+  s_55e1f80d7cabf4::t_ef7621af3ff982 169,181-183,185,199,299
+  s_55e1f80d7cabf4::t_3c482fffb7616d 321-348,350-359,366-407,414-419,421-424,429-431,435-446,452-459
+README.md
+  s_55e1f80d7cabf4::t_d9398cd661901e 105-111
+src/sandbox/daytona.ts
+  s_55e1f80d7cabf4::t_d9398cd661901e 180-184,188-189,192,204,206,208-214,218-220,262-263,265-270,274-302
+  s_55e1f80d7cabf4::t_42db9c6d09675b 185-187
+  s_55e1f80d7cabf4::t_d848c9cc9b2fe0 197-203,215,217
+tests/sandbox/daytona.live.ts
+  s_55e1f80d7cabf4::t_e62a12a4b9d46f 15,55-72,104
+  s_55e1f80d7cabf4::t_f708616d651159 105-106
+tests/sandbox/sandbox.test.ts
+  s_55e1f80d7cabf4::t_517dd3bf2cc64e 333,336
+src/sandbox/limits.ts
+  s_55e1f80d7cabf4::t_d9398cd661901e 13-16
+tests/sandbox/fixture/daytona.ts
+  s_55e1f80d7cabf4::t_e62a12a4b9d46f 51-79
+  s_55e1f80d7cabf4::t_b52563d9684fe0 80-98
+src/sandbox/types.ts
+  s_55e1f80d7cabf4::t_abe6e4f19e6204 30-35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "707b9180e5715814d7c318bd59fc01a61bc2dde2",
+  "prompts": {},
+  "sessions": {
+    "s_55e1f80d7cabf4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17080-c37f-71e3-ad4d-ba4a10652dc4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
