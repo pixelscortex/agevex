@@ -330,10 +330,10 @@ it("a lost launch and throwing callback retain the unknown receipt and job id un
   expect(fake.calls.background).toHaveLength(1);
 });
 
-it("exports a multi-MiB binary in bounded windows with an exact incremental hash and stores nothing on interruption", async () => {
+it("exports a binary across three full windows and a partial window with an exact incremental hash and stores nothing on interruption", async () => {
   const s = setup();
   await invoke(s.t, "prepare");
-  const bytes = Uint8Array.from({ length: 3 * 1024 * 1024 + 17 }, (_, i) => i % 251);
+  const bytes = Uint8Array.from({ length: 3 * 512 * 1024 + 17 }, (_, i) => i % 251);
   s.fake.sandboxes.get((await row(s))!.sandboxId!)!.files.set("/large.bin", bytes);
   const download = s.fake.provider.download;
   const windows: number[] = [];

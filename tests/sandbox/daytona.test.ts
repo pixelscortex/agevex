@@ -1,6 +1,6 @@
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import { rm, readFile, unlink, mkdtemp, writeFile, access } from "node:fs/promises";
+import { rm, readFile, unlink, mkdtemp, writeFile, access, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it, vi } from "vite-plus/test";
@@ -166,20 +166,23 @@ it("Daytona detaches without a provider poll chain and reads the actual bounded 
   }
 });
 
-it("Daytona deadline cancellation kills the detached process group with bounded execs", async () => {
+it("Daytona control-file cancellation terminates the original process group without reading a saved PGID", async () => {
   const { ctx, provider } = harness();
   const jobId = crypto.randomUUID();
   const directory = `${LIMITS.backgroundRoot}/${jobId}`;
   const launched = await provider.startBackground(
     ctx,
     "local",
-    `(sleep 0.3; touch ${directory}/survived) & wait`,
+    `trap '' TERM; (sleep 0.3; touch ${directory}/survived) & wait`,
     { jobId, directory, sandboxId: "local" },
   );
   try {
     expect(await provider.poll(ctx, launched.jobId, launched)).toMatchObject({ state: "running" });
+    // Removing the saved identity proves the live supervisor owns this kill;
+    // the cancellation action cannot signal a persisted integer directly.
+    await unlink(`${directory}/group.pid`);
     await provider.cancelBackground(ctx, launched.jobId, launched);
-    // A killed group can no longer finish its wrapper and publish an exit file.
+    expect(await readFile(`${directory}/cancel.request`, "utf8")).toBe("deadline\n");
     expect(await provider.poll(ctx, launched.jobId, launched)).toMatchObject({ state: "unknown" });
     await new Promise((resolve) => setTimeout(resolve, 400));
     await expect(access(`${directory}/survived`)).rejects.toThrow();
@@ -189,11 +192,11 @@ it("Daytona deadline cancellation kills the detached process group with bounded 
   }
 });
 
-it("Daytona transfers multi-MiB files through bounded file windows without recording bytes in execution rows or args", async () => {
+it("Daytona transfers a binary across three full windows and a partial window without recording bytes in execution rows or args", async () => {
   const { ctx, provider, actions, replies } = harness();
   const directory = await mkdtemp(join(tmpdir(), "agevex-export-"));
   const path = join(directory, "quote's binary.bin");
-  const bytes = Uint8Array.from({ length: 3 * 1024 * 1024 + 17 }, (_, i) => i % 251);
+  const bytes = Uint8Array.from({ length: 3 * 512 * 1024 + 17 }, (_, i) => i % 251);
   await writeFile(path, bytes);
   const chunks: Uint8Array[] = [];
   try {
@@ -293,14 +296,14 @@ it("a transient Daytona status failure keeps polling with backoff and kills the 
   }
 });
 
-it("Daytona completion terminates leftover descendants before reporting the command done", async () => {
+it("Daytona completion terminates descendants still in the original process group before reporting done", async () => {
   const { ctx, provider } = harness();
   const jobId = crypto.randomUUID();
   const directory = LIMITS.backgroundRoot + "/" + jobId;
   const job = await provider.startBackground(
     ctx,
     "local",
-    "(sleep 1; touch " + directory + "/marker) &",
+    "(trap '' TERM; sleep 1; touch " + directory + "/marker) &",
     { jobId, directory, sandboxId: "local" },
   );
   try {
@@ -314,6 +317,145 @@ it("Daytona completion terminates leftover descendants before reporting the comm
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+it("Daytona reserves the marked leader PID until both completion group signals finish", async () => {
+  const patchDirectory = await mkdtemp(join(tmpdir(), "agevex-unreaped-"));
+  const jobId = crypto.randomUUID();
+  const directory = `${LIMITS.backgroundRoot}/${jobId}`;
+  // Audit the real supervisor's OS calls. A reaped leader can release its PGID
+  // for reuse; every signal must precede wait() and target the marked child.
+  await writeFile(
+    join(patchDirectory, "sitecustomize.py"),
+    `import os,subprocess
+original_init=subprocess.Popen.__init__
+original_wait=subprocess.Popen.wait
+original_killpg=os.killpg
+children={}
+reaped=set()
+def audit(value):
+ with open(${JSON.stringify(directory + "/kill.audit")},'a') as f: f.write(value+'\\n')
+def init(self,*args,**kwargs):
+ original_init(self,*args,**kwargs)
+ if kwargs.get('env',{}).get('AGEVEX_JOB')==${JSON.stringify(jobId)}: children[self.pid]=True
+def wait(self,*args,**kwargs):
+ result=original_wait(self,*args,**kwargs)
+ if self.pid in children:
+  reaped.add(self.pid)
+  audit('reaped')
+ return result
+def killpg(pid,sig):
+ assert pid in children,'unmarked process group'
+ assert pid not in reaped,'leader already reaped; PGID may be reused'
+ audit(str(int(sig)))
+ return original_killpg(pid,sig)
+subprocess.Popen.__init__=init
+subprocess.Popen.wait=wait
+os.killpg=killpg
+`,
+  );
+  const { ctx, provider } = harness({ PYTHONPATH: patchDirectory });
+  const job = { jobId, directory, sandboxId: "local" };
+  try {
+    await provider.startBackground(ctx, "local", "sleep 120 & exit 7", job);
+    await expect
+      .poll(() => provider.poll(ctx, jobId, job))
+      .toMatchObject({
+        state: "failed",
+        exitCode: 7,
+      });
+    expect(await readFile(`${directory}/kill.audit`, "utf8")).toBe("15\n9\nreaped\n");
+  } finally {
+    await provider.cancelBackground(ctx, jobId, job);
+    await rm(directory, { recursive: true, force: true });
+    await rm(patchDirectory, { recursive: true, force: true });
+  }
+});
+
+it.each(["owned", "unmarked", "wrong-job", "unreadable"])(
+  "Daytona supervisor-dead fallback verifies every member marker before signaling (%s)",
+  async (ownership) => {
+    const patchDirectory = await mkdtemp(join(tmpdir(), "agevex-ownership-"));
+    const procDirectory = join(patchDirectory, "proc");
+    const jobId = crypto.randomUUID();
+    const directory = `${LIMITS.backgroundRoot}/${jobId}`;
+    // macOS has no /proc. Supply only that filesystem view while retaining
+    // real getpgid(), real killpg(), and the unmodified adapter commands. The
+    // live test separately verifies Linux's actual inherited environments.
+    await writeFile(
+      join(patchDirectory, "sitecustomize.py"),
+      `import os,builtins
+original_scandir=os.scandir
+original_open=builtins.open
+original_killpg=os.killpg
+def scandir(path):
+ return original_scandir(${JSON.stringify(procDirectory)} if path=='/proc' else path)
+def open_file(path,*args,**kwargs):
+ if str(path).startswith('/proc/'): path=${JSON.stringify(procDirectory)}+str(path)[5:]
+ return original_open(path,*args,**kwargs)
+def killpg(pid,sig):
+ with original_open(${JSON.stringify(directory + "/fallback.audit")},'a') as f: f.write(str(pid)+'\\n')
+ return original_killpg(pid,sig)
+os.scandir=scandir
+builtins.open=open_file
+os.killpg=killpg
+`,
+    );
+    const { ctx, provider } = harness({ PYTHONPATH: patchDirectory });
+    const job = { jobId, directory, sandboxId: "local" };
+    let pgid: number | undefined;
+    let child: number | undefined;
+    try {
+      await provider.startBackground(
+        ctx,
+        "local",
+        `sleep 120 & echo $! > ${directory}/child.pid; wait`,
+        job,
+      );
+      pgid = Number(await readFile(`${directory}/group.pid`, "utf8"));
+      await expect.poll(() => readFile(`${directory}/child.pid`, "utf8")).toMatch(/^\d+\n$/);
+      child = Number(await readFile(`${directory}/child.pid`, "utf8"));
+      const supervisor = Number(await readFile(`${directory}/supervisor.pid`, "utf8"));
+      process.kill(supervisor, "SIGKILL");
+      for (const pid of [pgid, child]) {
+        await mkdir(`${procDirectory}/${pid}`, { recursive: true });
+        await writeFile(`${procDirectory}/${pid}/environ`, `AGEVEX_JOB=${jobId}\0`);
+      }
+      if (ownership === "unreadable") await unlink(`${procDirectory}/${child}/environ`);
+      else if (ownership !== "owned")
+        await writeFile(
+          `${procDirectory}/${child}/environ`,
+          ownership === "unmarked" ? "PATH=/bin\0" : `AGEVEX_JOB=${jobId}-other\0`,
+        );
+      await provider.cancelBackground(ctx, jobId, job);
+      expect(await readFile(`${directory}/cancel.request`, "utf8")).toBe("deadline\n");
+      expect(await provider.poll(ctx, jobId, job)).toMatchObject({ state: "unknown" });
+      expect(await readFile(`${directory}/cancelled`, "utf8")).toBe(
+        ownership === "owned" ? "deadline" : "unknown",
+      );
+      if (ownership === "owned")
+        expect(await readFile(`${directory}/fallback.audit`, "utf8")).toBe(`${pgid}\n`);
+      else {
+        await expect(access(`${directory}/fallback.audit`)).rejects.toThrow();
+        // The unverified group survives; no signal was sent to its saved PGID.
+        expect(() => process.kill(child!, 0)).not.toThrow();
+      }
+    } finally {
+      // These exact children were created by this test; cleanup does not rely
+      // on a provider-supplied or potentially reused process-group identity.
+      for (const pid of [child, pgid]) {
+        if (pid) {
+          try {
+            process.kill(pid, "SIGKILL");
+          } catch {
+            /* already exited */
+          }
+        }
+      }
+      await rm(directory, { recursive: true, force: true });
+      await rm(patchDirectory, { recursive: true, force: true });
+    }
+  },
+);
 
 it("Daytona publishes group identity and exit status atomically while empty and partial writes stay running", async () => {
   const patchDirectory = await mkdtemp(join(tmpdir(), "agevex-publication-"));

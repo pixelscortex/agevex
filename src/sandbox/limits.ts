@@ -10,6 +10,10 @@ export const LIMITS = {
   exportChunkBytes: 512 * 1024,
   backgroundExecTimeoutS: 10,
   backgroundKillGraceS: 0.1,
+  backgroundControlWaitS: 1,
+  // Linux exec environments fit within ARG_MAX; overflow is unverified and
+  // must skip fallback signaling rather than accepting a partial marker scan.
+  backgroundEnvironmentBytes: 2 * 1024 * 1024,
   backgroundPublishPollS: 0.01,
   backgroundKillBudgetMs: 10_000,
   backgroundRoot: "/tmp/agevex/jobs",

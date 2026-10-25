@@ -27,10 +27,12 @@ export type JobOutcome = {
  * Reads/listing must enforce the supplied bound BEFORE returning across a
  * Convex boundary. No method may retry a command or background launch.
  * A supplied background identity/location was persisted before launch and
- * must be honored, including when launch throws. cancelBackground kills the
- * entire process group with a bounded operation.
- * On command exit, leftover descendants must be terminated before publishing
- * completion: a background job is the main command, not a persistent service.
+ * must be honored, including when launch throws. cancelBackground performs
+ * bounded cleanup of the job's original process group, verifying ownership
+ * before any fallback signal; an unverified outcome remains unknown.
+ * On command exit, descendants still in that group must be terminated before
+ * publishing completion. Deliberate detachment (setsid / daemonizing) requires
+ * sandbox stop/delete for full containment; isolation comes from the provider.
  * download returns a bounded window starting at offset (a short window means
  * EOF), rejects files above totalSizeLimit, and never records file bytes in
  * component args or rows.

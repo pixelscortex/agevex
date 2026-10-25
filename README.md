@@ -102,10 +102,13 @@ Background completion produces one atomic host callback with
 threadId, runId, state: "done" | "failed" | "unknown", exitCode?, logTail?, code? }`.
 The provider job ID, sandbox ID and private job directory are persisted before
 launch. Daytona detaches a process group through bounded synchronous execs;
-the module owns polling and reads actual log tails at the source. A background
-job is its main command: when it exits, leftover descendants receive SIGTERM
-then SIGKILL after a short grace period before completion is published.
-Group identity and completion files are published by atomic rename. Polls back
+the module owns polling and reads actual log tails at the source. The provider's
+disposable VM supplies isolation: on completion and on deadline, every process still in the job's original process group is terminated; a process that deliberately detaches (setsid / daemonizes) is outside this guarantee; for full containment stop or delete the sandbox, which `sandbox.stop` / TTL cleanup do.
+The supervisor retains the unreaped leader through SIGTERM and SIGKILL before
+publishing completion. Cancellation uses an atomic control file; if the supervisor
+does not acknowledge it, fallback signaling requires every current group member's
+`AGEVEX_JOB` marker in `/proc`. Unverified ownership records `unknown` without
+signaling. Group identity and completion files are published by atomic rename. Polls back
 off and stop at completion or a bounded deadline. Expiry attempts a bounded
 group kill and records `unknown` with `SANDBOX_JOB_DEADLINE`. Status failures
 keep polling with backoff until the deadline. An `unknown` result first attempts

@@ -12,7 +12,7 @@ const api = anyApi as unknown as ApiFromModules<{ daytona: typeof daytona }>;
 const modules = import.meta.glob(["./fixture/daytona.ts", "./fixture/_generated/*.ts"]);
 
 it.skipIf(!process.env.DAYTONA_API_KEY)(
-  "live Daytona terminates background descendants, preserves the log tail, exports below 8 MiB, and always deletes the sandbox",
+  "live Daytona enforces original-group cleanup, control-file cancellation and fallback marker checks, and always deletes the sandbox",
   async () => {
     const t = convexTest({ schema, modules, transactionLimits: true });
     daytonaTest.register(t);
@@ -52,6 +52,24 @@ it.skipIf(!process.env.DAYTONA_API_KEY)(
       expect(
         await t.action(api.daytona.lifecycle, { op: "descendantCheck", sandboxId }),
       ).toMatchObject({ exitCode: 0 });
+      for (const mode of ["control", "fallback", "unmarked"]) {
+        const cancellationJob = (await t.action(api.daytona.lifecycle, {
+          op: `${mode}Background`,
+          sandboxId,
+        })) as BackgroundJob;
+        expect(
+          await t.action(api.daytona.lifecycle, {
+            op: `${mode}Cancel`,
+            sandboxId,
+            job: cancellationJob,
+          }),
+        ).toMatchObject({
+          cancellation: mode === "unmarked" ? "unknown" : "deadline",
+          request: "deadline\n",
+          inspection: { exitCode: 0 },
+          outcome: { state: "unknown" },
+        });
+      }
       const exported = (await t.action(api.daytona.lifecycle, { op: "export", sandboxId })) as {
         bytes: number;
         sha256: string;
@@ -83,6 +101,9 @@ it.skipIf(!process.env.DAYTONA_API_KEY)(
         cost: "not reported by provider",
         backgroundLogBytes: 70000,
         descendantTerminated: true,
+        controlFileCancel: true,
+        fallbackMarkerVerified: true,
+        unmarkedGroupPreserved: true,
         exportBytes: 3 * 1024 * 1024 + 17,
       }),
     );
