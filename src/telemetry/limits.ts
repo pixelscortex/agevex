@@ -6,7 +6,10 @@ export const LIMITS = {
   maxNameBytes: 256,
   // Seven propagated facts × 256 bytes × worst-case JSON escaping (6)
   // plus key/OTLP overhead fits under 12 KiB, leaving room in each 16 KiB list.
+  // A fact above this is not rejected (that would silently disable telemetry for
+  // the whole turn): it is exported as "sha256:" + a 64-hex digest instead, 71 bytes.
   maxFactBytes: 256,
+  factDigestHexLength: 64,
   maxConfigurationBytes: 4096,
   maxExporters: 4,
   maxValueNodes: 128,

@@ -10,7 +10,13 @@ import { requireReceipt } from "../receipt.js";
 import { opaqueKey } from "../../src/client/keys.js";
 import type { TurnArgs } from "../../src/client/index.js";
 import type { SlotActionCtx } from "../../src/client/slots.js";
-import { langfuse, telemetry, type OtlpPayload, type Span } from "../../src/telemetry/index.js";
+import {
+  LIMITS,
+  langfuse,
+  telemetry,
+  type OtlpPayload,
+  type Span,
+} from "../../src/telemetry/index.js";
 import { facts, scripted } from "./script.js";
 
 const modules = import.meta.glob(["../fixture/**/*.ts", "../fixture/**/*.js"]);
@@ -297,3 +303,28 @@ it.each(["before", "during"])(
       );
   },
 );
+
+it("a direct slot flush without a signal still stops a hung exporter at the module deadline", async () => {
+  let received: AbortSignal | undefined;
+  const slot = telemetry.slot({
+    exporters: [
+      {
+        export(_, signal) {
+          received = signal;
+          return new Promise<void>(() => {});
+        },
+      },
+    ],
+  });
+  await scripted(slot.integration(facts));
+  let settled = false;
+  const flushing = slot.flush(facts).then(() => {
+    settled = true;
+  });
+  await vi.waitFor(() => expect(received).toBeDefined());
+  expect(settled).toBe(false);
+  await vi.advanceTimersByTimeAsync(LIMITS.exportTimeoutMs);
+  await flushing;
+  expect(settled).toBe(true);
+  expect(received?.aborted).toBe(true);
+});

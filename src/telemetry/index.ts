@@ -1,7 +1,7 @@
 import type { Telemetry } from "ai";
 import type { TelemetrySlot } from "../client/slots.js";
 import { bestEffort, type Exporter } from "./exporters.js";
-import { LIMITS, truncate, validateString } from "./limits.js";
+import { LIMITS, bytes, truncate, validateString } from "./limits.js";
 import {
   attributeWriter,
   hash,
@@ -48,6 +48,12 @@ type Call = {
   modelAttempt: number;
   toolOrdinal: number;
   tools: Map<string, BufferedSpan>;
+  /**
+   * A child span (step, chat or tool) was never created because the turn hit
+   * LIMITS.maxSpansPerTurn. The call itself may be perfectly healthy, so a span
+   * that is absent for this reason must not be read as "never finished".
+   */
+  truncated?: boolean;
 };
 
 /**
@@ -92,6 +98,8 @@ telemetry.slot = (options: TelemetryOptions): TelemetrySlot => {
         // Missing, empty and already-flushed keys are no-ops. The one-shot buffer
         // seals synchronously, even if signal was already aborted. Core owns the
         // 3 s deadline; only race its signal here, without another timer/retry.
+        // A direct host call without a signal gets the module's own deadline
+        // instead (decided per flush in the turn buffer, see bestEffort's caller).
         await turn?.flush(signal);
       } catch {
         /* No telemetry export failure may change managed execution. */
@@ -144,29 +152,47 @@ function createTurnTelemetry(options: TelemetryOptions, ownDeadline = true): Tur
   let buffer: BufferedSpan[] = [];
   let sealed = false;
   let flushing: Promise<void> | undefined;
+  // Oversized facts are exported as a SHA-256 digest, but WebCrypto is async while
+  // integration() must return synchronously. The attribute is written with a short
+  // placeholder now (still passing through the host's sanitize rules by key) and
+  // swapped for the real digest at flush, before anything leaves the process. The
+  // raw value is never stored on a span. Map size only grows, so ids are unique.
+  const pendingDigests = new Map<string, Promise<string>>();
+  const digestLater = (value: string): string => {
+    const placeholder = `sha256:pending:${pendingDigests.size}`;
+    const digest = hash(value, LIMITS.factDigestHexLength).then((hex) => `sha256:${hex}`);
+    // flush may never run (the turn can be abandoned): observe a WebCrypto
+    // rejection here so it cannot surface as an unhandled rejection. The original
+    // promise still rejects when flush awaits it, which skips that export.
+    digest.catch(() => {});
+    pendingDigests.set(placeholder, digest);
+    return placeholder;
+  };
 
   return {
     integration(facts) {
       const identity = { ...facts };
-      for (const key of [
-        "subject",
-        "rootThreadId",
-        "threadId",
-        "runId",
-        "agent",
-        "turnKey",
-      ] as const)
-        validateString(identity[key], key, LIMITS.maxFactBytes);
+      const keys = ["subject", "rootThreadId", "threadId", "runId", "agent", "turnKey"] as const;
+      // Presence stays mandatory (an empty or non-string fact is a wiring bug), but
+      // length no longer is: a long subject used to make this throw, which core
+      // treats as "telemetry unavailable" and silently drops the whole turn's trace.
+      // Validate every key before digesting any, so a rejected set leaves no state.
+      for (const key of keys) validateString(identity[key], key, Number.MAX_SAFE_INTEGER);
       const seed = JSON.stringify([identity.runId, identity.turnKey]);
+      // Attribution as exported. The seed above keeps the raw ids (it is only ever
+      // hashed again, never exported), so trace ids stay stable across retries.
+      const exported = { ...identity };
+      for (const key of keys)
+        if (bytes(identity[key]) > LIMITS.maxFactBytes) exported[key] = digestLater(identity[key]);
       const calls = new Map<string, Call>();
       const common = {
-        "langfuse.session.id": identity.rootThreadId,
-        "langfuse.user.id": identity.subject,
-        "langfuse.trace.name": identity.agent,
-        "langfuse.trace.metadata.thread_id": identity.threadId,
-        "langfuse.trace.metadata.run_id": identity.runId,
-        "langfuse.trace.metadata.agent": identity.agent,
-        "langfuse.trace.metadata.turn_key": identity.turnKey,
+        "langfuse.session.id": exported.rootThreadId,
+        "langfuse.user.id": exported.subject,
+        "langfuse.trace.name": exported.agent,
+        "langfuse.trace.metadata.thread_id": exported.threadId,
+        "langfuse.trace.metadata.run_id": exported.runId,
+        "langfuse.trace.metadata.agent": exported.agent,
+        "langfuse.trace.metadata.turn_key": exported.turnKey,
       };
       const add = (
         name: string,
@@ -232,14 +258,35 @@ function createTurnTelemetry(options: TelemetryOptions, ownDeadline = true): Tur
             write(span.attributes, key, count);
         }
       };
+      /**
+       * Wrap add() for a call's child span. A missing result means the span ceiling
+       * dropped it (callbacks never run once sealed), so record that on the call and
+       * mark its root: buffer[0] is only the first call's root, which would tell a
+       * reader nothing about this call's own tree.
+       */
+      const child = (call: Call, span: BufferedSpan | undefined) => {
+        if (!span) {
+          call.truncated = true;
+          markTruncated(call.root.attributes);
+        }
+        return span;
+      };
+      /** Open means created and not ended; a span dropped for the ceiling is not open. */
+      const unfinished = (call: Call | undefined, span: BufferedSpan | undefined) =>
+        span ? !span.endTimeUnixNano : !call?.truncated;
       const endCall = (callId: string, reason?: string) => {
         const call = calls.get(callId);
         if (!call) return;
         // onEnd is not proof of successful completion: SDK streams can close
         // with partial output and no model-call-end event. Every open child must
         // be failed rather than silently promoted to OK by its parent's end.
+        //
+        // Exception: a step or chat that is absent only because the turn hit the
+        // span ceiling was never open, so it cannot be unfinished. Without this, a
+        // call whose root took one of the last slots (its step/chat dropped) that
+        // otherwise succeeded would be exported as "Call incomplete".
         const incomplete =
-          !call.step?.endTimeUnixNano || !call.chat?.endTimeUnixNano || call.tools.size > 0;
+          unfinished(call, call.step) || unfinished(call, call.chat) || call.tools.size > 0;
         const failure = reason ?? (incomplete ? "Call incomplete" : undefined);
         finish(call.root, failure);
         if (!call.step?.endTimeUnixNano) finish(call.step, failure);
@@ -270,7 +317,7 @@ function createTurnTelemetry(options: TelemetryOptions, ownDeadline = true): Tur
           );
           if (!root) return;
           calls.set(event.callId, { root, modelAttempt: 0, toolOrdinal: 0, tools: new Map() });
-          write(root.attributes, "gen_ai.agent.name", identity.agent);
+          write(root.attributes, "gen_ai.agent.name", exported.agent);
           if ("modelId" in event) write(root.attributes, "gen_ai.request.model", event.modelId);
           if ("provider" in event) write(root.attributes, "gen_ai.provider.name", event.provider);
           if ("messages" in event)
@@ -294,24 +341,30 @@ function createTurnTelemetry(options: TelemetryOptions, ownDeadline = true): Tur
           call.chat = undefined;
           call.modelAttempt = 0;
           call.toolOrdinal = 0;
-          call.step = add(
-            `step ${nameComponent(String(event.stepNumber), "gen_ai.step.number")}`,
-            `${call.root.path}/step:${event.stepNumber}`,
-            "agent_step",
-            "span",
-            call.root,
+          call.step = child(
+            call,
+            add(
+              `step ${nameComponent(String(event.stepNumber), "gen_ai.step.number")}`,
+              `${call.root.path}/step:${event.stepNumber}`,
+              "agent_step",
+              "span",
+              call.root,
+            ),
           );
         }),
         onLanguageModelCallStart: safe((event) => {
           const call = calls.get(event.callId);
           if (!call?.step) return;
-          call.chat = add(
-            `chat ${nameComponent(event.modelId, "gen_ai.request.model")}`,
-            `${call.step.path}/chat:${call.modelAttempt++}`,
-            "chat",
-            "generation",
-            call.step,
-            3,
+          call.chat = child(
+            call,
+            add(
+              `chat ${nameComponent(event.modelId, "gen_ai.request.model")}`,
+              `${call.step.path}/chat:${call.modelAttempt++}`,
+              "chat",
+              "generation",
+              call.step,
+              3,
+            ),
           );
           if (!call.chat) return;
           write(call.chat.attributes, "gen_ai.request.model", event.modelId);
@@ -354,12 +407,15 @@ function createTurnTelemetry(options: TelemetryOptions, ownDeadline = true): Tur
         onToolExecutionStart: safe((event) => {
           const call = calls.get(event.callId);
           if (!call?.step) return;
-          const tool = add(
-            `execute_tool ${nameComponent(event.toolCall.toolName, "gen_ai.tool.name")}`,
-            `${call.step.path}/tool:${call.toolOrdinal++}`,
-            "execute_tool",
-            "tool",
-            call.chat ?? call.step,
+          const tool = child(
+            call,
+            add(
+              `execute_tool ${nameComponent(event.toolCall.toolName, "gen_ai.tool.name")}`,
+              `${call.step.path}/tool:${call.toolOrdinal++}`,
+              "execute_tool",
+              "tool",
+              call.chat ?? call.step,
+            ),
           );
           if (!tool) return;
           call.tools.set(event.toolCall.toolCallId, tool);
@@ -396,9 +452,12 @@ function createTurnTelemetry(options: TelemetryOptions, ownDeadline = true): Tur
           // and retains partial output without a terminal chunk. Only an actual
           // model-call-end confirms completion; an explicit 'other' finish reason
           // is valid when that callback did arrive.
+          //
+          // A chat that was dropped for the span ceiling was never recorded, so its
+          // absence says nothing about the stream; do not report it as incomplete.
           const failure =
             finishFailure(event.finishReason) ??
-            (!call?.chat?.endTimeUnixNano ? "Model stream incomplete" : call.chat.status.message);
+            (unfinished(call, call?.chat) ? "Model stream incomplete" : call?.chat?.status.message);
           if (!call?.chat?.endTimeUnixNano) finish(call?.chat, failure);
           finish(step, failure);
           fail(call?.root, failure);
@@ -442,6 +501,24 @@ function createTurnTelemetry(options: TelemetryOptions, ownDeadline = true): Tur
       flushing = (async () => {
         try {
           if (!spans.length || signal?.aborted) return;
+          // Resolve oversized-fact digests first. Only the exact placeholder this
+          // turn minted is replaced, and only if sanitize left it untouched: a host
+          // that redacted the attribute keeps its own redaction.
+          if (pendingDigests.size) {
+            const digests = new Map(
+              await Promise.all(
+                [...pendingDigests].map(
+                  async ([placeholder, digest]) => [placeholder, await digest] as const,
+                ),
+              ),
+            );
+            for (const span of spans)
+              for (const attribute of span.attributes) {
+                const value = "stringValue" in attribute.value && attribute.value.stringValue;
+                const digest = value ? digests.get(value) : undefined;
+                if (digest) attribute.value = { stringValue: digest };
+              }
+          }
           // No Convex reads/writes. At the hard ceiling: 128 spans × 16 KiB
           // encoded attributes = 2 MiB; names/ids/times/envelopes add < 256 KiB,
           // so the single OTLP request is < 2.25 MiB. At most four exporters
@@ -481,7 +558,11 @@ function createTurnTelemetry(options: TelemetryOptions, ownDeadline = true): Tur
               bestEffort(
                 (exportSignal) => exporter.export(body, exportSignal),
                 signal,
-                ownDeadline,
+                // Managed turns normally lean on core's bounded signal, but a host
+                // may call slot.flush(facts) directly with none. Without a signal
+                // there is no deadline at all, so a hung exporter would hang the
+                // caller forever: fall back to this module's own 3 s deadline.
+                ownDeadline || signal === undefined,
               ),
             ),
           );

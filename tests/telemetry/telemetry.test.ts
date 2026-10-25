@@ -557,9 +557,7 @@ it("invalid registration and facts fail before attaching telemetry", () => {
   ).toThrow("exporters");
   const observer = telemetry({ exporters: [] });
   expect(() => observer.integration({ ...facts, subject: "" })).toThrow("subject");
-  expect(() =>
-    observer.integration({ ...facts, turnKey: "é".repeat(LIMITS.maxFactBytes) }),
-  ).toThrow("turnKey");
+  expect(() => observer.integration({ ...facts, turnKey: "" })).toThrow("turnKey");
   expect(() =>
     langfuse({ baseUrl: "file:///tmp/trace", publicKey: "pk", secretKey: "sk" }),
   ).toThrow("baseUrl");
@@ -643,4 +641,45 @@ it("maximum escaped facts remain present on every span within the byte ceiling",
     });
     expect(byteSize(span.attributes)).toBeLessThanOrEqual(LIMITS.maxAttributeBytes);
   }
+});
+
+it("a successful call whose child spans hit the span ceiling stays OK and is marked truncated", async () => {
+  const { observer, integration, bodies } = capture();
+  // One scripted call records 6 spans (agent, 2 steps, 2 chats, 1 tool). 21 calls
+  // fill 126 slots, so the 22nd call's root takes slot 127, its first step slot
+  // 128, and its chat, tool and second step are all dropped by the ceiling.
+  const filled = 21;
+  for (let index = 0; index <= filled; index++) await scripted(integration);
+  await observer.flush();
+  const spans = spansIn(bodies[0]);
+  expect(spans).toHaveLength(LIMITS.maxSpansPerTurn);
+  const root = spans[filled * 6];
+  expect(root.name).toMatch(/^invoke_agent /);
+  expect(root.status).toEqual({ code: 1 });
+  expect(attributesOf(root)["agevex.truncated"]).toBe(true);
+  // The model call really did succeed: nothing in the buffer may be reported failed.
+  expect(spans.filter((span) => span.status.code === 2)).toEqual([]);
+});
+
+it("facts over the byte limit are exported as a sha256 digest instead of disabling telemetry", async () => {
+  const { observer, bodies } = capture();
+  const subject = "é".repeat(LIMITS.maxFactBytes); // 2 bytes each: 512 bytes, over the limit
+  const agent = "a".repeat(300);
+  const digest = (value: string) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
+  await scripted(observer.integration({ ...facts, subject, agent }));
+  await observer.flush();
+  const spans = spansIn(bodies[0]);
+  expect(spans.length).toBeGreaterThan(0);
+  validateOtlp(bodies[0]);
+  for (const span of spans)
+    expect(attributesOf(span)).toMatchObject({
+      "langfuse.user.id": digest(subject),
+      "langfuse.trace.name": digest(agent),
+      "langfuse.trace.metadata.agent": digest(agent),
+      // Facts within the limit are untouched.
+      "langfuse.session.id": facts.rootThreadId,
+      "langfuse.trace.metadata.turn_key": facts.turnKey,
+    });
+  expect(JSON.stringify(bodies)).not.toContain(subject);
+  expect(JSON.stringify(bodies)).not.toContain(agent);
 });
