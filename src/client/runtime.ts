@@ -1,59 +1,59 @@
-import { createThread, getThreadMetadata, saveMessage } from "@convex-dev/agent";
 import {
   createFunctionHandle,
   getFunctionAddress,
   internalActionGeneric,
-  internalMutationGeneric,
-  type GenericActionCtx,
-  type GenericDataModel,
-  type GenericMutationCtx,
   type RegisteredAction,
-  type RegisteredMutation,
 } from "convex/server";
-import { ConvexError, getConvexSize, v } from "convex/values";
-import { assertFact } from "../component/facts.js";
+import { ConvexError, v } from "convex/values";
 import { opaqueKey } from "./keys.js";
 import { boundedDownload } from "./download.js";
 import { tool } from "ai";
 import { z } from "zod";
 import type { ComponentApi } from "../component/_generated/component.js";
-import { denialCode, runErrorCode } from "../component/schema.js";
-import { LIMITS, resolveLimits } from "../component/limits.js";
-import { postNote, type NoteArgs } from "./hooks.js";
-import { bindOnceTool, fingerprint } from "./once.js";
+import { LIMITS } from "../component/limits.js";
+import { bindOnceTool } from "./once.js";
 import { bindTaskContext, runTask, type Task, type TaskOptions } from "./tasks.js";
 import { scopedMeter, type SlotFacts } from "./slots.js";
 import type {
   HookResult,
   HookContext,
   Activity,
-  CoordinateArgs,
-  CoordinateResult,
-  ManagedAgent,
   Registration,
   RunErrorCode,
-  AgentEvent,
   TurnArgs,
 } from "./types.js";
 import { authorizedEndpoints } from "./endpoints.js";
+import { buildCoordinate } from "./coordinate/coordinator.js";
+import { deliverTerminalRun } from "./coordinate/delivery.js";
+import {
+  fileAttached,
+  registerFile,
+  type FileAttachedArgs,
+  type RegisterFileArgs,
+} from "./host/files.js";
+import { note, sandboxComplete, type SandboxCompletion } from "./host/notes.js";
+import type { NoteArgs } from "./hooks.js";
+import {
+  createRuntimeContext,
+  observe,
+  type CoordinatorCtx,
+  type RunnerCtx,
+} from "./registration/context.js";
+import {
+  ASK_PARENT_TOOL_NAME,
+  DELEGATE_TOOL_NAME,
+  MESSAGE_CHILD_TOOL_NAME,
+  RESERVED_TOOL_NAMES,
+} from "./tool-names.js";
 
-/**
- * Reserved managed tool names. They are rejected in every agent's own tools at
- * registration, so merging the managed tool can never silently overwrite a host
- * tool, and a host cannot impersonate it.
- */
-export const DELEGATE_TOOL_NAME = "agevex_delegate";
-export const MESSAGE_CHILD_TOOL_NAME = "agevex_message_child";
-export const ASK_PARENT_TOOL_NAME = "agevex_ask_parent";
+export { ASK_PARENT_TOOL_NAME, DELEGATE_TOOL_NAME, MESSAGE_CHILD_TOOL_NAME };
+export type { SandboxCompletion };
 
 function mergeSlotTools(...bags: import("ai").ToolSet[]): import("ai").ToolSet {
   const merged: import("ai").ToolSet = {};
   for (const bag of bags)
     for (const [name, value] of Object.entries(bag)) {
-      if (
-        name in merged ||
-        [DELEGATE_TOOL_NAME, MESSAGE_CHILD_TOOL_NAME, ASK_PARENT_TOOL_NAME].includes(name)
-      )
+      if (name in merged || RESERVED_TOOL_NAMES.includes(name))
         throw new Error("SLOT_TOOL_COLLISION");
       merged[name] = value;
     }
@@ -67,164 +67,6 @@ function telemetryIntegrations(config: Registration, facts: SlotFacts, turnKey: 
   }
 }
 
-/** Mutation context the coordinator runs with; also what native saves accept. */
-type CoordinatorCtx = GenericMutationCtx<GenericDataModel>;
-
-/** Action context the host runner finalizes a turn with. */
-type RunnerCtx = GenericActionCtx<GenericDataModel>;
-export type SandboxCompletion = {
-  subject: string;
-  threadId: string;
-  runId: string;
-  jobId: string;
-  state: "done" | "failed" | "unknown";
-  exitCode?: number;
-  logTail?: string;
-};
-
-/** Trusted, server-derived delivery context; contains no capability. */
-type DeliveryContext = {
-  runId: string;
-  agent: string;
-  rootAgent: string;
-  actorAgent: string;
-  subject: string;
-  rootAssignmentId: string;
-  rootThreadId: string;
-  childThreadId: string;
-  childResultMessageId: string | null;
-  status: "completed" | "failed";
-  errorCode: RunErrorCode;
-  rootAvailable: boolean;
-  parentAgent: string;
-  parentThreadId: string;
-  side?: boolean;
-};
-
-/** The native facts one child-result verification is allowed to assume. */
-type ChildResultTarget = {
-  threadId: string;
-  agentName: string;
-  messageId: string;
-  subject: string;
-};
-
-/** Resolved, validated delegation graph built once at registration. */
-type Graph = {
-  /** Every executable managed agent, roots and shared children alike. */
-  byName: Map<string, ManagedAgent>;
-  /** Child agent objects, keyed by the name a delegation request uses. */
-  children: Map<string, ManagedAgent>;
-  /** Which child names a root may delegate to. */
-  edges: Map<string, ReadonlySet<string>>;
-};
-
-/** Whether a value is an executable managed agent rather than a name-only entry. */
-function isManagedAgent(value: unknown): value is ManagedAgent {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as ManagedAgent).name === "string" &&
-    typeof (value as ManagedAgent).streamText === "function" &&
-    typeof (value as ManagedAgent).component === "object" &&
-    Array.isArray((value as ManagedAgent).subagents)
-  );
-}
-
-/**
- * Validate the declared agent graph and resolve every delegation target.
- *
- * Rejected explicitly rather than tolerated: an unknown or name-only subagent
- * entry, a duplicate name bound to two different agents, a cycle, depth greater
- * than the host's maxDepth, a child that is also a public root, and any host
- * tool colliding with a reserved managed collaboration name. A child object does not need to be
- * listed in `Registration.agents`, so a shared definition stays non-public.
- */
-function resolveGraph(config: Registration): Graph {
-  const byName = new Map<string, ManagedAgent>();
-  const children = new Map<string, ManagedAgent>();
-  const edges = new Map<string, ReadonlySet<string>>();
-  const roots = new Set(config.agents.map((root) => root.name));
-  if (roots.size !== config.agents.length) throw new Error("DUPLICATE_AGENT_NAME");
-  const maxDepth = resolveLimits(config.limits).maxDepth;
-  function visit(agent: ManagedAgent, depth: number, path: Set<ManagedAgent>) {
-    if (!isManagedAgent(agent)) throw new Error("UNKNOWN_SUBAGENT");
-    if (agent.sandbox !== undefined && typeof agent.sandbox !== "boolean")
-      throw new Error("INVALID_SANDBOX_OPT_IN");
-    assertFact(agent.name, "agent");
-    if (path.has(agent)) throw new Error("SUBAGENT_CYCLE");
-    if (depth > maxDepth) throw new Error("SUBAGENT_DEPTH");
-    if (depth && roots.has(agent.name)) throw new Error("ROOT_AS_CHILD");
-    const existing = byName.get(agent.name);
-    if (existing && existing !== agent) throw new Error("DUPLICATE_AGENT_NAME");
-    if (
-      [DELEGATE_TOOL_NAME, MESSAGE_CHILD_TOOL_NAME, ASK_PARENT_TOOL_NAME].some(
-        (name) => name in agent.declaredTools,
-      )
-    )
-      throw new Error("RESERVED_TOOL_NAME");
-    byName.set(agent.name, agent);
-    if (depth) children.set(agent.name, agent);
-    edges.set(agent.name, new Set(agent.subagents.map((child) => child.name)));
-    // Walk every path, even through a shared object: its longest path must fit.
-    const next = new Set(path).add(agent);
-    const sides = agent.sideAgents ?? [];
-    if (
-      sides.length > LIMITS.sideAgents ||
-      new Set(sides.map((side) => side.agent.name)).size !== sides.length
-    )
-      throw new Error("INVALID_SIDE_AGENTS");
-    for (const side of sides) {
-      const values = Object.values(side.every);
-      if (
-        side.sees !== "delta" ||
-        values.length !== 1 ||
-        !Number.isSafeInteger(values[0]) ||
-        values[0] <= 0 ||
-        values[0] > LIMITS.cadence ||
-        !("turns" in side.every || "minutes" in side.every)
-      )
-        throw new Error("INVALID_SIDE_CADENCE");
-      visit(side.agent, depth + 1, next);
-    }
-    for (const child of agent.subagents) visit(child, depth + 1, next);
-  }
-  for (const root of config.agents) visit(root, 0, new Set());
-  if (byName.size > LIMITS.agents) throw new Error("AGENT_LIMIT");
-  return { byName, children, edges };
-}
-
-/**
- * Convex argument validator for the coordinator.
- *
- * Declared as one flat object with a discriminant rather than a validator union:
- * Convex requires an arguments validator to be an object, and the discriminated
- * `CoordinateArgs` union is enforced by the handler, which refuses any
- * combination the contract does not define.
- */
-const coordinateArgs = v.object({
-  op: v.string(),
-  side: v.optional(v.boolean()),
-  assignmentId: v.optional(v.string()),
-  turnToken: v.optional(v.string()),
-  toolCallId: v.optional(v.string()),
-  agent: v.optional(v.string()),
-  task: v.optional(v.string()),
-  runId: v.optional(v.string()),
-  resultMessageId: v.optional(v.string()),
-  errorCode: v.optional(runErrorCode),
-  deliveryToken: v.optional(v.string()),
-  group: v.optional(v.string()),
-  wait: v.optional(v.union(v.literal("each"), v.literal("all"))),
-  text: v.optional(v.string()),
-  question: v.optional(v.string()),
-});
-
-const delegationResult = v.union(
-  v.object({ status: v.literal("queued"), runId: v.string(), agent: v.string() }),
-  v.object({ status: v.literal("denied"), code: denialCode }),
-);
-
 /**
  * Register one managed, bounded agent graph with the Agevex Convex runtime.
  *
@@ -233,319 +75,8 @@ const delegationResult = v.union(
  * native methods remain unmanaged.
  */
 export function registerAgent(component: ComponentApi, config: Registration) {
-  const limits = resolveLimits(config.limits);
-  const graph = resolveGraph(config);
-  for (const [slot, methods] of [
-    [config.usage, ["scope"]],
-    [config.budget, ["check"]],
-    [config.telemetry, ["integration", "flush"]],
-    [config.sandbox, ["tools"]],
-    [config.extract, ["run", "tools"]],
-  ] as const) {
-    if (
-      slot !== undefined &&
-      (!slot ||
-        methods.some(
-          (method) => typeof (slot as unknown as Record<string, unknown>)[method] !== "function",
-        ))
-    )
-      throw new Error("INVALID_SLOT");
-  }
-  if (
-    !!config.models !== !!config.modelAllowlist ||
-    (config.models !== undefined && typeof config.models !== "function") ||
-    (config.modelAllowlist &&
-      (config.modelAllowlist.length > LIMITS.modelAllowlist ||
-        new Set(config.modelAllowlist).size !== config.modelAllowlist.length ||
-        config.modelAllowlist.some((id) => !id || id.length > LIMITS.modelIdLength)))
-  )
-    throw new Error("INVALID_MODEL_REGISTRATION");
-  for (const agent of graph.byName.values()) {
-    const deferred = Object.entries(agent.declaredTools).filter(
-      ([, tool]) => !tool.execute && tool.type !== "provider",
-    );
-    if (
-      deferred.length > LIMITS.approvalsPerPause ||
-      deferred.some(([name]) => !name || name.length > LIMITS.requestKeyLength)
-    )
-      throw new Error("INVALID_DEFERRED_TOOLS");
-  }
-  const collaboration =
-    [...graph.edges.values()].some((allowed) => allowed.size > 0) ||
-    [...graph.byName.values()].some((agent) => agent.sideAgents?.length);
-  const agentIndexes = new Map([...graph.byName.keys()].sort().map((name, index) => [name, index]));
-  if (collaboration && !config.refs.coordinate) throw new Error("COORDINATE_REF_REQUIRED");
-
-  const watching = [...graph.byName.values()].some((agent) => agent.sideAgents?.length);
-
-  async function saveTrackedMessage(
-    ctx: CoordinatorCtx,
-    native: ManagedAgent["component"],
-    args: Parameters<typeof saveMessage>[2],
-  ) {
-    const saved = await saveMessage(ctx, native, args);
-    if (watching)
-      await ctx.runMutation(component.hooks.capture, {
-        threadId: args.threadId,
-        savedMessage: {
-          id: saved.messageId,
-          order: saved.message.order,
-          stepOrder: saved.message.stepOrder,
-          bytes: getConvexSize(saved.message),
-        },
-      });
-    return saved;
-  }
-
-  async function observe(ctx: CoordinatorCtx | RunnerCtx, event: AgentEvent): Promise<void> {
-    try {
-      await config.observe?.(ctx, event);
-    } catch {
-      // Observability is best effort and must never change managed execution.
-    }
-  }
-
-  /**
-   * Authenticate one child's final message against the native child transcript.
-   *
-   * Requires the thread to exist and still belong to the stored subject, and the
-   * exact stored message id to be an `assistant` `success` message attributed to
-   * the expected child agent and carry non-empty text. A caller-selected message id
-   * therefore cannot settle or be delivered as a result, a tool-only or empty
-   * completion is rejected, and a foreign thread is refused even when it holds a
-   * message with the same id.
-   *
-   * The `assistant` role is what makes this a result and not merely a saved
-   * message: native `saveMessage` lets a caller store a `user` message that names
-   * an agent, so a user-role message on the correct child thread would otherwise
-   * pass every other check and settle a run with no final assistant output. Native
-   * user prompts are still stored and read normally; only result verification
-   * requires the assistant role.
-   *
-   * Returns the verified text, or `null` when the message cannot be trusted.
-   */
-  async function verifyChildMessage(
-    ctx: CoordinatorCtx,
-    target: ChildResultTarget,
-  ): Promise<string | null> {
-    const child = graph.children.get(target.agentName);
-    if (!child) return null;
-    const thread = await getThreadMetadata(ctx, child.component, { threadId: target.threadId });
-    if (!thread || thread.userId !== target.subject) return null;
-    // An untrusted reported id can fail the native id validator. Treat that
-    // just like a missing document: no verified result, and no transcript scan.
-    const found = await ctx
-      .runQuery(child.component.messages.getMessagesByIds, {
-        messageIds: [target.messageId],
-      })
-      .then(
-        ([message]) => message,
-        () => null,
-      );
-    if (
-      !found ||
-      found.threadId !== target.threadId ||
-      found.message?.role !== "assistant" ||
-      found.status !== "success" ||
-      found.agentName !== target.agentName
-    )
-      return null;
-    // `text` is the native extraction of this saved message's text parts.
-    const text = found.text;
-    return text && text.trim() ? text : null;
-  }
-
-  /**
-   * Attempt the single bounded delivery of a terminal run.
-   *
-   * Order is fixed by what each step is allowed to assume. Root availability is
-   * checked first so an unavailable root records `blocked` **without** a native
-   * write; a successful child result is then authenticated against the child
-   * transcript; host delivery authorization is enforced with the current
-   * background policy; only then is the parent notification saved and the
-   * component queue told about it.
-   *
-   * Returns `null` in every case: the outcome is persisted state, never a
-   * generated answer, a read receipt or a completed task.
-   */
-  async function attemptDelivery(
-    ctx: CoordinatorCtx,
-    context: DeliveryContext,
-    deliveryToken: string,
-  ): Promise<null> {
-    const record = (
-      deliveryStatus: "accepted" | "failed" | "blocked",
-      code: RunErrorCode,
-      parentMessageId: string | null = null,
-    ) =>
-      ctx.runMutation(component.subagents.deliver, {
-        runId: context.runId,
-        deliveryToken,
-        deliveryStatus,
-        parentMessageId,
-        errorCode: code,
-      });
-    if (!context.rootAvailable) {
-      await record("blocked", "ROOT_UNAVAILABLE");
-      await observe(ctx, {
-        type: "delegation.delivered",
-        runId: context.runId,
-        rootAssignmentId: context.rootAssignmentId,
-        agent: context.agent,
-        outcome: "blocked",
-      });
-      return null;
-    }
-    if (context.side && context.status === "failed" && context.errorCode === "EMPTY_RESULT") {
-      await record("failed", context.errorCode);
-      return null;
-    }
-    let text: string;
-    if (context.status === "completed") {
-      const verified = context.childResultMessageId
-        ? await verifyChildMessage(ctx, {
-            threadId: context.childThreadId,
-            agentName: context.agent,
-            messageId: context.childResultMessageId,
-            subject: context.subject,
-          })
-        : null;
-      if (!verified) {
-        await record("failed", "RESULT_UNVERIFIED");
-        await observe(ctx, {
-          type: "delegation.delivered",
-          runId: context.runId,
-          rootAssignmentId: context.rootAssignmentId,
-          agent: context.agent,
-          outcome: "failed",
-        });
-        return null;
-      }
-      text = context.side
-        ? verified
-        : `${context.agent} completed the delegated task.\n\n${verified}`;
-    } else {
-      if (context.side) {
-        await record("failed", context.errorCode);
-        return null;
-      }
-      text = `${context.agent} failed the delegated task (${
-        context.errorCode ?? "GENERATION_FAILED"
-      }). No result was accepted.`;
-    }
-    const root = graph.byName.get(context.parentAgent);
-    if (!root) {
-      await record("blocked", "ROOT_UNAVAILABLE");
-      await observe(ctx, {
-        type: "delegation.delivered",
-        runId: context.runId,
-        rootAssignmentId: context.rootAssignmentId,
-        agent: context.agent,
-        outcome: "blocked",
-      });
-      return null;
-    }
-    let subject = "";
-    try {
-      ({ subject } = await config.authorize(ctx, {
-        operation: "deliver",
-        agent: context.rootAgent,
-        threadId: context.rootThreadId,
-        subject: context.subject,
-        rootAssignmentId: context.rootAssignmentId,
-        rootAgent: context.rootAgent,
-        actorAgent: context.actorAgent,
-        childAgent: context.agent,
-        runId: context.runId,
-      }));
-    } catch {
-      subject = "";
-    }
-    if (!subject || subject !== context.subject) {
-      await record("blocked", "AUTHORIZATION_DENIED");
-      await observe(ctx, {
-        type: "delegation.delivered",
-        runId: context.runId,
-        rootAssignmentId: context.rootAssignmentId,
-        agent: context.agent,
-        outcome: "blocked",
-      });
-      return null;
-    }
-    if (context.side) {
-      if (text.trim() && text.trim() !== "NONE") {
-        const row = await ctx.runQuery(component.queue.assignment, {
-          threadId: context.parentThreadId,
-        });
-        const accepted =
-          row &&
-          (await postNote(ctx, component, row.assignmentId, {
-            threadId: context.parentThreadId,
-            text: text.slice(0, LIMITS.noteLength),
-            from: context.agent,
-          }));
-        if (!accepted) {
-          await record("failed", "DELIVERY_FAILED");
-          return null;
-        }
-      }
-      await record("accepted", null);
-      return null;
-    }
-    const { messageId } = await saveTrackedMessage(ctx, root.component, {
-      threadId: context.parentThreadId,
-      prompt: text,
-      userId: context.subject,
-      agentName: context.agent,
-    });
-    await record("accepted", null, messageId);
-    await observe(ctx, {
-      type: "delegation.delivered",
-      runId: context.runId,
-      rootAssignmentId: context.rootAssignmentId,
-      agent: context.agent,
-      outcome: "accepted",
-    });
-    return null;
-  }
-
-  /**
-   * Make the single bounded delivery attempt of a settled run.
-   *
-   * `notify` saves the native parent notification and accepts it into the
-   * component queue inside one host transaction, so a throw there rolls both
-   * back and leaves the run terminal but undelivered. That outcome is then
-   * recorded by a separate metadata-only transition using the same one-shot
-   * capability and the same pending-status compare-and-set; the delivery itself
-   * is never attempted twice. If even the failure record cannot commit, the run
-   * stays honestly `pending` rather than claiming an outcome that was not
-   * stored.
-   */
-  async function deliverTerminalRun(
-    ctx: RunnerCtx,
-    runId: string,
-    deliveryToken: string,
-  ): Promise<void> {
-    try {
-      // `refs.coordinate` is required whenever collaboration is configured, and
-      // this path is only reachable from a child turn of such a registration.
-      await ctx.runMutation(config.refs.coordinate!(), { op: "notify", runId, deliveryToken });
-    } catch {
-      try {
-        await ctx.runMutation(component.subagents.deliver, {
-          runId,
-          deliveryToken,
-          deliveryStatus: "failed",
-          parentMessageId: null,
-          errorCode: "DELIVERY_FAILED",
-        });
-      } catch {
-        // The attempt and its failure record both failed to commit; nothing is
-        // claimed about a delivery that did not happen.
-      }
-    }
-  }
-
+  const rt = createRuntimeContext(component, config);
+  const { limits, graph, agentIndexes } = rt;
   return {
     runTask: <Input, Output>(
       ctx: RunnerCtx,
@@ -553,428 +84,15 @@ export function registerAgent(component: ComponentApi, config: Registration) {
       input: Input,
       options: TaskOptions = {},
     ) => runTask(ctx, task, input, { ...options, component, usage: config.usage ?? options.usage }),
-    /** Trusted upload-path helper. Call after storing a file on behalf of the
-     * authorized subject; never expose it as a public arbitrary-id claim. */
-    registerFile: async (
-      ctx: CoordinatorCtx,
-      args: { agent: string; fileId: string; subject: string },
-    ) => {
-      assertFact(args.subject, "subject");
-      assertFact(args.agent, "agent");
-      const managed = graph.byName.get(args.agent);
-      if (!managed) throw new Error("UNKNOWN_AGENT");
-      const file = await ctx.runQuery(managed.component.files.get, { fileId: args.fileId });
-      if (!file || getConvexSize(file) > LIMITS.fileMetadataBytes) throw new Error("INVALID_FILE");
-      await ctx.runMutation(component.files.register, {
-        native: await createFunctionHandle(managed.component.files.get),
-        fileId: args.fileId,
-        subject: args.subject,
-      });
-    },
-    /** Exact attachment policy for an extract adapter's authorize callback. */
-    fileAttached: async (
-      ctx: Pick<RunnerCtx, "runQuery">,
-      args: { threadId: string; fileId: string; subject: string },
-    ) => {
-      assertFact(args.subject, "subject");
-      assertFact(args.threadId, "threadId");
-      const assignment = await ctx.runQuery(component.queue.assignment, {
-        threadId: args.threadId,
-      });
-      const managed = assignment && graph.byName.get(assignment.agent);
-      if (!managed || assignment.subject !== args.subject) return false;
-      return ctx.runQuery(component.files.owns, {
-        ...args,
-        native: await createFunctionHandle(managed.component.files.get),
-      });
-    },
-    sandboxComplete: async (ctx: CoordinatorCtx, event: SandboxCompletion) => {
-      assertFact(event.subject, "subject");
-      assertFact(event.threadId, "threadId");
-      assertFact(event.runId, "runId");
-      const assignment = await ctx.runQuery(component.queue.assignment, {
-        threadId: event.threadId,
-      });
-      const managed = assignment && graph.byName.get(assignment.agent);
-      // Any managed thread of this registration may receive a completion: a
-      // job started by an opted-in child reports to its root conversation,
-      // whose own agent need not use sandbox tools. The trust gate is the
-      // configured slot, the stored owner and the host's `sandbox` authorize.
-      if (!assignment || !managed || !config.sandbox || assignment.subject !== event.subject)
-        throw new Error("FORBIDDEN");
-      const { subject } = await config.authorize(ctx, {
-        operation: "sandbox",
-        agent: managed.name,
-        threadId: event.threadId,
-        subject: assignment.subject,
-        runId: event.runId,
-      });
-      if (subject !== assignment.subject) throw new Error("FORBIDDEN");
-      if (
-        (event.exitCode !== undefined &&
-          (!Number.isSafeInteger(event.exitCode) ||
-            Math.abs(event.exitCode) > LIMITS.sandboxExitCode)) ||
-        !event.runId ||
-        event.runId.length > LIMITS.requestKeyLength ||
-        !event.jobId ||
-        event.jobId.length > LIMITS.requestKeyLength ||
-        !["done", "failed", "unknown"].includes(event.state)
-      )
-        throw new Error("INVALID_SANDBOX_COMPLETION");
-      return postNote(ctx, component, assignment.assignmentId, {
-        threadId: event.threadId,
-        from: "sandbox",
-        text: `Job ${event.jobId}: ${event.state}${event.exitCode === undefined ? "" : ` (exit ${event.exitCode})`}\n${event.logTail ?? ""}`.slice(
-          0,
-          LIMITS.noteLength,
-        ),
-      });
-    },
-    note: async (ctx: CoordinatorCtx, args: NoteArgs): Promise<boolean> => {
-      assertFact(args.threadId, "threadId");
-      const scope = await ctx.runQuery(component.queue.assignment, { threadId: args.threadId });
-      if (!scope) throw new Error("FORBIDDEN");
-      const { subject } = await config.authorize(ctx, {
-        operation: "note",
-        agent: scope.agent,
-        threadId: args.threadId,
-      });
-      assertFact(subject, "subject");
-      const owned = scope.subject === subject ? scope : null;
-      const managed = graph.byName.get(scope.agent);
-      if (!owned || !managed) throw new Error("FORBIDDEN");
-      return postNote(ctx, component, owned.assignmentId, args);
-    },
+    registerFile: (ctx: CoordinatorCtx, args: RegisterFileArgs) => registerFile(rt, ctx, args),
+    fileAttached: (ctx: Pick<RunnerCtx, "runQuery">, args: FileAttachedArgs) =>
+      fileAttached(rt, ctx, args),
+    sandboxComplete: (ctx: CoordinatorCtx, event: SandboxCompletion) =>
+      sandboxComplete(rt, ctx, event),
+    note: (ctx: CoordinatorCtx, args: NoteArgs): Promise<boolean> => note(rt, ctx, args),
     authorizedEndpoints: () => authorizedEndpoints(component, config),
     internalFunctions: () => {
-      const coordinate: RegisteredMutation<"internal", CoordinateArgs, CoordinateResult> =
-        internalMutationGeneric({
-          args: coordinateArgs,
-          returns: v.union(
-            delegationResult,
-            v.object({ status: v.literal("accepted"), runId: v.string() }),
-            v.object({ status: v.literal("deferred"), runId: v.string() }),
-            v.null(),
-          ),
-          /**
-           * The only host entry point for managed collaboration.
-           *
-           * Each operation validates a capability the caller already holds
-           * before any policy call or write: `launch` the actor's currently
-           * running turn token plus the native tool call id, `settle` the child
-           * turn token that owns the run, `notify` the one-shot delivery
-           * capability minted at launch. Ownership and outcome always come from
-           * persisted state and verified native messages, never from a
-           * caller-supplied principal flag.
-           */
-          handler: async (ctx, raw) => {
-            const args = raw as CoordinateArgs;
-            if (args.op === "launch") {
-              const task = args.task.trim();
-              if (!task || task.length > limits.taskLength)
-                return { status: "denied" as const, code: "TASK_LIMIT" as const };
-              const owned = await ctx.runQuery(component.subagents.delegateContext, {
-                assignmentId: args.assignmentId,
-                turnToken: args.turnToken,
-              });
-              if (!owned) return { status: "denied" as const, code: "STALE_TURN" as const };
-              if (
-                args.side
-                  ? !graph.byName
-                      .get(owned.actorAgent)
-                      ?.sideAgents?.some((side) => side.agent.name === args.agent)
-                  : !graph.edges.get(owned.actorAgent)?.has(args.agent)
-              )
-                return { status: "denied" as const, code: "FORBIDDEN" as const };
-              let subject = "";
-              try {
-                ({ subject } = await config.authorize(ctx, {
-                  operation: "delegate",
-                  agent: owned.rootAgent,
-                  threadId: owned.rootThreadId,
-                  subject: owned.subject,
-                  rootAssignmentId: owned.rootAssignmentId,
-                  rootAgent: owned.rootAgent,
-                  actorAgent: owned.actorAgent,
-                  childAgent: args.agent,
-                  task,
-                }));
-              } catch {
-                subject = "";
-              }
-              if (!subject || subject !== owned.subject)
-                return { status: "denied" as const, code: "FORBIDDEN" as const };
-              const child = graph.children.get(args.agent);
-              if (!child) return { status: "denied" as const, code: "FORBIDDEN" as const };
-              const side = args.side
-                ? graph.byName
-                    .get(owned.actorAgent)
-                    ?.sideAgents?.find((side) => side.agent.name === args.agent)
-                : undefined;
-              const review = side
-                ? await ctx.runQuery(component.hooks.reviewContext, {
-                    assignmentId: args.assignmentId,
-                    executionId: args.turnToken,
-                    agent: args.agent,
-                    ...side.every,
-                  })
-                : null;
-              if (args.side && !review)
-                return { status: "denied" as const, code: "RUN_BUDGET" as const };
-              const reservation = await ctx.runMutation(component.subagents.reserve, {
-                assignmentId: args.assignmentId,
-                turnToken: args.turnToken,
-                toolCallId: args.toolCallId,
-                agent: args.agent,
-                payloadFingerprint: await fingerprint([
-                  owned.actorAgent,
-                  args.agent,
-                  task,
-                  args.group ?? null,
-                  args.wait ?? "each",
-                ]),
-                group: args.group,
-                wait: args.wait,
-                side: args.side,
-                coordinateHandle: await createFunctionHandle(config.refs.coordinate!()),
-              });
-              if (reservation.kind === "denied") {
-                return { status: "denied" as const, code: reservation.code };
-              }
-              if (reservation.kind === "replay")
-                return { status: "queued" as const, runId: reservation.runId, agent: args.agent };
-              // Only a fresh reservation reaches the native writes, so a replay
-              // can never create a second child thread. Everything below runs in
-              // this same transaction as `reserve`.
-              let childTask = task;
-              if (review) {
-                // Exact identities captured with native writes; no listMessages.
-                // Metadata admits <=2 MiB of source docs; text-only output is
-                // UTF-8 clipped to 48 KiB. Tools/reasoning never enter the fork.
-                const parent = graph.byName.get(owned.actorAgent)!;
-                const docs = await ctx.runQuery(parent.component.messages.getMessagesByIds, {
-                  messageIds: review.refs.map((ref) => ref.id),
-                });
-                let remaining = LIMITS.contextBytes;
-                const chunks: string[] = [];
-                for (const doc of docs.reverse()) {
-                  if (
-                    !doc ||
-                    !["user", "assistant"].includes(doc.message?.role ?? "") ||
-                    remaining <= 0
-                  )
-                    continue;
-                  const bytes = new TextEncoder().encode(`${doc.message!.role}: ${doc.text ?? ""}`);
-                  // stream:true drops an incomplete trailing UTF-8 code point;
-                  // replacement characters must not push output over the cap.
-                  const chunk = new TextDecoder().decode(bytes.slice(0, remaining), {
-                    stream: true,
-                  });
-                  chunks.unshift(chunk);
-                  remaining -= new TextEncoder().encode(chunk).byteLength + 1;
-                }
-                childTask += "\n\n" + chunks.join("\n");
-                await ctx.runMutation(component.hooks.reviewed, {
-                  assignmentId: args.assignmentId,
-                  executionId: args.turnToken,
-                  agent: args.agent,
-                  boundary: review.boundary,
-                });
-              }
-              const threadId = await createThread(ctx, child.component, { userId: owned.subject });
-              const { messageId, message } = await saveTrackedMessage(ctx, child.component, {
-                threadId,
-                prompt: childTask,
-                order: LIMITS.firstPromptOrder,
-                userId: owned.subject,
-              });
-              await ctx.runMutation(component.subagents.attach, {
-                runId: reservation.runId,
-                childThreadId: threadId,
-                promptMessageId: messageId,
-                trackContext: !!child.sideAgents?.length,
-                savedMessage: {
-                  id: messageId,
-                  order: message.order,
-                  stepOrder: message.stepOrder,
-                  bytes: getConvexSize(message),
-                },
-              });
-              await observe(ctx, {
-                type: "delegation.queued",
-                runId: reservation.runId,
-                rootAssignmentId: owned.rootAssignmentId,
-                agent: args.agent,
-              });
-              return { status: "queued" as const, runId: reservation.runId, agent: args.agent };
-            }
-
-            // Each native save reads at most its one <=1 MiB tail document.
-            // message: one <=128 KiB saved text projection; ask: two such
-            // saves +one <=128 KiB exact question verification. Add <=2.25 MiB
-            // bounded queue/group recovery and <128 KiB admission metadata:
-            // either transaction stays <8 MiB, <600 reads and <128 writes.
-            // No backlog or transcript body scan participates in admission.
-            if (args.op === "message" || args.op === "ask") {
-              const text = (args.op === "message" ? args.text : args.question).trim();
-              if (!text || text.length > limits.taskLength)
-                return { status: "denied" as const, code: "TASK_LIMIT" as const };
-              const target = await ctx.runQuery(component.subagents.interactionContext, {
-                assignmentId: args.assignmentId,
-                turnToken: args.turnToken,
-                op: args.op,
-                ...(args.op === "message" ? { runId: args.runId } : {}),
-              });
-              if (target.kind === "denied") return { status: "denied" as const, code: target.code };
-              if (args.op === "message" && !graph.edges.get(target.actorAgent)?.size)
-                return { status: "denied" as const, code: "FORBIDDEN" as const };
-              const childAgent = graph.children.get(target.agent);
-              const parent = graph.byName.get(target.actorAgent);
-              if (!childAgent || !parent)
-                return { status: "denied" as const, code: "FORBIDDEN" as const };
-              // Reuse background launch/delivery policy, with trusted persisted
-              // identities. All native writes and admission share this transaction.
-              try {
-                const authorized = await config.authorize(
-                  ctx,
-                  args.op === "message"
-                    ? {
-                        operation: "delegate",
-                        agent: target.rootAgent,
-                        threadId: target.rootThreadId,
-                        subject: target.subject,
-                        rootAssignmentId: target.rootAssignmentId,
-                        rootAgent: target.rootAgent,
-                        actorAgent: target.actorAgent,
-                        childAgent: target.agent,
-                        task: text,
-                      }
-                    : {
-                        operation: "deliver",
-                        agent: target.rootAgent,
-                        threadId: target.rootThreadId,
-                        subject: target.subject,
-                        rootAssignmentId: target.rootAssignmentId,
-                        rootAgent: target.rootAgent,
-                        actorAgent: target.actorAgent,
-                        childAgent: target.agent,
-                        runId: target.runId,
-                      },
-                );
-                if (authorized.subject !== target.subject)
-                  return { status: "denied" as const, code: "FORBIDDEN" as const };
-              } catch {
-                return { status: "denied" as const, code: "FORBIDDEN" as const };
-              }
-              if (args.op === "message") {
-                const { messageId } = await saveTrackedMessage(ctx, childAgent.component, {
-                  threadId: target.childThreadId,
-                  prompt: text,
-                  userId: target.subject,
-                });
-                return ctx.runMutation(component.subagents.messageChild, {
-                  assignmentId: args.assignmentId,
-                  turnToken: args.turnToken,
-                  runId: args.runId,
-                  messageId,
-                });
-              }
-              const { messageId: questionMessageId } = await saveMessage(
-                ctx,
-                childAgent.component,
-                {
-                  threadId: target.childThreadId,
-                  agentName: target.agent,
-                  message: { role: "assistant", content: text },
-                },
-              );
-              const parentAgent = graph.byName.get(target.parentAgent);
-              if (!parentAgent) throw new Error("FORBIDDEN");
-              const { messageId: parentMessageId } = await saveTrackedMessage(
-                ctx,
-                parentAgent.component,
-                {
-                  threadId: target.parentThreadId,
-                  prompt: target.agent + " asks (run " + target.runId + "):\n\n" + text,
-                  agentName: target.agent,
-                  userId: target.subject,
-                },
-              );
-              const response = await ctx.runMutation(component.subagents.askParent, {
-                assignmentId: args.assignmentId,
-                turnToken: args.turnToken,
-                questionMessageId,
-                parentMessageId,
-              });
-              const recorded = await ctx.runQuery(component.subagents.questionContext, {
-                runId: target.runId,
-              });
-              if (
-                !recorded ||
-                !(await verifyChildMessage(ctx, {
-                  threadId: target.childThreadId,
-                  agentName: target.agent,
-                  messageId: recorded,
-                  subject: target.subject,
-                }))
-              )
-                throw new Error("RESULT_UNVERIFIED");
-              return response;
-            }
-
-            // Settling records the child's outcome only. Delivery is a separate
-            // transaction so that a failed delivery can never roll back the
-            // truthful child outcome or the counters it already moved.
-            //
-            // The reported result is authenticated against the native child
-            // transcript *before* any terminal state is written, so an invalid,
-            // missing, wrong-thread or wrong-agent message id settles as a
-            // sanitized failure instead of a completed run.
-            if (args.op === "settle") {
-              const settlement = await ctx.runQuery(component.subagents.settlementContext, {
-                assignmentId: args.assignmentId,
-                turnToken: args.turnToken,
-                runId: args.runId,
-              });
-              if (!settlement) throw new Error("FORBIDDEN");
-              let errorCode: RunErrorCode = args.errorCode;
-              let childResultMessageId: string | null = null;
-              if (!errorCode) {
-                const reported =
-                  args.resultMessageId === settlement.childResultMessageId
-                    ? args.resultMessageId
-                    : undefined;
-                const verified = reported
-                  ? await verifyChildMessage(ctx, {
-                      threadId: settlement.childThreadId,
-                      agentName: settlement.agent,
-                      messageId: reported,
-                      subject: settlement.subject,
-                    })
-                  : null;
-                if (verified && reported) childResultMessageId = reported;
-                else errorCode = "RESULT_UNVERIFIED";
-              }
-              await ctx.runMutation(component.subagents.settle, {
-                assignmentId: args.assignmentId,
-                turnToken: args.turnToken,
-                runId: args.runId,
-                childResultMessageId,
-                errorCode,
-              });
-              if (settlement.blocked) return { status: "deferred" as const, runId: args.runId };
-              return null;
-            }
-
-            const context = await ctx.runQuery(component.subagents.deliveryContext, {
-              runId: args.runId,
-              deliveryToken: args.deliveryToken,
-            });
-            if (!context) return null;
-            return attemptDelivery(ctx, context, args.deliveryToken);
-          },
-        });
-
+      const coordinate = buildCoordinate(rt);
       const runTurn: RegisteredAction<"internal", TurnArgs, null> = internalActionGeneric({
         args: { assignmentId: v.string(), turnToken: v.string(), sliceId: v.optional(v.string()) },
         returns: v.null(),
@@ -1010,7 +128,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
             agent: claimed.agent,
           };
           try {
-            await observe(ctx, {
+            await observe(rt, ctx, {
               type: "turn.claimed",
               assignmentId: claimed.assignmentId,
               threadId: claimed.threadId,
@@ -1798,7 +916,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 turnToken: args.turnToken,
                 errorCode,
               });
-              await observe(ctx, {
+              await observe(rt, ctx, {
                 type: "turn.finished",
                 assignmentId: claimed.assignmentId,
                 threadId: claimed.threadId,
@@ -1833,7 +951,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 });
                 return null;
               }
-              await observe(ctx, {
+              await observe(rt, ctx, {
                 type: "delegation.settled",
                 runId: child.runId,
                 rootAssignmentId: child.rootAssignmentId,
@@ -1859,13 +977,13 @@ export function registerAgent(component: ComponentApi, config: Registration) {
             // delivery independent of the finalization outcome, and it is still
             // bounded and one-shot — `deliver` no-ops once delivery is no longer
             // `pending`, so the ambiguity path cannot replay it.
-            await deliverTerminalRun(ctx, child.runId, child.deliveryToken);
+            await deliverTerminalRun(rt, ctx, child.runId, child.deliveryToken);
             await ctx.runMutation(component.queue.finish, {
               assignmentId: args.assignmentId,
               turnToken: args.turnToken,
               errorCode,
             });
-            await observe(ctx, {
+            await observe(rt, ctx, {
               type: "turn.finished",
               assignmentId: claimed.assignmentId,
               threadId: claimed.threadId,
