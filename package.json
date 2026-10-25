@@ -63,7 +63,8 @@
   "dependencies": {
     "@convex-dev/workflow": "0.4.10",
     "@convex-dev/workpool": "0.4.14",
-    "@daytona/convex": "2.1.0"
+    "@daytona/convex": "2.1.0",
+    "@noble/hashes": "2.4.0"
   },
   "devDependencies": {
     "@ai-sdk/openai": "4.0.102",

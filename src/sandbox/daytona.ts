@@ -22,14 +22,17 @@ function decodeBase64(value: string) {
 }
 
 /**
- * Daytona 2.1.0's host client owns lifecycle, exec, file writes and background
- * sessions/polling (src/client/index.ts:118-158,208-267,312-360). Only recovery
+ * Daytona 2.1.0's host client owns lifecycle, exec and file writes
+ * (src/client/index.ts:118-158,208-220,312-360). Only recovery
  * needs REST: src/component/daytona.ts:207-220 starts stopped/archived machines
  * but has no recover API for `error`. No credential enters our rows or jobs.
  *
  * Reads/listing use bounded Python through the component's run API because
  * files.ts:25-134 offers no byte/count bound; truncating AFTER that action
  * could already exceed Convex's return limit. Snapshots must include python3.
+ * Never use runBackground: component/process.ts:427,491 schedules polls with
+ * no deadline, including when the key disappears. Our only scheduled chain
+ * is fenced by our jobs row; every provider interaction is a bounded run.
  */
 export function daytona(
   component: ComponentApi,
@@ -167,26 +170,50 @@ export function daytona(
       signal.throwIfAborted();
       return result;
     },
-    async startBackground(ctx, sandboxId, cmd) {
-      const result = await client.runBackground(ctx, { sandboxId, command: cmd, autoStart: false });
-      return { jobId: result.executionId };
+    async startBackground(ctx, sandboxId, cmd, job) {
+      bounded(cmd, LIMITS.commandChars, "COMMAND");
+      const jobId = job?.jobId ?? crypto.randomUUID();
+      const directory = job?.directory ?? `${LIMITS.backgroundRoot}/${jobId}`;
+      bounded(jobId, LIMITS.identityChars, "JOB_ID");
+      bounded(directory, LIMITS.pathChars, "JOB_DIRECTORY");
+      if (job && job.sandboxId !== sandboxId) throw new Error("SANDBOX_JOB_MISMATCH");
+      // A new session gives the shell and all descendants a killable process
+      // group. nohup survives the short exec's teardown; all descriptors are
+      // detached. A nested shell preserves the exit file even for `exit 7`.
+      // mkdir(exist_ok=False) refuses accidental replay of the same identity.
+      const script = `sh -c ${quote(cmd)} > ${quote(`${directory}/output.log`)} 2>&1; status=$?; printf '%s' "$status" > ${quote(`${directory}/status.exit`)}`;
+      await python(
+        ctx,
+        sandboxId,
+        `import os,subprocess\nd=${JSON.stringify(directory)}\nos.makedirs(d,mode=0o700,exist_ok=False)\np=subprocess.Popen(['nohup','sh','-c',${JSON.stringify(script)}],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)\nwith open(d+'/group.pid','w') as f: f.write(str(p.pid))`,
+        LIMITS.backgroundExecTimeoutS,
+      );
+      return { jobId, sandboxId, directory };
     },
-    async poll(ctx, jobId) {
-      const execution = await client.getExecution(ctx, { executionId: jobId });
-      if (!execution) return { state: "unknown" };
-      const output = {
-        ...(execution.exitCode === undefined ? {} : { exitCode: execution.exitCode }),
-        logTail: (execution.result ?? "").slice(-HARD_LIMITS.outputChars),
-      };
-      if (execution.status === "running") return { state: "running", ...output };
-      if (execution.status === "completed") return { state: "done", ...output };
-      // A provider "failed" row without an exit code can be a lost network
-      // response or failed kill, not evidence that the command failed safely.
-      return {
-        state:
-          execution.status === "failed" && execution.exitCode !== undefined ? "failed" : "unknown",
-        ...output,
-      };
+    async poll(ctx, _jobId, { sandboxId, directory }) {
+      bounded(directory, LIMITS.pathChars, "JOB_DIRECTORY");
+      // tail -c bounds bytes at the source, rather than taking the end of
+      // Daytona's truncated prefix. The component receives <=48 KiB of log
+      // data (plus JSON escaping), regardless of the on-disk log's size.
+      return JSON.parse(
+        await python(
+          ctx,
+          sandboxId,
+          `import os,json,subprocess\nd=${JSON.stringify(directory)}\nif os.path.exists(d+'/cancelled') or not os.path.exists(d+'/group.pid'):\n print(json.dumps({'state':'unknown'}))\nelif not os.path.exists(d+'/status.exit'):\n print(json.dumps({'state':'running'}))\nelse:\n with open(d+'/status.exit') as f: code=int(f.read(${LIMITS.identityChars}))\n log=subprocess.check_output(['tail','-c',str(${HARD_LIMITS.outputChars * LIMITS.utf8BytesPerChar}),d+'/output.log']).decode('utf-8',errors='replace')[-${HARD_LIMITS.outputChars}:]\n print(json.dumps({'state':'done' if code==0 else 'failed','exitCode':code,'logTail':log}))`,
+          LIMITS.backgroundExecTimeoutS,
+        ),
+      );
+    },
+    async cancelBackground(ctx, _jobId, { sandboxId, directory }) {
+      bounded(directory, LIMITS.pathChars, "JOB_DIRECTORY");
+      // A deadline ends the entire group, not just the shell. Missing files
+      // mean an unacknowledged start; never rerun the launch to discover it.
+      await python(
+        ctx,
+        sandboxId,
+        `import os,signal\nd=${JSON.stringify(directory)}\nif not os.path.exists(d+'/status.exit') and os.path.exists(d+'/group.pid'):\n with open(d+'/group.pid') as f: pid=int(f.read(${LIMITS.identityChars}))\n assert pid>1\n try: os.killpg(pid,signal.SIGKILL)\n except ProcessLookupError: pass\n with open(d+'/cancelled','w') as f: f.write('deadline')`,
+        LIMITS.backgroundExecTimeoutS,
+      );
     },
     async readFile(ctx, sandboxId, path, { maxBytes }) {
       return new TextDecoder().decode(await read(ctx, sandboxId, path, maxBytes, true));
@@ -210,9 +237,35 @@ export function daytona(
     },
     async upload(ctx, sandboxId, path, content) {
       bounded(path, LIMITS.pathChars, "PATH");
-      if (content.byteLength > HARD_LIMITS.exportBytes) throw new Error("SANDBOX_UPLOAD_TOO_LARGE");
+      if (content.byteLength > LIMITS.exportChunkBytes) throw new Error("SANDBOX_UPLOAD_TOO_LARGE");
       await client.writeFileBytes(ctx, { sandboxId, path, content });
     },
-    download: (ctx, sandboxId, path, { maxBytes }) => read(ctx, sandboxId, path, maxBytes, false),
+    async download(ctx, sandboxId, path, { maxBytes, offset = 0, totalSizeLimit = maxBytes }) {
+      bounded(path, LIMITS.pathChars, "PATH");
+      integer(maxBytes, LIMITS.exportChunkBytes, "EXPORT_WINDOW");
+      integer(totalSizeLimit, HARD_LIMITS.exportBytes, "EXPORT_SIZE");
+      integer(offset, HARD_LIMITS.exportBytes, "EXPORT_OFFSET", 0);
+      // process.run records stdout in executions (process.ts:99-105), so
+      // base64 stdout would leak file bytes into component mutation args and
+      // rows. Stage one <=512 KiB window, return only its path, then use the
+      // non-recording files.readFileBytes API (files.ts:61-74). This also
+      // bounds that otherwise-unbounded file API BEFORE its action returns.
+      const result = await python(
+        ctx,
+        sandboxId,
+        `import os,stat,tempfile\nf=open(${JSON.stringify(path)},'rb')\ns=os.fstat(f.fileno())\nassert stat.S_ISREG(s.st_mode),'regular files only'\nif s.st_size>${totalSizeLimit}: print('TOO_LARGE')\nelse:\n os.makedirs(${JSON.stringify(LIMITS.exportRoot)},mode=0o700,exist_ok=True)\n fd,p=tempfile.mkstemp(dir=${JSON.stringify(LIMITS.exportRoot)})\n f.seek(${offset})\n with os.fdopen(fd,'wb') as out: out.write(f.read(${maxBytes}))\n print(p)`,
+      );
+      if (result.trim() === "TOO_LARGE") throw new Error("SANDBOX_EXPORT_TOO_LARGE");
+      const windowPath = bounded(result.trim(), LIMITS.pathChars, "EXPORT_WINDOW_PATH");
+      try {
+        const bytes = new Uint8Array(
+          await client.readFileBytes(ctx, { sandboxId, path: windowPath }),
+        );
+        if (bytes.byteLength > maxBytes) throw new Error("SANDBOX_EXPORT_WINDOW_TOO_LARGE");
+        return bytes;
+      } finally {
+        await client.deleteFile(ctx, { sandboxId, path: windowPath });
+      }
+    },
   };
 }

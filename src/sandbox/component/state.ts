@@ -208,6 +208,9 @@ export const reserveJob = mutation({
     const leaseUntil = Math.min(now + LIMITS.actionBudgetMs, now + jobTimeoutMs);
     const job = {
       ...fields,
+      providerJobId: crypto.randomUUID(),
+      sandboxId: row.sandboxId,
+      directory: `${LIMITS.backgroundRoot}/${crypto.randomUUID()}`,
       state: "starting" as const,
       deadline: now + jobTimeoutMs,
       delayMs: args.pollMinMs,
@@ -224,7 +227,13 @@ export const reserveJob = mutation({
     await ctx.db.patch(jobId, { wakeId });
     // No TTL deletion can race the still-unacknowledged provider launch.
     await ctx.db.patch(row._id, { cleanupAt: undefined });
-    return { jobId, claim: job.claim };
+    return {
+      jobId,
+      claim: job.claim,
+      providerJobId: job.providerJobId,
+      sandboxId: job.sandboxId,
+      directory: job.directory,
+    };
   },
 });
 
@@ -236,8 +245,8 @@ export const attachJob = mutation({
     const row = await ctx.db.get(args.jobId);
     if (!row || row.state !== "starting" || row.claim !== args.claim) return false;
     await cancelWake(ctx, row);
-    const wakeId = await ctx.scheduler.runAfter(
-      row.pollMinMs,
+    const wakeId = await ctx.scheduler.runAt(
+      Math.min(Date.now() + row.pollMinMs, row.deadline),
       row.pollHandle as FunctionHandle<"action">,
       { jobId: row._id },
     );
@@ -265,7 +274,10 @@ export const claimPoll = mutation({
       return null;
     await cancelWake(ctx, row);
     const claim = crypto.randomUUID();
-    const leaseUntil = Date.now() + LIMITS.actionBudgetMs;
+    const leaseUntil = Math.min(
+      Date.now() + LIMITS.actionBudgetMs,
+      Math.max(Date.now() + row.pollMinMs, row.deadline),
+    );
     // A hard action timeout still leaves a wake to report an unknown launch
     // or continue safe status polling. Neither wake ever replays the command.
     const wakeId = await ctx.scheduler.runAt(
@@ -305,6 +317,7 @@ export const finishJob = mutation({
     state: v.union(v.literal("done"), v.literal("failed"), v.literal("unknown")),
     exitCode: v.optional(v.number()),
     logTail: v.optional(v.string()),
+    code: v.optional(v.literal("SANDBOX_JOB_DEADLINE")),
   },
   handler: async (ctx, args) => {
     bounded(args.claim, LIMITS.claimChars, "CLAIM");

@@ -25,6 +25,7 @@ export function fakeSandboxProvider(
     exec: [] as string[],
     background: [] as string[],
     poll: [] as string[],
+    cancel: [] as string[],
   };
   let nextSandbox = 0;
   let nextJob = 0;
@@ -73,10 +74,10 @@ export function fakeSandboxProvider(
       calls.exec.push(command);
       return opts.exec ? opts.exec(command, id) : { exitCode: 0, stdout: command, stderr: "" };
     },
-    async startBackground(_ctx, id, command) {
+    async startBackground(_ctx, id, command, job) {
       ready(id);
       calls.background.push(command);
-      const jobId = `fake-job-${++nextJob}`;
+      const jobId = job?.jobId ?? `fake-job-${++nextJob}`;
       jobs.set(
         jobId,
         opts.background?.(command) ?? [
@@ -84,13 +85,17 @@ export function fakeSandboxProvider(
           { state: "done", exitCode: 0, logTail: "done" },
         ],
       );
-      return { jobId };
+      return { jobId, sandboxId: id, directory: job?.directory ?? `/tmp/fake/${jobId}` };
     },
     async poll(_ctx, id) {
       calls.poll.push(id);
       const results = jobs.get(id);
       if (!results?.length) return { state: "unknown" };
       return results.length === 1 ? results[0] : results.shift()!;
+    },
+    async cancelBackground(_ctx, id) {
+      calls.cancel.push(id);
+      jobs.set(id, [{ state: "unknown" }]);
     },
     async readFile(_ctx, id, path, { maxBytes }) {
       return new TextDecoder().decode(bytes(id, path).slice(-maxBytes));
@@ -118,10 +123,10 @@ export function fakeSandboxProvider(
     async upload(_ctx, id, path, content) {
       ready(id).files.set(path, new Uint8Array(content));
     },
-    async download(_ctx, id, path, { maxBytes }) {
+    async download(_ctx, id, path, { maxBytes, offset = 0, totalSizeLimit = maxBytes }) {
       const content = bytes(id, path);
-      if (content.byteLength > maxBytes) throw new Error("SANDBOX_EXPORT_TOO_LARGE");
-      return new Uint8Array(content);
+      if (content.byteLength > totalSizeLimit) throw new Error("SANDBOX_EXPORT_TOO_LARGE");
+      return content.slice(offset, offset + maxBytes);
     },
   };
   return { provider, sandboxes, jobs, calls };

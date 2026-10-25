@@ -42,6 +42,10 @@ export default defineSchema({
     threadId: v.string(),
     runId: v.string(),
     providerJobId: v.optional(v.string()),
+    // Saved with the launch reservation, before the remote effect. These
+    // locate exit/log/pid files even if the launch response is lost.
+    sandboxId: v.string(),
+    directory: v.string(),
     state: jobState,
     deadline: v.number(),
     pollMinMs: v.number(),
@@ -53,5 +57,6 @@ export default defineSchema({
     wakeId: v.optional(v.id("_scheduled_functions")),
     exitCode: v.optional(v.number()),
     logTail: v.optional(v.string()),
+    code: v.optional(v.literal("SANDBOX_JOB_DEADLINE")),
   }).index("by_scope_state", ["scopeKey", "state"]),
 });

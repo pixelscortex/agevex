@@ -222,7 +222,7 @@ it.each(["done", "failed", "unknown"] as const)(
       { key: "job" },
     )) as { jobId: string };
     expect(await s.t.query(s.component.state.getJob, { jobId: result.jobId })).toMatchObject({
-      providerJobId: "fake-job-1",
+      providerJobId: expect.any(String),
       state: "running",
     });
     expect(
@@ -303,6 +303,74 @@ it("an interrupted launch is detected by its persisted watchdog and becomes unkn
   expect(s.fake.calls.poll).toHaveLength(0);
 });
 
+it("a lost launch and throwing callback retain the unknown receipt and job id until the watchdog notifies", async () => {
+  const fake = fakeSandboxProvider();
+  fake.provider.startBackground = async () => {
+    fake.calls.background.push("lost");
+    throw new Error("lost launch response");
+  };
+  const s = setup("thread", {}, fake);
+  state.callbackFails = true;
+  const result = await invoke(
+    s.t,
+    "sandbox_run_background",
+    { command: "work" },
+    { key: "lost-callback" },
+  );
+  expect(result).toMatchObject({ status: "unknown", jobId: expect.any(String) });
+  expect(
+    await invoke(s.t, "sandbox_run_background", { command: "work" }, { key: "lost-callback" }),
+  ).toEqual(result);
+  expect(await s.t.query(api.host.events, {})).toHaveLength(0);
+  state.callbackFails = false;
+  await advance(s.t, LIMITS.actionBudgetMs);
+  expect(await s.t.query(api.host.events, {})).toMatchObject([
+    { value: { jobId: (result as { jobId: string }).jobId, state: "unknown" } },
+  ]);
+  expect(fake.calls.background).toHaveLength(1);
+});
+
+it("exports a multi-MiB binary in bounded windows with an exact incremental hash and stores nothing on interruption", async () => {
+  const s = setup();
+  await invoke(s.t, "prepare");
+  const bytes = Uint8Array.from({ length: 3 * 1024 * 1024 + 17 }, (_, i) => i % 251);
+  s.fake.sandboxes.get((await row(s))!.sandboxId!)!.files.set("/large.bin", bytes);
+  const download = s.fake.provider.download;
+  const windows: number[] = [];
+  s.fake.provider.download = async (ctx, id, path, opts) => {
+    windows.push(opts.maxBytes);
+    return download(ctx, id, path, opts);
+  };
+  const result = (await invoke(s.t, "export", { path: "/large.bin" })) as {
+    storageId: string;
+    bytes: number;
+    sha256: string;
+  };
+  expect(result.bytes).toBe(bytes.length);
+  expect(result.sha256).toBe(
+    Buffer.from(await crypto.subtle.digest("SHA-256", bytes)).toString("hex"),
+  );
+  expect(
+    new Uint8Array(
+      await s.t.run(async (ctx) =>
+        (await ctx.storage.get(result.storageId as never))!.arrayBuffer(),
+      ),
+    ),
+  ).toEqual(bytes);
+  expect(windows.length).toBeGreaterThan(1);
+  expect(Math.max(...windows)).toBeLessThanOrEqual(512 * 1024);
+  const before = await s.t.run((ctx) => ctx.db.system.query("_storage").collect());
+  let reads = 0;
+  s.fake.provider.download = async (ctx, id, path, opts) => {
+    if (++reads === 2) throw new Error("interrupted transfer");
+    return download(ctx, id, path, opts);
+  };
+  await expect(invoke(s.t, "export", { path: "/large.bin" })).rejects.toThrow(
+    "interrupted transfer",
+  );
+  expect(await s.t.run((ctx) => ctx.db.system.query("_storage").collect())).toEqual(before);
+});
+
 it("a polling exception settles unknown without retrying paid work", async () => {
   const s = setup("thread", { pollMinMs: 10 });
   s.fake.provider.poll = async () => {
@@ -318,25 +386,30 @@ it("a polling exception settles unknown without retrying paid work", async () =>
   expect(s.fake.calls.background).toHaveLength(1);
 });
 
-it("job deadlines stop polling and report unknown for work that never completes", async () => {
-  const s = setup(
-    "thread",
-    { pollMinMs: 10, pollMaxMs: 20, jobTimeoutMs: 30 },
-    fakeSandboxProvider({ background: () => [{ state: "running" }] }),
-  );
-  const result = (await invoke(s.t, "sandbox_run_background", { command: "forever" })) as {
-    jobId: string;
-  };
-  await advance(s.t, 10);
-  await advance(s.t, 20);
-  expect(await s.t.query(s.component.state.getJob, { jobId: result.jobId })).toMatchObject({
-    state: "unknown",
-  });
-  const polls = s.fake.calls.poll.length;
-  await advance(s.t, LIMITS.actionBudgetMs);
-  expect(s.fake.calls.poll).toHaveLength(polls);
-  expect(s.fake.calls.background).toHaveLength(1);
-});
+it.each([10, 100])(
+  "job deadlines stop polling and report unknown for work that never completes (poll interval %i)",
+  async (pollMinMs) => {
+    const s = setup(
+      "thread",
+      { pollMinMs, pollMaxMs: Math.max(pollMinMs, 20), jobTimeoutMs: 30 },
+      fakeSandboxProvider({ background: () => [{ state: "running" }] }),
+    );
+    const result = (await invoke(s.t, "sandbox_run_background", { command: "forever" })) as {
+      jobId: string;
+    };
+    await advance(s.t, 10);
+    await advance(s.t, 20);
+    expect(await s.t.query(s.component.state.getJob, { jobId: result.jobId })).toMatchObject({
+      state: "unknown",
+      code: "SANDBOX_JOB_DEADLINE",
+    });
+    expect(s.fake.calls.cancel).toHaveLength(1);
+    const polls = s.fake.calls.poll.length;
+    await advance(s.t, LIMITS.actionBudgetMs);
+    expect(s.fake.calls.poll).toHaveLength(polls);
+    expect(s.fake.calls.background).toHaveLength(1);
+  },
+);
 
 it("a failed host completion callback rolls back settlement and its watchdog delivers the event later", async () => {
   const s = setup(
@@ -376,7 +449,7 @@ it("a permanently failing host callback stops scheduling at the deadline and lea
   await advance(s.t, LIMITS.actionBudgetMs);
   expect(await invoke(s.t, "job", { jobId: result.jobId })).toMatchObject({
     state: "unknown",
-    providerJobId: "fake-job-1",
+    providerJobId: expect.any(String),
   });
   const polls = s.fake.calls.poll.length;
   await advance(s.t, LIMITS.actionBudgetMs);
@@ -488,7 +561,7 @@ it("TTL cleanup cannot delete the filesystem while a background job is active", 
   await invoke(s.t, "cleanup");
   await advance(s.t, 0);
   expect(s.fake.calls.delete).toBe(0);
-  s.fake.jobs.set("fake-job-1", [{ state: "done", exitCode: 0 }]);
+  s.fake.jobs.set([...s.fake.jobs.keys()][0], [{ state: "done", exitCode: 0 }]);
   await advance(s.t, 60_000);
   expect(await s.t.query(s.component.state.getJob, { jobId: result.jobId })).toMatchObject({
     state: "done",

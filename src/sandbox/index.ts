@@ -1,4 +1,6 @@
 import { storeFile } from "@convex-dev/agent";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
 import { tool, type ToolExecutionOptions } from "ai";
 import {
   createFunctionHandle,
@@ -286,14 +288,19 @@ export function defineSandbox(options: SandboxOptions) {
       jobTimeoutMs: limits.jobTimeoutMs,
       maximum: limits.jobsPerSandbox,
     });
+    const admission = { jobId: admitted.jobId, claim: admitted.claim };
     try {
       tc.signal.throwIfAborted();
       const launched = await within(tc.ctx, () =>
-        provider.startBackground(tc.ctx, sandboxId, input.command),
+        provider.startBackground(tc.ctx, sandboxId, input.command, {
+          jobId: admitted.providerJobId,
+          sandboxId,
+          directory: admitted.directory,
+        }),
       );
       if (
         !(await tc.ctx.runMutation(component.state.attachJob, {
-          ...admitted,
+          ...admission,
           providerJobId: launched.jobId,
         }))
       )
@@ -301,7 +308,20 @@ export function defineSandbox(options: SandboxOptions) {
       await observe(tc.ctx, sandboxId, "background", "observed", tc);
       return { status: "running" as const, jobId: admitted.jobId };
     } catch {
-      await tc.ctx.runMutation(options.refs.settle(), { ...admitted, state: "unknown" });
+      try {
+        await within(tc.ctx, () =>
+          provider.cancelBackground(tc.ctx, admitted.providerJobId, admitted),
+        );
+      } catch {
+        /* A lost launch stays unknown even if its group cannot be reached. */
+      }
+      try {
+        await tc.ctx.runMutation(options.refs.settle(), { ...admission, state: "unknown" });
+      } catch {
+        // The reservation's persisted watchdog retries the atomic callback
+        // within its deadline. Its failure cannot replace an uncertain paid
+        // launch with TOOL_FAILED or discard the only reconciliation id.
+      }
       await observe(tc.ctx, sandboxId, "background", "unknown", tc);
       return { status: "unknown" as const, jobId: admitted.jobId };
     }
@@ -410,10 +430,22 @@ export function defineSandbox(options: SandboxOptions) {
         if (!job) return null;
         let outcome;
         try {
-          outcome =
-            !job.providerJobId || job.deadline <= Date.now()
-              ? { state: "unknown" as const }
-              : await within(ctx, () => provider.poll(ctx, job.providerJobId!));
+          if (job.deadline <= Date.now() || job.state === "starting" || !job.providerJobId) {
+            // Even an unacknowledged launch has a pre-persisted location.
+            // Kill is a bounded best effort; failure remains unknown and
+            // never starts a second scheduler chain or retries paid work.
+            try {
+              await within(ctx, () => provider.cancelBackground(ctx, job.providerJobId!, job));
+            } catch {
+              /* Preserve the deadline outcome even if access was lost. */
+            }
+            outcome = {
+              state: "unknown" as const,
+              ...(job.deadline <= Date.now() ? { code: "SANDBOX_JOB_DEADLINE" as const } : {}),
+            };
+          } else {
+            outcome = await within(ctx, () => provider.poll(ctx, job.providerJobId!, job));
+          }
           if (
             !["running", "done", "failed", "unknown"].includes(outcome.state) ||
             (outcome.exitCode !== undefined && !Number.isSafeInteger(outcome.exitCode)) ||
@@ -430,6 +462,7 @@ export function defineSandbox(options: SandboxOptions) {
             jobId: job._id,
             claim: job.claim,
             state: outcome.state,
+            ...(outcome.code === undefined ? {} : { code: outcome.code }),
             ...(outcome.exitCode === undefined ? {} : { exitCode: outcome.exitCode }),
             ...(outcome.logTail === undefined
               ? {}
@@ -447,6 +480,7 @@ export function defineSandbox(options: SandboxOptions) {
               jobId: job._id,
               claim: job.claim,
               state: "unknown",
+              ...(outcome.code === undefined ? {} : { code: outcome.code }),
             });
           }
         }
@@ -460,6 +494,7 @@ export function defineSandbox(options: SandboxOptions) {
         state: v.union(v.literal("done"), v.literal("failed"), v.literal("unknown")),
         exitCode: v.optional(v.number()),
         logTail: v.optional(v.string()),
+        code: v.optional(v.literal("SANDBOX_JOB_DEADLINE")),
       },
       returns: v.null(),
       handler: async (ctx, args: SettleArgs): Promise<null> => {
@@ -511,6 +546,7 @@ export function defineSandbox(options: SandboxOptions) {
         ...(job.providerJobId ? { providerJobId: job.providerJobId } : {}),
         ...(job.exitCode === undefined ? {} : { exitCode: job.exitCode }),
         ...(job.logTail === undefined ? {} : { logTail: job.logTail }),
+        ...(job.code === undefined ? {} : { code: job.code }),
       };
     },
     /** Schedule a finite TTL sweep on demand; mounting alone creates no timer. */
@@ -580,23 +616,51 @@ export function defineSandbox(options: SandboxOptions) {
         toolCallId: "export",
       };
       await prepare(tc);
-      const bytes = await within(ctx, () =>
-        provider.download(ctx, row.sandboxId!, input.path, { maxBytes: limits.exportBytes }),
-      );
-      if (bytes.byteLength > limits.exportBytes) throw new Error("SANDBOX_EXPORT_TOO_LARGE");
-      // Native storeFile computes/verifies SHA-256 and performs hash dedupe.
-      // agent 0.7.7 src/vercel/client/files.ts:47-158 owns storage lifecycle.
+      // Small files finish in one buffered read. Larger files arrive in
+      // <=512 KiB windows, hashed incrementally. The hard 100 MiB ceiling
+      // bounds the Blob parts and assembly to <=200 nonempty chunks; only
+      // this action holds bytes. Every component transaction has constant
+      // size metadata, independent of file size. No storage object exists
+      // until EOF, so interruptions and size failures leave nothing behind.
+      const hash = sha256.create();
+      const chunks: Uint8Array<ArrayBuffer>[] = [];
+      let bytes = 0;
+      for (;;) {
+        const maxBytes = Math.min(LIMITS.exportChunkBytes, limits.exportBytes - bytes + 1);
+        const chunk = await within(ctx, () =>
+          provider.download(ctx, row.sandboxId!, input.path, {
+            maxBytes,
+            offset: bytes,
+            totalSizeLimit: limits.exportBytes,
+          }),
+        );
+        if (chunk.byteLength > maxBytes) throw new Error("SANDBOX_EXPORT_WINDOW_TOO_LARGE");
+        bytes += chunk.byteLength;
+        if (bytes > limits.exportBytes) throw new Error("SANDBOX_EXPORT_TOO_LARGE");
+        hash.update(chunk);
+        chunks.push(new Uint8Array(chunk));
+        if (chunk.byteLength < maxBytes) break;
+      }
+      remaining(ctx);
+      const digest = bytesToHex(hash.digest());
+      // Agent storeFile (0.7.7 src/vercel/client/files.ts:58-158) dedupes and
+      // stores/registers the Blob once. Let it compute its native hex hash:
+      // its supplied-sha256 branch compares hex to Convex's base64 metadata.
+      // Compare with our incremental digest instead. At the hard maximum,
+      // chunks + Blob + Agent's digest buffer cost <=300 MiB, below the
+      // action's 512 MiB memory limit; transaction bytes stay constant.
       const stored = await storeFile(
         ctx,
         options.agent,
-        new Blob([new Uint8Array(bytes)], { type: "application/octet-stream" }),
+        new Blob(chunks, { type: "application/octet-stream" }),
         { filename: input.path.split("/").pop() },
       );
+      if (stored.file.hash !== digest) throw new Error("SANDBOX_EXPORT_HASH_MISMATCH");
       await observe(ctx, row.sandboxId, "export", "observed", trusted);
       return {
         fileId: stored.file.fileId,
         storageId: stored.file.storageId,
-        bytes: bytes.byteLength,
+        bytes,
         sha256: stored.file.hash,
       };
     },

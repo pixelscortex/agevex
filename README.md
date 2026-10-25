@@ -63,23 +63,29 @@ and event-wait wiring is a separate integration step.
 
 Defaults: commands ≤180 seconds; total action work ≤540 seconds; shared
 stdout/stderr tail ≤6,000 characters; text read/write ≤160,000 characters;
-directory listing ≤100 entries; binary export ≤512 KiB; 16 active jobs per
+directory listing ≤100 entries; binary export ≤25 MiB (hard maximum 100 MiB); 16 active jobs per
 sandbox; idle TTL 24 hours. Host overrides are validated against hard maxima.
 Daytona snapshots must include `python3` for bounded command output and reads.
-Configure Daytona's component environment key for background execution, and
-use `autoStopInterval: 0` when jobs must outlive the idle interval.
+Use `autoStopInterval: 0` when jobs must outlive the idle interval.
 
 `sandbox.export(ctx, { threadId, path })` returns
 `{ fileId, storageId, bytes, sha256 }` through native Agent `storeFile`.
 Run-scoped exports require `resolveThread(ctx, threadId)` returning trusted
 `{ subject, threadId, runId }` from host state. Export never creates a sandbox
 for a missing binding. Read failures retain the existing filesystem.
+Exports read windows of at most 512 KiB and hash incrementally before storing
+one Blob. Daytona stages temporary windows for its file API so file bytes
+never enter execution rows, component arguments or receipts. An interrupted
+transfer creates no storage object.
 
 Background completion produces one atomic host callback with
 `{ type: "sandbox.job.completed", jobId, providerJobId?, scopeKey, subject,
-threadId, runId, state: "done" | "failed" | "unknown", exitCode?, logTail? }`.
-The provider job ID is persisted; polls back off and stop at completion or a
-bounded deadline. A lost launch response or poll failure becomes `unknown`;
+threadId, runId, state: "done" | "failed" | "unknown", exitCode?, logTail?, code? }`.
+The provider job ID, sandbox ID and private job directory are persisted before
+launch. Daytona detaches a process group through bounded synchronous execs;
+the module owns polling and reads actual log tails at the source. Polls back
+off and stop at completion or a bounded deadline. Expiry attempts a bounded
+group kill and records `unknown` with `SANDBOX_JOB_DEADLINE`. A lost launch response or poll failure becomes `unknown`;
 paid work is never replayed. A watchdog handles interrupted launch/poll
 actions. Successful callbacks and terminal state commit together, so callbacks
 must perform transactional writes rather than external effects. Callback

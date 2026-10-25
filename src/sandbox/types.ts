@@ -12,10 +12,13 @@ import type { SandboxLimits } from "./limits.js";
 export type SandboxContext = GenericActionCtx<GenericDataModel>;
 export type SandboxFacts = Pick<ToolContext, "subject" | "threadId" | "runId">;
 export type FileEntry = { name: string; isDir: boolean; size?: number };
+export type BackgroundLocation = { sandboxId: string; directory: string };
+export type BackgroundJob = BackgroundLocation & { jobId: string };
 export type JobOutcome = {
   state: "running" | "done" | "failed" | "unknown";
   exitCode?: number;
   logTail?: string;
+  code?: "SANDBOX_JOB_DEADLINE";
 };
 
 /**
@@ -23,6 +26,11 @@ export type JobOutcome = {
  * no-op when ready and preserve the filesystem on stopped/archived/error.
  * Reads/listing must enforce the supplied bound BEFORE returning across a
  * Convex boundary. No method may retry a command or background launch.
+ * A supplied background identity/location was persisted before launch and
+ * must be honored, including when launch throws. cancelBackground kills the
+ * entire process group with a bounded operation. download returns a bounded
+ * window starting at offset (a short window means EOF), rejects files above
+ * totalSizeLimit, and never records file bytes in component args or rows.
  */
 export interface SandboxProvider {
   id: string;
@@ -36,8 +44,14 @@ export interface SandboxProvider {
     cmd: string,
     opts: { timeoutS: number; signal: AbortSignal },
   ): Promise<{ exitCode: number; stdout: string; stderr: string }>;
-  startBackground(ctx: SandboxContext, sandboxId: string, cmd: string): Promise<{ jobId: string }>;
-  poll(ctx: SandboxContext, jobId: string): Promise<JobOutcome>;
+  startBackground(
+    ctx: SandboxContext,
+    sandboxId: string,
+    cmd: string,
+    job?: BackgroundJob,
+  ): Promise<BackgroundJob>;
+  poll(ctx: SandboxContext, jobId: string, location: BackgroundLocation): Promise<JobOutcome>;
+  cancelBackground(ctx: SandboxContext, jobId: string, location: BackgroundLocation): Promise<void>;
   readFile(
     ctx: SandboxContext,
     sandboxId: string,
@@ -56,7 +70,7 @@ export interface SandboxProvider {
     ctx: SandboxContext,
     sandboxId: string,
     path: string,
-    opts: { maxBytes: number },
+    opts: { maxBytes: number; offset?: number; totalSizeLimit?: number },
   ): Promise<Uint8Array>;
 }
 
@@ -68,6 +82,7 @@ export type SandboxJobEvent = SandboxFacts & {
   state: "done" | "failed" | "unknown";
   exitCode?: number;
   logTail?: string;
+  code?: "SANDBOX_JOB_DEADLINE";
 };
 
 export type SandboxAuthorization = Partial<SandboxFacts> & {
@@ -92,6 +107,7 @@ export type SettleArgs = PollArgs & {
   state: "done" | "failed" | "unknown";
   exitCode?: number;
   logTail?: string;
+  code?: "SANDBOX_JOB_DEADLINE";
 };
 
 /** Host references keep provider configuration and secrets out of scheduled args. */
