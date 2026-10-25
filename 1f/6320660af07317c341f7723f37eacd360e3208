@@ -1,0 +1,63 @@
+src/sandbox/daytona.ts
+  s_4f8d0c342ff1bd::t_ab48a8a6e9ccfd 280-281
+  s_4f8d0c342ff1bd::t_49677dcf7e98a5 180-200,204-209,223-236,248
+src/sandbox/limits.ts
+  s_4f8d0c342ff1bd::t_ab48a8a6e9ccfd 8-9,12,14,56,75-76
+  s_4f8d0c342ff1bd::t_7a1fd60d13672b 13
+src/sandbox/index.ts
+  s_4f8d0c342ff1bd::t_1d2be3cc64d2be 74-78,94-98,104-107,485-489,529-535,650,722-724
+  s_4f8d0c342ff1bd::t_ab48a8a6e9ccfd 12,25-26,41-53,672-674,676,679-701,705-706,714-721
+  s_4f8d0c342ff1bd::t_9b2b09c92c7df9 79,93,99-103,108-117,355,357-360,473,479,498-509
+  s_4f8d0c342ff1bd::t_f563b1cf93591b 510-511
+tests/sandbox/setup.ts
+  s_4f8d0c342ff1bd::t_c54faecbececab 29,38-39,41
+  s_4f8d0c342ff1bd::t_f563b1cf93591b 8-9,40
+tests/sandbox/sandbox.test.ts
+  s_4f8d0c342ff1bd::t_c54faecbececab 374-375,383-386,389,391
+  s_4f8d0c342ff1bd::t_11e1e59bc724fe 645-652
+  s_4f8d0c342ff1bd::t_ccdc452d491a69 653-654
+tests/sandbox/daytona.test.ts
+  s_4f8d0c342ff1bd::t_1d2be3cc64d2be 262-263,268-270,275-276,287-290,300-305,307-309,322-324,342-343,346-348,350-356,363-368,390-391,401-502,506-577
+  s_4f8d0c342ff1bd::t_11e1e59bc724fe 374-386,503-505
+  s_4f8d0c342ff1bd::t_c168ddbd1e870d 232-261,264-267,271-274,277-286,291-299,306,310-321,325-341,344-345,349,357-362,369-373,387-389,392-400,578-579
+  s_4f8d0c342ff1bd::t_e00a666a6f7dd4 16,31,54-55,60
+tests/sandbox/fixture/daytona.ts
+  s_4f8d0c342ff1bd::t_bc139eceacca7d 42,44-48
+tests/sandbox/fixture/host.ts
+  s_4f8d0c342ff1bd::t_c54faecbececab 21-23,48,52-53,59,61
+  s_4f8d0c342ff1bd::t_f563b1cf93591b 60
+  s_4f8d0c342ff1bd::t_a3bfe32bf41676 62-70,92-96
+tests/sandbox/fixture/node.ts
+  s_4f8d0c342ff1bd::t_f563b1cf93591b 6
+  s_4f8d0c342ff1bd::t_c54faecbececab 1-5
+src/sandbox/component/state.ts
+  s_4f8d0c342ff1bd::t_f563b1cf93591b 277-278,280-282
+  s_4f8d0c342ff1bd::t_9b2b09c92c7df9 299
+  s_4f8d0c342ff1bd::t_c420f7118ae838 300
+README.md
+  s_4f8d0c342ff1bd::t_deb68b5e3ffc03 66,81-99,105-108,110-113
+src/sandbox/types.ts
+  s_4f8d0c342ff1bd::t_bc139eceacca7d 31
+  s_4f8d0c342ff1bd::t_11e1e59bc724fe 34-36
+  s_4f8d0c342ff1bd::t_ab48a8a6e9ccfd 108-114,142-143
+  s_4f8d0c342ff1bd::t_deb68b5e3ffc03 32-33
+tests/sandbox/daytona.live.ts
+  s_4f8d0c342ff1bd::t_bc139eceacca7d 15,52
+  s_4f8d0c342ff1bd::t_1c9072ff520d92 53-54,65,85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1f6320660af07317c341f7723f37eacd360e3208",
+  "prompts": {},
+  "sessions": {
+    "s_4f8d0c342ff1bd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17073-0fc8-7a52-bc13-760ea3e474fa",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
