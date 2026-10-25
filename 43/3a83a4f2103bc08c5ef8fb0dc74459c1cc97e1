@@ -1,0 +1,49 @@
+docs/site/content/docs/tools/continue-budget.mdx
+  s_d863bd773ba186::t_d3836a54c57ba9 49,75-91,137-142
+docs/site/content/docs/tools/goals.mdx
+  s_d863bd773ba186::t_7744c616607c36 43
+docs/site/public/r/continue-budget.json
+  s_d863bd773ba186::t_d305edc9820b1c 5,14,20,26
+docs/site/public/r/goals.json
+  s_d863bd773ba186::t_e08ac20a180263 5,14,20,26
+docs/site/public/r/registry.json
+  s_d863bd773ba186::t_48b00975c6ee4c 39,87
+docs/site/registry.json
+  s_d863bd773ba186::t_54d0cb41345553 39,87
+docs/site/registry/continue-budget/continueBudget.ts
+  s_d863bd773ba186::t_2f62d4f2317d71 17-24,36-38
+docs/site/registry/continue-budget/continueBudgetSchema.ts
+  s_d863bd773ba186::t_cc6ebf7943c06f 11-14,22-25
+docs/site/registry/continue-budget/continueBudgetState.ts
+  s_d863bd773ba186::t_5174ee779ff1de 7,37-40,55-56,64-68,81-82,88-94,97,100,103-107
+docs/site/registry/goals/goals.ts
+  s_d863bd773ba186::t_3aece1e9129acc 12,15
+docs/site/registry/goals/goalsSchema.ts
+  s_d863bd773ba186::t_a8f2a71c42960e 6-7
+docs/site/registry/goals/goalsState.ts
+  s_d863bd773ba186::t_5aa46475ad9d1b 13,19-20,32,41,53-54
+tests/tools/continue-budget.test.ts
+  s_d863bd773ba186::t_53adcccdf11fae 3,193-195,250-257,327,346-357,359-362,366,375-382,384,387-388,392-423,425-431,433-439,543
+tests/tools/fixture/host.ts
+  s_d863bd773ba186::t_2458376667a376 55-81,84,105-110,220
+tests/tools/setup.ts
+  s_d863bd773ba186::t_30d287873fef32 9,26,44
+tests/tools/state.test.ts
+  s_d863bd773ba186::t_fc76aa2db07579 179,182,195,268,274,294
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "433a83a4f2103bc08c5ef8fb0dc74459c1cc97e1",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
