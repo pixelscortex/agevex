@@ -1,4 +1,8 @@
-// Host-side module API and helpers; this code is imported by the installing app.
+/**
+ * Transport adapters for Langfuse, Braintrust and custom one-shot exporters.
+ * Calls are deadline-bounded and observer-only: no network failure can change
+ * a managed action result, and unknown ingestion outcomes are never retried.
+ */
 import { LIMITS, validateString } from "./limits.js";
 import type { OtlpPayload } from "./otlp.js";
 
@@ -66,6 +70,7 @@ function base64(value: string): string {
   return result;
 }
 
+/** Build a single HTTP attempt; cancel response bodies without exposing provider diagnostics. */
 function httpExporter(url: string, headers: Record<string, string>): Exporter {
   return {
     export: (body, signal) =>
@@ -85,6 +90,7 @@ function httpExporter(url: string, headers: Record<string, string>): Exporter {
   };
 }
 
+/** Validate host credentials and construct the Langfuse v4 OTLP adapter at registration time. */
 export function langfuse(options: {
   baseUrl: string;
   publicKey: string;
@@ -112,6 +118,7 @@ export function langfuse(options: {
   });
 }
 
+/** Bind a validated Braintrust project to a fail-open, one-attempt OTLP adapter. */
 export function braintrust(options: { apiKey: string; projectId: string }): Exporter {
   validateString(options.apiKey, "apiKey", LIMITS.maxConfigurationBytes);
   validateString(options.projectId, "projectId", LIMITS.maxFactBytes);
