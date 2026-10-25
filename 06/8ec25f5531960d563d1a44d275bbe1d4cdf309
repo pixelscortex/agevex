@@ -1,0 +1,32 @@
+src/meter/client.ts
+  s_851c2b74009bbd::t_c869b71de48fe2 64
+tests/tools/ask-user.test.ts
+  s_851c2b74009bbd::t_b1b895d7c3dc9c 3-4,32,94
+tests/tools/continue-budget.test.ts
+  s_851c2b74009bbd::t_b1b895d7c3dc9c 4,31,53
+  s_851c2b74009bbd::t_373f00b22ed472 54-55,116-118,366,368,478
+tests/telemetry/slots.test.ts
+  s_851c2b74009bbd::t_b1b895d7c3dc9c 7,77,148
+tests/sandbox/fixture/seed.ts
+  s_851c2b74009bbd::t_b1b895d7c3dc9c 1-4,9,11,14-20
+package.json
+  s_851c2b74009bbd::t_f93796edac6350 111,119
+tests/meter/adapters.test.ts
+  s_851c2b74009bbd::t_28f8ebbd6f0076 137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "068ec25f5531960d563d1a44d275bbe1d4cdf309",
+  "prompts": {},
+  "sessions": {
+    "s_851c2b74009bbd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17556-a70f-7af0-b240-dcd11cf9e9ec",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
