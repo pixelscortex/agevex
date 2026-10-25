@@ -23,7 +23,11 @@ it("preserves native UI pagination/parts and native persisted stream deltas", as
   const args = { threadId: receipt.threadId, paginationOpts: { cursor: null, numItems: 1 } };
   const wrapped = await alice.query(api.agents.messages, args);
   const native = await t.run((ctx) => listUIMessages(ctx, components.agent, args));
-  expect(wrapped).toEqual(native);
+  // The server adds origin metadata while preserving native pagination/parts.
+  expect(wrapped).toEqual({
+    ...native,
+    page: native.page.map((message) => ({ ...message, origin: "user" })),
+  });
   expect(wrapped.page[0].parts).toContainEqual(
     expect.objectContaining({ type: "text", text: "DEMO deterministic native reply" }),
   );

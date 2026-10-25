@@ -10,14 +10,17 @@ import {
   type RegisteredAction,
   type RegisteredMutation,
 } from "convex/server";
-import { ConvexError, v } from "convex/values";
+import { ConvexError, getConvexSize, v } from "convex/values";
 import { tool } from "ai";
 import { z } from "zod";
 import type { ComponentApi } from "../component/_generated/component.js";
 import { denialCode, runErrorCode } from "../component/schema.js";
 import { LIMITS, resolveLimits } from "../component/limits.js";
-import { bindOnceTool, fingerprint } from "./once.js";
+import { postNote, type NoteArgs } from "./hooks.js";
+import { bindOnceTool, fingerprint, noopMeter } from "./once.js";
 import type {
+  HookResult,
+  HookContext,
   Activity,
   CoordinateArgs,
   CoordinateResult,
@@ -60,6 +63,7 @@ type DeliveryContext = {
   rootAvailable: boolean;
   parentAgent: string;
   parentThreadId: string;
+  side?: boolean;
 };
 
 /** The native facts one child-result verification is allowed to assume. */
@@ -128,9 +132,29 @@ function resolveGraph(config: Registration): Graph {
     edges.set(agent.name, new Set(agent.subagents.map((child) => child.name)));
     // Walk every path, even through a shared object: its longest path must fit.
     const next = new Set(path).add(agent);
+    const sides = agent.sideAgents ?? [];
+    if (
+      sides.length > LIMITS.sideAgents ||
+      new Set(sides.map((side) => side.agent.name)).size !== sides.length
+    )
+      throw new Error("INVALID_SIDE_AGENTS");
+    for (const side of sides) {
+      const values = Object.values(side.every);
+      if (
+        side.sees !== "delta" ||
+        values.length !== 1 ||
+        !Number.isSafeInteger(values[0]) ||
+        values[0] <= 0 ||
+        values[0] > LIMITS.cadence ||
+        !("turns" in side.every || "minutes" in side.every)
+      )
+        throw new Error("INVALID_SIDE_CADENCE");
+      visit(side.agent, depth + 1, next);
+    }
     for (const child of agent.subagents) visit(child, depth + 1, next);
   }
   for (const root of config.agents) visit(root, 0, new Set());
+  if (byName.size > LIMITS.agents) throw new Error("AGENT_LIMIT");
   return { byName, children, edges };
 }
 
@@ -144,6 +168,7 @@ function resolveGraph(config: Registration): Graph {
  */
 const coordinateArgs = v.object({
   op: v.string(),
+  side: v.optional(v.boolean()),
   assignmentId: v.optional(v.string()),
   turnToken: v.optional(v.string()),
   toolCallId: v.optional(v.string()),
@@ -193,8 +218,32 @@ export function registerAgent(component: ComponentApi, config: Registration) {
     )
       throw new Error("INVALID_DEFERRED_TOOLS");
   }
-  const collaboration = [...graph.edges.values()].some((allowed) => allowed.size > 0);
+  const collaboration =
+    [...graph.edges.values()].some((allowed) => allowed.size > 0) ||
+    [...graph.byName.values()].some((agent) => agent.sideAgents?.length);
+  const agentIndexes = new Map([...graph.byName.keys()].sort().map((name, index) => [name, index]));
   if (collaboration && !config.refs.coordinate) throw new Error("COORDINATE_REF_REQUIRED");
+
+  const watching = [...graph.byName.values()].some((agent) => agent.sideAgents?.length);
+
+  async function saveTrackedMessage(
+    ctx: CoordinatorCtx,
+    native: ManagedAgent["component"],
+    args: Parameters<typeof saveMessage>[2],
+  ) {
+    const saved = await saveMessage(ctx, native, args);
+    if (watching)
+      await ctx.runMutation(component.hooks.capture, {
+        threadId: args.threadId,
+        savedMessage: {
+          id: saved.messageId,
+          order: saved.message.order,
+          stepOrder: saved.message.stepOrder,
+          bytes: getConvexSize(saved.message),
+        },
+      });
+    return saved;
+  }
 
   async function observe(ctx: CoordinatorCtx | RunnerCtx, event: AgentEvent): Promise<void> {
     try {
@@ -295,6 +344,10 @@ export function registerAgent(component: ComponentApi, config: Registration) {
       });
       return null;
     }
+    if (context.side && context.status === "failed" && context.errorCode === "EMPTY_RESULT") {
+      await record("failed", context.errorCode);
+      return null;
+    }
     let text: string;
     if (context.status === "completed") {
       const verified = context.childResultMessageId
@@ -316,8 +369,14 @@ export function registerAgent(component: ComponentApi, config: Registration) {
         });
         return null;
       }
-      text = `${context.agent} completed the delegated task.\n\n${verified}`;
+      text = context.side
+        ? verified
+        : `${context.agent} completed the delegated task.\n\n${verified}`;
     } else {
+      if (context.side) {
+        await record("failed", context.errorCode);
+        return null;
+      }
       text = `${context.agent} failed the delegated task (${
         context.errorCode ?? "GENERATION_FAILED"
       }). No result was accepted.`;
@@ -361,7 +420,27 @@ export function registerAgent(component: ComponentApi, config: Registration) {
       });
       return null;
     }
-    const { messageId } = await saveMessage(ctx, root.component, {
+    if (context.side) {
+      if (text.trim() && text.trim() !== "NONE") {
+        const row = await ctx.runQuery(component.queue.assignment, {
+          threadId: context.parentThreadId,
+        });
+        const accepted =
+          row &&
+          (await postNote(ctx, component, row.assignmentId, {
+            threadId: context.parentThreadId,
+            text: text.slice(0, LIMITS.noteLength),
+            from: context.agent,
+          }));
+        if (!accepted) {
+          await record("failed", "DELIVERY_FAILED");
+          return null;
+        }
+      }
+      await record("accepted", null);
+      return null;
+    }
+    const { messageId } = await saveTrackedMessage(ctx, root.component, {
       threadId: context.parentThreadId,
       prompt: text,
       userId: context.subject,
@@ -416,6 +495,19 @@ export function registerAgent(component: ComponentApi, config: Registration) {
   }
 
   return {
+    note: async (ctx: CoordinatorCtx, args: NoteArgs): Promise<boolean> => {
+      const scope = await ctx.runQuery(component.queue.assignment, { threadId: args.threadId });
+      if (!scope) throw new Error("FORBIDDEN");
+      const { subject } = await config.authorize(ctx, {
+        operation: "note",
+        agent: scope.agent,
+        threadId: args.threadId,
+      });
+      const owned = scope.subject === subject ? scope : null;
+      const managed = graph.byName.get(scope.agent);
+      if (!owned || !managed) throw new Error("FORBIDDEN");
+      return postNote(ctx, component, owned.assignmentId, args);
+    },
     authorizedEndpoints: () => authorizedEndpoints(component, config),
     internalFunctions: () => {
       const coordinate: RegisteredMutation<"internal", CoordinateArgs, CoordinateResult> =
@@ -449,7 +541,13 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 turnToken: args.turnToken,
               });
               if (!owned) return { status: "denied" as const, code: "STALE_TURN" as const };
-              if (!graph.edges.get(owned.actorAgent)?.has(args.agent))
+              if (
+                args.side
+                  ? !graph.byName
+                      .get(owned.actorAgent)
+                      ?.sideAgents?.some((side) => side.agent.name === args.agent)
+                  : !graph.edges.get(owned.actorAgent)?.has(args.agent)
+              )
                 return { status: "denied" as const, code: "FORBIDDEN" as const };
               let subject = "";
               try {
@@ -471,6 +569,21 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 return { status: "denied" as const, code: "FORBIDDEN" as const };
               const child = graph.children.get(args.agent);
               if (!child) return { status: "denied" as const, code: "FORBIDDEN" as const };
+              const side = args.side
+                ? graph.byName
+                    .get(owned.actorAgent)
+                    ?.sideAgents?.find((side) => side.agent.name === args.agent)
+                : undefined;
+              const review = side
+                ? await ctx.runQuery(component.hooks.reviewContext, {
+                    assignmentId: args.assignmentId,
+                    executionId: args.turnToken,
+                    agent: args.agent,
+                    ...side.every,
+                  })
+                : null;
+              if (args.side && !review)
+                return { status: "denied" as const, code: "RUN_BUDGET" as const };
               const reservation = await ctx.runMutation(component.subagents.reserve, {
                 assignmentId: args.assignmentId,
                 turnToken: args.turnToken,
@@ -485,6 +598,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 ]),
                 group: args.group,
                 wait: args.wait,
+                side: args.side,
                 coordinateHandle: await createFunctionHandle(config.refs.coordinate!()),
                 runTurn: await createFunctionHandle(config.refs.runTurn()),
               });
@@ -496,16 +610,59 @@ export function registerAgent(component: ComponentApi, config: Registration) {
               // Only a fresh reservation reaches the native writes, so a replay
               // can never create a second child thread. Everything below runs in
               // this same transaction as `reserve`.
+              let childTask = task;
+              if (review) {
+                // Exact identities captured with native writes; no listMessages.
+                // Metadata admits <=2 MiB of source docs; text-only output is
+                // UTF-8 clipped to 48 KiB. Tools/reasoning never enter the fork.
+                const parent = graph.byName.get(owned.actorAgent)!;
+                const docs = await ctx.runQuery(parent.component.messages.getMessagesByIds, {
+                  messageIds: review.refs.map((ref) => ref.id),
+                });
+                let remaining = LIMITS.contextBytes;
+                const chunks: string[] = [];
+                for (const doc of docs.reverse()) {
+                  if (
+                    !doc ||
+                    !["user", "assistant"].includes(doc.message?.role ?? "") ||
+                    remaining <= 0
+                  )
+                    continue;
+                  const bytes = new TextEncoder().encode(`${doc.message!.role}: ${doc.text ?? ""}`);
+                  // stream:true drops an incomplete trailing UTF-8 code point;
+                  // replacement characters must not push output over the cap.
+                  const chunk = new TextDecoder().decode(bytes.slice(0, remaining), {
+                    stream: true,
+                  });
+                  chunks.unshift(chunk);
+                  remaining -= new TextEncoder().encode(chunk).byteLength + 1;
+                }
+                childTask += "\n\n" + chunks.join("\n");
+                await ctx.runMutation(component.hooks.reviewed, {
+                  assignmentId: args.assignmentId,
+                  executionId: args.turnToken,
+                  agent: args.agent,
+                  boundary: review.boundary,
+                });
+              }
               const threadId = await createThread(ctx, child.component, { userId: owned.subject });
-              const { messageId } = await saveMessage(ctx, child.component, {
+              const { messageId, message } = await saveTrackedMessage(ctx, child.component, {
                 threadId,
-                prompt: task,
+                prompt: childTask,
+                order: LIMITS.firstPromptOrder,
                 userId: owned.subject,
               });
               await ctx.runMutation(component.subagents.attach, {
                 runId: reservation.runId,
                 childThreadId: threadId,
                 promptMessageId: messageId,
+                trackContext: !!child.sideAgents?.length,
+                savedMessage: {
+                  id: messageId,
+                  order: message.order,
+                  stepOrder: message.stepOrder,
+                  bytes: getConvexSize(message),
+                },
               });
               await observe(ctx, {
                 type: "delegation.queued",
@@ -574,7 +731,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 return { status: "denied" as const, code: "FORBIDDEN" as const };
               }
               if (args.op === "message") {
-                const { messageId } = await saveMessage(ctx, childAgent.component, {
+                const { messageId } = await saveTrackedMessage(ctx, childAgent.component, {
                   threadId: target.childThreadId,
                   prompt: text,
                   userId: target.subject,
@@ -597,12 +754,16 @@ export function registerAgent(component: ComponentApi, config: Registration) {
               );
               const parentAgent = graph.byName.get(target.parentAgent);
               if (!parentAgent) throw new Error("FORBIDDEN");
-              const { messageId: parentMessageId } = await saveMessage(ctx, parentAgent.component, {
-                threadId: target.parentThreadId,
-                prompt: target.agent + " asks (run " + target.runId + "):\n\n" + text,
-                agentName: target.agent,
-                userId: target.subject,
-              });
+              const { messageId: parentMessageId } = await saveTrackedMessage(
+                ctx,
+                parentAgent.component,
+                {
+                  threadId: target.parentThreadId,
+                  prompt: target.agent + " asks (run " + target.runId + "):\n\n" + text,
+                  agentName: target.agent,
+                  userId: target.subject,
+                },
+              );
               const response = await ctx.runMutation(component.subagents.askParent, {
                 assignmentId: args.assignmentId,
                 turnToken: args.turnToken,
@@ -692,7 +853,16 @@ export function registerAgent(component: ComponentApi, config: Registration) {
           // Only our recorded request can block a managed turn. Native history
           // is never searched to discover requests.
           if (queued.approvalBlocked) return null;
-          const claimed = await ctx.runMutation(component.queue.claim, args);
+          const claimed = await ctx.runMutation(component.queue.claim, {
+            ...args,
+            agentIndex: agentIndexes.get(queued.agent),
+            routeModel: !!managed.hooks?.beforeTurn,
+            notes: {
+              getMessages: await createFunctionHandle(managed.component.messages.getMessagesByIds),
+              addMessages: await createFunctionHandle(managed.component.messages.addMessages),
+              updateMessage: await createFunctionHandle(managed.component.messages.updateMessage),
+            },
+          });
           if (!claimed) return null;
           const child = claimed.subagent;
           await observe(ctx, {
@@ -860,7 +1030,126 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 }
               }) as RunnerCtx["runMutation"],
             };
+            let hookFailed = false;
+            let hookBlocked = false;
+            const hc: HookContext = {
+              ctx: fencedCtx,
+              subject: claimed.subject,
+              threadId: claimed.threadId,
+              runId: claimed.runId,
+              signal: controller.signal,
+              meter: noopMeter,
+            };
+            const hook = async (
+              invoke: (() => HookResult | Promise<HookResult>) | undefined,
+              allowModel = false,
+            ): Promise<HookResult> => {
+              try {
+                const result = await invoke?.();
+                for (const [key, max] of [
+                  ["note", LIMITS.noteLength],
+                  ["block", limits.taskLength],
+                  ["continue", LIMITS.messageLength],
+                  ["model", LIMITS.modelIdLength],
+                ] as const) {
+                  const value = result?.[key];
+                  if (
+                    value !== undefined &&
+                    (typeof value !== "string" || !value.trim() || value.length > max)
+                  )
+                    throw new Error(`INVALID_HOOK_${key.toUpperCase()}`);
+                }
+                if (
+                  result?.model !== undefined &&
+                  (!allowModel || !claimed.isTurnStart || !claimed.isRunStart)
+                )
+                  throw new Error("MODEL_ONLY_AT_RUN_START");
+                if (result?.note)
+                  await fencedCtx.runMutation(
+                    allowModel ? component.hooks.beforeTurnNote : component.hooks.addNote,
+                    {
+                      assignmentId: claimed.assignmentId,
+                      text: result.note,
+                      from: managed.name,
+                      ...(allowModel
+                        ? {
+                            addMessages: await createFunctionHandle(
+                              managed.component.messages.addMessages,
+                            ),
+                            getMessages: await createFunctionHandle(
+                              managed.component.messages.getMessagesByIds,
+                            ),
+                          }
+                        : {}),
+                    },
+                  );
+                return result;
+              } catch (error) {
+                hookFailed = true;
+                await ctx.runMutation(component.hooks.hookState, {
+                  assignmentId: claimed.assignmentId,
+                  executionId: args.turnToken,
+                  error: String(error),
+                });
+                controller.abort();
+                throw new Error("HOOK_FAILED");
+              }
+            };
             try {
+              let selectedModel = claimed.modelId;
+              if (claimed.isTurnStart && managed.hooks?.beforeTurn) {
+                const docs = await ctx.runQuery(managed.component.messages.getMessagesByIds, {
+                  messageIds: [claimed.logicalPromptMessageId],
+                });
+                const before = await hook(
+                  () =>
+                    managed.hooks!.beforeTurn!(hc, {
+                      prompt: docs[0]?.text ?? "",
+                      isRunStart: claimed.isRunStart,
+                    }),
+                  true,
+                );
+                if (before?.model) {
+                  await hook(async () => {
+                    if (!config.models || !config.modelAllowlist?.includes(before.model!))
+                      throw new Error("MODEL_NOT_ALLOWED");
+                    await fencedCtx.runMutation(component.hooks.hookState, {
+                      assignmentId: claimed.assignmentId,
+                      executionId: args.turnToken,
+                      model: before.model,
+                    });
+                  });
+                  selectedModel = before.model;
+                }
+                if (before?.block) {
+                  hookBlocked = true;
+                  throw new Error("HOOK_BLOCKED");
+                }
+              }
+              if (managed.hooks?.beforeTurn) {
+                if (claimed.isRunStart)
+                  await ctx.runMutation(component.hooks.completeRouting, {
+                    assignmentId: claimed.assignmentId,
+                    executionId: args.turnToken,
+                    agentIndex: agentIndexes.get(claimed.agent)!,
+                  });
+                let routing = await ctx.runQuery(component.hooks.routing, {
+                  assignmentId: claimed.assignmentId,
+                  agentIndex: agentIndexes.get(claimed.agent)!,
+                });
+                // Siblings share one agent model for this request. Waiting here
+                // spends no paid model work and creates no Workflow steps; the
+                // first slice owns the decision, never a second classifier call.
+                while (routing?.pending) {
+                  await new Promise((resolve) => setTimeout(resolve, LIMITS.cancelPollMs));
+                  await assertActive();
+                  routing = await ctx.runQuery(component.hooks.routing, {
+                    assignmentId: claimed.assignmentId,
+                    agentIndex: agentIndexes.get(claimed.agent)!,
+                  });
+                }
+                selectedModel = routing?.modelId ?? selectedModel;
+              }
               const eligible = (graph.edges.get(claimed.agent)?.size ?? 0) > 0;
               const tools = Object.fromEntries(
                 Object.entries(managed.declaredTools).map(([name, declared]) => [
@@ -875,6 +1164,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                       threadId: claimed.threadId,
                       runId: claimed.runId,
                       signal: controller.signal,
+                      meter: noopMeter,
                     },
                     {
                       assignmentId: args.assignmentId,
@@ -885,6 +1175,46 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                   ),
                 ]),
               );
+              // Agent 0.7.7 createTool.ts:315-329 and wrapTools:378-397
+              // inject context through dynamic `this`; preserve that receiver.
+              // SDK collaboration tools are installed AFTER this wrapper. Their
+              // capability protocols must not be rewritten by generic tool hooks;
+              // delegation has its own beforeDelegate interception point.
+              for (const [name, declared] of Object.entries(tools)) {
+                const execute = declared.execute;
+                if (!execute) continue; // Deferred/provider-owned effects execute outside this action.
+                tools[name] = {
+                  ...declared,
+                  execute: async function (input, options) {
+                    const before = await hook(
+                      managed.hooks?.beforeTool
+                        ? () => managed.hooks!.beforeTool!(hc, { tool: name, input })
+                        : undefined,
+                    );
+                    if (before?.block)
+                      return { status: "denied", code: "HOOK_BLOCKED", reason: before.block };
+                    const actual = before && "input" in before ? before.input : input;
+                    const output = await execute.call(this, actual, options);
+                    const reshape = async (output: unknown) => {
+                      const after = await hook(
+                        managed.hooks?.afterTool
+                          ? () =>
+                              managed.hooks!.afterTool!(hc, { tool: name, input: actual, output })
+                          : undefined,
+                      );
+                      return after && "output" in after ? after.output : output;
+                    };
+                    if (output && typeof output === "object" && Symbol.asyncIterator in output) {
+                      // Preserve native streaming/backpressure; every published
+                      // value passes redaction before the model can consume it.
+                      return (async function* () {
+                        for await (const value of output) yield await reshape(value);
+                      })();
+                    }
+                    return reshape(output);
+                  },
+                };
+              }
               let delegated = false;
               let asked = false;
               if (eligible)
@@ -898,15 +1228,37 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                     wait: z.enum(["each", "all"]).optional(),
                   }),
                   execute: async (input, options) => {
+                    const before = await hook(
+                      managed.hooks?.beforeDelegate
+                        ? () =>
+                            managed.hooks!.beforeDelegate!(hc, {
+                              agent: input.agent,
+                              task: input.task,
+                            })
+                        : undefined,
+                    );
+                    if (before?.block)
+                      return { status: "denied", code: "HOOK_BLOCKED", reason: before.block };
+                    const rewritten =
+                      before && "input" in before
+                        ? await z
+                            .object({
+                              agent: z.string(),
+                              task: z.string(),
+                              group: z.string().max(LIMITS.groupLength).optional(),
+                              wait: z.enum(["each", "all"]).optional(),
+                            })
+                            .parseAsync(before.input)
+                        : input;
                     const launch = await fencedCtx.runMutation(coordinateReference(), {
                       op: "launch",
                       assignmentId: args.assignmentId,
                       turnToken: args.turnToken,
                       toolCallId: options.toolCallId,
-                      agent: input.agent,
-                      task: input.task,
-                      group: input.group,
-                      wait: input.wait,
+                      agent: rewritten.agent,
+                      task: rewritten.task,
+                      group: rewritten.group,
+                      wait: rewritten.wait,
                     });
                     if (launch?.status === "queued") delegated = true;
                     return launch;
@@ -951,12 +1303,12 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                   promptMessageId: claimed.promptMessageId,
                   // Agent 0.7.7 vercel/client/start.ts:107-108,234 supports this
                   // per-call override natively; never mutate a shared Agent's options.
-                  ...(claimed.modelId
+                  ...(selectedModel
                     ? {
                         model: (() => {
-                          if (!config.models || !config.modelAllowlist?.includes(claimed.modelId))
+                          if (!config.models || !config.modelAllowlist?.includes(selectedModel))
                             throw new Error("MODEL_NOT_ALLOWED");
-                          return config.models(claimed.modelId);
+                          return config.models(selectedModel);
                         })(),
                       }
                     : {}),
@@ -981,7 +1333,12 @@ export function registerAgent(component: ComponentApi, config: Registration) {
               });
               const reason = await result.finishReason;
               const accepted = ["stop", "length", "tool-calls"];
-              if (streamError || controller.signal.aborted || !accepted.includes(reason))
+              if (
+                hookFailed ||
+                streamError ||
+                controller.signal.aborted ||
+                !accepted.includes(reason)
+              )
                 throw new Error("INCOMPLETE_GENERATION");
               const snapshot = await ctx.runQuery(component.queue.execution, {
                 assignmentId: args.assignmentId,
@@ -1013,6 +1370,57 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                   return null;
                 }
               }
+              const completedTurn = await fencedCtx.runMutation(component.hooks.hookState, {
+                assignmentId: claimed.assignmentId,
+                executionId: args.turnToken,
+                complete: true,
+              });
+              const savedText = (result.savedMessages ?? [])
+                .filter(
+                  (message) =>
+                    message.message?.role === "assistant" && message.status === "success",
+                )
+                .map((message) => message.text ?? "")
+                .join("\n");
+              const after = await hook(
+                managed.hooks?.afterTurn
+                  ? () => managed.hooks!.afterTurn!(hc, { turn: completedTurn, text: savedText })
+                  : undefined,
+              );
+              // A side review is best effort, independently admitted and never
+              // awaited as a workflow/child result. Only its short launch mutation
+              // is awaited here; paid child work is dispatched on the child lane.
+              for (const side of managed.sideAgents ?? []) {
+                try {
+                  await fencedCtx.runMutation(coordinateReference(), {
+                    op: "launch",
+                    side: true,
+                    assignmentId: claimed.assignmentId,
+                    turnToken: args.turnToken,
+                    toolCallId: `side:${side.agent.name}:${completedTurn}`,
+                    agent: side.agent.name,
+                    task: "Review the following conversation delta. Reply with a short helpful note, or NONE if there is nothing to add.",
+                  });
+                } catch {
+                  /* Side review failures never fail the watched turn. */
+                }
+              }
+              const continuation = after?.continue
+                ? await fencedCtx.runMutation(component.hooks.continueAdmission, {
+                    assignmentId: claimed.assignmentId,
+                    executionId: args.turnToken,
+                    prompt: after.continue,
+                  })
+                : null;
+              if (continuation) {
+                await fencedCtx.runMutation(component.queue.continueTurn, {
+                  assignmentId: claimed.assignmentId,
+                  executionId: args.turnToken,
+                  cancellationEpoch: claimed.cancellationEpoch,
+                  messageId: continuation,
+                });
+                return null;
+              }
               if (child) {
                 // Native final saves have completed. A child result must be a
                 // saved, non-empty assistant text message; tool-only or empty
@@ -1029,13 +1437,38 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 }
               }
             } catch {
-              errorCode = "GENERATION_FAILED";
-              childError = "GENERATION_FAILED";
+              errorCode = hookFailed ? "HOOK_FAILED" : hookBlocked ? null : "GENERATION_FAILED";
+              childError = hookFailed
+                ? "HOOK_FAILED"
+                : hookBlocked
+                  ? "EMPTY_RESULT"
+                  : "GENERATION_FAILED";
             } finally {
               clearTimeout(timer);
               clearInterval(poll);
+              if (claimed.isRunStart && managed.hooks?.beforeTurn) {
+                await ctx.runMutation(component.hooks.completeRouting, {
+                  assignmentId: claimed.assignmentId,
+                  executionId: args.turnToken,
+                  agentIndex: agentIndexes.get(claimed.agent)!,
+                });
+              }
             }
           }
+
+          // Authorization runs before the generation try/finally. A denial
+          // must settle the same routing attempt as generation/hook failures;
+          // queue's terminal fences also cover actions that never return here.
+          if (
+            errorCode === "AUTHORIZATION_DENIED" &&
+            claimed.isRunStart &&
+            managed.hooks?.beforeTurn
+          )
+            await ctx.runMutation(component.hooks.completeRouting, {
+              assignmentId: claimed.assignmentId,
+              executionId: args.turnToken,
+              agentIndex: agentIndexes.get(claimed.agent)!,
+            });
 
           const current = await ctx.runQuery(component.queue.execution, {
             assignmentId: args.assignmentId,

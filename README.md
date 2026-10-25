@@ -103,6 +103,71 @@ Failures are sanitized and never automatically replayed. Ambiguous execution
 sets `recovery_required`; the watchdog covers each active slice, excluding
 queue and between-slice time.
 
+## Hooks, notes and side agents
+
+Hooks belong to an `Agent`: `beforeTurn`, `afterTurn`, `beforeTool`,
+`afterTool`, and `beforeDelegate`. They receive trusted execution context and
+return one `HookResult`: `note`, `block`, `input`, `output`, `continue`, or
+`model`. They run inside the existing action; no Workflow steps are added.
+
+```ts
+const critic = new Agent(components.agent, {
+  name: "Critic",
+  languageModel,
+  instructions: "Review the delta. Return a short note, or NONE.",
+});
+const main = new Agent(components.agent, {
+  name: "Main",
+  languageModel,
+  hooks: {
+    beforeTurn: (_hc, { prompt }) =>
+      prompt.trim() ? undefined : { block: "A prompt is required." },
+    afterTool: (_hc, { output }) => ({ output: redact(output) }),
+  },
+  sideAgents: [{ agent: critic, every: { turns: 3 }, sees: "delta" }],
+});
+```
+
+`beforeTurn` can choose an allowlisted model only when `isRunStart` is true;
+that choice persists for the agent's run. Concurrent siblings share the first
+routing attempt. If its owner is denied, fails or is cancelled, siblings use
+the committed model or their default; the classifier is never retried.
+`afterTurn.continue` requests another
+bounded turn (default 3 per run, hard maximum 8). A throwing hook fails the turn
+with `HOOK_FAILED`; private details stay outside the transcript. Tool execution
+hooks include native and `defineOnceTool` effects. The SDK's delegate, message
+and ask protocols are excluded; delegation uses `beforeDelegate`. Provider-owned
+executions and deferred host answers retain their native protocols: neither has
+a local tool execution function to intercept inside the action.
+
+Inside an authorized host mutation, call
+`runtime.note(ctx, { threadId, text, from })`. It authorizes operation `note`
+and throws a typed `NOTES_PENDING_LIMIT` error at capacity. Notes are escaped
+user-role `<note from="…">` messages, capped at 4,000 characters.
+`limits.notesPending` is the single admission cap (default 8, hard maximum 24),
+independent of `queueLength`. Posted notes stay pending until the next turn claim with no decided approvals awaiting committed tool results (including denials); deferred answers commit their results atomically.
+That claim saves all pending notes atomically in arrival order, after prior
+tool results. Ordinary tool-step slices never drain notes. Notes never start a
+turn or schedule work.
+
+Notes and hook continuation prompts use the claimed request's native order
+group, keeping future queued requests hidden without context injection.
+The authorized `messages` reader adds `origin: user | result | note | continue`,
+`from` for notes and `runId` for results. Unclassified native messages (including
+assistant replies) use `user`. Page-local exact-id indexes add at most 201 small
+metadata reads (532 KiB); total message reads remain below 8.27 MiB.
+`delegations` and `runTree` include `side: boolean` for every public run.
+
+Side cadence uses completed turns or `{ minutes: N }` since the last review,
+checked after a turn without a cron. Deltas use exact recorded native ids and
+orders: at most 24 recent messages and 48 KiB of text, with tool output stripped.
+Skipped reviews retain their delta. Side runs use the child lane and root run
+attribution, with a separate cap of 2 per run (hard maximum 8). Their replies
+become passive notes; empty replies and `NONE` add nothing. Side runs never
+hold a parent's settlement fence, never fail their parent, and cancel with the
+root. Side agents keep their own configured model; root model overrides do not
+apply to them. Their threads use the same authorized `messages` reader as other children.
+
 ## Delegation
 
 Agents may delegate two edges deep: Main → Builder → Reviewer. Set
@@ -116,7 +181,7 @@ settled result immediately. With `wait: "all"`, a group
 wakes its parent once after the launching slice ends and every member settles,
 including failures. Membership seals when that slice ends; later launches into
 the group return `GROUP_CLOSED`. Groups belong to one parent assignment and user run.
-A group has at most `activeChildrenPerRoot` members (hard maximum 20);
+A group has at most `activeChildrenPerRoot` members (hard maximum 15);
 omitting its name selects the unnamed group. Names are at most 200 characters.
 
 Children receive `agevex_ask_parent({ question })`: one open question pauses
@@ -138,7 +203,7 @@ earlier final text while descendants are running does not finish the run.
 `runTree({ threadId })` is an owner-authorized, root-only query returning the
 current request's descendants with agent, status, depth, group, parent
 assignment, native child thread and timings. Its full-history read is bounded
-by `runLaunches` (maximum 50); the active descendant cap remains 20.
+by `runLaunches` (maximum 50); the active descendant cap remains 15.
 
 ## Cancellation and approvals
 
@@ -149,6 +214,10 @@ mutations check execution id plus epoch atomically; late writes are dropped.
 after cancel, the SDK refuses new nested calls and drops its own writes; writes your own code makes inside an already-running nested action are yours to guard with `tc.signal`.
 A fresh `send` can start new work after cancellation. External effects already
 accepted by a provider still depend on that provider's abort behavior.
+
+At the hard maximum of 15 descendants, cancel covers 16 assignments, up to
+1,632 ready rows and 384 pending notes. Its read bound is 12,680 KiB of
+16,384 KiB (22.6% headroom), including routing owner reads and patches.
 
 Pending native tool approvals block generation and leave the inbox row
 waiting, avoiding Agent 0.7.7's automatic denial on a new generation.

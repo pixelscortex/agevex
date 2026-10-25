@@ -14,6 +14,7 @@ export const turnStatus = v.union(
 );
 export const errorCode = v.union(
   v.null(),
+  v.literal("HOOK_FAILED"),
   v.literal("GENERATION_FAILED"),
   v.literal("SLICE_LIMIT"),
   v.literal("APPROVAL_LIMIT"),
@@ -23,6 +24,7 @@ export const errorCode = v.union(
 );
 export const runErrorCode = v.union(
   v.null(),
+  v.literal("HOOK_FAILED"),
   v.literal("GENERATION_FAILED"),
   v.literal("SLICE_LIMIT"),
   v.literal("APPROVAL_LIMIT"),
@@ -35,6 +37,7 @@ export const runErrorCode = v.union(
   v.literal("DELIVERY_FAILED"),
 );
 export const denialCode = v.union(
+  v.literal("HOOK_BLOCKED"),
   v.literal("ACTIVE_LIMIT"),
   v.literal("TASK_LIMIT"),
   v.literal("FORBIDDEN"),
@@ -127,6 +130,7 @@ export const scope = v.object({
 });
 export const subagentRun = v.object({
   runId: v.string(),
+  side: v.boolean(),
   childThreadId: v.union(v.string(), v.null()),
   agent: v.string(),
   status: runStatus,
@@ -164,6 +168,39 @@ export default defineSchema({
   // Execution identity and epoch fence every managed write. The native thread
   // owns messages; this row holds only references and coordination facts.
   assignments: defineTable({
+    // Fixed-size references only: the native component continues to own bodies.
+    contextSequence: v.optional(v.number()),
+    contextMessages: v.optional(
+      v.array(
+        v.object({
+          id: v.string(),
+          order: v.number(),
+          stepOrder: v.number(),
+          bytes: v.number(),
+          sequence: v.number(),
+        }),
+      ),
+    ),
+    reviewed: v.optional(
+      v.array(
+        v.object({
+          agent: v.string(),
+          turn: v.number(),
+          at: v.number(),
+          boundary: v.number(),
+        }),
+      ),
+    ),
+    completedTurns: v.optional(v.number()),
+    // Read by note admission/claim/cancel; never charged to ready work.
+    notesPending: v.number(),
+    // Read by beforeTurn: a continuation has its own prompt, while generation
+    // remains bounded by the original ready-work anchor below.
+    logicalPromptMessageId: v.optional(v.string()),
+    // Only the first slice owns the shared routing bit; terminal fences settle it.
+    routingAgentIndex: v.optional(v.number()),
+    hookContinue: v.optional(v.boolean()),
+    hookError: v.optional(v.string()),
     subject: v.string(),
     agent: v.string(),
     threadId: v.string(),
@@ -241,7 +278,19 @@ export default defineSchema({
     sequence: v.number(),
     // Deferred joins append later than their native save. Claim compares this
     // recorded save order, never queue insertion order, to retain newer answers.
+    passive: v.optional(v.boolean()),
+    // All posted notes retain text until claim; delivered controls retain ids.
+    noteText: v.optional(v.string()),
+    // Hook continuations wait for claim so notes precede their native prompt.
+    continueText: v.optional(v.string()),
+    // Separates cancelled payloads from fresh admission before cleanup runs.
+    noteEpoch: v.optional(v.number()),
+    from: v.optional(v.string()),
     messageSequence: v.optional(v.number()),
+    // A joined group generates from its newest result, but notes precede its
+    // earliest native member. Optional for previously queued/replayed work.
+    earliestMessageId: v.optional(v.string()),
+    earliestMessageSequence: v.optional(v.number()),
     runId: v.id("runs"),
     kind: v.union(
       v.literal("user"),
@@ -249,14 +298,22 @@ export default defineSchema({
       v.literal("steer"),
       v.literal("parent"),
       v.literal("note"),
+      v.literal("continue"),
     ),
-  }).index("by_assignment_sequence", ["assignmentId", "sequence"]),
+  })
+    .index("by_message", ["messageId"])
+    .index("by_assignment_ready", ["assignmentId", "passive", "noteEpoch", "sequence"]),
   // A run outlives an individual turn: results and subsequent delegations spend
   // the same launch/hop budget. Results are ready independently of siblings.
   runs: defineTable({
-    // Immutable run snapshot shared by every root/descendant/result turn.
+    // Run snapshot shared by every root/descendant/result turn. A beforeTurn
+    // hook may choose its agent model at run start; later turns only read it.
     // Read at claim, never replaced by a subsequent send's thread policy.
     models: v.optional(modelOverrides),
+    startedAgents: v.optional(v.int64()),
+    routingAgents: v.optional(v.int64()),
+    continues: v.optional(v.number()),
+    sideRuns: v.optional(v.number()),
     launches: v.number(),
     hops: v.number(),
     cancelled: v.boolean(),
@@ -279,6 +336,7 @@ export default defineSchema({
     .index("by_scope_key", ["scope", "key"])
     .index("by_expiry", ["expiresAt"]),
   subagentRuns: defineTable({
+    side: v.optional(v.boolean()),
     runId: v.string(),
     rootCancellationEpoch: v.number(),
     parentRunId: v.id("runs"),
@@ -337,11 +395,12 @@ export default defineSchema({
     resultSequence: v.optional(v.number()),
     events: v.array(runEvent),
   })
+    .index("by_result_message", ["resultMessageId"])
     .index("by_dedup", ["dedupKey"])
     .index("by_run", ["runId"])
     .index("by_root_sequence", ["rootAssignmentId", "sequence"])
     .index("by_root_status", ["rootAssignmentId", "status"])
-    .index("by_parent_delivery", ["actorAssignmentId", "deliveryStatus"])
+    .index("by_parent_delivery", ["actorAssignmentId", "side", "deliveryStatus"])
     .index("by_ready_group", [
       "actorAssignmentId",
       "rootCancellationEpoch",

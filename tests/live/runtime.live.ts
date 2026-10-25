@@ -15,13 +15,15 @@ const api = anyApi as unknown as ApiFromModules<{ agents: typeof agents }>;
 const modules = import.meta.glob(["./convex/**/*.ts", "./convex/**/*.js"]);
 
 it.skipIf(!process.env.OPENROUTER_API_KEY)(
-  "live plain turn, repeated delegation and Main → Builder → Reviewer depth-two round trip",
+  "live plain turn, repeated delegation, depth-two round trip and passive critic side review",
   async () => {
     const scenarios = [];
     try {
-      for (const scenario of ["plain", "delegation", "depth"] as const) {
+      for (const scenario of ["plain", "delegation", "depth", "critic"] as const) {
         const delegation = scenario === "delegation";
         const depth = scenario === "depth";
+        const critic = scenario === "critic";
+        live.criticCalls = 0;
         const before = { input: live.inputTokens, output: live.outputTokens };
         const t = convexTest(schema, modules);
         agent.register(t);
@@ -35,7 +37,7 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
         live.childCalls = 0;
         const receipt = await owner
           .mutation(api.agents.open, {
-            agent: "Main",
+            agent: critic ? "Watched" : "Main",
             prompt: depth
               ? "Do a depth-two task: delegate one short task to Builder, which delegates to Reviewer, then answer after Builder completes."
               : delegation
@@ -57,6 +59,7 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
                 history: status.subagents.history,
                 rootCalls: live.rootCalls,
                 queued: status.queuedMessages,
+                errorCode: status.errorCode,
               };
             },
             { timeout: 180_000, interval: 200 },
@@ -64,10 +67,73 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
           .toEqual({
             status: "idle",
             active: 0,
-            history: delegation || depth ? 2 : 0,
+            history: delegation || depth ? 2 : critic ? 1 : 0,
             rootCalls: depth ? 2 : delegation ? 3 : 1,
+            // Passive critic notes have their own capacity, never ready work.
             queued: 0,
+            errorCode: null,
           });
+        if (critic) {
+          expect(live.criticCalls).toBe(1);
+          // Side delivery admits a pending note without starting another turn.
+          // Wait for admission, then claim it with a real follow-up request.
+          await expect
+            .poll(
+              async () => {
+                const deliveries = await owner.query(api.agents.delegations, {
+                  threadId: receipt.threadId,
+                  paginationOpts: { cursor: null, numItems: 20 },
+                });
+                const failed = deliveries.page.find(
+                  (run) => run.deliveryStatus === "failed" || run.deliveryStatus === "blocked",
+                );
+                if (failed) throw new Error(`LIVE_CRITIC_DELIVERY_FAILED:${failed.errorCode}`);
+                return deliveries.page.some((run) => run.deliveryStatus === "accepted");
+              },
+              { timeout: 180_000, interval: 200 },
+            )
+            .toBe(true);
+          const beforeClaim = await owner.query(api.agents.messages, {
+            threadId: receipt.threadId,
+            paginationOpts: { cursor: null, numItems: 20 },
+          });
+          expect(beforeClaim.page.some((message) => message.origin === "note")).toBe(false);
+          requireReceipt(
+            await owner.mutation(api.agents.send, {
+              threadId: receipt.threadId,
+              text: "Read the critic note and reply in three words.",
+              requestKey: "consume critic note",
+            }),
+          );
+          await expect
+            .poll(
+              async () => {
+                const status = await owner.query(api.agents.activity, {
+                  threadId: receipt.threadId,
+                });
+                if (status.turnStatus === "recovery_required")
+                  throw new Error(`LIVE_TURN_FAILED:${status.errorCode}`);
+                return {
+                  status: status.turnStatus,
+                  active: status.subagents.active,
+                  rootCalls: live.rootCalls,
+                  criticCalls: live.criticCalls,
+                  queued: status.queuedMessages,
+                };
+              },
+              { timeout: 180_000, interval: 200 },
+            )
+            .toEqual({ status: "idle", active: 0, rootCalls: 2, criticCalls: 2, queued: 0 });
+          const afterClaim = await owner.query(api.agents.messages, {
+            threadId: receipt.threadId,
+            paginationOpts: { cursor: null, numItems: 20 },
+          });
+          expect(
+            afterClaim.page.filter(
+              (message) => message.origin === "note" && message.from === "Critic",
+            ),
+          ).toHaveLength(1);
+        }
         if (delegation) {
           const runs = await owner.query(api.agents.delegations, {
             threadId: receipt.threadId,
@@ -121,6 +187,7 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
         requestedModel: modelId,
         routedModels: [...live.models],
         requests: live.requests,
+        responses: live.responses,
         inputTokens: live.inputTokens,
         outputTokens: live.outputTokens,
         usd: live.costReported ? live.usd : null,

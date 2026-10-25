@@ -24,6 +24,15 @@ import { LIMITS, limitsValidator } from "./limits.js";
 import { approvalKey, callKey, keyString, saveResponses } from "./approvals.js";
 import { modelOverrides, validModelOverrides } from "./models.js";
 import { sealGroups, settleIdleParent, settlementBlocked } from "./subagents.js";
+import {
+  recordMessages,
+  recordRefs,
+  messageRef,
+  settleRouting,
+  claimNotes,
+  noteHandles,
+  awaitingApprovalResults,
+} from "./hooks.js";
 
 async function existing(
   ctx: Pick<QueryCtx, "db">,
@@ -144,7 +153,7 @@ async function needsRecovery(ctx: MutationCtx, row: Doc<"assignments">) {
     return false;
   return !!(await ctx.db
     .query("inbox")
-    .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
+    .withIndex("by_assignment_ready", (q) => q.eq("assignmentId", row._id).eq("passive", undefined))
     .first());
 }
 
@@ -203,7 +212,9 @@ export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = tru
   if (row.turnStatus === "idle" && !row.approvalBlocked) {
     const next = await ctx.db
       .query("inbox")
-      .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
+      .withIndex("by_assignment_ready", (q) =>
+        q.eq("assignmentId", row._id).eq("passive", undefined),
+      )
       .first();
     if (next) {
       await ctx.db.patch("assignments", row._id, {
@@ -263,6 +274,8 @@ export const accept = mutation({
     requestKey: v.string(),
     fingerprint: v.string(),
     promptMessageId: v.string(),
+    savedMessage: v.optional(messageRef),
+    trackContext: v.optional(v.boolean()),
     runTurn: v.string(),
     limits: v.optional(limitsValidator),
     models: v.optional(modelOverrides),
@@ -286,6 +299,7 @@ export const accept = mutation({
         turnStatus: "idle",
         errorCode: null,
         queuedMessages: 0,
+        notesPending: 0,
         nextSequence: 0,
         nextTurn: 0,
         cancellationEpoch: 0,
@@ -294,6 +308,10 @@ export const accept = mutation({
       row = (await ctx.db.get("assignments", id))!;
     }
     if (row.subject !== args.subject || row.agent !== args.agent) throw new Error("FORBIDDEN");
+    if (args.trackContext && !row.contextMessages) {
+      await ctx.db.patch("assignments", row._id, { contextMessages: [] });
+      row = { ...row, contextMessages: [] };
+    }
     if (row.turnStatus === "recovery_required") throw new Error("RECOVERY_REQUIRED");
     if (row.queuedMessages >= (row.limits ?? LIMITS).queueLength) throw new Error("QUEUE_LIMIT");
     if (row.cancelled) {
@@ -323,6 +341,7 @@ export const accept = mutation({
       queuedMessages: row.queuedMessages + 1,
       nextSequence: row.nextSequence + 1,
     });
+    if (args.savedMessage) await recordRefs(ctx, row, [args.savedMessage]);
     await armPurge(ctx);
     // Acceptance and the host's native prompt save share one transaction: no
     // external effect can outlive an abandoned claim, so request receipts enter
@@ -369,14 +388,21 @@ export const claim = mutation({
     assignmentId: v.id("assignments"),
     turnToken: v.string(),
     sliceId: v.optional(v.string()),
+    agentIndex: v.optional(v.number()),
+    routeModel: v.optional(v.boolean()),
+    notes: v.optional(noteHandles),
   },
   returns: v.union(
     v.null(),
     v.object({
       ...scope.fields,
       promptMessageId: v.string(),
+      logicalPromptMessageId: v.string(),
       runId: v.string(),
       modelId: v.optional(v.string()),
+      isTurnStart: v.boolean(),
+      isRunStart: v.boolean(),
+      turn: v.number(),
       cancellationEpoch: v.number(),
       turnOrigin: vTurnOrigin,
       subagent: v.union(
@@ -395,7 +421,7 @@ export const claim = mutation({
       ),
     }),
   ),
-  handler: async (ctx, { assignmentId, turnToken, sliceId }) => {
+  handler: async (ctx, { assignmentId, turnToken, sliceId, agentIndex, routeModel, notes }) => {
     const row = await ctx.db.get("assignments", assignmentId);
     if (!row || row.cancelled || row.approvalBlocked || row.turnToken !== turnToken) return null;
     // An open question is a valid pause, never corrupt execution state. This
@@ -407,9 +433,13 @@ export const claim = mutation({
       !(row.turnStatus === "running" && row.continueSlice && sliceId && row.lastSlice !== sliceId)
     )
       return null;
+    let noteAnchor = row.promptMessageId;
     if (first && row.inboxId) {
       const head = await ctx.db.get("inbox", row.inboxId);
-      if (head) await ctx.db.delete("inbox", head._id);
+      if (head) {
+        noteAnchor = head.earliestMessageId ?? head.messageId;
+        await ctx.db.delete("inbox", head._id);
+      }
       if (head?.kind === "result" || head?.kind === "note" || head?.kind === "parent") {
         // Consume the consecutive head only. Freeing capacity can publish an
         // already-ready join, so drain that same FIFO before choosing its native
@@ -423,6 +453,7 @@ export const claim = mutation({
         // @convex-dev/agent/src/component/messages.ts:298-322 anchors native
         // context at the prompt's recorded order, rather than our inbox order.
         let newest = head.messageSequence ?? head.sequence;
+        let earliest = head.earliestMessageSequence ?? newest;
         const bound = (row.limits ?? LIMITS).queueLength + (row.limits ?? LIMITS).runLaunches + 1;
         for (let count = 0; count < bound; count++) {
           await ctx.runMutation(api.subagents.releaseGroups, {
@@ -431,12 +462,19 @@ export const claim = mutation({
           });
           const item = await ctx.db
             .query("inbox")
-            .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
+            .withIndex("by_assignment_ready", (q) =>
+              q.eq("assignmentId", row._id).eq("passive", undefined),
+            )
             .first();
           if (!item || item.runId !== head.runId || item.kind === "user" || item.kind === "steer")
             break;
           await ctx.db.delete("inbox", item._id);
           const order = item.messageSequence ?? item.sequence;
+          const noteOrder = item.earliestMessageSequence ?? order;
+          if (noteOrder < earliest) {
+            earliest = noteOrder;
+            noteAnchor = item.earliestMessageId ?? item.messageId;
+          }
           if (order > newest) {
             newest = order;
             row.promptMessageId = item.messageId;
@@ -449,9 +487,46 @@ export const claim = mutation({
         await ctx.db.patch("assignments", row._id, { promptMessageId: row.promptMessageId });
       }
     }
+    // Flush posted notes only at a turn claim with no decided approvals still
+    // awaiting committed results; otherwise retain them for the next safe claim.
+    // Agent 0.7.7 src/approvals.ts:67-79 saves only approval responses, even for
+    // denials; both outcomes get results during continuation generation. Native
+    // result saves retire these recorded approvals, while answer removes its
+    // deferred call atomically with the result. Never scan native history or
+    // drain notes at ordinary tool-step slices.
+    if (
+      (first || row.hookContinue) &&
+      (row.notesPending || row.hookContinue) &&
+      !awaitingApprovalResults(row)
+    ) {
+      if (!notes) throw new Error("NOTE_HANDLES_REQUIRED");
+      const continuation =
+        row.hookContinue && row.inboxId ? await ctx.db.get("inbox", row.inboxId) : null;
+      const [anchor] = (await ctx.runQuery(notes.getMessages as FunctionHandle<"query">, {
+        messageIds: [noteAnchor],
+      })) as (MessageDoc | null)[];
+      if (!anchor || anchor.threadId !== row.threadId) throw new Error("CONTROL_ANCHOR_MISSING");
+      // User/result prompts already have a fresh integer order; append notes to
+      // the preceding order, after prior history and before ALL claimed work.
+      // A resumed tool result stays in its call's order, so append after it.
+      await claimNotes(
+        ctx,
+        row,
+        notes,
+        continuation || anchor.message?.role !== "user" ? anchor.order : anchor.order - 1,
+        continuation ?? undefined,
+      );
+    }
     await ctx.db.patch("assignments", row._id, {
       turnStatus: "running",
       continueSlice: false,
+      hookContinue: false,
+      ...(first
+        ? {
+            logicalPromptMessageId: row.promptMessageId,
+          }
+        : {}),
+      ...(first || row.hookContinue ? { hookError: undefined } : {}),
       approvals: row.approvals
         ? {
             ...row.approvals,
@@ -480,6 +555,29 @@ export const claim = mutation({
     row.activeSlice = activeSlice;
     const budget = row.runId ? await ctx.db.get("runs", row.runId) : null;
     const modelId = budget?.models?.[row.agent];
+    if (
+      agentIndex !== undefined &&
+      (!Number.isSafeInteger(agentIndex) || agentIndex < 0 || agentIndex >= LIMITS.agents)
+    )
+      throw new Error("INVALID_AGENT_INDEX");
+    const bit = 1n << BigInt(agentIndex ?? 0);
+    const isRunStart = !!budget && ((budget.startedAgents ?? 0n) & bit) === 0n;
+    if (budget && isRunStart)
+      await ctx.db.patch("runs", budget._id, {
+        startedAgents: BigInt.asIntN(LIMITS.agents, (budget.startedAgents ?? 0n) | bit),
+        ...(routeModel
+          ? { routingAgents: BigInt.asIntN(LIMITS.agents, (budget.routingAgents ?? 0n) | bit) }
+          : {}),
+      });
+    if (budget && isRunStart && routeModel) {
+      await ctx.db.patch("assignments", row._id, { routingAgentIndex: agentIndex ?? 0 });
+      row.routingAgentIndex = agentIndex ?? 0;
+    }
+    const hooks = {
+      isTurnStart: first || !!row.hookContinue,
+      isRunStart,
+      turn: row.completedTurns ?? 0,
+    };
     const runId = row.childRunId;
     if (!runId) {
       return {
@@ -488,8 +586,10 @@ export const claim = mutation({
         subject: row.subject,
         agent: row.agent,
         promptMessageId: row.promptMessageId!,
+        logicalPromptMessageId: first ? row.promptMessageId! : row.logicalPromptMessageId!,
         runId: row.runId!,
         modelId,
+        ...hooks,
         cancellationEpoch: row.cancellationEpoch,
         turnOrigin: row.turnOrigin ?? "user",
         subagent: null,
@@ -530,8 +630,10 @@ export const claim = mutation({
       subject: row.subject,
       agent: row.agent,
       promptMessageId: row.promptMessageId!,
+      logicalPromptMessageId: first ? row.promptMessageId! : row.logicalPromptMessageId!,
       runId: row.runId!,
       modelId,
+      ...hooks,
       cancellationEpoch: row.cancellationEpoch,
       turnOrigin: row.turnOrigin ?? "user",
       subagent: {
@@ -578,6 +680,9 @@ export const finish = mutation({
 });
 
 async function disarmSlice(ctx: MutationCtx, row: Doc<"assignments">) {
+  // Every terminal fence, including watchdog/cancel and native approval exits,
+  // releases routing even if the action never reaches its finally block.
+  await settleRouting(ctx, row);
   if (row.watchdogId) {
     const job = await ctx.db.system.get(row.watchdogId);
     // A watchdog firing now already owns its scheduled job. Clear the slice
@@ -774,7 +879,8 @@ export const write = mutation({
     // A child can settle immediately before cancel, while its source action
     // still owns the turn token. It no longer occupies an active slot, so
     // cancel need not visit its assignment. The root epoch still fences every
-    // late native/tool write: two exact metadata reads (<16 KiB), no traversal.
+    // late native/tool write: two <=32 KiB assignment reads plus one <=4 KiB
+    // child-run reference (<72 KiB), no traversal.
     const root = row?.rootAssignmentId
       ? await ctx.db.get("assignments", row.rootAssignmentId)
       : null;
@@ -864,6 +970,7 @@ export const write = mutation({
       // its id (vercel/client/saveInputMessages.ts). Record only coordination
       // metadata in the SAME transaction as the native placeholder creation.
       const messages = (result as { messages: MessageDoc[] }).messages;
+      await recordMessages(ctx, row, messages);
       // Claiming a continuation never consumes a decision: cancel can still
       // win while the tool/provider awaits I/O. Retire only with its native save.
       // Agent 0.7.7 src/vercel/client/prepareApprovalContext.ts:23-30 treats a
@@ -1016,7 +1123,9 @@ export const write = mutation({
         // The response continuation must precede unrelated queued sends.
         const head = await ctx.db
           .query("inbox")
-          .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
+          .withIndex("by_assignment_ready", (q) =>
+            q.eq("assignmentId", row._id).eq("passive", undefined),
+          )
           .first();
         const inboxId = await ctx.db.insert("inbox", {
           assignmentId: row._id,
@@ -1303,14 +1412,16 @@ export const continueTurn = mutation({
     ) {
       await disarmSlice(ctx, row);
       await sealGroups(ctx, row);
+      // Keep the claimed ready-work prompt as the generation boundary across
+      // slices. Native Agent includes the whole response order, including
+      // tool results, notes and continuation prompts in stepOrder chronology.
       await ctx.db.patch("assignments", row._id, {
         continueSlice: true,
-        promptMessageId: args.messageId,
       });
       // Release sealed results inside this existing step; v1's positional
       // Workflow sequence remains untouched. A running slice cannot be claimed
       // again by wake, so its normal between-slice continuation still owns it.
-      await wake(ctx, { ...row, continueSlice: true, promptMessageId: args.messageId });
+      await wake(ctx, { ...row, continueSlice: true });
     }
     return null;
   },
@@ -1395,12 +1506,6 @@ export const cancel = mutation({
       await disarmSlice(ctx, row);
       await disarmRecovery(ctx, row);
       const approvalCleanup = !!row.approvals?.requests.length;
-      if (row.pendingGeneration || approvalCleanup)
-        await ctx.scheduler.runAfter(0, internal.cancellation.cleanup, {
-          assignmentId: row._id,
-          pending: row.pendingGeneration,
-          approvalEpoch: approvalCleanup ? row.approvals!.epoch : undefined,
-        });
       await ctx.db.patch("assignments", row._id, {
         cancelled: true,
         cancellationEpoch: row.cancellationEpoch + 1,
@@ -1413,16 +1518,38 @@ export const cancel = mutation({
         loopWaiting: false,
         pinged: false,
         queuedMessages: 0,
+        notesPending: 0,
+        logicalPromptMessageId: undefined,
         continueSlice: false,
+        hookContinue: false,
         approvalBlocked: !!approvalCleanup,
         approvals: approvalCleanup ? { ...row.approvals!, cleanupPending: true } : undefined,
       });
+      // Only ready rows are read here. Raw passive bodies are cleared by one
+      // bounded job per assignment, preserving the 12,680 KiB cancel ceiling.
       const inbox = await ctx.db
         .query("inbox")
-        .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
+        .withIndex("by_assignment_ready", (q) =>
+          q.eq("assignmentId", row._id).eq("passive", undefined),
+        )
         .take((row.limits ?? LIMITS).queueLength + 2);
+      // A staged hook continuation is addressed directly, never included in a
+      // backlog scan. <=16 assignments * (64 KiB text +1 KiB metadata) read
+      // for deletion adds <=1,040 KiB to the 12,680 KiB cancel budget: <14 MiB.
+      if (row.hookContinue && row.inboxId) await ctx.db.delete("inbox", row.inboxId);
+      if (row.notesPending)
+        await ctx.scheduler.runAfter(0, internal.hooks.cancelNotes, {
+          assignmentId: row._id,
+          epoch: row.cancellationEpoch,
+        });
+      if (row.pendingGeneration || approvalCleanup)
+        await ctx.scheduler.runAfter(0, internal.cancellation.cleanup, {
+          assignmentId: row._id,
+          pending: row.pendingGeneration,
+          approvalEpoch: approvalCleanup ? row.approvals!.epoch : undefined,
+        });
       for (const item of inbox) {
-        await ctx.db.patch("runs", item.runId, { cancelled: true });
+        if (!item.passive) await ctx.db.patch("runs", item.runId, { cancelled: true });
         await ctx.db.delete("inbox", item._id);
       }
       if (row.runId) await ctx.db.patch("runs", row.runId, { cancelled: true });

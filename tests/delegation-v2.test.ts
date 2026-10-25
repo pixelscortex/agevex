@@ -276,6 +276,8 @@ it("runTree exposes the full current tree and rejects non-owners and child threa
     "group",
     "parentAssignmentId",
     "runId",
+    // Public run records now expose their side-run discriminator.
+    "side",
     "startedAt",
     "status",
   ]);
@@ -836,7 +838,7 @@ it("message_child reaches running and idle children, rejects foreign and finishe
   await drain(t);
 });
 
-it("the 20-descendant cap includes grandchildren and cancel fences maximum queues, messages, questions and native placeholders in one transaction", async () => {
+it("the 15-descendant cap includes grandchildren and cancel fences maximum queues, messages, questions and native placeholders in one transaction", async () => {
   const t = setup(maxima);
   const root = await manualRoot(t);
   const parent = await launch(t, root, "Builder");
@@ -853,11 +855,11 @@ it("the 20-descendant cap includes grandchildren and cancel fences maximum queue
       task: "too many",
     }),
   ).toMatchObject({ status: "denied", code: "ACTIVE_LIMIT" });
-  expect(await tree(t, root.threadId)).toHaveLength(20);
-  // All maxima are configured. The shared hop bound makes 20 launches +78
-  // parent messages +2 questions the largest simultaneous 100-hop fixture;
-  // filling 8*20 messages as well would be an impossible state, not a maximum.
-  for (let i = 0; i < 78; i++) {
+  expect(await tree(t, root.threadId)).toHaveLength(HOST_LIMITS.activeChildrenPerRoot.max);
+  // All maxima are configured: 15 launches +83 parent messages +2 questions
+  // spend the entire 100-hop budget. Per-child messages remain capped at eight.
+  const followups = HOST_LIMITS.runHops.max - HOST_LIMITS.activeChildrenPerRoot.max - 2;
+  for (let i = 0; i < followups; i++) {
     const child = descendants[1 + Math.floor(i / 8)];
     expect(
       await t.mutation(api.agents.coordinate, {
@@ -870,7 +872,7 @@ it("the 20-descendant cap includes grandchildren and cancel fences maximum queue
     ).toMatchObject({ status: "accepted" });
   }
   // R2 forbids the Builder with live children from asking; two leaves spend the hops.
-  for (const child of [descendants[18], descendants[19]])
+  for (const child of descendants.slice(-2))
     expect(
       await t.mutation(api.agents.coordinate, {
         op: "ask",
@@ -884,7 +886,7 @@ it("the 20-descendant cap includes grandchildren and cancel fences maximum queue
       op: "message",
       assignmentId: root.assignmentId,
       turnToken: root.turnToken,
-      runId: descendants[18].runId,
+      runId: descendants[descendants.length - 2].runId,
       text: "budget exhausted",
     }),
   ).toMatchObject({ status: "denied", code: "RUN_BUDGET" });
@@ -925,7 +927,7 @@ it("the 20-descendant cap includes grandchildren and cancel fences maximum queue
   expect(v2.calls).toEqual([]);
 }, 30_000);
 
-it("a 20-member closed group bounds native results and large call ids, rejects extra or conflicting members, and claims one join within transaction limits", async () => {
+it("a 15-member closed group bounds native results and large call ids, rejects extra or conflicting members, and claims one join within transaction limits", async () => {
   const t = setup(maxima);
   const root = await manualRoot(t);
   const children = [];
@@ -1277,7 +1279,7 @@ it("a joined group needs one queue slot and resumes after a full inbox without r
   await drain(t);
 });
 
-it("cancel bounds every descendant inbox across nineteen independent maximum-launch and maximum-hop user runs", async () => {
+it("cancel bounds every descendant inbox across fourteen independent maximum-launch and maximum-hop user runs", async () => {
   const t = setup(maxima);
   let root = await manualRoot(t);
   const parents = [];
@@ -1304,8 +1306,8 @@ it("cancel bounds every descendant inbox across nineteen independent maximum-lau
     }
     const parent = await launch(t, root, "Builder");
     parents.push(parent);
-    // Keep one active slot for each grandchild. Nineteen parents can each
-    // accumulate 49 native failure results; the last parent fills slot twenty.
+    // Keep one active slot for each grandchild. Fourteen parents can each
+    // accumulate 49 native failure results; the last parent fills slot fifteen.
     if (p === HOST_LIMITS.activeChildrenPerRoot.max - 1) break;
     for (let i = 1; i < HOST_LIMITS.runLaunches.max; i++) {
       const child = await launch(t, parent, "Reviewer", { task: "short fixture task" });
@@ -1329,7 +1331,7 @@ it("cancel bounds every descendant inbox across nineteen independent maximum-lau
     }
   }
   // 1 parent launch +49 grandchild launches +49 results +1 question =100
-  // hops in EACH of the nineteen budgets, rather than one shared counter.
+  // hops in EACH of the fourteen budgets, rather than one shared counter.
   for (const parent of parents.slice(0, -1))
     expect(
       await t.mutation(api.agents.coordinate, {
@@ -1373,7 +1375,7 @@ it("cancel bounds every descendant inbox across nineteen independent maximum-lau
       (await t.query(components.agent.messages.getMessagesByIds, { messageIds: [messageId] }))[0],
     ).toMatchObject({ status: "failed", error: "CANCELLED" });
   expect(v2.calls).toEqual([]);
-  // This exercises nineteen independent maximum budgets (~88 s under shared
+  // This exercises fourteen independent maximum budgets (~88 s under shared
   // review load). Keep the full cancellation arithmetic covered with headroom.
 }, 180_000);
 
@@ -1790,7 +1792,7 @@ it("a newer each result cannot overtake an older each result from another reques
   await drain(t);
 });
 
-it("twenty older unreleased group members cannot hide a ready group in the same epoch", async () => {
+it("fifteen older unreleased group members cannot hide a ready group in the same epoch", async () => {
   const t = setup({ ...maxima, queueLength: 1 });
   const root = await manualRoot(t);
   const old: Awaited<ReturnType<typeof launch>>[] = [];
@@ -1831,7 +1833,7 @@ it("twenty older unreleased group members cannot hide a ready group in the same 
     text: "occupy the only slot",
     requestKey: "history-full",
   });
-  await complete(t, fresh, "the ready group beyond twenty historical rows");
+  await complete(t, fresh, "the ready group beyond fifteen historical rows");
   await t.mutation(components.agevex.queue.finish, {
     assignmentId: root.assignmentId,
     turnToken: root.turnToken,
@@ -1863,7 +1865,7 @@ it("twenty older unreleased group members cannot hide a ready group in the same 
         messageIds: [claimed!.promptMessageId],
       })
     )[0]?.text,
-  ).toContain("the ready group beyond twenty historical rows");
+  ).toContain("the ready group beyond fifteen historical rows");
   expect(
     (await tree(t, root.threadId)).find((run) => run.runId === old[old.length - 1].runId)?.status,
   ).toBe("running");
@@ -2616,3 +2618,35 @@ it.each([1, HOST_LIMITS.messagesPerChild.max])(
     expect((await tree(t, root.threadId)).every((run) => run.status === "completed")).toBe(true);
   },
 );
+
+it("pending notes precede every claimed wait-all group member while generation keeps the newest anchor", async () => {
+  const t = setup(maxima);
+  const root = await manualRoot(t);
+  const first = await launch(t, root, "Reviewer", { group: "noted group", wait: "all" });
+  const second = await launch(t, root, "Reviewer", { group: "noted group", wait: "all" });
+  await t.mutation(components.agevex.hooks.addNote, {
+    assignmentId: root.assignmentId,
+    text: "before all group members",
+    from: "critic",
+  });
+  // Deliver in reverse launch order: placement follows native arrival order.
+  await complete(t, second, "earlier group result");
+  await complete(t, first, "later group result");
+  await t.mutation(components.agevex.queue.finish, {
+    assignmentId: root.assignmentId,
+    turnToken: root.turnToken,
+    errorCode: null,
+  });
+  await drain(t);
+  expect(calls("Main")).toHaveLength(1);
+  const prompt = JSON.stringify(calls("Main")[0].args.prompt);
+  expect(prompt.match(/before all group members/g)).toHaveLength(1);
+  expect(prompt.indexOf("before all group members")).toBeLessThan(
+    prompt.indexOf("earlier group result"),
+  );
+  expect(prompt.indexOf("earlier group result")).toBeLessThan(prompt.indexOf("later group result"));
+  expect(
+    (await t.query(components.agevex.queue.execution, { assignmentId: root.assignmentId }))
+      ?.queuedMessages,
+  ).toBe(0);
+});

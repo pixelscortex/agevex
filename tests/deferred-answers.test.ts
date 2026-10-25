@@ -386,3 +386,69 @@ it("sixteen maximum-size answers to a near-1 MiB call document stay in budget wi
   await drain(t);
   expect(state.calls).toHaveLength(1);
 });
+
+it("notes during a multi-call deferred-answer pause wait for every committed result and arrive once at the next claim", async () => {
+  const t = setup(undefined, undefined, true);
+  const receipt = await pending(t, LIMITS.approvalsPerPause);
+  for (const text of ["paused first", "paused second"])
+    await t.mutation(components.agevex.hooks.addNote, {
+      assignmentId: receipt.assignmentId,
+      text,
+      from: "critic",
+    });
+  for (let i = 0; i < LIMITS.approvalsPerPause; i++) {
+    await owner(t).mutation(api.agents.answer, {
+      threadId: receipt.threadId,
+      toolCallId: "question-" + i,
+      text: "answer " + i,
+    });
+    if (i < LIMITS.approvalsPerPause - 1) {
+      await drain(t);
+      expect(state.calls).toHaveLength(1);
+      expect(
+        (await native(t, receipt.threadId)).page.some((message) => message.text?.includes("<note")),
+      ).toBe(false);
+    }
+  }
+  await drain(t);
+  expect(state.calls).toHaveLength(2);
+  const prompt = JSON.stringify(state.calls[1].prompt);
+  expect(prompt.match(/paused first/g)).toHaveLength(1);
+  expect(prompt.match(/paused second/g)).toHaveLength(1);
+  expect(prompt.indexOf("paused first")).toBeLessThan(prompt.indexOf("paused second"));
+  const page = (await native(t, receipt.threadId)).page.sort(
+    (a, b) => a.order - b.order || a.stepOrder - b.stepOrder,
+  );
+  const unresolved = new Set<string>();
+  for (const doc of page) {
+    if (doc.text?.includes("<note")) expect(unresolved.size).toBe(0);
+    if (!Array.isArray(doc.message?.content)) continue;
+    for (const part of doc.message.content) {
+      if (part.type === "tool-call") unresolved.add(part.toolCallId);
+      if (part.type === "tool-result") unresolved.delete(part.toolCallId);
+    }
+  }
+  expect(unresolved.size).toBe(0);
+  const notes = (
+    await owner(t).query(api.agents.messages, {
+      threadId: receipt.threadId,
+      paginationOpts: { cursor: null, numItems: 100 },
+    })
+  ).page.filter((message) => message.origin === "note");
+  expect(notes).toMatchObject([
+    { origin: "note", from: "critic" },
+    { origin: "note", from: "critic" },
+  ]);
+  await owner(t).mutation(api.agents.send, {
+    threadId: receipt.threadId,
+    text: "later",
+    requestKey: "later",
+  });
+  await drain(t);
+  expect(
+    (await native(t, receipt.threadId)).page.filter((message) => message.text?.includes("<note")),
+  ).toHaveLength(2);
+  expect(
+    (await owner(t).query(api.agents.activity, { threadId: receipt.threadId })).turnStatus,
+  ).toBe("idle");
+});

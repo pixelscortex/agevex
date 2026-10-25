@@ -10,6 +10,7 @@
 
 import type * as limits from "../limits.js";
 import type * as cancellation from "../cancellation.js";
+import type * as hooks from "../hooks.js";
 import type * as queue from "../queue.js";
 import type * as subagents from "../subagents.js";
 import type * as ledger from "../ledger.js";
@@ -28,6 +29,7 @@ const fullApi: ApiFromModules<{
   limits: typeof limits;
   ledger: typeof ledger;
   workflows: typeof workflows;
+  hooks: typeof hooks;
   queue: typeof queue;
   subagents: typeof subagents;
   worker: typeof worker;

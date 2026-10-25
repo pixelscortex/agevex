@@ -1,7 +1,7 @@
 import { Agent as NativeAgent, type AgentComponent, type Config } from "@convex-dev/agent";
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import type { Instructions, LanguageModel, StopCondition, ToolSet } from "ai";
-import type { ManagedAgent } from "./types.js";
+import type { AgentHooks, SideAgent, ManagedAgent } from "./types.js";
 
 // Replace the native model property before restating it: intersecting the two
 // gateway id unions exceeds TypeScript's representable union size as the model
@@ -18,7 +18,9 @@ type AgentOptions<Tools extends ToolSet> = Omit<Config, "languageModel"> & {
    * executable child through this list. Registration allows up to two edges
    * from each root (or one when limits.maxDepth is lowered).
    */
-  subagents: readonly ManagedAgent[];
+  subagents?: readonly ManagedAgent[];
+  hooks?: AgentHooks;
+  sideAgents?: readonly SideAgent[];
 };
 
 // Equivalent supported constructor inputs, without the upstream intersection of
@@ -44,6 +46,8 @@ export class Agent<
   declare readonly _agevexContext: (ctx: CustomCtx) => void;
   readonly name: string;
   readonly subagents: readonly ManagedAgent[];
+  readonly hooks?: AgentHooks;
+  readonly sideAgents: readonly SideAgent[];
   /**
    * Native tools declared on this agent, kept so the managed runtime can merge
    * its reserved delegation tool with them. Inherited native behavior is
@@ -55,7 +59,9 @@ export class Agent<
   constructor(component: AgentComponent, options: AgentOptions<AgentTools>) {
     super(component, options);
     this.name = options.name;
-    this.subagents = options.subagents;
+    this.subagents = options.subagents ?? [];
+    this.hooks = options.hooks;
+    this.sideAgents = options.sideAgents ?? [];
     this.declaredTools = options.tools ?? EMPTY_TOOLS;
   }
 }

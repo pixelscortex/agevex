@@ -18,7 +18,7 @@ import {
   type GenericQueryCtx,
   type PaginationResult,
 } from "convex/server";
-import { ConvexError, v, type Validator } from "convex/values";
+import { ConvexError, getConvexSize, v, type Validator } from "convex/values";
 import { fingerprint } from "./once.js";
 import { LIMITS, resolveLimits } from "../component/limits.js";
 import type { ComponentApi } from "../component/_generated/component.js";
@@ -40,7 +40,15 @@ async function observe(
 
 // UI parts are upstream AI SDK extensible unions. Preserve them unchanged and
 // validate the envelope; reuse native stream validators rather than raw MessageDoc.
+export type OriginMessage = UIMessage & {
+  origin: "user" | "result" | "note" | "continue";
+  from?: string;
+  runId?: string;
+};
 const uiMessage = v.object({
+  origin: v.union(v.literal("user"), v.literal("result"), v.literal("note"), v.literal("continue")),
+  from: v.optional(v.string()),
+  runId: v.optional(v.string()),
   id: v.string(),
   key: v.string(),
   role: v.union(v.literal("system"), v.literal("user"), v.literal("assistant")),
@@ -58,7 +66,7 @@ const uiMessage = v.object({
   userId: v.optional(v.string()),
   text: v.string(),
   _creationTime: v.number(),
-}) as unknown as Validator<UIMessage>;
+}) as unknown as Validator<OriginMessage>;
 const messagesReturn = v.object({
   page: v.array(uiMessage),
   isDone: v.boolean(),
@@ -88,6 +96,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
     if (managedAgents.has(managed.name)) return;
     managedAgents.set(managed.name, managed);
     for (const child of managed.subagents) include(child);
+    for (const side of managed.sideAgents ?? []) include(side.agent);
   }
   for (const root of config.agents) include(root);
 
@@ -174,9 +183,11 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
         if (duplicate) return duplicate;
         const runTurn = await createFunctionHandle(config.refs.runTurn());
         const threadId = await createThread(ctx, native.component, { userId: subject });
-        const { messageId } = await saveMessage(ctx, native.component, {
+        const { messageId, message } = await saveMessage(ctx, native.component, {
           threadId,
           prompt: args.prompt,
+          // Reserve order zero for notes posted before the first turn claim.
+          order: LIMITS.firstPromptOrder,
           userId: subject,
         });
         const accepted = await ctx.runMutation(component.queue.accept, {
@@ -186,6 +197,13 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           requestKey: args.requestKey,
           fingerprint: hash,
           promptMessageId: messageId,
+          trackContext: !!native.sideAgents?.length,
+          savedMessage: {
+            id: messageId,
+            order: message.order,
+            stepOrder: message.stepOrder,
+            bytes: getConvexSize(message),
+          },
           runTurn,
           limits,
           models: args.models,
@@ -227,7 +245,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           subject: row.subject,
         });
         if (refusal) return refusal;
-        const { messageId } = await saveMessage(ctx, row.native.component, {
+        const { messageId, message } = await saveMessage(ctx, row.native.component, {
           threadId: args.threadId,
           prompt: args.text,
           userId: row.subject,
@@ -239,6 +257,13 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           requestKey: args.requestKey,
           fingerprint: hash,
           promptMessageId: messageId,
+          trackContext: !!row.native.sideAgents?.length,
+          savedMessage: {
+            id: messageId,
+            order: message.order,
+            stepOrder: message.stepOrder,
+            bytes: getConvexSize(message),
+          },
           runTurn: await createFunctionHandle(config.refs.runTurn()),
           limits,
           models: args.models,
@@ -305,7 +330,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
         paginationOpts: paginationOptsValidator,
       },
       returns: messagesReturn,
-      handler: async (ctx, args) => {
+      handler: async (ctx, args): Promise<PaginationResult<OriginMessage>> => {
         const row = await owned(ctx, args.threadId, "messages");
         // Clamp the client's page to the server's count and byte bounds (see
         // LIMITS.messagePage); a smaller page only means one more cursor hop.
@@ -327,7 +352,18 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           ...args,
           paginationOpts,
         });
-        return page;
+        const origins = await ctx.runQuery(component.hooks.origins, {
+          assignmentId: row.assignmentId,
+          subject: row.subject,
+          messageIds: page.page.map((message) => message.id),
+        });
+        return {
+          ...page,
+          page: page.page.map((message) => ({
+            ...message,
+            ...(origins[message.id] ?? { origin: "user" as const }),
+          })),
+        };
       },
     }),
     streams: queryGeneric({
