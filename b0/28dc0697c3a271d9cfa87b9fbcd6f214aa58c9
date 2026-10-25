@@ -1,0 +1,33 @@
+src/extract/component/artifacts.ts
+  s_ddb99f3ec55378::t_76d83c222818d1 402-406
+src/extract/component/workflows.ts
+  s_ddb99f3ec55378::t_d0b89f0b3d0f7a 70-86
+tests/extract/extract.test.ts
+  s_d863bd773ba186::t_d87ca479c42505 238-281
+tests/extract/setup.ts
+  s_d863bd773ba186::t_bcb4b95d00b4e1 42-44,70-71,89-91,133-140
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b028dc0697c3a271d9cfa87b9fbcd6f214aa58c9",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_ddb99f3ec55378": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a173b2-9455-7721-8fd8-aed8431ec50d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
