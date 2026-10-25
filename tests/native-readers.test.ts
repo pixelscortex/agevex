@@ -33,8 +33,8 @@ it("preserves native UI pagination/parts and native persisted stream deltas", as
   });
   expect(streams).toHaveLength(1);
   const cursors = [{ streamId: streams[0].streamId, cursor: 0 }];
-  const messages = await alice.query(api.agents.messages, {
-    ...args,
+  const messages = await alice.query(api.agents.streams, {
+    threadId: receipt.threadId,
     streamArgs: { kind: "deltas", cursors },
   });
   const deltas = await t.query(components.agent.streams.listDeltas, {

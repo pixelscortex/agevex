@@ -23,6 +23,7 @@ import type {
   coordinate,
   delegations,
   messages,
+  streams,
   open,
   runTurn,
   send,
@@ -62,6 +63,7 @@ export const api = generatedApi as unknown as {
     respond: ReferenceOf<typeof respond>;
     cancel: ReferenceOf<typeof cancel>;
     messages: ReferenceOf<typeof messages>;
+    streams: ReferenceOf<typeof streams>;
     activity: ReferenceOf<typeof activity>;
     delegations: ReferenceOf<typeof delegations>;
   };

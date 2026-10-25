@@ -204,5 +204,5 @@ const runtime = registerAgent(agevex, {
   },
 });
 export const { runTurn, coordinate } = runtime.internalFunctions();
-export const { open, send, cancel, messages, activity, delegations, runTree } =
+export const { open, send, cancel, messages, streams, activity, delegations, runTree } =
   runtime.authorizedEndpoints();

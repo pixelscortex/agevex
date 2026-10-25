@@ -172,8 +172,17 @@ receipts are purged in scheduled batches after seven days.
 
 ## Reads, policy and limits
 
-`messages({ threadId, paginationOpts, streamArgs? })` reads roots and children
-with native pagination and stream sync. Find `childThreadId` in `delegations`.
+`messages({ threadId, paginationOpts })` returns only the native message page.
+`streams({ threadId, streamArgs })` returns `{ streams }` with native stream sync.
+Both queries authorize root and child ownership independently. Hosts using a
+`useThreadMessages`-style integration subscribe to the page query and the stream
+query separately, then merge deltas with the persisted page on the client; do
+not call both from one server query (that shares one transaction budget).
+Messages budget: 0.5 MiB page + 1 MiB overshoot + six 1 MiB prefetched heads +
+0.25 MiB coordination = 7.75 MiB. Stream delta budget: two 1 MiB metadata docs +
+8 MiB native deltas + 1 MiB overshoot + 0.25 MiB coordination = 11.25 MiB.
+Agent's `kind: "list"` retains the upstream 100-row metadata bound (§9b); its
+reader has no byte cap. Find `childThreadId` in `delegations`.
 `activity`, `delegations` and `runTree` are root coordination reads. Public sends and
 cancels cannot drive a child's lifecycle.
 

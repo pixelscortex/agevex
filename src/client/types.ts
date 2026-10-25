@@ -42,7 +42,7 @@ export type TurnOrigin = "user" | "subagent_result";
 export type AuthorizationScope =
   | { operation: "open"; agent: string }
   | {
-      operation: "send" | "respond" | "cancel" | "messages" | "activity";
+      operation: "send" | "respond" | "cancel" | "messages" | "streams" | "activity";
       agent: string;
       threadId: string;
     }

@@ -402,7 +402,7 @@ export const nestedMutation: RegisteredMutation<"internal", {}, null> = internal
 });
 const { runTurn, coordinate } = runtime.internalFunctions();
 export { runTurn, coordinate };
-export const { open, send, respond, cancel, messages, activity, delegations } =
+export const { open, send, respond, cancel, messages, streams, activity, delegations } =
   runtime.authorizedEndpoints();
 
 /**

@@ -50,6 +50,7 @@ it("registers a Main -> Researcher graph and rejects an unusable one", () => {
     "respond",
     "runTree",
     "send",
+    "streams",
   ]);
   expect(() => registerAgent(components.agevex, { ...policy, agents: [main, main] })).toThrow(
     "DUPLICATE_AGENT_NAME",

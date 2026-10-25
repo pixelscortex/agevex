@@ -690,9 +690,9 @@ it("kind list preserves Agent's 100-stream bound and startOrder", async () => {
       stepOrder: 0,
     });
   const read = (startOrder?: number) =>
-    owner(t).query(api.agents.messages, {
+    owner(t).query(api.agents.streams, {
       threadId: turn.threadId,
-      paginationOpts: { cursor: null, numItems: 1 },
+
       streamArgs: { kind: "list", ...(startOrder !== undefined ? { startOrder } : {}) },
     });
   const result = await read();
@@ -709,9 +709,9 @@ it("kind list preserves Agent's 100-stream bound and startOrder", async () => {
 it("40 repeated delta cursors read one owned stream within the metadata and delta budget", async () => {
   const t = setup(undefined, undefined, true);
   const turn = await activeStream(t);
-  const result = await owner(t).query(api.agents.messages, {
+  const result = await owner(t).query(api.agents.streams, {
     threadId: turn.threadId,
-    paginationOpts: { cursor: null, numItems: 1 },
+
     streamArgs: {
       kind: "deltas",
       cursors: Array.from({ length: 40 }, () => ({ streamId: turn.streamId, cursor: 0 })),
@@ -726,9 +726,9 @@ it("40 repeated delta cursors read one owned stream within the metadata and delt
     stepOrder: 0,
   });
   await expect(
-    owner(t).query(api.agents.messages, {
+    owner(t).query(api.agents.streams, {
       threadId: turn.threadId,
-      paginationOpts: { cursor: null, numItems: 1 },
+
       streamArgs: { kind: "deltas", cursors: [{ streamId: other, cursor: 0 }] },
     }),
   ).rejects.toThrow("Stream does not belong to the given thread");
@@ -756,9 +756,9 @@ it("forty distinct delta cursors read at most two native streams and retain the 
       end: 1,
       parts: [{ type: "text-delta", id: "text", delta: "chunk" }],
     });
-  const result = await owner(t).query(api.agents.messages, {
+  const result = await owner(t).query(api.agents.streams, {
     threadId: turn.threadId,
-    paginationOpts: { cursor: null, numItems: 1 },
+
     streamArgs: {
       kind: "deltas",
       cursors: [
@@ -797,9 +797,9 @@ it("eight 1020 KiB stream docs and nine large deltas stay within transaction rea
       end: i + 1,
       parts: [{ type: "text-delta", id: "text", delta: "x".repeat(1020 << 10) }],
     });
-  const result = await owner(t).query(api.agents.messages, {
+  const result = await owner(t).query(api.agents.streams, {
     threadId: turn.threadId,
-    paginationOpts: { cursor: null, numItems: 1 },
+
     streamArgs: { kind: "deltas", cursors: streamIds.map((streamId) => ({ streamId, cursor: 0 })) },
   });
   if (result.streams?.kind !== "deltas") throw new Error("EXPECTED_DELTAS");
@@ -813,78 +813,82 @@ it("eight 1020 KiB stream docs and nine large deltas stay within transaction rea
   await drain(t);
 });
 
-it.each([3, LIMITS.streamCursors - 1])(
-  "combined ten 850 KiB results four 1020 KiB streams and nine deltas on cursor %i leave 2 MiB margin",
-  async (deltaIndex) => {
-    // Enforce the promised headroom, rather than just Convex's 16 MiB ceiling.
-    const t = setup(undefined, undefined, { bytesRead: 14 << 20 });
+it.each(["messages", "streams"] as const)(
+  "%s has its own transaction budget with six near-1 MiB branch heads, two streams and nine deltas",
+  async (reader) => {
+    const t = setup(undefined, undefined, true);
     const turn = await activeStream(t, 1020 << 10);
-    const streamIds = [turn.streamId];
-    for (let i = 1; i < 4; i++)
-      streamIds.push(
-        await t.mutation(components.agent.streams.create, {
-          threadId: turn.threadId,
-          order: i + 1,
-          stepOrder: 0,
-          providerOptions: { huge: { value: "x".repeat(1020 << 10) } },
-        }),
-      );
+    const other = await t.mutation(components.agent.streams.create, {
+      threadId: turn.threadId,
+      order: 2,
+      stepOrder: 0,
+      providerOptions: { huge: { value: "x".repeat(1020 << 10) } },
+    });
     for (let i = 0; i < 9; i++)
       await t.mutation(components.agent.streams.addDelta, {
-        streamId: streamIds[deltaIndex],
+        streamId: other,
         start: i,
         end: i + 1,
         parts: [{ type: "text-delta", id: "text", delta: "x".repeat(1020 << 10) }],
       });
-    const calls = await t.run((ctx) =>
-      saveMessage(ctx, components.agent, {
-        threadId: turn.threadId,
-        order: "next",
-        message: {
-          role: "assistant",
-          content: Array.from({ length: 10 }, (_, i) => ({
-            type: "tool-call" as const,
-            toolCallId: `large-${i}`,
-            toolName: "echo",
-            input: {},
-          })),
-        },
-      }),
-    );
-    for (let i = 0; i < 10; i++)
-      await t.run((ctx) =>
-        saveMessage(ctx, components.agent, {
+    // One large document in EVERY native merge branch, not six documents in
+    // the same branch. Without counting all six prefetches the former combined
+    // query exceeds 16 MiB. Each save itself remains a separate transaction.
+    for (const status of ["success", "pending", "failed"] as const)
+      for (const tool of [false, true]) {
+        const saved = await t.mutation(components.agent.messages.addMessages, {
           threadId: turn.threadId,
-          promptMessageId: calls.messageId,
-          message: {
-            role: "tool",
-            content: [
-              {
-                type: "tool-result",
-                toolCallId: `large-${i}`,
-                toolName: "echo",
-                output: { type: "text", value: "x".repeat(850 << 10) },
-              },
-            ],
-          },
-        }),
-      );
-    const { result, metrics } = await owner(t).run(async (ctx) => {
-      const result = await ctx.runQuery(api.agents.messages, {
-        threadId: turn.threadId,
-        paginationOpts: { cursor: null, numItems: 100 },
-        streamArgs: {
-          kind: "deltas",
-          cursors: streamIds.map((streamId) => ({ streamId, cursor: 0 })),
-        },
+          order: "next",
+          failPendingSteps: false,
+          messages: [
+            {
+              status,
+              message: tool
+                ? {
+                    role: "tool",
+                    content: [
+                      {
+                        type: "tool-result",
+                        toolCallId: `large-${status}`,
+                        toolName: "echo",
+                        output: { type: "text", value: "x".repeat(1020 << 10) },
+                      },
+                    ],
+                  }
+                : { role: "user", content: "x".repeat(510 << 10) },
+            },
+          ],
+        });
+        expect(getConvexSize(saved.messages[0])).toBeGreaterThan(1010 << 10);
+        expect(getConvexSize(saved.messages[0])).toBeLessThan(1 << 20);
+      }
+    const streamArgs = {
+      kind: "deltas" as const,
+      cursors: [turn.streamId, other].map((streamId) => ({ streamId, cursor: 0 })),
+    };
+    if (reader === "messages") {
+      const { result, bytes } = await owner(t).run(async (ctx) => {
+        const result = await ctx.runQuery(api.agents.messages, {
+          threadId: turn.threadId,
+          paginationOpts: { cursor: null, numItems: LIMITS.messagePage },
+        });
+        return { result, bytes: (await ctx.meta.getTransactionMetrics()).bytesRead.used };
       });
-      return { result, metrics: await ctx.meta.getTransactionMetrics() };
-    });
-    expect(result.page.length).toBeGreaterThan(0);
-    expect(result.isDone).toBe(false);
-    expect(metrics.bytesRead.used).toBeLessThanOrEqual(13.75 * (1 << 20));
-    if (result.streams?.kind !== "deltas") throw new Error("EXPECTED_DELTAS");
-    expect(result.streams.deltas).toHaveLength(deltaIndex < LIMITS.streamCursors ? 9 : 0);
+      expect(result.page.length).toBeGreaterThan(0);
+      expect(result.isDone).toBe(false);
+      expect(bytes).toBeLessThanOrEqual(7.75 * (1 << 20));
+    } else {
+      const { result, bytes } = await owner(t).run(async (ctx) => {
+        const result = await ctx.runQuery(api.agents.streams, {
+          threadId: turn.threadId,
+          streamArgs,
+        });
+        return { result, bytes: (await ctx.meta.getTransactionMetrics()).bytesRead.used };
+      });
+      if (result.streams?.kind !== "deltas") throw new Error("EXPECTED_DELTAS");
+      expect(result.streams.deltas).toHaveLength(9);
+      expect(bytes).toBeLessThanOrEqual(11.25 * (1 << 20));
+    }
     await owner(t).mutation(api.agents.cancel, { threadId: turn.threadId });
     await drain(t);
   },
@@ -911,9 +915,9 @@ it("native byte-bounded delta pages preserve continuation", async () => {
   const seen = new Set<number>();
   let cursor = 0;
   for (let pages = 0; pages < 12; pages++) {
-    const result = await owner(t).query(api.agents.messages, {
+    const result = await owner(t).query(api.agents.streams, {
       threadId: turn.threadId,
-      paginationOpts: { cursor: null, numItems: 1 },
+
       streamArgs: { kind: "deltas", cursors: [{ streamId: turn.streamId, cursor }] },
     });
     if (result.streams?.kind !== "deltas") throw new Error("EXPECTED_DELTAS");

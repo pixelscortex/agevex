@@ -31,10 +31,14 @@ describe("nested Workflow to host/native Agent bridge", () => {
     const messages = await alice.query(api.agents.messages, {
       threadId: receipt.threadId,
       paginationOpts: { cursor: null, numItems: 20 },
-      streamArgs: { kind: "list" },
     });
     expect(messages.page.map((m) => m.text)).toContain("DEMO deterministic native reply");
     expect(messages.page.map((m) => m.text)).toContain("hello");
-    expect(messages.streams).toMatchObject({ kind: "list" });
+    expect(
+      await alice.query(api.agents.streams, {
+        threadId: receipt.threadId,
+        streamArgs: { kind: "list" },
+      }),
+    ).toMatchObject({ streams: { kind: "list" } });
   });
 });

@@ -67,7 +67,6 @@ const messagesReturn = v.object({
   pageStatus: v.optional(
     v.union(v.literal("SplitRecommended"), v.literal("SplitRequired"), v.null()),
   ),
-  streams: vStreamMessagesReturnValue.fields.streams,
 });
 
 function validateInput(text: string, requestKey: string) {
@@ -102,7 +101,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
   async function owned(
     ctx: GenericQueryCtx<GenericDataModel>,
     threadId: string,
-    operation: "send" | "respond" | "cancel" | "messages" | "activity",
+    operation: "send" | "respond" | "cancel" | "messages" | "streams" | "activity",
   ) {
     const row = await ctx.runQuery(component.queue.assignment, { threadId });
     if (!row) throw new Error("FORBIDDEN");
@@ -118,7 +117,12 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
     // changing the role of any existing child thread. A name-based check would
     // grant send/activity access to those old threads (and previously also let
     // a shared Agent object registered as both root and child bypass the guard).
-    if (operation !== "messages" && operation !== "respond" && row.root === false)
+    if (
+      operation !== "messages" &&
+      operation !== "streams" &&
+      operation !== "respond" &&
+      row.root === false
+    )
       throw new Error("FORBIDDEN");
     const native = managedAgents.get(row.agent);
     if (!native) throw new Error("UNKNOWN_AGENT");
@@ -285,7 +289,6 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
       args: {
         threadId: v.string(),
         paginationOpts: paginationOptsValidator,
-        streamArgs: v.optional(vStreamArgs),
       },
       returns: messagesReturn,
       handler: async (ctx, args) => {
@@ -310,8 +313,15 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           ...args,
           paginationOpts,
         });
-        const streams = await boundedStreams(ctx, row, args.streamArgs);
-        return { ...page, streams };
+        return page;
+      },
+    }),
+    streams: queryGeneric({
+      args: { threadId: v.string(), streamArgs: vStreamArgs },
+      returns: v.object({ streams: vStreamMessagesReturnValue.fields.streams }),
+      handler: async (ctx, args) => {
+        const row = await owned(ctx, args.threadId, "streams");
+        return { streams: await boundedStreams(ctx, row, args.streamArgs) };
       },
     }),
     activity: queryGeneric({

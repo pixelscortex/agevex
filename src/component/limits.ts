@@ -104,11 +104,14 @@ export const LIMITS = {
   // Bound approval coordination metadata even when native approval ids are huge:
   // requests store SHA-256 keys; resolved contains only their array offsets.
   approvalsPerPause: 16,
-  // One messages query, including BOTH transcript and streams (MiB):
-  // 0.5 transcript + 1 page overshoot + 1 merge lookahead + 2*1 stream docs
-  // + 8 Agent deltas + 1 delta overshoot + 0.25 ownership/coordination
-  // = 13.75 MiB <= 14 MiB, leaving >= 2.25 MiB below Convex's 16 MiB.
-  // Agent 0.7.7 listDeltas exposes no override for its fixed 8 MiB budget.
+  // Separate read transactions, including Agent's SIX prefetched merge heads
+  // (3 statuses * tool/non-tool; Agent src/component/messages.ts:809-845).
+  // Messages: 0.5 MiB page + 1 MiB overshoot + 6*1 MiB heads + 0.25 MiB
+  // coordination = 7.75 MiB <16 MiB. Count: <=100 page rows + six heads.
+  // Stream deltas: 2*1 MiB metadata + 8 MiB native page + 1 MiB delta
+  // overshoot + 0.25 MiB coordination = 11.25 MiB <16 MiB. Agent's fixed
+  // 8 MiB page reads <=200 deltas (src/component/streams.ts:listDeltas).
+  // streams.list retains the upstream 100-metadata-row exception (spec §9b).
   streamCursors: 2,
   // The public `messages` reader takes its page size from the client. Without a
   // server-side clamp, one request for a huge page of large tool results would

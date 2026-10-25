@@ -33,6 +33,12 @@ it("requires trusted host authorization for writes and native reads", async () =
       paginationOpts: { cursor: null, numItems: 20 },
     }),
   ).rejects.toThrow("FORBIDDEN");
+  await expect(
+    bob.query(api.agents.streams, {
+      threadId: receipt.threadId,
+      streamArgs: { kind: "list" },
+    }),
+  ).rejects.toThrow("FORBIDDEN");
   await expect(bob.query(api.agents.activity, { threadId: receipt.threadId })).rejects.toThrow(
     "FORBIDDEN",
   );
