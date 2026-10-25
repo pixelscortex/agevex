@@ -1,0 +1,21 @@
+src/component/schema.ts
+  s_d863bd773ba186::t_2430b51fb4a07a 434
+src/component/subagents.ts
+  s_d863bd773ba186::t_fd58f518beb8f5 663-665
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4a0d18eb2b676deb192f3ce8e12082d15abcb800",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
