@@ -1,3 +1,4 @@
+import type { UsageSlot, BudgetSlot, TelemetrySlot, SandboxSlot, ExtractSlot } from "./slots.js";
 import type {
   GenericActionCtx,
   GenericDataModel,
@@ -79,6 +80,7 @@ export type TurnOrigin = "user" | "subagent_result";
  */
 export type AuthorizationScope =
   | { operation: "open"; agent: string }
+  | { operation: "sandbox"; agent: string; threadId: string; subject: string; runId: string }
   | {
       operation:
         | "note"
@@ -265,6 +267,7 @@ export type CoordinateResult =
 // are invariant (notably stop conditions). No native result is widened publicly.
 export type ManagedAgent = {
   name: string;
+  sandbox?: boolean;
   hooks?: AgentHooks;
   sideAgents?: readonly SideAgent[];
   subagents: readonly ManagedAgent[];
@@ -290,6 +293,8 @@ export type ManagedAgent = {
       maxRetries: number;
       stopWhen: () => boolean;
       abortSignal: AbortSignal;
+      experimental_download?: import("ai").Experimental_DownloadFunction;
+      telemetry?: { integrations: import("ai").Telemetry[] };
     },
     options: {
       saveStreamDeltas: { chunking: "word"; throttleMs: number };
@@ -306,6 +311,13 @@ export type ManagedAgent = {
 import type { Limits } from "../component/limits.js";
 
 export type Registration = {
+  /** Absent: ignore usage, allow budgets, export nothing, omit sandbox tools,
+   * and pass attachments as native Agent file parts. */
+  usage?: UsageSlot;
+  budget?: BudgetSlot;
+  telemetry?: TelemetrySlot;
+  sandbox?: SandboxSlot;
+  extract?: ExtractSlot;
   /** Host-owned model ids accepted in open/send. Both options must be supplied together. */
   modelAllowlist?: readonly string[];
   /** Resolver is called only in actions, after validating the stored id against the allowlist. */

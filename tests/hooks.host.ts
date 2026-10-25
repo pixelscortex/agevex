@@ -8,6 +8,7 @@ import {
   type TurnArgs,
   type CoordinateArgs,
   type CoordinateResult,
+  type ToolContext,
 } from "../src/client/index.js";
 import { mockModel, createTool, type ContextHandler } from "@convex-dev/agent";
 import {
@@ -26,6 +27,11 @@ import { components } from "./fixture/api.js";
 
 type Args = Parameters<ReturnType<typeof mockModel>["doStream"]>[0];
 export const fixture = {
+  slots: {} as Pick<Registration, "usage" | "budget" | "telemetry" | "sandbox" | "extract">,
+  sandbox: false,
+  supportsUrls: true,
+  toolContext: undefined as ToolContext | undefined,
+  toolWork: undefined as undefined | ((tc: ToolContext) => Promise<unknown>),
   hooks: {} as AgentHooks,
   builderHooks: {} as AgentHooks,
   sides: [] as SideAgent[],
@@ -50,6 +56,12 @@ export const call = (name: string, input: unknown): LanguageModelV4Content[] => 
 ];
 function model(name: string) {
   const model = mockModel();
+  // This fake provider accepts storage URLs as native file parts. The SDK
+  // therefore never downloads test storage or touches the network.
+  Object.defineProperty(model, "supportedUrls", {
+    get: () =>
+      fixture.supportsUrls ? { "*": [/^https:\/\/some-deployment\.convex\.cloud\//] } : {},
+  });
   model.doStream = async (args) => {
     const n = fixture.calls.filter((call) => call.agent === name).length;
     fixture.calls.push({ agent: name, args });
@@ -82,6 +94,22 @@ export const main = new Agent(components.agent, {
   contextHandler: (ctx, context) => fixture.contextHandler?.(ctx, context) ?? context.allMessages,
   subagents: [builder],
   tools: {
+    managed: tool({
+      inputSchema: z.object({}),
+      execute: async (_input, options) => {
+        const tc = options.context as ToolContext;
+        fixture.toolContext = tc;
+        return (await fixture.toolWork?.(tc)) ?? "done";
+      },
+    }),
+    metered_once: defineOnceTool({
+      name: "metered_once",
+      input: z.object({}),
+      run: async (_input, tc) => {
+        fixture.toolContext = tc;
+        return ((await fixture.toolWork?.(tc)) as string) ?? "done";
+      },
+    }),
     echo: tool({ ...echo, needsApproval: () => fixture.approval }),
     native: createTool({
       ...echo,
@@ -92,15 +120,22 @@ export const main = new Agent(components.agent, {
     }),
     once: defineOnceTool({
       name: "effect",
+      description: "Echo text exactly once.",
       input: z.object({ text: z.string() }),
       run: (input) => echo.execute(input),
     }),
   },
 });
 Object.defineProperty(builder, "hooks", { get: () => fixture.builderHooks });
+Object.defineProperty(main, "sandbox", { get: () => fixture.sandbox });
 Object.defineProperty(main, "hooks", { get: () => fixture.hooks });
 Object.defineProperty(main, "sideAgents", { get: () => fixture.sides });
 export function reset() {
+  fixture.slots = {};
+  fixture.sandbox = false;
+  fixture.supportsUrls = true;
+  fixture.toolContext = undefined;
+  fixture.toolWork = undefined;
   fixture.hooks = {};
   fixture.builderHooks = {};
   fixture.sides = [];
@@ -114,6 +149,7 @@ export function reset() {
 export function registration(limits?: Registration["limits"]) {
   return registerAgent(components.agevex, {
     agents: [main],
+    ...fixture.slots,
     limits,
     modelAllowlist: ["routed"],
     models: () => model("Routed"),
@@ -128,7 +164,11 @@ export function registration(limits?: Registration["limits"]) {
         ) as unknown as FunctionReference<"mutation", "internal", CoordinateArgs, CoordinateResult>,
     },
     authorize: async (ctx, scope) => {
-      if (scope.operation === "delegate" || scope.operation === "deliver") {
+      if (
+        scope.operation === "delegate" ||
+        scope.operation === "deliver" ||
+        scope.operation === "sandbox"
+      ) {
         if (scope.subject !== "alice") throw new Error("FORBIDDEN");
         return { subject: scope.subject };
       }

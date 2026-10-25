@@ -314,7 +314,7 @@ it("respond resolves two approvals separately and resumes from the final native 
       approvalId: "approval-0",
       approved: true,
     }),
-  ).resolves.toEqual(first);
+  ).resolves.toEqual({ ...first, replayed: true });
   const last = await alice.mutation(api.agents.respond, {
     threadId: turn.threadId,
     approvalId: "approval-1",
@@ -354,10 +354,15 @@ it.each([true, false])(
       reason: "original reason",
     };
     const result = await owner(t).mutation(api.agents.respond, args);
+    // A first decision is never a replay; the identical retry below is.
+    expect(result.replayed).toBe(false);
     await drain(t);
     const before = await nativePage(t, turn.threadId);
     const calls = state.calls.length;
-    await expect(owner(t).mutation(api.agents.respond, args)).resolves.toEqual(result);
+    await expect(owner(t).mutation(api.agents.respond, args)).resolves.toEqual({
+      ...result,
+      replayed: true,
+    });
     expect(await nativePage(t, turn.threadId)).toEqual(before);
     await drain(t);
     expect(state.calls).toHaveLength(calls);
@@ -442,7 +447,10 @@ it("respond rejects a changed decision or reason with typed KEY_CONFLICT and pre
     await expect(
       owner(t).mutation(api.agents.respond, { ...args, ...change }),
     ).rejects.toMatchObject({ data: { code: "KEY_CONFLICT" } });
-  await expect(owner(t).mutation(api.agents.respond, args)).resolves.toEqual(result);
+  await expect(owner(t).mutation(api.agents.respond, args)).resolves.toEqual({
+    ...result,
+    replayed: true,
+  });
   await expect(
     t.withIdentity({ subject: "bob" }).mutation(api.agents.respond, args),
   ).rejects.toThrow("FORBIDDEN");

@@ -1,0 +1,81 @@
+---
+title: Slots
+icon: Blocks
+description: Optional usage, budget, telemetry, sandbox and extract modules.
+status: Available
+---
+
+`registerAgent` accepts five optional slots: `usage`, `budget`, `telemetry`,
+`sandbox` and `extract`. Core imports only the slot contracts; each optional module adds its own
+adapter. An omitted slot ignores usage, allows spending, exports no telemetry, adds no sandbox tools and passes files as native model parts.
+
+Every managed tool receives a `ToolContext` through the AI SDK `options.context`;
+a native `createTool` also gets the facts on its injected context and
+`defineOnceTool` as its second argument. `subject`, `rootThreadId`,
+`threadId`, `runId`, `agent` and `toolCallId` are non-empty strings of at most
+128 UTF-8 bytes; `nativeToolCallId` preserves the provider id, while `signal`
+and `meter` are objects.
+
+```ts title="Optional slots"
+const runtime = registerAgent(components.agevex, {
+  agents: [main],
+  refs: { runTurn: () => internal.agents.runTurn },
+  authorize: hostPolicy,
+  authorizeExecution: hostExecutionPolicy,
+  usage: { scope: (ctx, facts) => usageMeter.scope(ctx, facts) },
+  budget: { check: (ctx, args) => hostBudget.check(ctx, args) },
+})
+```
+
+## Meter
+
+`tc.meter` is always present, and a no-op meter without a usage slot. Charge
+keys hash the tool-call identity and an ordinal; operation keys hash the
+charge, the method and an ordinal. Opaque keys are full SHA-256 hex, 64 ASCII
+bytes. Model usage is recorded once per saved step; failures never replay it.
+
+## Budget
+
+`check(ctx, { subject, runId })` runs before each slice. A denial ends the
+turn with `BUDGET_EXCEEDED` in activity and posts a passive note from
+`budget`, under the same `notesPending` cap as every other note. If that cap
+is full the notice is omitted, but the typed denial still stops the turn.
+
+## Telemetry
+
+`integration(facts)` returns an AI SDK integration and receives the turn facts
+plus `turnKey`, a hash of the slice identity. `flush(facts, signal)` gets the
+same identity, so an adapter can keep one buffer per turn. It runs in
+`finally`, fails open and is bounded to three seconds.
+
+## Sandbox
+
+Sandbox tools need both a `sandbox` slot and the agent option `sandbox: true`.
+Connect the module's trusted `onComplete` mutation to
+`runtime.sandboxComplete(ctx, event)`: it authorizes the background `sandbox`
+operation against the stored owner and posts a bounded passive note from
+`sandbox`. Any managed thread may report a completion; the event names the
+subject, thread, run and job, with a `state` of `done`, `failed` or `unknown`.
+
+## Files and extraction
+
+`open` and `send` accept `files?: string[]`: at most 8 native `storeFile` ids.
+Attest the subject with `runtime.registerFile(mutationCtx, { agent, fileId,
+subject })` in the trusted upload path. Admission rejects unregistered and
+foreign files. A total above `limits.attachmentBytes` — 8 MiB by default, 16
+MiB at the hard maximum — is rejected with `{ status: "rejected", code:
+"ATTACHMENT_LIMIT" }`. Without an extract slot files reach the model as native
+parts; with one, the first slice admits one durable extraction per file, passes
+the thread owner to the adapter, and adds the slot's file tools, while
+`runtime.fileAttached(ctx, { subject, threadId, fileId })` answers the exact
+attachment question for an adapter.
+
+## Structured tasks
+
+`defineTask({ name, input, output, prompt, model?, repair? })` declares a
+schema-checked task. `runTask(hc, task, input)` inside a managed hook inherits
+the component, attribution, usage and fence; `runtime.runTask(ctx, task,
+input, { key, attribution })` supplies them explicitly. Outcomes are `{ status:
+"done", value }`, `{ status: "failed", code }`, `{ status: "running" }`,
+`{ status: "unknown" }` or a typed denial; one repair
+re-ask is allowed, results fit 64 KiB, and an expired lease stays `unknown`.
