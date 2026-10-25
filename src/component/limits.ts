@@ -36,7 +36,7 @@ export const HOST_LIMITS = {
   runLaunches: { default: 12, max: 50 },
   runHops: { default: 24, max: 100 },
   // Bound the assignments, run records and cleanup jobs fenced by one cancel.
-  activeChildrenPerRoot: { default: 5, max: 20 },
+  activeChildrenPerRoot: { default: 5, max: 15 },
   // Bound native task saves to <=64 KiB UTF-8 (plus its text projection).
   taskLength: { default: 4_000, max: 16_000 },
   // Bound cancel run patches/inbox deletes and claim result-batch reads/deletes.
@@ -49,42 +49,47 @@ export const HOST_LIMITS = {
 
 /**
  * Cancel budget at ALL host maxima:
- * A = 1 root + 20 descendants = 21 assignments (depth never multiplies A).
+ * C = 15 descendants; A = 1 root + C = 16 assignments (depth never multiplies A).
  * Every assignment has <=100 regular queued rows, one reserved answer slot,
- * and its reserved head (or approval continuation). Use I=21*102=2,142 ready rows.
- * Independently, <=24 passive notes per assignment add N=21*24=504 rows.
- * This deliberately overcounts: many simultaneous child queues belong to
- * DIFFERENT user-run budgets, so a single run's 100 hops is not a valid bound
- * on the whole root's backlog. Depth two allows each parent its own results.
- * Each ready row costs one run patch and one inbox delete: 2I=4,284 writes.
- * Notes cost <=two metadata reads and one delete each; they cannot own executable work,
- * so cancellation never reads/patches their historical run or native body.
+ * and its reserved head (or approval continuation): I=A*102=1,632 ready rows.
+ * Independently, <=24 passive notes per assignment add N=A*24=384 rows.
+ * This deliberately overcounts: simultaneous child queues can belong to
+ * DIFFERENT user-run budgets, so one run's 100 hops cannot bound the backlog.
+ * Each ready row costs one run patch and one inbox delete: 2I=3,264 writes.
+ * Notes cost <=two metadata reads and one delete; their native bodies and
+ * historical run rows are NEVER accessed by cancellation.
  * Each assignment costs three patches, one current-run patch, two scheduler
- * cancels and one exact-id cleanup job: 7A=147. Add 20 child-run patches and
- * one final root patch. Reserve 64A=1,344 reads AND writes for Workflow's
+ * cancels and one exact-id cleanup job: 7A=112. Add C child-run patches and
+ * one final root patch. Reserve 64A=1,024 reads AND writes for Workflow's
  * current loop/turn, Workpool, scheduler and callback bookkeeping.
- * Routing settlement adds <=2A reads/writes (one owner/run per assignment).
- * Writes <=2I+N+9A+20+1+64A=6,342 <8,000 <16,000.
- * Reads <=3I+2N+6A+A+2A+2*20+2+64A=9,009 <32,000.
- * Bytes: inbox/run reads 3I*1 KiB; assignment patch reads 4A*32 KiB;
- * current runs A*1 KiB; scheduler 2A*4 KiB; child runs 40*4 KiB;
- * ownership/final root 2*32 KiB; SDK allowance 64A*4 KiB:
- * Routing only patches the already-read assignment and reads one <=1 KiB run
- * per owner. Add 2N*1 KiB for passive metadata and A*1 KiB for routing:
- * <=14,903+1,008+21=15,932 KiB <16 MiB.
+ * Routing settlement adds two writes and THREE reads per owner: get the run,
+ * read it again to patch it, and read the assignment again to clear ownership.
+ * Writes <=2I+N+9A+C+1+64A=4,832 <8,000 <16,000.
+ * Reads <=3I+2N+6A+A+3A+2C+2+64A=6,980 <32,000.
+ * Indexed queries <=3 child-status ranges +A inbox ranges +64A SDK allowance
+ * =1,043 <4,096; point reads above do not execute indexed range queries.
+ * Bytes (KiB): inbox/run reads 3I=4,896; assignment patch reads 4A*32=2,048;
+ * current runs A=16; scheduler 2A*4=128; child runs 2C*4=120;
+ * ownership/final root 2*32=64; SDK allowance 64A*4=4,096;
+ * passive metadata 2N=768; routing A*(1+1+32)=544.
+ * Total <=12,680 KiB <16,384 KiB: 3,704 KiB /22.6% read headroom.
+ * Written bytes are also bounded by these envelopes: ready run patches/inbox
+ * deletes <=2I KiB, note deletes <=N KiB, coordination <=4A*32+A+2A*4 KiB,
+ * children <=C*4 KiB, final root <=32 KiB, SDK <=64A*4 KiB, and routing
+ * <=A*(1+32) KiB: <=10,556 KiB <16 MiB.
  * Native messages (including each nearly
  * 1 MiB placeholder) are NEVER read by cancel; cleanup runs separately.
  * Subagent rows stay <=4 KiB: names/subjects/groups <=200 UTF-16 units,
  * hashed tool-call dedup keys, ids, counters and <=4 small events. Assignments
  * allow <=32 KiB: the original <=8 KiB (16 approval/deferred-call keys),
- * <=4 KiB exact message references, <=8 KiB side-review boundaries, <=4 KiB
- * private hook error, <=2 KiB consumed-note ids, plus scalar counters. Notes
+ * <=4 KiB exact message references, <=6 KiB side-review boundaries, <=3 KiB
+ * private hook error, <=10 KiB consumed-control ids, plus scalar counters. Notes
  * have their own bounded queue N. Run additions are scalar counters plus
  * two 64-bit start/routing masks, keeping each run within its <=1 KiB envelope.
  *
  * Other proportional paths: claim drains <=152 consecutive ready rows,
  * including <=50 ready joins from its run, and reads no native bodies. Each
- * join uses an indexed ready representative and <=20 cohort metadata rows;
+ * join uses an indexed ready representative and <=15 cohort metadata rows;
  * admission/send/attach handle one item. Membership sealing reads/patches
  * <=50 launch rows. Descendant/settlement fences use indexed existence probes,
  * never historical prefixes. The tree reads <=50 model launches +8 side launches (232 KiB). Local comments

@@ -296,7 +296,7 @@ export const reserve = mutation({
     const group = args.group ?? (wait === "all" ? "" : undefined);
     if (group !== undefined) {
       // A named group is a closed cohort, capped INCLUDING settled members.
-      // <=20 small rows (<=4 KiB each) + two <=32 KiB assignments and fixed
+      // <=15 small rows (<=4 KiB each) + two <=32 KiB assignments and fixed
       // admission metadata <160 KiB; no native
       // result bodies are read. Index scope excludes every other parent/run.
       const members = await ctx.db
@@ -678,10 +678,10 @@ async function applyDelivery(
   )
     throw new Error("RUN_BUDGET");
   if (run.wait === "all") {
-    // <=20 members *4 KiB =80 KiB. Mark readiness and enqueue ONE id-only
-    // anchor; <=20 release markers. No historical candidate prefix is read.
+    // <=15 members *4 KiB =60 KiB. Mark readiness and enqueue ONE id-only
+    // anchor; <=15 release markers. No historical candidate prefix is read.
     // Native child bodies are verified ONE per delivery transaction (<=1 MiB);
-    // this join reads ids only, never 20 potentially 1 MiB native results.
+    // this join reads ids only, never 15 potentially 1 MiB native results.
     const members = await ctx.db
       .query("subagentRuns")
       .withIndex("by_group", (q) =>
@@ -771,7 +771,7 @@ async function releaseGroup(
     .filter((member) => member.deliveryStatus === "accepted" && member.resultMessageId)
     .sort((a, b) => (a.resultSequence ?? 0) - (b.resultSequence ?? 0));
   if (accepted.length && parent.queuedMessages >= (root.limits ?? LIMITS).queueLength) return false;
-  // Mark all <=20 members so the bounded unresolved-group index retires the
+  // Mark all <=15 members so the bounded unresolved-group index retires the
   // entire cohort, including failures. No delivered body is read or copied.
   for (const member of members)
     await ctx.db.patch("subagentRuns", member._id, { groupReleased: true });
@@ -828,7 +828,7 @@ export async function sealGroups(ctx: MutationCtx, parent: Doc<"assignments">) {
 }
 
 /** Ready-group recovery uses an exact indexed representative, then only that
- * cohort's <=20 members (<=84 KiB + fixed assignment metadata). Old incomplete
+ * cohort's <=15 members (<=64 KiB + fixed assignment metadata). Old incomplete
  * groups never enter this range. Release one cohort per wake; remaining ready
  * cohorts are serviced by the next claim/finish without a scheduled sweep.
  */

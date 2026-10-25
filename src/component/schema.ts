@@ -194,8 +194,9 @@ export default defineSchema({
     notesTaken: v.optional(v.number()),
     // Read by note admission/draining/cancel; never charged to ready work.
     notesPending: v.number(),
-    // Exact native ids consumed this turn, replayed as context on later slices.
-    turnNotes: v.optional(v.array(v.string())),
+    // Exact native note/continue ids replayed across slices and hook turns.
+    // Cleared only at a new ready-work boundary (<=224 ids at hard maxima).
+    turnControlMessageIds: v.optional(v.array(v.string())),
     // Only the first slice owns the shared routing bit; terminal fences settle it.
     routingAgentIndex: v.optional(v.number()),
     hookContinue: v.optional(v.boolean()),

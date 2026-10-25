@@ -135,7 +135,15 @@ const childModel = provider.chat(modelId);
 const childStream = childModel.doStream.bind(childModel);
 childModel.doStream = (args) => {
   live.childCalls++;
-  return childStream({ ...args, maxOutputTokens: LIVE_LIMITS.outputTokens });
+  // This scenario requires a terminal Researcher answer, just like Reviewer
+  // and Critic below. Enforce that host policy: an instruction alone lets a
+  // free model ask_parent while the scripted root forces another delegation,
+  // stranding the asking child instead of testing repeated result delivery.
+  return childStream({
+    ...args,
+    maxOutputTokens: LIVE_LIMITS.outputTokens,
+    toolChoice: { type: "none" },
+  });
 };
 const usageHandler = (
   _ctx: unknown,

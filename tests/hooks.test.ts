@@ -4,16 +4,33 @@ import { convexTest } from "convex-test";
 import agent from "@convex-dev/agent/test";
 import agevex from "../src/test.js";
 import schema from "./fixture/schema.js";
-import { fixture, reset, exports, api, critic, text, call } from "./hooks.host.js";
+import { fixture, reset, exports, api, critic, main, text, call } from "./hooks.host.js";
 import { requireReceipt } from "./receipt.js";
 import { createFunctionHandle } from "convex/server";
 import { HOST_LIMITS, LIMITS, type Limits } from "../src/component/limits.js";
 import { components } from "./fixture/api.js";
+// Avoid expanding the native gateway-model union to override search options.
+const modelContext = (
+  main as unknown as {
+    options: {
+      contextOptions?: {
+        recentMessages: number;
+        searchOptions: {
+          textSearch: boolean;
+          limit: number;
+          messageRange: { before: number; after: number };
+        };
+      };
+    };
+  }
+).options;
 const modules = import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]);
-function setup(limits?: Partial<Limits>) {
+function setup(limits?: Partial<Limits>, platformLimits = false) {
   const t = convexTest({
     schema,
-    transactionLimits: { bytesRead: 8 << 20, documentsRead: 8192, documentsWritten: 8000 },
+    transactionLimits: platformLimits
+      ? true
+      : { bytesRead: 8 << 20, documentsRead: 8192, documentsWritten: 8000 },
     modules: { ...modules, "./fixture/agents.ts": async () => exports(limits) },
   });
   agent.register(t);
@@ -57,6 +74,7 @@ beforeEach(() => {
   vi.useFakeTimers();
 });
 afterEach(() => {
+  modelContext.contextOptions = undefined;
   vi.clearAllTimers();
   vi.useRealTimers();
 });
@@ -151,6 +169,173 @@ it("model routing applies only at run start and persists across hook continuatio
   expect(starts).toEqual([true, false]);
   expect(calls("Routed")).toHaveLength(2);
   expect(calls()).toHaveLength(0);
+});
+
+it("afterTurn control prompts appear once after the response while future requests stay hidden", async () => {
+  const held = gate();
+  fixture.steps.Main = async (n) => {
+    if (n === 0) await held.promise;
+    return text(`response-${n}`);
+  };
+  fixture.hooks.afterTurn = (_hc, event) =>
+    event.turn < 3 ? { continue: "check again" } : undefined;
+  const t = setup();
+  const receipt = await open(t);
+  await waitFor(t, () => calls().length === 1);
+  await send(t, receipt.threadId, "future request must stay hidden");
+  held.release();
+  await drain(t);
+  for (let n = 1; n <= 2; n++) {
+    const prompt = JSON.stringify(calls()[n].args.prompt);
+    expect(prompt.match(/check again/g)).toHaveLength(n);
+    expect(prompt).not.toContain("future request must stay hidden");
+    expect(prompt.lastIndexOf("check again")).toBeGreaterThan(prompt.indexOf(`response-${n - 1}`));
+  }
+  expect(JSON.stringify(calls()[3].args.prompt)).toContain("future request must stay hidden");
+  const transcript = JSON.stringify(await messages(t, receipt.threadId));
+  expect(transcript.match(/check again/g)).toHaveLength(4); // Native content and text projection, two distinct prompts.
+});
+
+it.each(["idle", "mid-slice"])(
+  "%s notes appear once in every subsequent slice and retain tool call order",
+  async (arrival) => {
+    const held = gate();
+    const t = setup();
+    const receipt = await open(t);
+    await drain(t);
+    const note = () =>
+      owner(t).mutation(api.agents.note, {
+        threadId: receipt.threadId,
+        text: "unique control advice",
+        from: "critic",
+      });
+    fixture.steps.Main = async (n) => {
+      if (n === 1) await held.promise;
+      return n < 3 ? call("echo", { text: `effect-${n}` }) : text("done");
+    };
+    if (arrival === "idle") await note();
+    await send(t, receipt.threadId, "second ready request");
+    await waitFor(t, () => calls().length === 2);
+    if (arrival === "mid-slice") await note();
+    await send(t, receipt.threadId, "queued future request");
+    held.release();
+    await drain(t);
+    for (let n = arrival === "idle" ? 1 : 2; n <= 3; n++) {
+      const prompt = JSON.stringify(calls()[n].args.prompt);
+      expect(prompt.match(/unique control advice/g)).toHaveLength(1);
+      expect(prompt).not.toContain("queued future request");
+      expect(prompt.indexOf("unique control advice")).toBeGreaterThan(
+        prompt.indexOf("second ready request"),
+      );
+    }
+    expect(fixture.effects).toEqual(["effect-1", "effect-2"]);
+    // Once a new ready boundary owns these historical notes, native history
+    // contains them once without explicit replay from the previous turn.
+    expect(JSON.stringify(calls()[4].args.prompt).match(/unique control advice/g)).toHaveLength(1);
+  },
+);
+
+it("pending notes beyond the turn cap stay hidden even before the ready anchor", async () => {
+  const t = setup({ notesPerTurn: 1, notesPending: 2 });
+  const receipt = await open(t);
+  await drain(t);
+  for (const value of ["admitted control", "pending control"])
+    await owner(t).mutation(api.agents.note, {
+      threadId: receipt.threadId,
+      text: value,
+      from: "critic",
+    });
+  await send(t, receipt.threadId, "next ready request");
+  await drain(t);
+  const prompt = JSON.stringify(calls()[1].args.prompt);
+  expect(prompt.match(/admitted control/g)).toHaveLength(1);
+  expect(prompt).not.toContain("pending control");
+});
+
+it("native search excludes admitted and pending controls by id before explicit replay", async () => {
+  modelContext.contextOptions = {
+    recentMessages: 1,
+    searchOptions: { textSearch: true, limit: 10, messageRange: { before: 0, after: 0 } },
+  };
+  const t = setup({ notesPerTurn: 1, notesPending: 2 });
+  const receipt = await open(t);
+  await drain(t);
+  for (let n = 0; n < 2; n++)
+    await owner(t).mutation(api.agents.note, {
+      threadId: receipt.threadId,
+      text: "searchable advice",
+      from: "critic",
+    });
+  await send(t, receipt.threadId, "searchable advice");
+  await drain(t);
+  const prompt = calls()[1].args.prompt;
+  expect(
+    prompt.filter((message) => JSON.stringify(message.content).includes("<note from=")),
+  ).toHaveLength(1);
+  // The ordinary request with matching text remains present as well.
+  expect(JSON.stringify(prompt).match(/searchable advice/g)).toHaveLength(2);
+});
+
+it("control ids preserve distinct identical requests and retain notes across hook turns", async () => {
+  fixture.hooks.beforeTurn = () => ({ note: "same advice" });
+  fixture.hooks.afterTurn = (_hc, event) =>
+    event.turn < 2 ? { continue: "continue marker" } : undefined;
+  const t = setup();
+  const receipt = await open(t);
+  await drain(t);
+  const second = JSON.stringify(calls()[1].args.prompt);
+  expect(second.match(/same advice/g)).toHaveLength(2); // Two distinct native notes, once each.
+  expect(second.match(/continue marker/g)).toHaveLength(1);
+  fixture.hooks = {};
+  // This ordinary user request deliberately has exactly the native note's
+  // escaped body. Filtering must use recorded ids rather than text or role.
+  await send(t, receipt.threadId, '<note from="Main">same advice</note>');
+  await drain(t);
+  expect(JSON.stringify(calls()[2].args.prompt).match(/same advice/g)).toHaveLength(3);
+});
+
+it("maximum control replay fits platform limits across all eight hook continuations", async () => {
+  fixture.hooks.beforeTurn = async (hc) => {
+    const row = await hc.ctx.runQuery(components.agevex.queue.assignment, {
+      threadId: hc.threadId,
+    });
+    const addMessages = await createFunctionHandle(components.agent.messages.addMessages);
+    for (let n = 0; n < HOST_LIMITS.notesPerTurn.max; n++)
+      expect(
+        await hc.ctx.runMutation(components.agevex.hooks.addNote, {
+          assignmentId: row!.assignmentId,
+          text: '"'.repeat(LIMITS.noteLength),
+          from: '"'.repeat(LIMITS.requestKeyLength),
+          addMessages,
+        }),
+      ).toBe(true);
+  };
+  fixture.hooks.afterTurn = () => ({ continue: "￿".repeat(LIMITS.messageLength) });
+  const t = setup(
+    {
+      notesPerTurn: HOST_LIMITS.notesPerTurn.max,
+      notesPending: HOST_LIMITS.notesPending.max,
+      continuesPerRun: HOST_LIMITS.continuesPerRun.max,
+    },
+    true,
+  );
+  await open(t);
+  await drain(t);
+  expect(calls()).toHaveLength(HOST_LIMITS.continuesPerRun.max + 1);
+  const prompt = calls()[HOST_LIMITS.continuesPerRun.max].args.prompt;
+  expect(
+    prompt.filter((message) => JSON.stringify(message.content).includes("<note from=")),
+  ).toHaveLength((HOST_LIMITS.continuesPerRun.max + 1) * HOST_LIMITS.notesPerTurn.max);
+  expect(prompt.filter((message) => JSON.stringify(message.content).includes("￿"))).toHaveLength(
+    HOST_LIMITS.continuesPerRun.max,
+  );
+}, 30_000);
+
+it("registration rejects a sixteenth active descendant to preserve cancel headroom", () => {
+  expect(() => exports({ activeChildrenPerRoot: 15 })).not.toThrow();
+  expect(() => exports({ activeChildrenPerRoot: 16 })).toThrow(
+    "INVALID_LIMITS: activeChildrenPerRoot exceeds maximum 15",
+  );
 });
 
 it("model returned after run start or outside beforeTurn fails with HOOK_FAILED", async () => {

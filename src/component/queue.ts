@@ -471,7 +471,8 @@ export const claim = mutation({
       turnStatus: "running",
       continueSlice: false,
       hookContinue: false,
-      ...(first || row.hookContinue ? { notesTaken: 0, turnNotes: [], hookError: undefined } : {}),
+      ...(first ? { turnControlMessageIds: [] } : {}),
+      ...(first || row.hookContinue ? { notesTaken: 0, hookError: undefined } : {}),
       approvals: row.approvals
         ? {
             ...row.approvals,
@@ -1469,7 +1470,7 @@ export const cancel = mutation({
         pinged: false,
         queuedMessages: 0,
         notesPending: 0,
-        turnNotes: [],
+        turnControlMessageIds: [],
         continueSlice: false,
         approvalBlocked: !!approvalCleanup,
         approvals: approvalCleanup ? { ...row.approvals!, cleanupPending: true } : undefined,

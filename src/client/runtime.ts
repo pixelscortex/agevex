@@ -16,7 +16,7 @@ import { z } from "zod";
 import type { ComponentApi } from "../component/_generated/component.js";
 import { denialCode, runErrorCode } from "../component/schema.js";
 import { LIMITS, resolveLimits } from "../component/limits.js";
-import { postNote, type NoteArgs } from "./hooks.js";
+import { controlContext, postNote, type NoteArgs } from "./hooks.js";
 import { bindOnceTool, fingerprint, noopMeter } from "./once.js";
 import type {
   HookResult,
@@ -1278,7 +1278,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                     return response;
                   },
                 });
-              const notes = await fencedCtx.runMutation(component.hooks.takeNotes, {
+              const controls = await fencedCtx.runMutation(component.hooks.takeNotes, {
                 assignmentId: claimed.assignmentId,
                 executionId: args.turnToken,
                 getMessages: await createFunctionHandle(
@@ -1286,16 +1286,13 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 ),
               });
               const result = await managed.streamText(
-                fencedCtx,
+                controlContext(fencedCtx, managed.component, controls.excludeMessageIds),
                 { threadId: claimed.threadId },
                 {
                   promptMessageId: claimed.promptMessageId,
-                  // Agent 0.7.7 src/vercel/client/start.ts:119-127 orders these
-                  // after recent history and before the anchor's prompt group.
-                  // saveInputMessages.ts:48-50 saves no input when an anchor is
-                  // supplied: notes already live in the thread, without copies
-                  // or moving this slice across another queued request.
-                  messages: notes,
+                  // Already saved natively and excluded by exact id below.
+                  // saveInputMessages.ts:48-50 saves no extra copies with an anchor.
+                  messages: controls.messages,
                   // Agent 0.7.7 vercel/client/start.ts:107-108,234 supports this
                   // per-call override natively; never mutate a shared Agent's options.
                   ...(selectedModel
@@ -1318,6 +1315,16 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 {
                   saveStreamDeltas: { chunking: "word", throttleMs: LIMITS.streamThrottleMs },
                   storageOptions: { saveMessages: "promptAndOutput" },
+                  // Native history includes the anchor's complete response group.
+                  // Append controls after it, never between a tool call/result.
+                  // Agent 0.7.7 vercel/client/types.ts:673, start.ts:194-200.
+                  contextHandler: async (_ctx, context) => [
+                    ...context.search,
+                    ...context.recent,
+                    ...context.inputPrompt,
+                    ...context.existingResponses,
+                    ...context.inputMessages,
+                  ],
                 },
               );
               let streamError = false;
@@ -1400,27 +1407,20 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                   /* Side review failures never fail the watched turn. */
                 }
               }
-              if (
-                after?.continue &&
-                (await fencedCtx.runMutation(component.hooks.continueAdmission, {
-                  assignmentId: claimed.assignmentId,
-                  executionId: args.turnToken,
-                }))
-              ) {
-                if (!after.continue.trim() || after.continue.length > LIMITS.messageLength)
-                  await hook(() => {
-                    throw new Error("INVALID_CONTINUE");
-                  });
-                const { messageId } = await saveMessage(fencedCtx, managed.component, {
-                  threadId: claimed.threadId,
-                  prompt: after.continue,
-                  userId: claimed.subject,
-                });
+              const continuation = after?.continue
+                ? await fencedCtx.runMutation(component.hooks.continueAdmission, {
+                    assignmentId: claimed.assignmentId,
+                    executionId: args.turnToken,
+                    prompt: after.continue,
+                    addMessages: await createFunctionHandle(managed.component.messages.addMessages),
+                  })
+                : null;
+              if (continuation) {
                 await fencedCtx.runMutation(component.queue.continueTurn, {
                   assignmentId: claimed.assignmentId,
                   executionId: args.turnToken,
                   cancellationEpoch: claimed.cancellationEpoch,
-                  messageId,
+                  messageId: continuation,
                 });
                 return null;
               }

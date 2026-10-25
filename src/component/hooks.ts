@@ -66,27 +66,32 @@ export async function recordMessages(
 
 export const takeNotes = mutation({
   args: { assignmentId: v.id("assignments"), executionId: v.string(), getMessages: v.string() },
-  handler: async (ctx, args): Promise<{ role: "user"; content: string }[]> => {
+  handler: async (ctx, args) => {
     const row = await ctx.db.get("assignments", args.assignmentId);
     if (!row || row.cancelled || row.turnToken !== args.executionId || row.turnStatus !== "running")
-      return [];
+      return { messages: [], excludeMessageIds: [] };
     const cap = (row.limits?.notesPerTurn ?? LIMITS.notesPerTurn) - (row.notesTaken ?? 0);
-    const notes =
-      cap > 0
-        ? await ctx.db
-            .query("inbox")
-            .withIndex("by_assignment_ready", (q) =>
-              q.eq("assignmentId", row._id).eq("passive", true),
-            )
-            .take(cap)
-        : [];
-    const messageIds = [...(row.turnNotes ?? []), ...notes.map((note) => note.messageId)];
-    if (!messageIds.length) return [];
-    // <=24 escaped notes *~50 KiB <1.25 MiB, plus <=24 small inbox rows.
-    // Read only the recorded ids. The generation anchor belongs to the claimed
-    // ready work: advancing it to a newer note would expose queued user turns.
-    // Retain the bounded ids until the next turn so notes survive later slices
-    // even though their original native order lies beyond this turn's anchor.
+    // Read the independent pending queue even when this logical turn has spent
+    // its note allowance. Those exact ids must also be hidden from native
+    // history when they precede the ready-work anchor; only admitted notes are
+    // explicitly injected. <=24 pending metadata rows, never transcript scans.
+    const pending = await ctx.db
+      .query("inbox")
+      .withIndex("by_assignment_ready", (q) => q.eq("assignmentId", row._id).eq("passive", true))
+      .take(row.limits?.notesPending ?? LIMITS.notesPending);
+    const notes = pending.slice(0, Math.max(0, cap));
+    const messageIds = [
+      ...(row.turnControlMessageIds ?? []),
+      ...notes.map((note) => note.messageId),
+    ];
+    const excludeMessageIds = [...messageIds, ...pending.map((note) => note.messageId)];
+    if (!messageIds.length) return { messages: [], excludeMessageIds };
+    // Keep controls until the NEXT ready-work claim, including across hook
+    // continuations. At hard maxima: (8+1)*24=216 notes plus 8 continue prompts
+    // =224 exact ids (<10 KiB). Native note docs <=50 KiB and continue docs
+    // <=130 KiB: 216*50+8*130=11,840 KiB +24 KiB pending rows +32 KiB assignment
+    // <12 MiB <16 MiB. Bodies are read only by these recorded ids; native order
+    // sorts notes and prompts together without advancing the generation anchor.
     const docs = (await ctx.runQuery(args.getMessages as FunctionHandle<"query">, {
       messageIds,
     })) as MessageDoc[];
@@ -97,11 +102,14 @@ export const takeNotes = mutation({
     await ctx.db.patch("assignments", row._id, {
       notesTaken: (row.notesTaken ?? 0) + notes.length,
       notesPending: row.notesPending - notes.length,
-      turnNotes: messageIds,
+      turnControlMessageIds: messageIds,
     });
-    return ordered
-      .filter((doc) => doc.message?.role === "user")
-      .map((doc) => ({ role: "user" as const, content: doc.text ?? "" }));
+    return {
+      messages: ordered
+        .filter((doc) => doc.message?.role === "user")
+        .map((doc) => ({ role: "user" as const, content: doc.text ?? "" })),
+      excludeMessageIds,
+    };
   },
 });
 
@@ -134,8 +142,15 @@ export const hookState = mutation({
 });
 
 export const continueAdmission = mutation({
-  args: { assignmentId: v.id("assignments"), executionId: v.string() },
+  args: {
+    assignmentId: v.id("assignments"),
+    executionId: v.string(),
+    prompt: v.string(),
+    addMessages: v.string(),
+  },
   handler: async (ctx, args) => {
+    if (!args.prompt.trim() || args.prompt.length > LIMITS.messageLength)
+      throw new Error("INVALID_CONTINUE");
     const row = await ctx.db.get("assignments", args.assignmentId);
     const run = row?.runId ? await ctx.db.get("runs", row.runId) : null;
     if (
@@ -147,10 +162,21 @@ export const continueAdmission = mutation({
       run.cancelled ||
       (run.continues ?? 0) >= (row.limits?.continuesPerRun ?? LIMITS.continuesPerRun)
     )
-      return false;
+      return null;
+    // Admission, native prompt save, and exact-id capture are one transaction.
+    // A lost action response cannot leave an untracked control prompt behind.
+    const saved = (await ctx.runMutation(args.addMessages as FunctionHandle<"mutation">, {
+      threadId: row.threadId,
+      messages: [{ message: { role: "user", content: args.prompt } }],
+    })) as { messages: MessageDoc[] };
+    const messageId = saved.messages[0]._id;
+    await recordMessages(ctx, row, saved.messages);
     await ctx.db.patch("runs", run._id, { continues: (run.continues ?? 0) + 1 });
-    await ctx.db.patch("assignments", row._id, { hookContinue: true });
-    return true;
+    await ctx.db.patch("assignments", row._id, {
+      hookContinue: true,
+      turnControlMessageIds: [...(row.turnControlMessageIds ?? []), messageId],
+    });
+    return messageId;
   },
 });
 
@@ -327,8 +353,10 @@ export const completeRouting = mutation({
  * owner keeps startedAgents set and releases routingAgents; waiting siblings
  * use the last committed run model, or their default if no decision committed.
  * Ownership lives on that assignment so watchdog/cancel can settle it without
- * scanning siblings or trusting a failed action to run cleanup. <=1 run read,
- * <=1 run patch and <=1 assignment patch; no native content is accessed.
+ * scanning siblings or trusting a failed action to run cleanup. <=3 metadata
+ * reads (get run, read run for patch, read assignment for patch) and <=2 writes:
+ * (1+1+32)=34 KiB read per owner, included in limits.ts's cancel budget. No
+ * native content is accessed.
  */
 export async function settleRouting(ctx: MutationCtx, row: Doc<"assignments">) {
   if (row.routingAgentIndex === undefined || !row.runId) return;

@@ -149,6 +149,12 @@ maximum 24); notes never consume `queueLength` capacity. They
 enter context between slices, or on the next requested turn when idle. They
 never start a turn or schedule work.
 
+Notes and hook continuation prompts are saved in the native transcript and
+recorded by exact id in the same transaction. During the claimed ready work,
+the runtime excludes those ids from native context and explicitly injects
+controls once, in native order, after the complete response group. The claimed
+ready-work anchor stays fixed, keeping future queued requests hidden.
+
 Side cadence uses completed turns or `{ minutes: N }` since the last review,
 checked after a turn without a cron. Deltas use exact recorded native ids and
 orders: at most 24 recent messages and 48 KiB of text, with tool output stripped.
@@ -171,7 +177,7 @@ settled result immediately. With `wait: "all"`, a group
 wakes its parent once after the launching slice ends and every member settles,
 including failures. Membership seals when that slice ends; later launches into
 the group return `GROUP_CLOSED`. Groups belong to one parent assignment and user run.
-A group has at most `activeChildrenPerRoot` members (hard maximum 20);
+A group has at most `activeChildrenPerRoot` members (hard maximum 15);
 omitting its name selects the unnamed group. Names are at most 200 characters.
 
 Children receive `agevex_ask_parent({ question })`: one open question pauses
@@ -193,7 +199,7 @@ earlier final text while descendants are running does not finish the run.
 `runTree({ threadId })` is an owner-authorized, root-only query returning the
 current request's descendants with agent, status, depth, group, parent
 assignment, native child thread and timings. Its full-history read is bounded
-by `runLaunches` (maximum 50); the active descendant cap remains 20.
+by `runLaunches` (maximum 50); the active descendant cap remains 15.
 
 ## Cancellation and approvals
 
@@ -204,6 +210,10 @@ mutations check execution id plus epoch atomically; late writes are dropped.
 after cancel, the SDK refuses new nested calls and drops its own writes; writes your own code makes inside an already-running nested action are yours to guard with `tc.signal`.
 A fresh `send` can start new work after cancellation. External effects already
 accepted by a provider still depend on that provider's abort behavior.
+
+At the hard maximum of 15 descendants, cancel covers 16 assignments, up to
+1,632 ready rows and 384 pending notes. Its read bound is 12,680 KiB of
+16,384 KiB (22.6% headroom), including routing owner reads and patches.
 
 Pending native tool approvals block generation and leave the inbox row
 waiting, avoiding Agent 0.7.7's automatic denial on a new generation.

@@ -2,6 +2,7 @@
 import { requireReceipt } from "./receipt.js";
 import { it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { setup, api, internal, components, state } from "./setup.js";
+import { getConvexSize } from "convex/values";
 import { workflowCall } from "../src/testing/expect-journal.js";
 import { componentsGeneric, createFunctionHandle, type FunctionReference } from "convex/server";
 import { createThread, listMessages, saveMessage } from "@convex-dev/agent";
@@ -505,223 +506,246 @@ it("cancel leaves unrelated native pending placeholders untouched", async () => 
   expect(messages.every((message) => message?.status === "pending")).toBe(true);
 });
 
-it("cancel commits a full approval-blocked backlog with maximum limits, children and pending placeholders", async () => {
-  const limits = Object.fromEntries(
-    Object.entries(HOST_LIMITS).map(([key, { max }]) => [key, max]),
-  );
-  // Verify these really are the largest accepted settings, not just large values.
-  // This boundary assertion fails on the previously unbounded registration.
-  expect(() => fixtureRuntime(limits)).not.toThrow();
-  for (const [key, { max }] of Object.entries(HOST_LIMITS))
-    expect(() => fixtureRuntime({ ...limits, [key]: max + 1 })).toThrow(
-      `INVALID_LIMITS: ${key} exceeds maximum ${max}`,
+it.each(["routing", "approval"])(
+  "cancel settles %s with maximum children, pending notes, controls and ready backlog",
+  async (mode) => {
+    const limits = Object.fromEntries(
+      Object.entries(HOST_LIMITS).map(([key, { max }]) => [key, max]),
     );
-  // Half the read/write/byte budgets; convex-test defaults to 32,000 reads,
-  // so explicitly enforce half of the stricter requested 8,192-read ceiling.
-  const t = setup(undefined, limits, {
-    bytesRead: 8 << 20,
-    documentsRead: 4_096,
-    documentsWritten: 8_000,
-  });
-  const receipt = await t
-    .withIdentity({ subject: "alice" })
-    .mutation(api.agents.open, {
-      agent: "Main",
-      prompt: "maximal models and backlog",
-      requestKey: "max-models",
-      models: { Main: "😀".repeat(100), Researcher: "x".repeat(90) },
-    })
-    .then(requireReceipt);
-  const root = { assignmentId: receipt.assignmentId, turnToken: receipt.assignmentId + ":0" };
-  expect(await t.mutation(components.agevex.queue.claim, root)).not.toBeNull();
-  const turns = [{ ...root, threadId: receipt.threadId }];
-  for (let i = 0; i < HOST_LIMITS.activeChildrenPerRoot.max; i++) {
-    const child = await t.run(async (ctx) => {
-      const reserved = await ctx.runMutation(components.agevex.subagents.reserve, {
-        ...root,
-        side: i < HOST_LIMITS.sideRunsPerRun.max,
-        toolCallId: "large-child-" + i,
-        agent: "Researcher",
-        payloadFingerprint: "large-child-" + i,
-        coordinateHandle: await createFunctionHandle(coordinateReference()),
-        runTurn: await createFunctionHandle(runTurnReference()),
-      });
-      if (reserved.kind !== "reserved") throw new Error("RESERVATION_FAILED");
-      const threadId = await createThread(ctx, components.agent, { userId: "alice" });
-      const { messageId } = await saveMessage(ctx, components.agent, {
-        threadId,
-        prompt: "😀".repeat(HOST_LIMITS.taskLength.max / 2),
-      });
-      await ctx.runMutation(components.agevex.subagents.attach, {
-        runId: reserved.runId,
-        childThreadId: threadId,
-        promptMessageId: messageId,
-      });
-      const assignment = await ctx.runQuery(components.agevex.queue.assignment, { threadId });
-      if (!assignment) throw new Error("CHILD_MISSING");
-      return {
-        assignmentId: assignment.assignmentId,
-        turnToken: assignment.assignmentId + ":0",
-        threadId,
-      };
+    // Verify these really are the largest accepted settings, not just large values.
+    // This boundary assertion fails on the previously unbounded registration.
+    expect(() => fixtureRuntime(limits)).not.toThrow();
+    for (const [key, { max }] of Object.entries(HOST_LIMITS))
+      expect(() => fixtureRuntime({ ...limits, [key]: max + 1 })).toThrow(
+        `INVALID_LIMITS: ${key} exceeds maximum ${max}`,
+      );
+    // Half the read/write/byte budgets; convex-test defaults to 32,000 reads,
+    // so explicitly enforce half of the stricter requested 8,192-read ceiling.
+    const t = setup(undefined, limits, {
+      bytesRead: 8 << 20,
+      documentsRead: 4_096,
+      documentsWritten: 8_000,
     });
+    const receipt = await t
+      .withIdentity({ subject: "alice" })
+      .mutation(api.agents.open, {
+        agent: "Main",
+        prompt: "maximal models and backlog",
+        requestKey: "max-models",
+        models: { Main: "😀".repeat(100), Researcher: "x".repeat(90) },
+      })
+      .then(requireReceipt);
+    const root = { assignmentId: receipt.assignmentId, turnToken: receipt.assignmentId + ":0" };
     expect(
-      await t.mutation(components.agevex.queue.claim, {
-        assignmentId: child.assignmentId,
-        turnToken: child.turnToken,
-      }),
+      await t.mutation(components.agevex.queue.claim, { ...root, agentIndex: 0, routeModel: true }),
     ).not.toBeNull();
-    turns.push(child);
-  }
-  for (const turn of turns)
-    await t.mutation(
-      componentsGeneric().agevex.agevexTest.fillHookMetadata as FunctionReference<"mutation">,
-      { assignmentId: turn.assignmentId },
-    );
-  // Round 4 adaptation: size coverage now uses recorded placeholders across
-  // affected assignments; transcript-wide native pending rows are not ours.
-  const messageIds: string[] = [];
-  for (const turn of turns) {
-    // Agent stores text both in message.content and its text projection.
-    const pending = await savePending(t, turn, turn.threadId, 0, "x".repeat(490 << 10));
-    messageIds.push(pending._id);
-  }
-  // Fill bounded approval metadata on every assignment as well as its tracked
-  // placeholder. Large native ids must not inflate the atomic cancel reads.
-  const handles = await t.run(async () => ({
-    handle: await createFunctionHandle(components.agent.messages.addMessages),
-    nativeMessages: {
-      getMessages: await createFunctionHandle(components.agent.messages.getMessagesByIds),
-      finalizeMessage: await createFunctionHandle(components.agent.messages.finalizeMessage),
-    },
-  }));
-  for (const turn of turns) {
-    await t.mutation(components.agevex.queue.write, {
-      assignmentId: turn.assignmentId,
-      executionId: turn.turnToken,
-      cancellationEpoch: 0,
-      ...handles,
-      args: {
-        threadId: turn.threadId,
-        failPendingSteps: false,
-        messages: [
-          {
-            message: {
-              role: "assistant",
-              content: Array.from({ length: LIMITS.approvalsPerPause }, (_, i) => [
-                { type: "tool-call", toolCallId: `call-${i}`, toolName: "echo", input: {} },
-                {
-                  type: "tool-approval-request",
-                  approvalId: "x".repeat(20 << 10) + i,
-                  toolCallId: `call-${i}`,
-                },
-              ]).flat(),
-            },
-          },
-        ],
-      },
-    });
-    const paused = await t.query(components.agevex.queue.execution, {
-      assignmentId: turn.assignmentId,
-    });
-    expect(paused?.approvals?.requests).toHaveLength(LIMITS.approvalsPerPause);
-    // The max-size model snapshot and F1 metadata fit the documented 32 KiB
-    // assignment allowance, together with all sixteen pause references.
-    expect(new TextEncoder().encode(JSON.stringify(paused)).length).toBeLessThan(
-      LIMITS.assignmentBytes,
-    );
-  }
-  const alice = t.withIdentity({ subject: "alice" });
-  // Independent passive capacity can coexist with every ready-work slot. Use
-  // real, maximum-size escaped native notes on all 21 affected assignments;
-  // cancel must delete only their small inbox metadata within the same budget.
-  const addMessages = await t.run(() =>
-    createFunctionHandle(components.agent.messages.addMessages),
-  );
-  for (const turn of turns)
-    for (let i = 0; i < HOST_LIMITS.notesPending.max; i++)
+    const turns = [{ ...root, threadId: receipt.threadId }];
+    for (let i = 0; i < HOST_LIMITS.activeChildrenPerRoot.max; i++) {
+      const child = await t.run(async (ctx) => {
+        const reserved = await ctx.runMutation(components.agevex.subagents.reserve, {
+          ...root,
+          side: i < HOST_LIMITS.sideRunsPerRun.max,
+          toolCallId: "large-child-" + i,
+          agent: "Researcher",
+          payloadFingerprint: "large-child-" + i,
+          coordinateHandle: await createFunctionHandle(coordinateReference()),
+          runTurn: await createFunctionHandle(runTurnReference()),
+        });
+        if (reserved.kind !== "reserved") throw new Error("RESERVATION_FAILED");
+        const threadId = await createThread(ctx, components.agent, { userId: "alice" });
+        const { messageId } = await saveMessage(ctx, components.agent, {
+          threadId,
+          prompt: "😀".repeat(HOST_LIMITS.taskLength.max / 2),
+        });
+        await ctx.runMutation(components.agevex.subagents.attach, {
+          runId: reserved.runId,
+          childThreadId: threadId,
+          promptMessageId: messageId,
+        });
+        const assignment = await ctx.runQuery(components.agevex.queue.assignment, { threadId });
+        if (!assignment) throw new Error("CHILD_MISSING");
+        return {
+          assignmentId: assignment.assignmentId,
+          turnToken: assignment.assignmentId + ":0",
+          threadId,
+        };
+      });
       expect(
-        await t.mutation(components.agevex.hooks.addNote, {
-          assignmentId: turn.assignmentId,
-          text: '"'.repeat(LIMITS.noteLength),
-          from: '"'.repeat(LIMITS.requestKeyLength),
-          addMessages,
+        await t.mutation(components.agevex.queue.claim, {
+          assignmentId: child.assignmentId,
+          turnToken: child.turnToken,
+          agentIndex: i + 1,
+          routeModel: true,
         }),
-      ).toBe(true);
-  for (let i = 1; i < HOST_LIMITS.queueLength.max; i++) {
-    await alice.mutation(api.agents.send, {
-      threadId: receipt.threadId,
-      text: "😀".repeat(LIMITS.messageLength / 2),
-      requestKey: "max-backlog-" + i,
-    });
-  }
-  expect(
-    await t.query(components.agevex.queue.execution, {
-      assignmentId: receipt.assignmentId,
-    }),
-  ).toMatchObject({ approvalBlocked: true, queuedMessages: HOST_LIMITS.queueLength.max });
-  await expect(
-    alice.mutation(api.agents.send, {
-      threadId: receipt.threadId,
-      text: "over capacity",
-      requestKey: "over-capacity",
-    }),
-  ).resolves.toEqual({ status: "rejected", code: "QUEUE_FULL" });
-  const queuedWork = () =>
-    t.query(
-      componentsGeneric().agevex.agevexTest.queuedWork as unknown as FunctionReference<"query">,
+      ).not.toBeNull();
+      turns.push(child);
+    }
+    for (const turn of turns)
+      await t.mutation(
+        componentsGeneric().agevex.agevexTest.fillHookMetadata as FunctionReference<"mutation">,
+        { assignmentId: turn.assignmentId },
+      );
+    // Round 4 adaptation: size coverage now uses recorded placeholders across
+    // affected assignments; transcript-wide native pending rows are not ours.
+    const messageIds: string[] = [];
+    for (const turn of turns) {
+      // Agent stores text both in message.content and its text projection.
+      const pending = await savePending(t, turn, turn.threadId, 0, "x".repeat(490 << 10));
+      messageIds.push(pending._id);
+    }
+    // Fill bounded approval metadata on every assignment as well as its tracked
+    // placeholder. Large native ids must not inflate the atomic cancel reads.
+    const handles = await t.run(async () => ({
+      handle: await createFunctionHandle(components.agent.messages.addMessages),
+      nativeMessages: {
+        getMessages: await createFunctionHandle(components.agent.messages.getMessagesByIds),
+        finalizeMessage: await createFunctionHandle(components.agent.messages.finalizeMessage),
+      },
+    }));
+    if (mode === "approval")
+      for (const turn of turns) {
+        await t.mutation(components.agevex.queue.write, {
+          assignmentId: turn.assignmentId,
+          executionId: turn.turnToken,
+          cancellationEpoch: 0,
+          ...handles,
+          args: {
+            threadId: turn.threadId,
+            failPendingSteps: false,
+            messages: [
+              {
+                message: {
+                  role: "assistant",
+                  content: Array.from({ length: LIMITS.approvalsPerPause }, (_, i) => [
+                    { type: "tool-call", toolCallId: `call-${i}`, toolName: "echo", input: {} },
+                    {
+                      type: "tool-approval-request",
+                      approvalId: "x".repeat(20 << 10) + i,
+                      toolCallId: `call-${i}`,
+                    },
+                  ]).flat(),
+                },
+              },
+            ],
+          },
+        });
+        const paused = await t.query(components.agevex.queue.execution, {
+          assignmentId: turn.assignmentId,
+        });
+        expect(paused?.approvals?.requests).toHaveLength(LIMITS.approvalsPerPause);
+        // The max-size model snapshot and F1 metadata fit the documented 32 KiB
+        // assignment allowance, together with all sixteen pause references.
+        expect(new TextEncoder().encode(JSON.stringify(paused)).length).toBeLessThan(
+          LIMITS.assignmentBytes,
+        );
+      }
+    const alice = t.withIdentity({ subject: "alice" });
+    // Independent passive capacity can coexist with every ready-work slot. Use
+    // real, maximum-size escaped native notes on all 16 affected assignments;
+    // cancel must delete only their small inbox metadata within the same budget.
+    const addMessages = await t.run(() =>
+      createFunctionHandle(components.agent.messages.addMessages),
     );
-  const before = await queuedWork();
-  expect(before.inbox).toHaveLength(
-    HOST_LIMITS.queueLength.max +
-      HOST_LIMITS.activeChildrenPerRoot.max +
-      turns.length * HOST_LIMITS.notesPending.max,
-  );
-  expect(before.runs.every((run: { cancelled: boolean }) => !run.cancelled)).toBe(true);
-  // Inspect the actual public cancel transaction, including ownership reads.
-  const metrics = await alice.run(async (ctx) => {
-    await ctx.runMutation(api.agents.cancel, { threadId: receipt.threadId });
-    return ctx.meta.getTransactionMetrics();
-  });
-  expect(metrics.documentsWritten.used).toBeLessThan(8_000);
-  expect(metrics.documentsRead.used).toBeLessThan(4_096);
-  expect(metrics.bytesRead.used).toBeLessThan(8 << 20);
-  const after = await queuedWork();
-  expect(after.inbox).toEqual([]);
-  expect(after.runs).toHaveLength(before.runs.length);
-  expect(after.runs.every((run: { cancelled: boolean }) => run.cancelled)).toBe(true);
-  for (const turn of turns)
+    for (const turn of turns)
+      for (let i = 0; i < HOST_LIMITS.notesPending.max; i++)
+        expect(
+          await t.mutation(components.agevex.hooks.addNote, {
+            assignmentId: turn.assignmentId,
+            text: '"'.repeat(LIMITS.noteLength),
+            from: '"'.repeat(LIMITS.requestKeyLength),
+            addMessages,
+          }),
+        ).toBe(true);
+    for (let i = mode === "approval" ? 1 : 0; i < HOST_LIMITS.queueLength.max; i++) {
+      await alice.mutation(api.agents.send, {
+        threadId: receipt.threadId,
+        text: "😀".repeat(LIMITS.messageLength / 2),
+        requestKey: "max-backlog-" + i,
+      });
+    }
     expect(
-      await t.query(components.agevex.queue.execution, { assignmentId: turn.assignmentId }),
-    ).toMatchObject({
-      cancelled: true,
-      cancellationEpoch: 1,
+      await t.query(components.agevex.queue.execution, {
+        assignmentId: receipt.assignmentId,
+      }),
+    ).toMatchObject({ queuedMessages: HOST_LIMITS.queueLength.max });
+    await expect(
+      alice.mutation(api.agents.send, {
+        threadId: receipt.threadId,
+        text: "over capacity",
+        requestKey: "over-capacity",
+      }),
+    ).resolves.toEqual({ status: "rejected", code: "QUEUE_FULL" });
+    const queuedWork = () =>
+      t.query(
+        componentsGeneric().agevex.agevexTest.queuedWork as unknown as FunctionReference<"query">,
+      );
+    const before = await queuedWork();
+    expect(before.inbox).toHaveLength(
+      HOST_LIMITS.queueLength.max +
+        (mode === "approval" ? HOST_LIMITS.activeChildrenPerRoot.max : 0) +
+        turns.length * HOST_LIMITS.notesPending.max,
+    );
+    expect(before.runs.every((run: { cancelled: boolean }) => !run.cancelled)).toBe(true);
+    for (const turn of turns) {
+      const row = await t.query(components.agevex.queue.execution, {
+        assignmentId: turn.assignmentId,
+      });
+      expect(getConvexSize(row)).toBeLessThan(LIMITS.assignmentBytes);
+      expect(!!row?.approvalBlocked).toBe(mode === "approval");
+      if (mode === "routing") expect(row?.routingAgentIndex).toBeDefined();
+      else expect(row?.routingAgentIndex).toBeUndefined();
+    }
+    // Inspect the actual public cancel transaction, including ownership reads.
+    const metrics = await alice.run(async (ctx) => {
+      await ctx.runMutation(api.agents.cancel, { threadId: receipt.threadId });
+      return ctx.meta.getTransactionMetrics();
+    });
+    expect(metrics.documentsWritten.used).toBeLessThan(8_000);
+    expect(metrics.documentsRead.used).toBeLessThan(4_096);
+    expect(metrics.bytesRead.used).toBeLessThan(8 << 20);
+    const after = await queuedWork();
+    expect(after.inbox).toEqual([]);
+    expect(after.runs).toHaveLength(before.runs.length);
+    expect(after.runs.every((run: { cancelled: boolean }) => run.cancelled)).toBe(true);
+    expect(
+      after.runs.every((run: { routingAgents?: bigint }) => (run.routingAgents ?? 0n) === 0n),
+    ).toBe(true);
+    for (const turn of turns)
+      expect(
+        await t.query(components.agevex.queue.execution, { assignmentId: turn.assignmentId }),
+      ).toMatchObject({
+        cancelled: true,
+        cancellationEpoch: 1,
+        queuedMessages: 0,
+        notesPending: 0,
+        turnControlMessageIds: [],
+        turnStatus: "idle",
+      });
+    expect(
+      await t.query(components.agent.messages.getMessagesByIds, { messageIds: [messageIds[0]] }),
+    ).toMatchObject([{ status: "pending" }]);
+    await drain(t);
+    for (const messageId of messageIds)
+      expect(
+        await t.query(components.agent.messages.getMessagesByIds, { messageIds: [messageId] }),
+      ).toMatchObject([{ status: "failed", error: "CANCELLED" }]);
+    for (const turn of turns) {
+      const row = await t.query(components.agevex.queue.execution, {
+        assignmentId: turn.assignmentId,
+      });
+      expect(row?.pendingGeneration).toBeUndefined();
+      expect(row?.routingAgentIndex).toBeUndefined();
+    }
+    expect(await activity(t, receipt.threadId)).toMatchObject({
       queuedMessages: 0,
-      notesPending: 0,
-      turnStatus: "idle",
+      subagents: { active: 0, history: HOST_LIMITS.activeChildrenPerRoot.max },
     });
-  expect(
-    await t.query(components.agent.messages.getMessagesByIds, { messageIds: [messageIds[0]] }),
-  ).toMatchObject([{ status: "pending" }]);
-  await drain(t);
-  for (const messageId of messageIds)
-    expect(
-      await t.query(components.agent.messages.getMessagesByIds, { messageIds: [messageId] }),
-    ).toMatchObject([{ status: "failed", error: "CANCELLED" }]);
-  for (const turn of turns) {
-    const row = await t.query(components.agevex.queue.execution, {
-      assignmentId: turn.assignmentId,
-    });
-    expect(row?.pendingGeneration).toBeUndefined();
-  }
-  expect(await activity(t, receipt.threadId)).toMatchObject({
-    queuedMessages: 0,
-    subagents: { active: 0, history: HOST_LIMITS.activeChildrenPerRoot.max },
-  });
-  expect(state.calls).toHaveLength(0);
-  // Fixture construction includes 21 maximal metadata envelopes and native
-  // placeholders; the transaction budgets above remain enforced independently.
-}, 60_000);
+    expect(state.calls).toHaveLength(0);
+    // Fixture construction includes 16 maximal metadata envelopes and native
+    // placeholders; the transaction budgets above remain enforced independently.
+  },
+  60_000,
+);
 
 it("cancel cleanup preserves a fresh generation after native deletion reuses order 6", async () => {
   const t = setup();
