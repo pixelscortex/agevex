@@ -198,7 +198,8 @@ export default defineSchema({
     logicalPromptMessageId: v.optional(v.string()),
     // Only the first slice owns the shared routing bit; terminal fences settle it.
     routingAgentIndex: v.optional(v.number()),
-    // Read by claim and cancel: an afterTurn continuation is staged at inboxId.
+    // Read by claim, cancel and deferChildFailure: an afterTurn continuation is
+    // staged at inboxId and must be removed if the turn ends without claiming it.
     hookContinue: v.optional(v.boolean()),
     subject: v.string(),
     agent: v.string(),
@@ -298,8 +299,8 @@ export default defineSchema({
     earliestMessageId: v.optional(v.string()),
     earliestMessageSequence: v.optional(v.number()),
     runId: v.id("runs"),
-    // Read by wake (result/note/parent make a subagent_result turn), claim (those
-    // kinds merge consecutively; a user row ends the merge) and hooks.origins
+    // Read by wake (result/note make a subagent_result turn; user/parent make a
+    // user turn), claim (non-user kinds merge consecutively; a user row ends it) and hooks.origins
     // (note and continue label their message, result falls through to its run).
     kind: v.union(
       v.literal("user"),
