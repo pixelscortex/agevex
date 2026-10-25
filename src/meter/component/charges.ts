@@ -45,6 +45,13 @@ function resolved(row: Doc<"charges">) {
   return row.source !== "estimate" || row.status === "unknown";
 }
 
+async function stale(ctx: MutationCtx, row: Doc<"charges">, operation: string, revision: number) {
+  if (row.lastStale?.operation === operation && row.lastStale.revision === revision) return row;
+  const lastStale = { operation, revision };
+  await ctx.db.patch(row._id, { lastStale });
+  return { ...row, lastStale };
+}
+
 async function enqueueDelivery(
   ctx: MutationCtx,
   row: Doc<"charges">,
@@ -138,7 +145,10 @@ export const create = mutation({
         )
       )
         throw new Error("KEY_CONFLICT");
-      return existing;
+      return args.source === "estimate" &&
+        (existing.status === "settled" || existing.status === "unknown")
+        ? await stale(ctx, existing, "estimate", 0)
+        : existing;
     }
     // Mount capacity bounds ALL namespaces, numeric sums (100k*$10 <=1e15
     // nanos < MAX_SAFE_INTEGER), and worst-case B-tree depth, not just one user.
@@ -154,6 +164,7 @@ export const create = mutation({
       nanos: args.nanos,
       credits: args.credits,
       sinkState: args.sinks.map((name) => ({ name, revision: 0, attempts: 0, failed: false })),
+      revision: 0,
     });
     const row = (await ctx.db.get(id))!;
     await updateAggregates(ctx, row);
@@ -167,6 +178,9 @@ async function change(
   patch: Partial<Doc<"charges">>,
   config: Jobs,
 ) {
+  // Only amount/state transitions advance this fence. Sink acknowledgements
+  // and request-id attachment must not invalidate a valid quantity correction.
+  patch = { ...patch, revision: row.revision + 1 };
   const next = { ...row, ...patch };
   await ctx.db.patch(row._id, patch);
   if (row.nanos !== next.nanos || row.status !== next.status || row.source !== next.source)
@@ -178,6 +192,7 @@ export const update = mutation({
   args: {
     key: v.string(),
     operation: v.union(v.literal("correct"), v.literal("settle")),
+    revision: v.number(),
     quantity: v.optional(v.number()),
     nanos: v.number(),
     credits: v.optional(v.number()),
@@ -186,10 +201,35 @@ export const update = mutation({
   handler: async (ctx, args): Promise<Doc<"charges">> => {
     validateJobs(args.jobs);
     integer(args.nanos, LIMITS.maxChargeNanos, "NANOS");
+    integer(args.revision, LIMITS.maxRevision, "REVISION");
     if (args.quantity !== undefined) integer(args.quantity, LIMITS.maxQuantity, "QUANTITY");
     if (args.credits !== undefined) integer(args.credits, LIMITS.maxQuantity, "CREDITS");
     const row = await find(ctx, args.key);
     if (!row) throw new Error("CHARGE_NOT_FOUND");
+    // Authoritative results always outrank estimates, including concurrent
+    // corrections. Settled amounts are immutable even for another settlement.
+    if (
+      row.status === "settled" &&
+      args.operation === "settle" &&
+      row.nanos === args.nanos &&
+      row.credits === args.credits
+    )
+      return row;
+    if (row.status === "settled") return await stale(ctx, row, args.operation, args.revision);
+    if (args.operation === "correct") {
+      if (
+        row.status === "unknown" ||
+        (row.lookupUntil !== undefined && Date.now() >= row.lookupUntil)
+      ) {
+        const expired =
+          row.status === "unknown" ? row : await change(ctx, row, { status: "unknown" }, args.jobs);
+        return await stale(ctx, expired, args.operation, args.revision);
+      }
+      if (args.revision !== row.revision)
+        return await stale(ctx, row, args.operation, args.revision);
+      if (row.nanos === args.nanos && row.quantity === args.quantity && row.status === "corrected")
+        return row;
+    }
     return await change(
       ctx,
       row,
@@ -219,7 +259,11 @@ export const attach = mutation({
       return row;
     }
     const until = args.jobs.lookup && !resolved(row) ? Date.now() + args.lookupMs : undefined;
-    await ctx.db.patch(row._id, { providerRequestId: args.requestId, lookupUntil: until });
+    await ctx.db.patch(row._id, {
+      providerRequestId: args.requestId,
+      lookupUntil: until,
+      lookupAttempt: until ? 0 : undefined,
+    });
     if (until && args.jobs.lookup) {
       await pool.enqueueAction(
         ctx,
@@ -238,7 +282,12 @@ export const attach = mutation({
       // no provider work, and reads the exact recorded id rather than scanning.
       await ctx.scheduler.runAt(until, internal.charges.expire, { id: row._id });
     }
-    return { ...row, providerRequestId: args.requestId, lookupUntil: until };
+    return {
+      ...row,
+      providerRequestId: args.requestId,
+      lookupUntil: until,
+      lookupAttempt: until ? 0 : undefined,
+    };
   },
 });
 
@@ -259,15 +308,14 @@ export const lookupResult = mutation({
     const row = await find(ctx, args.key);
     if (
       !row ||
-      resolved(row) ||
+      row.status === "settled" ||
+      row.provider !== args.provider ||
       row.lookupUntil !== args.until ||
       row.providerRequestId !== args.requestId
     )
       return null;
-    if (Date.now() >= args.until) {
-      await change(ctx, row, { status: "unknown" }, args.jobs);
-      return null;
-    }
+    // A real response already in flight may arrive after expiry. Do not start
+    // new provider work then, but retain that evidence rather than losing it.
     if (args.nanos !== undefined) {
       integer(args.nanos, LIMITS.maxChargeNanos, "NANOS");
       if (args.credits !== undefined) integer(args.credits, LIMITS.maxQuantity, "CREDITS");
@@ -282,7 +330,13 @@ export const lookupResult = mutation({
         },
         args.jobs,
       );
+    } else if (row.status === "unknown" || args.attempt !== row.lookupAttempt) {
+      return null;
+    } else if (Date.now() >= args.until) {
+      await change(ctx, row, { status: "unknown" }, args.jobs);
     } else if (args.attempt + 1 < args.jobs.maxAttempts && args.jobs.lookup) {
+      // Duplicate callbacks cannot admit another retry chain.
+      await ctx.db.patch(row._id, { lookupAttempt: args.attempt + 1 });
       const delay = Math.min(
         LIMITS.maxBackoffMs,
         LIMITS.backoffMs * LIMITS.backoffBase ** args.attempt,
@@ -294,6 +348,8 @@ export const lookupResult = mutation({
         { ...job, attempt: args.attempt + 1 },
         { retry: false, runAt: Math.min(Date.now() + delay, args.until) },
       );
+    } else {
+      await ctx.db.patch(row._id, { lookupAttempt: args.attempt + 1 });
     }
     return null;
   },

@@ -51,6 +51,11 @@ export default defineSchema({
     credits: v.optional(v.number()),
     providerRequestId: v.optional(v.string()),
     lookupUntil: v.optional(v.number()),
+    // Monotonic amount revision fences estimate corrections without retaining
+    // an unbounded operation ledger. Keep only the latest stale diagnostic.
+    revision: v.number(),
+    lastStale: v.optional(v.object({ operation: v.string(), revision: v.number() })),
+    lookupAttempt: v.optional(v.number()),
     sinkState,
   }).index("by_key", ["key"]),
 });

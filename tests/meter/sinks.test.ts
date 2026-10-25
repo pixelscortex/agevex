@@ -20,6 +20,48 @@ function event(index: number): SinkEvent {
   };
 }
 
+it("Polar serializes signed integer nanos as exact decimal cents within twelve places", async () => {
+  const amounts = [
+    290_000_000,
+    -290_000_000,
+    1,
+    -1,
+    123_456_789,
+    -123_456_789,
+    LIMITS.maxChargeNanos,
+    0,
+  ];
+  const expected = [
+    "29",
+    "-29",
+    "0.0000001",
+    "-0.0000001",
+    "12.3456789",
+    "-12.3456789",
+    "1000",
+    "0",
+  ];
+  const sink = polarSink({
+    meter: "usage",
+    accessToken: "test-token",
+    fetch: async (_url, init) => {
+      const body = String(init?.body);
+      // Inspect the wire number: parsing alone would conceal excess decimal places.
+      const tokens = [...body.matchAll(/"amount":(-?\d+(?:\.\d+)?(?:e[+-]?\d+)?)/g)].map(
+        (m) => m[1],
+      );
+      expect(tokens).toEqual(expected);
+      for (const token of tokens) expect(token).toMatch(/^-?\d+(?:\.\d{1,12})?$/);
+      const payload = JSON.parse(body) as {
+        events: { metadata: { _cost: { amount: unknown } } }[];
+      };
+      expect(payload.events.every((e) => typeof e.metadata._cost.amount === "number")).toBe(true);
+      return Response.json({ inserted: amounts.length, duplicates: 0 });
+    },
+  });
+  await sink.deliver(amounts.map((nanos, index) => ({ ...event(index), nanos })));
+});
+
 it("Polar sends at most 100 events per batch with charge keys as external ids and accepts duplicate acknowledgements", async () => {
   const seen = new Set<string>();
   const sizes: number[] = [];

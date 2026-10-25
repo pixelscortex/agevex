@@ -1,13 +1,99 @@
 import { v } from "convex/values";
-import { query } from "./_generated/server.js";
-import { byThread, bySubject, summary, groups, type Axis, type Key } from "./aggregates.js";
+import { query, type QueryCtx } from "./_generated/server.js";
+import {
+  byThread,
+  bySubject,
+  summary,
+  groups,
+  type Axis,
+  type Key,
+  type Tree,
+} from "./aggregates.js";
 import { integer, text, LIMITS } from "../limits.js";
 
+/** Seek one next label per status, then aggregate the complete label prefix.
+ * min/pageSize=1 follows <=two boundary paths plus one result path, <=36
+ * nodes (aggregate client:404-418, btree:1158-1231); range sums visit <=96
+ * nodes (btree:333-415). At maxGroups=4, each axis costs <=15*36 + 16*96=2076
+ * node reads. All keys have two fields and nodes <=2 KiB, so three pages plus
+ * totals use (3*2076 + 4*96)*2 KiB =12.92 MiB.
+ * Tree/index/worker metadata adds <0.5 MiB; <7k docs, <256 index queries, zero
+ * writes. No charge scans; every axis has its own continuation cursor.
+ */
+async function threadPage(
+  ctx: QueryCtx,
+  root: string,
+  axis: Axis,
+  maxGroups: number,
+  cursor?: string,
+) {
+  const tree: Tree = axis === "agent" ? byThread : bySubject;
+  const namespace = axis === "agent" ? ["cost"] : ["thread", root, axis];
+  let after = cursor;
+  const page = [];
+  for (let index = 0; index <= maxGroups; index++) {
+    const labels: string[] = [];
+    for (const state of groups) {
+      const item = await tree.min(ctx, {
+        namespace: [...namespace, state],
+        bounds:
+          axis === "agent"
+            ? {
+                // Convex arrays sort after every string; the upper sentinel
+                // includes exactly this root. An exclusive tuple skips all ids
+                // for the previous agent without reading any charge documents.
+                lower: {
+                  key: (after === undefined ? [root] : [root, after]) as unknown as Key,
+                  inclusive: false,
+                },
+                upper: { key: [root, []] as unknown as Key, inclusive: false },
+              }
+            : after === undefined
+              ? undefined
+              : { lower: { key: [after, LIMITS.maxTimestamp], inclusive: false } },
+      });
+      if (item) labels.push(item.key[axis === "agent" ? 1 : 0] as string);
+    }
+    labels.sort();
+    const label = labels[0];
+    if (label === undefined) return { page, cursor: null as string | null };
+    if (index === maxGroups) return { page, cursor: after ?? null };
+    page.push({
+      key: label,
+      ...(await summary(ctx, tree, namespace, {
+        prefix: axis === "agent" ? [root, label] : [label],
+      })),
+    });
+    after = label;
+  }
+  return { page, cursor: null as string | null };
+}
+
 export const threadCost = query({
-  args: { threadId: v.string() },
-  handler: async (ctx, { threadId }) => {
+  args: {
+    threadId: v.string(),
+    maxGroups: v.number(),
+    cursors: v.optional(
+      v.object({
+        agent: v.optional(v.string()),
+        model: v.optional(v.string()),
+        provider: v.optional(v.string()),
+      }),
+    ),
+  },
+  handler: async (ctx, { threadId, maxGroups, cursors }) => {
     text(threadId, "THREAD");
-    return await summary(ctx, byThread, ["cost"], { prefix: [threadId] });
+    integer(maxGroups, LIMITS.maxGroups, "GROUPS");
+    if (!maxGroups) throw new Error("INVALID_GROUPS");
+    // Empty labels are valid cursors for missing attribution, unlike user labels.
+    for (const cursor of Object.values(cursors ?? {}))
+      if (cursor !== undefined && cursor !== "") text(cursor, "CURSOR");
+    return {
+      ...(await summary(ctx, byThread, ["cost"], { prefix: [threadId] })),
+      byAgent: await threadPage(ctx, threadId, "agent", maxGroups, cursors?.agent),
+      byModel: await threadPage(ctx, threadId, "model", maxGroups, cursors?.model),
+      byProvider: await threadPage(ctx, threadId, "provider", maxGroups, cursors?.provider),
+    };
   },
 });
 

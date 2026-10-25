@@ -57,6 +57,15 @@ Replays return the same charge; conflicting provider/attribution throws
 `KEY_CONFLICT`. Repeating a correction or settlement does not add another
 contribution. `correct` reprices the quantity from the registered profile and
 marks it `source: "estimate"`; a later settlement supplies authoritative cost.
+Settlement is final: subsequent amount changes are ignored. Corrections also
+cannot revive an expired `unknown`; only real provider evidence can settle it.
+Each amount transition advances `revision`. For replayable application steps,
+persist the observed revision and pass `correct({ quantity, revision })`; a
+stale revision cannot overwrite a newer correction. Without that argument the
+client reads the current revision before submitting the mutation. The bounded
+`lastStale` diagnostic records the latest rejected operation/revision; replaying
+that same rejection is a no-op. Creation, attachment, lookup and delivery use
+the charge key, request id/deadline, attempt and external id as their fences.
 Profile assumptions are host configuration, not provider facts. Fal and Daytona
 have no per-request cost endpoint. Firecrawl credits require an explicit plan
 rate; they are not dollars.
@@ -77,6 +86,11 @@ not an atomic reservation for future work.
 `threadCost(ctx, { threadId })` takes the root id and includes children whose
 attribution supplies that `rootThreadId`. Standalone hosts supply the root;
 the meter does not discover relationships by scanning Agent messages.
+It includes `byAgent`, `byModel`, and `byProvider`, each `{ page, cursor }`, with
+up to `limits.maxGroups` (hard maximum four) groups. Each page entry includes
+the same cost/unknown fields as the total. Continue independently with
+`threadCost(ctx, { threadId, cursors: { agent, model, provider } })`; omit a
+cursor to restart that axis. Missing agent/model labels are grouped under `""`.
 `subjectCost(ctx, { subject, runId? })` supplies subject/run totals.
 `breakdown(ctx, { subject, from, to, by, cursor? })` supports UTC-day,
 agent, model, and provider grouping. Dates are UTC-midnight milliseconds,
@@ -116,7 +130,9 @@ Attaching a request id starts one Workpool lookup sequence with exponential
 backoff, capped at eight evidence reads, plus a one-shot deadline mutation.
 The deadline marks unresolved charges unknown even if a worker crashes or
 exhausts retries. Reattaching the same id schedules no duplicate sequence;
-a different id throws. Late results cannot revive an expired charge. No
+a different id throws. Expiry does not restart lookup work; a real result
+already in flight may still settle the unknown exactly once. Replayed attempt
+callbacks cannot create duplicate retry chains. No
 provider operation that incurs cost is invoked by this module.
 
 Only settled/corrected charges enter the durable sink outbox. Delivery actions
@@ -131,7 +147,10 @@ the new absolute amount. An in-flight event's amount and id stay frozen until
 acknowledgement, then another delta catches up. Every sink must durably dedupe
 external ids. Replayed HTTP requests are not new billable events. Configure
 Polar's meter to **sum numeric `metadata.nanos`**, including negative deltas;
-`_cost.amount` is cents for cost insights. Webhooks receive `{ events }` with
+`_cost.amount` is a JSON decimal **number in cents**, with up to 17 digits and
+12 decimal places ([Polar cost metadata schema](https://polar.sh/docs/features/cost-insights/cost-events#cost-metadata-schema)).
+Integer division/remainder emits exact signed cents with at most seven places;
+290,000,000 nanos becomes `29`, without float conversion. Webhooks receive `{ events }` with
 the same ids/deltas. Built-in adapters split batches at 100; the worker delivers
 one charge event at a time, keeping transaction budgets independent of HTTP
 batch capacity. No in-process delivery buffer is used.
@@ -146,12 +165,15 @@ Only `charges` is owned. Aggregate and Workpool own their own component state.
 | `attribution.subject`                                      | Subject totals, budget gates, axis namespaces, sink customer id and retry authorization.                  |
 | `attribution.rootThreadId`, `threadId`                     | Root/child aggregate attribution and fallback for standalone root charges.                                |
 | `attribution.runId`                                        | Run-scoped aggregate namespace and budget gate.                                                           |
-| `attribution.agent`, `model`                               | Thread aggregate key and subject axis projections.                                                        |
+| `attribution.agent`, `model`                               | Thread agent key, thread model grouping and subject axis projections.                                     |
 | `provider`                                                 | Registered decoder/lookup routing and provider breakdown/sink metadata.                                   |
 | `profile`, `quantity`                                      | Profile selection for quantity corrections and retained quantity on settlement; exact evidence via `get`. |
 | `status`, `source`                                         | State transitions, unknown fencing, estimated/settled aggregate classification and sink eligibility.      |
 | `nanos`, `credits`                                         | Exact aggregate summand / provider credit evidence and settlement result.                                 |
 | `providerRequestId`, `lookupUntil`                         | Lookup identity, reattach conflict detection, deadline and stale-result fencing.                          |
+| `revision`                                                 | Monotonic amount revision; rejects a correction from an older snapshot.                                   |
+| `lastStale.{operation,revision}`                           | Bounded stale-operation diagnostic via `get`; identical stale replay skips its write.                     |
+| `lookupAttempt`                                            | Next admissible lookup attempt; rejects duplicate retry admission and stale workers.                      |
 | `sinkState.name`                                           | Sink routing.                                                                                             |
 | `sinkState.deliveredNanos`, `revision`                     | Next signed delta and stable external id.                                                                 |
 | `sinkState.pending.{externalId,revision,nanos,totalNanos}` | Immutable delivery snapshot, acknowledgement fence and absolute delivered amount.                         |
@@ -167,27 +189,54 @@ one million; four sinks; 16 providers; 32 profiles/provider. Overrides can only
 lower charge capacity, groups, days and attempts; registration rejects invalid
 limits, prices and missing worker references. Each charge stays below 8 KiB.
 
-Two aggregate mounts use the specified primary keys, with status, axis and run
-namespaces (at most six projections/charge). Default 16-item lazy nodes do not
+Two aggregate mounts use status, axis and run namespaces, with at most **eight
+projections/charge**. `state` below is estimate, settled or unknown. Each row
+contributes once per projection, never once per state. The optional run is the
+only projection omitted when its attribution is absent.
+
+| Mount / namespace                               | Key              | Why it exists                                | Per-charge write cost                     |
+| ----------------------------------------------- | ---------------- | -------------------------------------------- | ----------------------------------------- |
+| `costByThread / [cost,state]`                   | `[root,agent]`   | Root + children totals and agent prefixes.   | One insert / one replace.                 |
+| `costBySubject / [cost,state]`                  | `[subject,day]`  | Capacity, subject totals and UTC day ranges. | One insert / one replace.                 |
+| `costBySubject / [run,subject,runId,state]`     | `["",day]`       | Run totals and budget checks.                | One insert / one replace if runId exists. |
+| `costBySubject / [axis,subject,agent,state]`    | `[agent,day]`    | Subject agent/date pages.                    | One insert / one replace.                 |
+| `costBySubject / [axis,subject,model,state]`    | `[model,day]`    | Subject model/date pages.                    | One insert / one replace.                 |
+| `costBySubject / [axis,subject,provider,state]` | `[provider,day]` | Subject provider/date pages.                 | One insert / one replace.                 |
+| `costBySubject / [thread,root,model,state]`     | `[model,day]`    | Thread model prefixes across all agents.     | One insert / one replace.                 |
+| `costBySubject / [thread,root,provider,state]`  | `[provider,day]` | Thread provider prefixes across all agents.  | One insert / one replace.                 |
+
+Each insert is roughly 12 upstream document writes; replacement is roughly 24
+(delete + insert), so eight projections cost roughly 96 / 192 writes per charge.
+The conservative bound is 48 / 96 split/merge operations **per projection**;
+state movement is included in replacement, not another projection. Stale/replay
+operations do no aggregate writes (a new stale diagnostic patches one row).
+
+Default 16-item lazy nodes do not
 give a tight byte budget for many range queries, so empty namespaces are
 initialized with four-item nodes and eager aggregates. At 100k entries their
-depth is below 12. Conservative bounds:
+depth is below 12. Two-field keys keep every node <=2 KiB. Conservative bounds:
 
-- One status change: six replacements, up to `6 × 2 × 12 × 4 = 576`
-  split/merge operations; including initialization/helpers, fewer than 2,048
-  reads/queries (<8 MiB), 1,024 writes (<4 MiB), plus one <=8-KiB charge and
+- One status change: eight replacements, up to `8 × 2 × 12 × 4 = 768`
+  split/merge operations; including initialization/helpers, fewer than 3,072
+  reads/queries (<12 MiB), 1,024 writes (<4 MiB), plus one <=8-KiB charge and
   four small Workpool admissions. **One charge per mutation**.
 - An axis page: `4 × (3 seeks + 4 summaries) + 3 final seeks = 31`
   aggregate queries, at most `31 × 2 × 12 × 4 = 2,976` bounded node reads
   (<=5.82 MiB at 2 KiB/node). Helpers remain below 4,096 queries.
 - Seven days: `7 × 4 × 96 × 2 KiB = 5.25 MiB` bounded node reads.
+- Thread total plus three four-group pages: a seek visits at most three depth
+  paths (36 nodes); each axis uses `15 × 36 + 16 × 96 = 2,076` node reads.
+  Total `(3 × 2076 + 4 × 96) × 2 KiB = 12.92 MiB`, plus <0.5 MiB helpers;
+  fewer than 7,000 documents / 256 index queries, no writes.
 - HTTP sink batches <=100 contain no transcript/request payload. They do not
   mutate 100 charges in a transaction. Acknowledgements update one <=8-KiB row.
 
-All fake tests enforce Convex transaction limits. The maximum test constructs a
-valid 99,999-entry upstream B-tree fixture in bounded write batches, admits the
-last real charge, settles it at capacity with maximum UTF-8 fields and four
-sinks, reads seven days, and proves that the next key is denied.
+All fake tests enforce Convex transaction limits. The maximum test constructs
+valid 99,999-entry fixtures for **every projection**, spanning every status,
+five maximum-byte labels and seven days. It admits the last real charge,
+corrects/replaces/settles it at capacity with maximum UTF-8 fields and four
+sinks, reads maximum subject and thread axis pages with continuation and seven
+days, checks all totals, and proves that the next key is denied.
 
 Source references used: Aggregate `src/client/index.ts:866-915`,
 `src/component/btree.ts:120-138,216-225,333-415`; Workpool
@@ -199,13 +248,19 @@ Polar's ingest/dedup contract and the absence of per-request Fal/Daytona costs.
 
 - Two leading tuple keys alone cannot answer provider/run/non-leading date
   breakdowns in O(log n). Additional namespaces/projections in the same two
-  mounts are necessary; the true replacement budget includes six projections.
+  mounts are necessary; the true replacement budget includes eight projections.
+  The thread key drops its redundant trailing model to keep two-field nodes
+  bounded while separate model/provider projections support thread axes.
 - Agent 0.7.7's usage hook lacks message/step ids. `usageHandlerFor` therefore
   requires a host identity callback; it cannot safely infer a key from the hook.
 - The examples omit recording keys. Standalone calls require an explicit key
   because there is no core ToolContext/toolCallId in this PR.
 - A delivered correction needs a new external id for its delta; reusing the
   base charge key would make Polar discard it as a duplicate.
+- Settled amounts are final; deltas apply to corrected estimates and their
+  final settlement. Expired unknowns accept real results already in flight,
+  without restarting provider work. Thread axes require cursor pages to stay
+  bounded at arbitrary cardinality.
 - USD is represented by `nanos`, rather than the draft schema's floating `usd`.
   `source` is persisted to distinguish corrected estimates from authoritative
   settlement and prove valid inline zero cost. Estimates use the registered

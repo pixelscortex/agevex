@@ -17,6 +17,161 @@ afterEach(() => {
 const drain = (t: ReturnType<typeof setup>["t"]) =>
   t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100), 1000);
 
+it("settlement survives replayed corrections and estimates, including concurrent correction", async () => {
+  const { t, meter, component } = setup();
+  await t.run(async (ctx) => {
+    const charge = await meter.scope(ctx, attribution).estimate("fal", {
+      key: "precedence",
+      profile: "image",
+      quantity: 4,
+    });
+    await charge.correct({ quantity: 3 });
+    await charge.settle({ usd: 0.5 });
+    await charge.correct({ quantity: 3 });
+    expect(await charge.get()).toMatchObject({ status: "settled", nanos: 500_000_000 });
+  });
+  await t.run(async (ctx) => {
+    await meter.scope(ctx, attribution).estimate("fal", {
+      key: "precedence",
+      profile: "image",
+      quantity: 4,
+    });
+    const charge = await meter.scope(ctx, attribution).estimate("fal", {
+      key: "race",
+      profile: "image",
+      quantity: 4,
+    });
+    await Promise.all([charge.correct({ quantity: 3 }), charge.settle({ usd: 0.5 })]);
+    expect(await charge.get()).toMatchObject({ status: "settled", nanos: 500_000_000 });
+  });
+  expect(await t.query(component.charges.get, { key: "precedence" })).toMatchObject({
+    status: "settled",
+    nanos: 500_000_000,
+    lastStale: { operation: "estimate" },
+  });
+  expect(await t.run((ctx) => meter.threadCost(ctx, { threadId: "root" }))).toMatchObject({
+    settledNanos: 1_000_000_000,
+    estimatedNanos: 0,
+  });
+});
+
+it("a replayed correction revision cannot overwrite a newer correction", async () => {
+  const { t, meter } = setup();
+  await t.run(async (ctx) => {
+    const charge = await meter.scope(ctx, attribution).estimate("fal", {
+      key: "revision",
+      profile: "image",
+      quantity: 4,
+    });
+    await charge.correct({ quantity: 3, revision: 0 });
+    await charge.correct({ quantity: 2, revision: 1 });
+    await charge.correct({ quantity: 3, revision: 0 });
+    const before = await charge.get();
+    expect(before).toMatchObject({ status: "corrected", nanos: 500_000_000, revision: 2 });
+    await charge.correct({ quantity: 3, revision: 0 });
+    expect(await charge.get()).toEqual(before);
+  });
+});
+
+it("expired unknown rejects corrections but accepts a late real provider result exactly once", async () => {
+  const { t, meter, component } = setup({
+    providers: {
+      async: {
+        profiles: { image: { unit: "image", usd: 0.25 } },
+        lookup: async () => undefined,
+        lookupFor: LIMITS.backoffMs,
+      },
+    },
+  });
+  await t.run(async (ctx) => {
+    const charge = await meter.scope(ctx, attribution).estimate("async", {
+      key: "late",
+      profile: "image",
+      quantity: 4,
+    });
+    await charge.attach({ requestId: "late-request" });
+  });
+  await vi.advanceTimersByTimeAsync(LIMITS.backoffMs);
+  await drain(t);
+  await t.run(async (ctx) => {
+    const charge = await meter.scope(ctx, attribution).estimate("async", {
+      key: "late",
+      profile: "image",
+      quantity: 4,
+    });
+    await charge.correct({ quantity: 3 });
+    expect(await charge.get()).toMatchObject({ status: "unknown", nanos: 1_000_000_000 });
+  });
+  const row = (await t.query(component.charges.get, { key: "late" }))!;
+  const result = {
+    key: "late",
+    provider: "async",
+    requestId: "late-request",
+    until: row.lookupUntil!,
+    attempt: 0,
+    jobs: { maxAttempts: LIMITS.maxAttempts },
+    nanos: 500_000_000,
+  };
+  await t.mutation(component.charges.lookupResult, result);
+  const settled = await t.query(component.charges.get, { key: "late" });
+  await t.mutation(component.charges.lookupResult, result);
+  expect(await t.query(component.charges.get, { key: "late" })).toEqual(settled);
+  expect(settled).toMatchObject({ status: "settled", source: "lookup", nanos: 500_000_000 });
+});
+
+it("thread axes include root and children across agents models providers and unknowns", async () => {
+  const { t, meter } = setup();
+  await t.run(async (ctx) => {
+    const root = meter.scope(ctx, { ...attribution, threadId: "root", agent: "A", model: "M1" });
+    await root.record("openrouter", {
+      key: "root-axis",
+      providerMetadata: { openrouter: { usage: { cost: 0.5 } } },
+    });
+    await meter.scope(ctx, { ...attribution, agent: "B", model: "M2" }).estimate("fal", {
+      key: "child-axis",
+      profile: "image",
+      quantity: 3,
+    });
+    await meter
+      .scope(ctx, { ...attribution, threadId: "child2", agent: "A", model: "M2" })
+      .record("firecrawl", { key: "unknown-axis" });
+    await meter
+      .scope(ctx, { ...attribution, rootThreadId: "other", agent: "A", model: "M1" })
+      .record("openrouter", {
+        key: "other-axis",
+        providerMetadata: { openrouter: { usage: { cost: 9 } } },
+      });
+  });
+  const cost = await t.run((ctx) => meter.threadCost(ctx, { threadId: "root" }));
+  expect(cost).toMatchObject({
+    settledNanos: 500_000_000,
+    estimatedNanos: 750_000_000,
+    unknown: 1,
+    byAgent: {
+      page: [
+        { key: "A", settledNanos: 500_000_000, unknown: 1 },
+        { key: "B", estimatedNanos: 750_000_000 },
+      ],
+      cursor: null,
+    },
+    byModel: {
+      page: [
+        { key: "M1", settledNanos: 500_000_000 },
+        { key: "M2", estimatedNanos: 750_000_000, unknown: 1 },
+      ],
+      cursor: null,
+    },
+    byProvider: {
+      page: [
+        { key: "fal", estimatedNanos: 750_000_000 },
+        { key: "firecrawl", unknown: 1 },
+        { key: "openrouter", settledNanos: 500_000_000 },
+      ],
+      cursor: null,
+    },
+  });
+});
+
 it("idempotent inline recording preserves exactly one settled charge including a zero cost", async () => {
   const { t, meter, component } = setup();
   for (let attempt = 0; attempt < 2; attempt++)
@@ -283,7 +438,7 @@ it("sink failure cannot roll back recording and retries preserve the event ident
   );
 });
 
-it("a correction after delivery sends a signed delta and repeat settlement cannot double bill", async () => {
+it("settlement after a delivered correction sends a signed delta and cannot double bill", async () => {
   const events: SinkEvent[] = [];
   const { t, meter } = setup({
     sinks: [
@@ -297,13 +452,21 @@ it("a correction after delivery sends a signed delta and repeat settlement canno
   });
   const settle = async (usd: number) =>
     await t.run(async (ctx) => {
-      const charge = await meter.scope(ctx, attribution).record("openrouter", {
+      const charge = await meter.scope(ctx, attribution).estimate("fal", {
         key: "delta",
-        providerMetadata: { openrouter: { usage: { cost: 0.5 } } },
+        profile: "image",
+        quantity: 4,
       });
       await charge.settle({ usd });
     });
-  await settle(0.5);
+  await t.run(async (ctx) => {
+    const charge = await meter.scope(ctx, attribution).estimate("fal", {
+      key: "delta",
+      profile: "image",
+      quantity: 4,
+    });
+    await charge.correct({ quantity: 2 });
+  });
   await drain(t);
   await settle(0.3);
   await drain(t);
@@ -338,15 +501,19 @@ it("a correction during delivery retains the immutable event until acknowledgeme
   });
   mutate = async () => {
     await t.run(async (ctx) => {
-      const charge = await meter.scope(ctx, attribution).record("openrouter", { key: "inflight" });
+      const charge = await meter
+        .scope(ctx, attribution)
+        .estimate("fal", { key: "inflight", profile: "image", quantity: 4 });
       await charge.settle({ usd: 0.2 });
     });
   };
   await t.run(async (ctx) => {
-    await meter.scope(ctx, attribution).record("openrouter", {
+    const charge = await meter.scope(ctx, attribution).estimate("fal", {
       key: "inflight",
-      providerMetadata: { openrouter: { usage: { cost: 0.5 } } },
+      profile: "image",
+      quantity: 4,
     });
+    await charge.correct({ quantity: 2 });
   });
   await drain(t);
   expect(events.map((e) => e.nanos)).toEqual([500_000_000, -300_000_000]);

@@ -1,5 +1,24 @@
 import type { Sink, SinkEvent } from "./types.js";
-import { LIMITS, text } from "./limits.js";
+import { LIMITS, integer, text } from "./limits.js";
+
+/** Polar documents a decimal NUMBER in cents, at most 17 digits / 12 places:
+ * https://polar.sh/docs/features/cost-insights/cost-events#cost-metadata-schema
+ * Emit an unquoted JSON number from integer arithmetic. Float division then
+ * multiplication turns 290m nanos into 28.999999999999996 and is rejected.
+ * A nanodollar is exactly 0.0000001 cents, so seven places suffice, including
+ * negative delivery deltas. Other JSON fields still use JSON.stringify.
+ */
+function polarAmount(nanos: number) {
+  integer(Math.abs(nanos), LIMITS.maxChargeNanos, "NANOS");
+  const value = BigInt(nanos);
+  const magnitude = value < 0n ? -value : value;
+  const divisor = BigInt(LIMITS.nanosPerCent);
+  const fraction = (magnitude % divisor)
+    .toString()
+    .padStart(LIMITS.centDecimalPlaces, "0")
+    .replace(/0+$/, "");
+  return `${value < 0n ? "-" : ""}${magnitude / divisor}${fraction ? `.${fraction}` : ""}`;
+}
 
 export class SinkDeliveryError extends Error {
   constructor(public readonly retryAfterMs?: number) {
@@ -88,22 +107,21 @@ export function polarSink(options: {
             Authorization: `Bearer ${options.accessToken}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            events: entries.map((entry) => ({
-              name: options.meter,
-              external_id: entry.externalId,
-              external_customer_id: entry.attribution.subject,
-              metadata: {
+          body: `{"events":[${entries
+            .map((entry) => {
+              const envelope = JSON.stringify({
+                name: options.meter,
+                external_id: entry.externalId,
+                external_customer_id: entry.attribution.subject,
+              });
+              const metadata = JSON.stringify({
                 nanos: entry.nanos,
                 total_nanos: entry.totalNanos,
                 provider: entry.provider,
-                _cost: {
-                  amount: (entry.nanos / LIMITS.nanosPerUsd) * LIMITS.centsPerUsd,
-                  currency: "usd",
-                },
-              },
-            })),
-          }),
+              });
+              return `${envelope.slice(0, -1)},"metadata":${metadata.slice(0, -1)},"_cost":{"amount":${polarAmount(entry.nanos)},"currency":"usd"}}}`;
+            })
+            .join(",")}]}`,
         });
         await checkResponse(response);
         const result = (await readJson(response)) as { inserted?: number; duplicates?: number };

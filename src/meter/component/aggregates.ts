@@ -5,8 +5,8 @@ import type { Doc } from "./_generated/dataModel.js";
 import type { MutationCtx, QueryCtx } from "./_generated/server.js";
 import { LIMITS } from "../limits.js";
 
-export type Key = [string, number] | [string, string, string];
-type Tree = DirectAggregate<{ Key: Key; Id: string; Namespace: string[] }>;
+export type Key = [string, number | string];
+export type Tree = DirectAggregate<{ Key: Key; Id: string; Namespace: string[] }>;
 export const byThread: Tree = new DirectAggregate(components.costByThread);
 export const bySubject: Tree = new DirectAggregate(components.costBySubject);
 export const groups = ["estimate", "settled", "unknown"] as const;
@@ -29,7 +29,7 @@ function projections(row: Doc<"charges">) {
   const entries: { tree: Tree; key: Key; namespace: string[] }[] = [
     {
       tree: byThread,
-      key: [a.rootThreadId ?? a.threadId ?? "", a.agent ?? "", a.model ?? ""],
+      key: [a.rootThreadId ?? a.threadId ?? "", a.agent ?? ""],
       namespace: ["cost", state],
     },
     { tree: bySubject, key: [a.subject, day], namespace: ["cost", state] },
@@ -46,6 +46,14 @@ function projections(row: Doc<"charges">) {
       key: [axis === "provider" ? row.provider : (a[axis] ?? ""), day],
       namespace: ["axis", a.subject, axis, state],
     });
+  // Agent grouping already has the leading [root, agent] thread prefix. Only
+  // model/provider need extra projections; namespaces keep their keys small.
+  for (const axis of ["model", "provider"] as const)
+    entries.push({
+      tree: bySubject,
+      key: [axis === "provider" ? row.provider : (a.model ?? ""), day],
+      namespace: ["thread", a.rootThreadId ?? a.threadId ?? "", axis, state],
+    });
   return entries;
 }
 
@@ -54,11 +62,11 @@ function projections(row: Doc<"charges">) {
  * replace atomically deletes and inserts; synchronous calls share our transaction.
  * We cap the WHOLE mount at 100k charges, making each tree <=100k entries.
  * Node size 4 (min occupancy 2, branching >=3) needs <=12 levels. UTF-8 bounds
- * keep a thread node <=4 KiB and subject node <=2 KiB, including temporary
- * split items. At most 6 projections per charge: the usual default-size
- * replace ~=12 writes becomes a conservative 2*12*4=96 split/merge operations
- * per projection, <=576 total. Allowing namespace initialization and helpers:
- * <2048 reads/queries (<8 MiB) and <1024 writes (<4 MiB), plus the <=8-KiB
+ * keep every node <=2 KiB, including temporary
+ * split items. At most 8 projections per charge: the usual default-size
+ * insert ~=12 writes / replace ~=24 becomes a conservative 2*12*4=96 split/merge operations
+ * per projection, <=768 total. Allowing namespace initialization and helpers:
+ * <3072 reads/queries (<12 MiB) and <1024 writes (<4 MiB), plus the <=8-KiB
  * charge and four Workpool admissions. ONE charge per mutation only.
  * The brief's two replacements cannot provide non-leading axis/run queries;
  * namespaces add projections without adding mounts or owned tables.

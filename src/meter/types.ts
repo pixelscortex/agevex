@@ -48,7 +48,8 @@ export type MeterOptions = {
 export type ChargeHandle = {
   key: string;
   attach(args: { requestId: string }): Promise<Charge>;
-  correct(args: { quantity: number }): Promise<Charge>;
+  /** Persist revision with a replayable operation; otherwise use the current revision. */
+  correct(args: { quantity: number; revision?: number }): Promise<Charge>;
   settle(args: Cost): Promise<Charge>;
   get(): Promise<Charge | null>;
 };

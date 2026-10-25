@@ -112,7 +112,7 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
             jobs: { ...(await jobs()), ...(!provider.lookup ? { lookup: undefined } : {}) },
           });
         },
-        correct: async ({ quantity }) => {
+        correct: async ({ quantity, revision }) => {
           await authorize(ctx, attribution);
           integer(quantity, LIMITS.maxQuantity, "QUANTITY");
           const row = await ctx.runQuery(component.charges.get, { key });
@@ -121,6 +121,7 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
           return await ctx.runMutation(component.charges.update, {
             key,
             operation: "correct",
+            revision: revision ?? row!.revision,
             quantity,
             nanos: nanos(price.usd * quantity),
             jobs: await jobs(),
@@ -131,6 +132,9 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
           return await ctx.runMutation(component.charges.update, {
             key,
             operation: "settle",
+            // Settlement is final, so the charge key itself identifies the
+            // authoritative result; estimate revisions never fence it out.
+            revision: 0,
             ...costNanos(provider, cost),
             jobs: await jobs(),
           });
@@ -186,9 +190,15 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
 
   return {
     scope,
-    threadCost: async (ctx: ReadCtx, args: { threadId: string }) => {
-      await authorize(ctx, args);
-      return await ctx.runQuery(component.reads.threadCost, args);
+    threadCost: async (
+      ctx: ReadCtx,
+      args: { threadId: string; cursors?: Partial<Record<"agent" | "model" | "provider", string>> },
+    ) => {
+      await authorize(ctx, { threadId: args.threadId });
+      return await ctx.runQuery(component.reads.threadCost, {
+        ...args,
+        maxGroups: limits.maxGroups,
+      });
     },
     subjectCost: async (ctx: ReadCtx, args: { subject: string; runId?: string }) => {
       await authorize(ctx, args);
@@ -252,6 +262,7 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
             if (
               !row ||
               row.lookupUntil !== args.until ||
+              row.lookupAttempt !== args.attempt ||
               row.source !== "estimate" ||
               row.status === "unknown"
             )
