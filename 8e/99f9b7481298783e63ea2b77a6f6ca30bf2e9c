@@ -1,0 +1,91 @@
+README.md
+  s_d863bd773ba186::t_b432017147d716 393-400,422
+docs/site/content/docs/modules/meter.mdx
+  s_d863bd773ba186::t_89e1745c03e806 4-5,8,10,12-14,16-18,21-23,25,27-28,31-42,45-56,58,60-71,74-115,117,119-134,137-348,350-355
+package.json
+  s_d863bd773ba186::t_cacd7d6e752332 40-52,65-67,71-72,88-89
+src/meter/README.md
+  s_d863bd773ba186::t_dcf1fff6ebdbc6 1-366
+src/meter/breakdowns.ts
+  s_d863bd773ba186::t_a3588bcfea20de 1-32
+src/meter/client.ts
+  s_d863bd773ba186::t_b5670fa99e91a9 1-517
+src/meter/component/_generated/api.ts
+  s_d863bd773ba186::t_48fc6f027800a2 1-13
+src/meter/component/_generated/component.ts
+  s_d863bd773ba186::t_f6e739433e8b4f 1-16
+src/meter/component/_generated/dataModel.ts
+  s_d863bd773ba186::t_8aad775918c679 1-8
+src/meter/component/_generated/server.ts
+  s_d863bd773ba186::t_f5ade0df889d52 1-10
+src/meter/component/aggregates.ts
+  s_d863bd773ba186::t_fb1b29e0bc781f 1-205
+src/meter/component/charges.ts
+  s_d863bd773ba186::t_d703dcc6f43d80 1-756
+src/meter/component/contracts.ts
+  s_d863bd773ba186::t_d6a1752e9df5be 1-17
+src/meter/component/convex.config.ts
+  s_d863bd773ba186::t_9b00caee0b6fb9 1-9
+src/meter/component/reads.ts
+  s_d863bd773ba186::t_deb023c492c349 1-194
+src/meter/component/schema.ts
+  s_d863bd773ba186::t_e39310f077880d 1-135
+src/meter/helpers.ts
+  s_d863bd773ba186::t_59b109873c7fb2 1-85
+src/meter/index.ts
+  s_d863bd773ba186::t_1709b7e5f8d81a 1-21
+src/meter/limits.ts
+  s_d863bd773ba186::t_773106026ae859 1-121
+src/meter/sinks.ts
+  s_d863bd773ba186::t_e70daaed7fa589 1-173
+src/meter/test.ts
+  s_d863bd773ba186::t_be0a8589d5fe24 1-26
+src/meter/types.ts
+  s_d863bd773ba186::t_87335066a8d653 1-77
+tests/meter/adapters.test.ts
+  s_d863bd773ba186::t_28ab01b2d5254f 1-296
+tests/meter/bounds.test.ts
+  s_d863bd773ba186::t_d708e2b83a3f32 1-359
+tests/meter/breakdowns.test.ts
+  s_d863bd773ba186::t_3d2cc813425d53 1-193
+tests/meter/delivery.test.ts
+  s_d863bd773ba186::t_c0aa59ebe48f8d 1-195
+tests/meter/fixture/_generated/api.ts
+  s_d863bd773ba186::t_82a167d9cfc4eb 1-2
+tests/meter/fixture/schema.ts
+  s_d863bd773ba186::t_7d3636a31a250d 1-2
+tests/meter/live.config.ts
+  s_d863bd773ba186::t_a37089fa78a31c 1-9
+tests/meter/meter.test.ts
+  s_d863bd773ba186::t_17f85108cbe81a 1-970
+tests/meter/openrouter.live.ts
+  s_d863bd773ba186::t_633f3708bbe1ee 1-108
+tests/meter/operation-keys.test-d.ts
+  s_d863bd773ba186::t_d242f9e0c904e9 1-19
+tests/meter/operation-keys.test.ts
+  s_d863bd773ba186::t_d721e8331ad676 1-98
+tests/meter/retention.test.ts
+  s_d863bd773ba186::t_98271850332f7a 1-106
+tests/meter/setup.ts
+  s_d863bd773ba186::t_737912fb632e69 1-66
+tests/meter/sinks.test.ts
+  s_d863bd773ba186::t_9e43775d663435 1-161
+tests/meter/usage-slot.test.ts
+  s_d863bd773ba186::t_9f3401f00af0a0 1-102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8e99f9b7481298783e63ea2b77a6f6ca30bf2e9c",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
