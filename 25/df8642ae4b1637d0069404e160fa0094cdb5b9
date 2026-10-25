@@ -1,0 +1,58 @@
+tests/review-regressions.test.ts
+  s_7fe57a2ce4dc9e::t_cd5273b3a13256 644-646,655,709-710,730
+tests/bounded-reads.test.ts
+  s_7fe57a2ce4dc9e::t_dceb8875270975 11,40-46,68-72,77-79,90-91,93-94,130,136-138,146
+  s_7fe57a2ce4dc9e::t_238e6d77b16f8b 4,9,47-67,73-76,80-89,92,95-129,131-135,139
+  s_7fe57a2ce4dc9e::t_5358b2553de613 140-145,147-156
+src/component/hooks.ts
+  s_7fe57a2ce4dc9e::t_79b9a097b32176 1,4,86,97,102-103,123,127-128,133-134,165-175,180-186,189-190,193,200-217,222,235-236,243-247,307,314,319,409-414,427,432,434,440
+  s_7fe57a2ce4dc9e::t_cd5273b3a13256 73,87-96,99-101,104-105,108-113,115-122,124-126,129,131-132,158-164,176-179,187-188,191-192,194-199,218-221,223-234,237-242,308-313,386-388,415-424,433
+tests/delegation-v2.test.ts
+  s_7fe57a2ce4dc9e::t_4cfa4fc02c703e 279-280
+tests/hooks.test.ts
+  s_7fe57a2ce4dc9e::t_a2e3dafaf98116 5,324,330,355,362,515,524-525,537-543,548-588,593-671,673,679,681,685,730
+  s_7fe57a2ce4dc9e::t_fc80d1cf3e6373 672,674-678,680,682-684,709,716,724-725,898-899,901
+tests/native-readers.test.ts
+  s_7fe57a2ce4dc9e::t_4cfa4fc02c703e 26-27
+  s_7fe57a2ce4dc9e::t_9f24f18c6a12cb 28-30
+README.md
+  s_7fe57a2ce4dc9e::t_af5768ba0289ff 145-159,168-169
+src/client/endpoints.ts
+  s_7fe57a2ce4dc9e::t_da7b925a5ec6de 43-47,49-51,69,331,353-364
+src/client/hooks.ts
+  s_7fe57a2ce4dc9e::t_ee4860d92e93ab 11-12
+src/client/index.ts
+  s_7fe57a2ce4dc9e::t_2b5e05c9b4f201 34-35
+src/client/runtime.ts
+  s_7fe57a2ce4dc9e::t_a05968123d0bb3 1291-1299
+src/component/README.md
+  s_7fe57a2ce4dc9e::t_2e36b6053c4822 16-25,36
+src/component/cancellation.ts
+  s_7fe57a2ce4dc9e::t_e6200e4868ab75 62
+src/component/limits.ts
+  s_7fe57a2ce4dc9e::t_4638b2da158d17 27,58-61,89-92,152-153
+src/component/queue.ts
+  s_7fe57a2ce4dc9e::t_900a6df3a6f499 482,1480-1481,1484-1493
+src/component/schema.ts
+  s_7fe57a2ce4dc9e::t_a5ad6142d66cfc 133,284-288,297,300-301,394
+src/component/subagents.ts
+  s_7fe57a2ce4dc9e::t_2ee58d8032cc6e 911,1161
+src/testing/bridge.ts
+  s_7fe57a2ce4dc9e::t_cd8f63b44a07f7 10,48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "25df8642ae4b1637d0069404e160fa0094cdb5b9",
+  "prompts": {},
+  "sessions": {
+    "s_7fe57a2ce4dc9e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a170ef-fcfc-7d30-a47e-18d927a3c75e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
