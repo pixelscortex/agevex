@@ -6,7 +6,7 @@ import type { ComponentApi as NativeApi } from "@convex-dev/agent/_generated/com
 import type { ComponentApi } from "../../src/component/_generated/component.js";
 import agevex from "../../src/test.js";
 import schema from "./fixture/schema.js";
-import { state } from "./fixture/host.js";
+import { state, child } from "./fixture/host.js";
 import type * as host from "./fixture/host.js";
 import type * as todoState from "../../docs/site/registry/todo/todoState.js";
 import type * as goalsState from "../../docs/site/registry/goals/goalsState.js";
@@ -23,6 +23,7 @@ export const managed = componentsGeneric().agevex as unknown as ComponentApi;
 export function setup() {
   state.calls.length = 0;
   state.steps.length = 0;
+  child.calls.length = 0;
   state.budget = { checks: 0, runIds: [] };
   const t = convexTest({
     schema,
@@ -40,4 +41,4 @@ export function setup() {
   return t;
 }
 
-export { state };
+export { state, child };

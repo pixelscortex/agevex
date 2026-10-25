@@ -10,14 +10,14 @@ import type { GoalDataModel } from "./goalsSchema.js";
 
 const query = internalQueryGeneric as QueryBuilder<GoalDataModel, "internal">;
 const mutation = internalMutationGeneric as MutationBuilder<GoalDataModel, "internal">;
-const scope = { subject: v.string(), threadId: v.string(), runId: v.string() };
+const scope = { subject: v.string(), threadId: v.string() };
 
 export const check = query({
   args: { subject: v.string(), threadId: v.string() },
   returns: v.object({ goal: v.union(v.string(), v.null()) }),
   handler: async (ctx, args) => {
-    // subject/threadId/runId are core-validated facts (<= LIMITS.factBytes =
-    // 128 UTF-8 bytes each). One row: 4000 × 4 goal bytes + 3 × 128 fact bytes
+    // subject/threadId are core-validated facts (<= LIMITS.factBytes = 128
+    // UTF-8 bytes each). One row: 4000 × 4 goal bytes + 2 × 128 fact bytes
     // + 1 KiB overhead < 18 KiB. unique() takes at most TWO rows then rejects
     // duplicates (convex/src/server/impl/query_impl.ts:334-343): < 36 KiB,
     // two docs and one query. Even two host-corrupted 1 MiB rows fit 16 MiB.
@@ -29,7 +29,7 @@ export const check = query({
       )
       .unique();
     // The goal belongs to the thread, so it survives a budget resume, a retry or
-    // any later request. `runId` is only metadata of the run that set it.
+    // any later request.
     return { goal: row ? goalText.parse(row.goal) : null };
   },
 });
@@ -38,7 +38,7 @@ export const set = mutation({
   args: { ...scope, goal: v.string() },
   returns: v.object({ goal: v.string() }),
   handler: async (ctx, args) => {
-    const owner = { subject: args.subject, threadId: args.threadId, runId: args.runId };
+    const owner = { subject: args.subject, threadId: args.threadId };
     // The trimmed 1-4000 character bound is not a Convex validator, so re-check
     // it at the data boundary.
     const goal = goalText.parse(args.goal);
@@ -50,8 +50,8 @@ export const set = mutation({
         q.eq("subject", owner.subject).eq("threadId", owner.threadId),
       )
       .unique();
-    // One row per thread: a later goal_set replaces the goal and records its run.
-    if (row) await ctx.db.patch("agevexGoals", row._id, { goal, runId: owner.runId });
+    // One row per thread: a later goal_set replaces the goal.
+    if (row) await ctx.db.patch("agevexGoals", row._id, { goal });
     else await ctx.db.insert("agevexGoals", { ...owner, goal });
     return { goal };
   },

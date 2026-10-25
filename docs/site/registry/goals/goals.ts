@@ -9,15 +9,10 @@ export const goalText = z.string().trim().min(GOAL_LIMITS.minChars).max(GOAL_LIM
 type Scope = { subject: string; threadId: string };
 export type GoalFunctions = {
   check: FunctionReference<"query", "internal", Scope, { goal: string | null }>;
-  set: FunctionReference<
-    "mutation",
-    "internal",
-    Scope & { runId: string; goal: string },
-    { goal: string }
-  >;
+  set: FunctionReference<"mutation", "internal", Scope & { goal: string }, { goal: string }>;
 };
 
-/** One explicit goal per owner and thread; `runId` is only metadata of its setter. */
+/** One explicit goal per owner and thread, whatever the run. */
 export function createGoalTools(refs: GoalFunctions) {
   const tools = {
     goal_set: defineOnceTool({
@@ -29,7 +24,6 @@ export function createGoalTools(refs: GoalFunctions) {
         return tc.ctx.runMutation(refs.set, {
           subject: tc.subject,
           threadId: tc.threadId,
-          runId: tc.runId,
           goal: input.goal,
         });
       },

@@ -8,8 +8,10 @@ import { v } from "convex/values";
  * query, and reading the transcript to decide anything is not allowed, so the
  * host's approve action records the consent here in the same transaction as the
  * core `respond` call. The row is single-use and bound to the run that was
- * active when the user approved (`activity.runId`): `consume` deletes it only
- * for the stop of that exact run. Every field is read by `consume`.
+ * active when the user approved (`activity.runId`): `consume` marks it `spent`
+ * only for the stop of that exact run. A spent row is kept (not deleted) so a
+ * replayed approve cannot re-create consent: core `respond` replays for
+ * LIMITS.receiptRetentionMs (7 days) without re-checking pending state. Every field is read by `consume`.
  */
 export const consentTables = {
   agevexBudgetConsents: defineTable({
@@ -17,7 +19,10 @@ export const consentTables = {
     threadId: v.string(),
     approvalId: v.string(),
     runId: v.string(),
-  }).index("by_consent", ["subject", "threadId", "approvalId"]),
+    spent: v.boolean(),
+  }).index("by_consent", ["subject", "threadId", "approvalId"])
+    // Cleanup by owner thread and age: implicit _creationTime follows the fields.
+    .index("by_thread", ["subject", "threadId"]),
 };
 const schema = defineSchema(consentTables);
 export type ConsentDataModel = DataModelFromSchemaDefinition<typeof schema>;

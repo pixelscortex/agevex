@@ -173,15 +173,13 @@ it("goal state accepts its hard maximum with maximum-size core facts and rejects
   const scope = {
     subject: "a".repeat(LIMITS.factBytes),
     threadId: "t".repeat(LIMITS.factBytes),
-    runId: "r".repeat(LIMITS.factBytes),
   };
   const goal = "界".repeat(GOAL_LIMITS.goalChars);
-  const { runId: _run, ...owner } = scope;
   expect(await t.mutation(api.goalsState.set, { ...scope, goal })).toEqual({ goal });
-  expect(await t.query(api.goalsState.check, owner)).toEqual({ goal });
+  expect(await t.query(api.goalsState.check, scope)).toEqual({ goal });
   for (const invalid of ["", "   ", goal + "x"])
     await expect(t.mutation(api.goalsState.set, { ...scope, goal: invalid })).rejects.toThrow();
-  expect(await t.query(api.goalsState.check, owner)).toEqual({ goal });
+  expect(await t.query(api.goalsState.check, scope)).toEqual({ goal });
 });
 
 it("concurrent first writes retain one host row per owner scope", async () => {
@@ -194,7 +192,7 @@ it("concurrent first writes retain one host row per owner scope", async () => {
   );
   await Promise.all(
     Array.from({ length: 4 }, (_, i) =>
-      t.mutation(api.goalsState.set, { ...scope, runId: "run", goal: String(i) }),
+      t.mutation(api.goalsState.set, { ...scope, goal: String(i) }),
     ),
   );
   expect(await t.run((ctx) => ctx.db.query("agevexTodos").collect())).toHaveLength(1);
@@ -237,7 +235,6 @@ it("goal_set keeps one row per owner and thread: a later run replaces the goal a
   state.steps.push(call("goal_set", "first-run", { goal: "first" }));
   const receipt = await open(t);
   await drain(t);
-  const [firstRow] = await t.run((ctx) => ctx.db.query("agevexGoals").collect());
   state.steps.length = state.calls.length;
   state.steps.push(
     call("goal_check", "other-run-check", {}),
@@ -254,7 +251,6 @@ it("goal_set keeps one row per owner and thread: a later run replaces the goal a
   const rows = await t.run((ctx) => ctx.db.query("agevexGoals").collect());
   expect(rows).toHaveLength(1);
   expect(rows[0]).toMatchObject({ goal: "next" });
-  expect(rows[0].runId).not.toBe(firstRow.runId);
 });
 
 it.each(["todoState", "goalsState"] as const)(
@@ -269,13 +265,13 @@ it.each(["todoState", "goalsState"] as const)(
           table,
           module === "todoState"
             ? { subject: "alice", threadId: `t${i}`, todos: [] }
-            : { subject: "alice", threadId: `t${i}`, runId: "r", goal: "g" },
+            : { subject: "alice", threadId: `t${i}`, goal: "g" },
         );
       await ctx.db.insert(
         table,
         module === "todoState"
           ? { subject: "bob", threadId: "t0", todos: [] }
-          : { subject: "bob", threadId: "t0", runId: "r", goal: "g" },
+          : { subject: "bob", threadId: "t0", goal: "g" },
       );
     });
     const count = () => t.run((ctx) => ctx.db.query(table).collect()).then((rows) => rows.length);
@@ -295,7 +291,7 @@ it.each(["todoState", "goalsState"] as const)(
           table,
           module === "todoState"
             ? { subject: "alice", threadId: `again${i}`, todos: [] }
-            : { subject: "alice", threadId: `again${i}`, runId: "r", goal: "g" },
+            : { subject: "alice", threadId: `again${i}`, goal: "g" },
         );
     });
     expect(await t.mutation(api[module].cleanup, { subject: "alice" })).toEqual({

@@ -40,8 +40,7 @@ not independently verify success.
 `GOAL_LIMITS` fix goal text at 4000 characters. Owner, thread and run come from
 `ToolContext`, which core already bounds (`LIMITS.factBytes`, 128 UTF-8 bytes).
 The host table `agevexGoals` holds **one row per owner and thread**: `subject`,
-`threadId`, `goal`, and `runId`, which is metadata naming the run that last set
-the goal. The goal belongs to the thread, so `goal_check` returns it in every
+`threadId` and `goal`. The goal belongs to the thread, so `goal_check` returns it in every
 later run (for example after a budget resume), and a later `goal_set` replaces
 it. The table grows with threads, not runs. Each operation reads at most two
 indexed rows (a valid row is below 18 KiB) and a set writes one. There are no

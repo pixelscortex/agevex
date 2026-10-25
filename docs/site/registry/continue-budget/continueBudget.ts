@@ -14,6 +14,14 @@ export const continueInput = z.strictObject({
 /**
  * Model-side half: ask the user for explicit spending consent.
  *
+ * ROOT ONLY. Register this tool on root agents only. Budgets, stops and the
+ * resume below are all keyed to the root thread's run. If a delegated child
+ * calls it anyway, the tool returns the typed `{ status: "denied", code:
+ * "ROOT_ONLY" }` when it would execute. Core evaluates `needsApproval` without
+ * the ToolContext (`context` is undefined there), so the child's approval
+ * request cannot be suppressed before the user is asked; a user approval on a
+ * child thread is harmless because the tool never records or reports consent.
+ *
  * This only requests consent. It neither changes a budget nor bypasses core's
  * run limits. The native approval (answered through core `respond`) is the
  * consent record; denial never executes the tool. The host applies its own
@@ -25,6 +33,9 @@ export function createContinueBudgetTool() {
     input: continueInput,
     run: (input, tc) => {
       tc.signal.throwIfAborted();
+      // A budget stop and its resume belong to the root thread's run. A child's
+      // consent could never be spent, so refuse instead of reporting approval.
+      if (tc.threadId !== tc.rootThreadId) return { status: "denied", code: "ROOT_ONLY" };
       return { approved: true, reason: input.reason };
     },
   });

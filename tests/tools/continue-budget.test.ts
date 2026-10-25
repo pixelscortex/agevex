@@ -1,6 +1,6 @@
 // @vitest-environment edge-runtime
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
-import { setup, api, native, managed, state } from "./setup.js";
+import { setup, api, native, managed, state, child } from "./setup.js";
 import { requireReceipt } from "../receipt.js";
 import {
   CONSENT_TEXT,
@@ -190,8 +190,9 @@ it("with recorded host consent one mutation raises the budget, cancels the stopp
   expect(prompt).toContain("execution-denied");
   expect(state.budget.runIds[state.budget.runIds.length - 1]).not.toBe(stoppedRun);
   expect((await budgetRows(t))[0].limit).toBe(3);
-  // The consent was spent by the resume that used it.
-  expect(await consentRows(t)).toEqual([]);
+  // The consent was spent by the resume that used it (kept, so a replayed
+  // approve cannot create a fresh one).
+  expect(await consentRows(t)).toMatchObject([{ spent: true }]);
   expect(await alice.query(api.host.activity, { threadId: receipt.threadId })).toMatchObject({
     turnStatus: "idle",
     errorCode: null,
@@ -246,6 +247,14 @@ it("the same thread can be stopped and resumed again: each stop gets its own req
   ).toMatchObject({
     errorCode: "BUDGET_EXCEEDED",
   });
+  // Core `respond` replays its saved result for 7 days without re-checking that
+  // the approval is pending, so a double-click on the first approve after the
+  // resume must not re-create consent bound to the new run.
+  await first.alice.mutation(api.host.approveContinue, {
+    threadId: first.receipt.threadId,
+    approvalId: first.approval,
+  });
+  expect((await consentRows(t)).filter((row) => !row.spent)).toHaveLength(1);
   // The first approval was spent by the first resume: it cannot unlock this stop.
   const limitBefore = (await budgetRows(t))[0].limit;
   await expect(resume(first.alice, first.receipt.threadId, first.approval)).resolves.toEqual({
@@ -315,7 +324,7 @@ it("a pending, never-approved approval is not consent and resuming responds to n
   expect(state.calls).toHaveLength(1);
 });
 
-it("consent is single-use and scoped to its owner, thread, approval and run, and is recorded idempotently", async () => {
+it("consent is scoped to its owner, thread, approval and run, and is recorded idempotently", async () => {
   const t = setup();
   const scope = {
     subject: "alice",
@@ -334,13 +343,27 @@ it("consent is single-use and scoped to its owner, thread, approval and run, and
     { ...scope, runId: "run-2" },
   ])
     expect(await t.mutation(api.continueBudgetState.consume, other)).toBe(false);
-  expect(await consentRows(t)).toHaveLength(1);
+  expect(await consentRows(t)).toMatchObject([{ spent: false }]);
+});
+
+it("consent is single-use even for the same run: a second consume and a re-record both fail", async () => {
+  const t = setup();
+  const scope = {
+    subject: "alice",
+    threadId: "thread-a",
+    approvalId: "approval-1",
+    runId: "run-1",
+  };
+  await t.mutation(api.continueBudgetState.record, scope);
   expect(await t.mutation(api.continueBudgetState.consume, scope)).toBe(true);
-  expect(await consentRows(t)).toHaveLength(0);
+  expect(await t.mutation(api.continueBudgetState.consume, scope)).toBe(false);
+  // A replayed approve calls record again for the same run; the spent row wins.
+  await t.mutation(api.continueBudgetState.record, scope);
+  expect(await consentRows(t)).toMatchObject([{ spent: true }]);
   expect(await t.mutation(api.continueBudgetState.consume, scope)).toBe(false);
 });
 
-it("consent storage rejects approval ids it cannot index and cleanup deletes one bounded batch", async () => {
+it("consent storage rejects approval ids it cannot index", async () => {
   const t = setup();
   const scope = { subject: "alice", threadId: "thread-a", runId: "run-1" };
   for (const approvalId of ["", "x".repeat(CONSENT_LIMITS.approvalIdBytes + 1), "界".repeat(171)])
@@ -349,25 +372,71 @@ it("consent storage rejects approval ids it cannot index and cleanup deletes one
     ).rejects.toThrow("INVALID_APPROVAL_ID");
   const widest = "界".repeat(Math.floor(CONSENT_LIMITS.approvalIdBytes / 3));
   await t.mutation(api.continueBudgetState.record, { ...scope, approvalId: widest });
+  expect(await t.mutation(api.continueBudgetState.consume, { ...scope, approvalId: widest })).toBe(
+    true,
+  );
+});
+
+it("cleanup never deletes consent younger than core's response-receipt retention and deletes one bounded batch after it", async () => {
+  const t = setup();
+  const scope = { subject: "alice", threadId: "thread-a", runId: "run-1", spent: true };
   await t.run(async (ctx) => {
-    for (let i = 0; i < CONSENT_LIMITS.cleanupBatch; i++)
+    for (let i = 0; i < CONSENT_LIMITS.cleanupBatch + 1; i++)
       await ctx.db.insert("agevexBudgetConsents", { ...scope, approvalId: `a${i}` });
     await ctx.db.insert("agevexBudgetConsents", {
-      subject: "bob",
-      threadId: "t",
+      ...scope,
+      threadId: "thread-b",
       approvalId: "a",
-      runId: "run-1",
     });
   });
-  expect(await t.mutation(api.continueBudgetState.cleanup, { subject: "alice" })).toEqual({
-    deleted: CONSENT_LIMITS.cleanupBatch,
-    done: false,
+  const clean = (threadId = "thread-a") =>
+    t.mutation(api.continueBudgetState.cleanup, { subject: "alice", threadId });
+  // Just inside the retention window: nothing may be deleted, or a replayed
+  // approve could record fresh consent after the spent row was removed.
+  vi.setSystemTime(Date.now() + LIMITS.receiptRetentionMs - 60_000);
+  expect(await clean()).toEqual({ deleted: 0, done: true });
+  expect(await consentRows(t)).toHaveLength(CONSENT_LIMITS.cleanupBatch + 2);
+  vi.setSystemTime(Date.now() + 120_000);
+  expect(await clean()).toEqual({ deleted: CONSENT_LIMITS.cleanupBatch, done: false });
+  expect(await clean()).toEqual({ deleted: 1, done: true });
+  // Only the target thread was cleaned.
+  expect(await consentRows(t)).toMatchObject([{ threadId: "thread-b" }]);
+});
+
+it("a delegated child that calls continue_budget gets a typed ROOT_ONLY denial and records no consent", async () => {
+  const t = setup();
+  state.steps.push([
+    {
+      type: "tool-call",
+      toolName: "agevex_delegate",
+      toolCallId: "delegate",
+      input: JSON.stringify({ agent: "Helper", task: "Ask for budget" }),
+    },
+  ]);
+  const alice = t.withIdentity({ subject: "alice" });
+  const receipt = requireReceipt(
+    await alice.mutation(api.host.open, { agent: "Tools", prompt: "Go", requestKey: "child" }),
+  );
+  await drain(t);
+  const runs = await alice.query(api.host.delegations, {
+    threadId: receipt.threadId,
+    paginationOpts: { cursor: null, numItems: 10 },
   });
-  expect(await t.mutation(api.continueBudgetState.cleanup, { subject: "alice" })).toEqual({
-    deleted: 1,
-    done: true,
+  const childThreadId = runs.page[0].childThreadId!;
+  const assignment = await t.query(managed.queue.assignment, { threadId: childThreadId });
+  const childApproval = await approvalId(t, assignment!.assignmentId);
+  await alice.mutation(api.host.respond, {
+    threadId: childThreadId,
+    approvalId: childApproval,
+    approved: true,
   });
-  expect(await t.run((ctx) => ctx.db.query("agevexBudgetConsents").collect())).toHaveLength(1);
+  await drain(t);
+  // The approved child call returned the typed denial, not an approval.
+  expect(child.calls).toHaveLength(2);
+  const prompt = JSON.stringify(child.calls[1].prompt);
+  expect(prompt).toContain("ROOT_ONLY");
+  expect(prompt).not.toContain('"approved":true');
+  expect(await consentRows(t)).toEqual([]);
 });
 
 it("a thread that is not stopped for budget is left untouched", async () => {
@@ -471,7 +540,7 @@ it("an approval recorded during an earlier run cannot resume a later run's stop"
   });
   expect((await budgetRows(t))[0].limit).toBe(before);
   // The mismatched row is not spent.
-  expect(await consentRows(t)).toHaveLength(1);
+  expect((await consentRows(t)).filter((row) => !row.spent)).toHaveLength(1);
   expect(
     await first.alice.query(api.host.activity, { threadId: first.receipt.threadId }),
   ).toMatchObject({

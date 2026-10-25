@@ -46,7 +46,7 @@ Core keeps approval decisions in the native Agent transcript and has no
 read-only "was it approved" query. Consent is therefore **host state**: your
 approve action is one mutation that calls core `respond({ approved: true })` and
 records the consent row in the same transaction. The row is
-`{ subject, threadId, approvalId, runId }` in `agevexBudgetConsents`, where
+`{ subject, threadId, approvalId, runId, spent }` in `agevexBudgetConsents`, where
 `runId` is the thread's `activity.runId` at approval time.
 
 ```ts
@@ -72,10 +72,23 @@ export const approveContinue = mutationGeneric({
 ```
 
 Denials are answered through plain `respond({ approved: false })` and record
-nothing. `record` is idempotent (the first row wins); `consume` is how the resume spends it. Approval ids over 512 UTF-8 bytes cannot be indexed and are
-rejected, which rolls back the `respond` too. Rows outlive threads: call the
-shipped internal `cleanup({ subject, threadId? })` from your retention job (at
-most 128 rows per call; call again while `done` is false).
+nothing. `record` is idempotent (the first row wins, spent or not); `consume` is how the
+resume spends it. Approval ids over 512 UTF-8 bytes cannot be indexed and are rejected, which rolls
+back the `respond` too.
+
+**Root agents only.** Register `continue_budget` on root agents. Budgets, stops
+and the resume are keyed to the root thread's run. If a delegated child calls it
+anyway, the tool returns `{ status: "denied", code: "ROOT_ONLY" }` once the user
+approves, and records nothing. Core evaluates `needsApproval` without the
+`ToolContext`, so the child's approval request cannot be suppressed before the
+user is asked.
+
+**Cleanup.** Rows outlive threads. Call the shipped internal
+`cleanup({ subject, threadId })` from your thread-deletion job. It deletes at
+most 128 rows per call (call again while `done` is false) and **never deletes a
+row younger than `LIMITS.receiptRetentionMs` (7 days)**, which is how long core
+`respond` replays its saved result. A spent row is what stops a replayed approve
+from creating fresh consent, so it must outlive that window.
 
 ## Continue a stopped run
 
@@ -121,11 +134,12 @@ send a fresh request as a new run.
   same thread can be stopped and resumed repeatedly. A `duplicate` or `rejected`
   receipt is never a success: the helper throws, which rolls back the consent
   spend, the budget write and the cancel, so the run stays resumable.
-- **Consent is single-use and run-bound.** `consume` deletes the row inside the
-  resume transaction and succeeds only for the same owner, thread, approval id
-  and stopped run id it was recorded for. One approval therefore cannot authorize
-  a later stop, and an approval given in one run cannot unlock another run's
-  stop. A failed resume restores the row.
+- **Consent is single-use and run-bound.** `consume` marks the row `spent` inside
+  the resume transaction and succeeds only for an unspent row of the same owner,
+  thread, approval id and stopped run id. One approval therefore cannot authorize
+  a later stop, an approval given in one run cannot unlock another run's stop, and
+  a replayed approve (core `respond` replays for 7 days) cannot re-create consent
+  because the spent row blocks re-recording. A failed resume restores the row.
 - **Consent is never inferred.** The helper never calls `respond`, so a pending
   approval cannot be approved on the user's behalf. An approval answered through
   core alone, a denied one, or an unknown id returns `no-consent` and changes

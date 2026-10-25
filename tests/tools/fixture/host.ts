@@ -52,9 +52,36 @@ const hostApi = anyApi as unknown as ApiFromModules<{
 export const todoRefs = hostApi.todoState satisfies TodoFunctions;
 export const goalRefs = hostApi.goalsState satisfies GoalFunctions;
 
+// A delegated child that (wrongly) carries the root-only continue_budget tool.
+// Its model asks for consent once, then finishes.
+export const child = { calls: [] as LanguageModelV4CallOptions[] };
+const childModel = mockModel();
+childModel.doStream = async (args) => {
+  const index = child.calls.length;
+  child.calls.push(args);
+  return scriptedModel([
+    index === 0
+      ? [
+          {
+            type: "tool-call",
+            toolName: "continue_budget",
+            toolCallId: "child-consent",
+            input: JSON.stringify({ reason: "The child wants more budget" }),
+          },
+        ]
+      : [{ type: "text", text: "Child finished." }],
+  ]).doStream(args);
+};
+const helper = new Agent(agent, {
+  name: "Helper",
+  subagents: [],
+  languageModel: childModel,
+  tools: { continue_budget: createContinueBudgetTool() },
+});
+
 const main = new Agent(agent, {
   name: "Tools",
-  subagents: [],
+  subagents: [helper],
   languageModel: model,
   tools: {
     ...createTodoTools(todoRefs),
@@ -75,7 +102,12 @@ const runtime = registerAgent(component, {
         "host:coordinate",
       ) as unknown as FunctionReference<"mutation", "internal", CoordinateArgs, CoordinateResult>,
   },
-  authorize: async (ctx) => {
+  authorize: async (ctx, scope) => {
+    // Delegation runs from a background slice with no end user on the connection.
+    if (scope.operation === "delegate" || scope.operation === "deliver") {
+      if (scope.subject !== "alice" && scope.subject !== "bob") throw new Error("FORBIDDEN");
+      return { subject: scope.subject };
+    }
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("UNAUTHENTICATED");
     return { subject: identity.subject };
@@ -185,5 +217,5 @@ export const resumeAfterBudget = mutationGeneric({
 });
 
 export const { runTurn, coordinate } = runtime.internalFunctions();
-export const { open, send, respond, answer, cancel, messages, activity } =
+export const { open, send, respond, answer, cancel, messages, activity, delegations } =
   runtime.authorizedEndpoints();
