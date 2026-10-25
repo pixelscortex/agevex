@@ -4,26 +4,11 @@ import { convexTest } from "convex-test";
 import agent from "@convex-dev/agent/test";
 import agevex from "../src/test.js";
 import schema from "./fixture/schema.js";
-import { fixture, reset, exports, api, critic, main, text, call } from "./hooks.host.js";
+import { fixture, reset, exports, api, critic, text, call } from "./hooks.host.js";
 import { requireReceipt } from "./receipt.js";
 import { createFunctionHandle } from "convex/server";
 import { HOST_LIMITS, LIMITS, type Limits } from "../src/component/limits.js";
 import { components } from "./fixture/api.js";
-// Avoid expanding the native gateway-model union to override search options.
-const modelContext = (
-  main as unknown as {
-    options: {
-      contextOptions?: {
-        recentMessages: number;
-        searchOptions: {
-          textSearch: boolean;
-          limit: number;
-          messageRange: { before: number; after: number };
-        };
-      };
-    };
-  }
-).options;
 const modules = import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]);
 function setup(limits?: Partial<Limits>, platformLimits = false) {
   const t = convexTest({
@@ -74,7 +59,6 @@ beforeEach(() => {
   vi.useFakeTimers();
 });
 afterEach(() => {
-  modelContext.contextOptions = undefined;
   vi.clearAllTimers();
   vi.useRealTimers();
 });
@@ -106,6 +90,84 @@ it("beforeTurn notes become escaped user-role context in the same turn", async (
         message.role === "user" && JSON.stringify(message.content).includes("<note from="),
     ),
   ).toBe(true);
+});
+
+it("a host contextHandler runs exactly once and controls the model context", async () => {
+  const handler = vi.fn((_ctx, context) => [
+    ...context.allMessages,
+    { role: "user" as const, content: "host context marker" },
+  ]);
+  fixture.contextHandler = handler;
+  fixture.hooks.beforeTurn = () => ({ note: "host-visible advice" });
+  const t = setup();
+  await open(t);
+  await drain(t);
+  expect(handler).toHaveBeenCalledTimes(1);
+  const prompt = JSON.stringify(calls()[0].args.prompt);
+  expect(prompt).toContain("host context marker");
+  expect(prompt.match(/host-visible advice/g)).toHaveLength(1);
+});
+
+it("continuation instructions and their replies retain chronological order", async () => {
+  fixture.steps.Main = (n) => text(`reply${n}`);
+  fixture.hooks.afterTurn = (_hc, event) =>
+    event.turn <= 2 ? { continue: `instruction${event.turn}` } : undefined;
+  const t = setup();
+  const receipt = await open(t);
+  await drain(t);
+  const prompt = JSON.stringify(calls()[2].args.prompt);
+  const ordered = ["reply0", "instruction1", "reply1", "instruction2"];
+  for (let n = 1; n < ordered.length; n++)
+    expect(prompt.indexOf(ordered[n])).toBeGreaterThan(prompt.indexOf(ordered[n - 1]));
+  await send(t, receipt.threadId, "later request");
+  await drain(t);
+  const history = JSON.stringify(calls()[3].args.prompt);
+  const chronology = ["instruction1", "reply1", "instruction2", "reply2"];
+  for (const entry of chronology) expect(history.match(new RegExp(entry, "g"))).toHaveLength(1);
+  for (let n = 1; n < chronology.length; n++)
+    expect(history.indexOf(chronology[n])).toBeGreaterThan(history.indexOf(chronology[n - 1]));
+});
+
+it("beforeTurn receives each continuation's own prompt", async () => {
+  const prompts: string[] = [];
+  fixture.hooks.beforeTurn = (_hc, event) => {
+    prompts.push(event.prompt);
+  };
+  fixture.hooks.afterTurn = (_hc, event) =>
+    event.turn <= 2 ? { continue: `instruction${event.turn}` } : undefined;
+  const t = setup();
+  await open(t);
+  await drain(t);
+  expect(prompts).toEqual(["first request", "instruction1", "instruction2"]);
+});
+
+it("a note consumed by A remains visible to an earlier-queued request B", async () => {
+  const held = gate();
+  fixture.steps.Main = async (n) => {
+    if (n === 0) {
+      await held.promise;
+      return call("echo", { text: "finish A" });
+    }
+    return text(`reply ${n}`);
+  };
+  const t = setup();
+  const receipt = await open(t);
+  await waitFor(t, () => calls().length === 1);
+  await send(t, receipt.threadId, "request B");
+  await owner(t).mutation(api.agents.note, {
+    threadId: receipt.threadId,
+    text: "shared advice for A and B",
+    from: "critic",
+  });
+  held.release();
+  await drain(t);
+  expect(calls()).toHaveLength(3);
+  for (const n of [1, 2])
+    expect(JSON.stringify(calls()[n].args.prompt).match(/shared advice for A and B/g)).toHaveLength(
+      1,
+    );
+  expect(JSON.stringify(calls()[1].args.prompt)).not.toContain("request B");
+  expect(JSON.stringify(calls()[2].args.prompt)).toContain("request B");
 });
 
 it.each(["echo", "native", "once"])(
@@ -224,9 +286,14 @@ it.each(["idle", "mid-slice"])(
       const prompt = JSON.stringify(calls()[n].args.prompt);
       expect(prompt.match(/unique control advice/g)).toHaveLength(1);
       expect(prompt).not.toContain("queued future request");
-      expect(prompt.indexOf("unique control advice")).toBeGreaterThan(
-        prompt.indexOf("second ready request"),
-      );
+      if (arrival === "idle")
+        expect(prompt.indexOf("unique control advice")).toBeLessThan(
+          prompt.indexOf("second ready request"),
+        );
+      else
+        expect(prompt.indexOf("unique control advice")).toBeGreaterThan(
+          prompt.indexOf("second ready request"),
+        );
     }
     expect(fixture.effects).toEqual(["effect-1", "effect-2"]);
     // Once a new ready boundary owns these historical notes, native history
@@ -235,48 +302,7 @@ it.each(["idle", "mid-slice"])(
   },
 );
 
-it("pending notes beyond the turn cap stay hidden even before the ready anchor", async () => {
-  const t = setup({ notesPerTurn: 1, notesPending: 2 });
-  const receipt = await open(t);
-  await drain(t);
-  for (const value of ["admitted control", "pending control"])
-    await owner(t).mutation(api.agents.note, {
-      threadId: receipt.threadId,
-      text: value,
-      from: "critic",
-    });
-  await send(t, receipt.threadId, "next ready request");
-  await drain(t);
-  const prompt = JSON.stringify(calls()[1].args.prompt);
-  expect(prompt.match(/admitted control/g)).toHaveLength(1);
-  expect(prompt).not.toContain("pending control");
-});
-
-it("native search excludes admitted and pending controls by id before explicit replay", async () => {
-  modelContext.contextOptions = {
-    recentMessages: 1,
-    searchOptions: { textSearch: true, limit: 10, messageRange: { before: 0, after: 0 } },
-  };
-  const t = setup({ notesPerTurn: 1, notesPending: 2 });
-  const receipt = await open(t);
-  await drain(t);
-  for (let n = 0; n < 2; n++)
-    await owner(t).mutation(api.agents.note, {
-      threadId: receipt.threadId,
-      text: "searchable advice",
-      from: "critic",
-    });
-  await send(t, receipt.threadId, "searchable advice");
-  await drain(t);
-  const prompt = calls()[1].args.prompt;
-  expect(
-    prompt.filter((message) => JSON.stringify(message.content).includes("<note from=")),
-  ).toHaveLength(1);
-  // The ordinary request with matching text remains present as well.
-  expect(JSON.stringify(prompt).match(/searchable advice/g)).toHaveLength(2);
-});
-
-it("control ids preserve distinct identical requests and retain notes across hook turns", async () => {
+it("distinct identical requests and notes persist once across hook turns", async () => {
   fixture.hooks.beforeTurn = () => ({ note: "same advice" });
   fixture.hooks.afterTurn = (_hc, event) =>
     event.turn < 2 ? { continue: "continue marker" } : undefined;
@@ -287,14 +313,13 @@ it("control ids preserve distinct identical requests and retain notes across hoo
   expect(second.match(/same advice/g)).toHaveLength(2); // Two distinct native notes, once each.
   expect(second.match(/continue marker/g)).toHaveLength(1);
   fixture.hooks = {};
-  // This ordinary user request deliberately has exactly the native note's
-  // escaped body. Filtering must use recorded ids rather than text or role.
+  // An ordinary user request can match a note body without being deduplicated.
   await send(t, receipt.threadId, '<note from="Main">same advice</note>');
   await drain(t);
   expect(JSON.stringify(calls()[2].args.prompt).match(/same advice/g)).toHaveLength(3);
 });
 
-it("maximum control replay fits platform limits across all eight hook continuations", async () => {
+it("maximum native control history fits platform limits across all eight hook continuations", async () => {
   fixture.hooks.beforeTurn = async (hc) => {
     const row = await hc.ctx.runQuery(components.agevex.queue.assignment, {
       threadId: hc.threadId,
@@ -307,6 +332,8 @@ it("maximum control replay fits platform limits across all eight hook continuati
           text: '"'.repeat(LIMITS.noteLength),
           from: '"'.repeat(LIMITS.requestKeyLength),
           addMessages,
+          deleteMessages: await createFunctionHandle(components.agent.messages.deleteByIds),
+          getMessages: await createFunctionHandle(components.agent.messages.getMessagesByIds),
         }),
       ).toBe(true);
   };
@@ -330,6 +357,55 @@ it("maximum control replay fits platform limits across all eight hook continuati
     HOST_LIMITS.continuesPerRun.max,
   );
 }, 30_000);
+
+it("maximum in-flight notes retain tool adjacency and appear once within platform limits", async () => {
+  const held = gate();
+  fixture.steps.Main = async (n) => {
+    if (n === 0) {
+      await held.promise;
+      return call("echo", { text: "bounded step" });
+    }
+    return text("done");
+  };
+  const t = setup(
+    {
+      notesPending: HOST_LIMITS.notesPending.max,
+      notesPerTurn: HOST_LIMITS.notesPerTurn.max,
+    },
+    true,
+  );
+  const receipt = await open(t);
+  await waitFor(t, () => calls().length === 1);
+  for (let n = 0; n < HOST_LIMITS.notesPending.max; n++)
+    expect(
+      await owner(t).mutation(api.agents.note, {
+        threadId: receipt.threadId,
+        text: String(n) + '"'.repeat(LIMITS.noteLength - String(n).length),
+        from: '"'.repeat(LIMITS.requestKeyLength),
+      }),
+    ).toBe(true);
+  held.release();
+  await drain(t);
+  expect(calls()).toHaveLength(2);
+  expect(
+    calls()[1].args.prompt.filter((message) =>
+      JSON.stringify(message.content).includes("<note from="),
+    ),
+  ).toHaveLength(HOST_LIMITS.notesPending.max);
+  expect(fixture.effects).toEqual(["bounded step"]);
+  // Maximum escaped notes span the transcript reader's byte-limited pages.
+  let cursor: string | null = null;
+  let noteCount = 0;
+  do {
+    const page: Awaited<ReturnType<typeof messages>> = await owner(t).query(api.agents.messages, {
+      threadId: receipt.threadId,
+      paginationOpts: { cursor, numItems: 100 },
+    });
+    noteCount += page.page.filter((message) => message.text.includes("<note from=")).length;
+    cursor = page.isDone ? null : page.continueCursor;
+  } while (cursor);
+  expect(noteCount).toBe(HOST_LIMITS.notesPending.max);
+});
 
 it("registration rejects a sixteenth active descendant to preserve cancel headroom", () => {
   expect(() => exports({ activeChildrenPerRoot: 15 })).not.toThrow();
@@ -776,6 +852,30 @@ it("cancel stops side runs and fences their late notes", async () => {
   await drain(t);
   expect((await status(t, receipt.threadId)).subagents.active).toBe(0);
   expect(JSON.stringify(await messages(t, receipt.threadId))).not.toContain("late review");
+});
+
+it("cancel removes an in-flight note without reading its body in the cancel transaction", async () => {
+  const held = gate();
+  fixture.steps.Main = async () => {
+    await held.promise;
+    return text("late output");
+  };
+  const t = setup();
+  const receipt = await open(t);
+  await waitFor(t, () => calls().length === 1);
+  await owner(t).mutation(api.agents.note, {
+    threadId: receipt.threadId,
+    text: "cancelled passive advice",
+    from: "critic",
+  });
+  await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
+  held.release();
+  await drain(t);
+  expect(JSON.stringify(await messages(t, receipt.threadId))).not.toContain(
+    "cancelled passive advice",
+  );
+  expect(calls()).toHaveLength(1);
+  expect((await status(t, receipt.threadId)).turnStatus).toBe("idle");
 });
 
 it("beforeDelegate can refuse a child without calling generic tool hooks or spending a launch", async () => {

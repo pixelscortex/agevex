@@ -65,53 +65,83 @@ export async function recordMessages(
 }
 
 export const takeNotes = mutation({
-  args: { assignmentId: v.id("assignments"), executionId: v.string(), getMessages: v.string() },
+  args: {
+    assignmentId: v.id("assignments"),
+    executionId: v.string(),
+    getMessages: v.string(),
+    addMessages: v.string(),
+  },
+  returns: v.boolean(),
   handler: async (ctx, args) => {
     const row = await ctx.db.get("assignments", args.assignmentId);
-    if (!row || row.cancelled || row.turnToken !== args.executionId || row.turnStatus !== "running")
-      return { messages: [], excludeMessageIds: [] };
+    if (
+      !row ||
+      row.cancelled ||
+      row.turnToken !== args.executionId ||
+      row.turnStatus !== "running" ||
+      row.pendingGeneration
+    )
+      return false;
     const cap = (row.limits?.notesPerTurn ?? LIMITS.notesPerTurn) - (row.notesTaken ?? 0);
-    // Read the independent pending queue even when this logical turn has spent
-    // its note allowance. Those exact ids must also be hidden from native
-    // history when they precede the ready-work anchor; only admitted notes are
-    // explicitly injected. <=24 pending metadata rows, never transcript scans.
-    const pending = await ctx.db
+    if (cap <= 0) return false;
+    // One exact note per transaction: <=50 KiB body + six native merge heads
+    // <=6 MiB + bounded stream-abort metadata + assignment <8 MiB <16 MiB.
+    // The action drains <=24 notes using separate transactions, so native reads
+    // never multiply by notesPerTurn. No workflow step or transcript scan.
+    const note = await ctx.db
       .query("inbox")
       .withIndex("by_assignment_ready", (q) => q.eq("assignmentId", row._id).eq("passive", true))
-      .take(row.limits?.notesPending ?? LIMITS.notesPending);
-    const notes = pending.slice(0, Math.max(0, cap));
-    const messageIds = [
-      ...(row.turnControlMessageIds ?? []),
-      ...notes.map((note) => note.messageId),
-    ];
-    const excludeMessageIds = [...messageIds, ...pending.map((note) => note.messageId)];
-    if (!messageIds.length) return { messages: [], excludeMessageIds };
-    // Keep controls until the NEXT ready-work claim, including across hook
-    // continuations. At hard maxima: (8+1)*24=216 notes plus 8 continue prompts
-    // =224 exact ids (<10 KiB). Native note docs <=50 KiB and continue docs
-    // <=130 KiB: 216*50+8*130=11,840 KiB +24 KiB pending rows +32 KiB assignment
-    // <12 MiB <16 MiB. Bodies are read only by these recorded ids; native order
-    // sorts notes and prompts together without advancing the generation anchor.
-    const docs = (await ctx.runQuery(args.getMessages as FunctionHandle<"query">, {
-      messageIds,
-    })) as MessageDoc[];
-    const ordered = docs
-      .filter(Boolean)
-      .sort((a, b) => a.order - b.order || a.stepOrder - b.stepOrder);
-    for (const note of notes) await ctx.db.delete("inbox", note._id);
+      .first();
+    if (!note) return false;
+    if (note.deferredNoteDelete) {
+      const [message] = (await ctx.runQuery(args.getMessages as FunctionHandle<"query">, {
+        messageIds: [note.messageId],
+      })) as (MessageDoc | null)[];
+      if (!message || message.threadId !== row.threadId || message.message?.role !== "user")
+        throw new Error("NOTE_MISSING");
+      // A pending user note stores the original payload only in Agent. Once
+      // the step finishes, atomically replace that provisional document with
+      // an ordinary user message AFTER the complete tool-call/result pair.
+      // Native deleteByIds operates on our recorded id; streams have finished
+      // before this boundary. No read-time suppression or message injection.
+      await ctx.runMutation(note.deferredNoteDelete as FunctionHandle<"mutation">, {
+        messageIds: [note.messageId],
+      });
+      const saved = (await ctx.runMutation(args.addMessages as FunctionHandle<"mutation">, {
+        threadId: row.threadId,
+        order: message.order,
+        agentName: message.agentName,
+        messages: [{ message: message.message }],
+      })) as { messages: MessageDoc[] };
+      await recordMessages(ctx, row, saved.messages);
+    }
+    await ctx.db.delete("inbox", note._id);
     await ctx.db.patch("assignments", row._id, {
-      notesTaken: (row.notesTaken ?? 0) + notes.length,
-      notesPending: row.notesPending - notes.length,
-      turnControlMessageIds: messageIds,
+      notesTaken: (row.notesTaken ?? 0) + 1,
+      notesPending: row.notesPending - 1,
     });
-    return {
-      messages: ordered
-        .filter((doc) => doc.message?.role === "user")
-        .map((doc) => ({ role: "user" as const, content: doc.text ?? "" })),
-      excludeMessageIds,
-    };
+    return true;
   },
 });
+
+/** Agent 0.7.7 client/messages.ts:132-138 forwards promptMessageId/order.
+ * component/messages.ts:306-318 selects the anchor group, but :392-406 moves
+ * USER messages to a fresh order even with promptMessageId. Its supported
+ * numeric order option (:302-305,391-392) instead appends the first user message
+ * at the next stepOrder. Both options together are rejected (:258-262).
+ * Read one recorded anchor id, then save one user control with that order in
+ * this same transaction. No transcript scan or read-time context adapter.
+ * Exact anchor <=1 MiB + six native merge heads <=6 MiB + one save/result
+ * <=130 KiB + assignment/ref metadata <128 KiB: <8 MiB <16 MiB per control.
+ */
+async function controlOrder(ctx: MutationCtx, row: Doc<"assignments">, getMessages: string) {
+  const anchor = row.promptMessageId ?? row.latestRequestMessageId;
+  const [message] = (await ctx.runQuery(getMessages as FunctionHandle<"query">, {
+    messageIds: [anchor],
+  })) as (MessageDoc | null)[];
+  if (!message || message.threadId !== row.threadId) throw new Error("CONTROL_ANCHOR_MISSING");
+  return message.order;
+}
 
 export const hookState = mutation({
   args: {
@@ -147,6 +177,7 @@ export const continueAdmission = mutation({
     executionId: v.string(),
     prompt: v.string(),
     addMessages: v.string(),
+    getMessages: v.string(),
   },
   handler: async (ctx, args) => {
     if (!args.prompt.trim() || args.prompt.length > LIMITS.messageLength)
@@ -167,6 +198,7 @@ export const continueAdmission = mutation({
     // A lost action response cannot leave an untracked control prompt behind.
     const saved = (await ctx.runMutation(args.addMessages as FunctionHandle<"mutation">, {
       threadId: row.threadId,
+      order: await controlOrder(ctx, row, args.getMessages),
       messages: [{ message: { role: "user", content: args.prompt } }],
     })) as { messages: MessageDoc[] };
     const messageId = saved.messages[0]._id;
@@ -174,7 +206,7 @@ export const continueAdmission = mutation({
     await ctx.db.patch("runs", run._id, { continues: (run.continues ?? 0) + 1 });
     await ctx.db.patch("assignments", row._id, {
       hookContinue: true,
-      turnControlMessageIds: [...(row.turnControlMessageIds ?? []), messageId],
+      logicalPromptMessageId: messageId,
     });
     return messageId;
   },
@@ -248,6 +280,8 @@ export const addNote = mutation({
     text: v.string(),
     from: v.string(),
     addMessages: v.string(),
+    getMessages: v.string(),
+    deleteMessages: v.string(),
   },
   returns: v.boolean(),
   handler: async (ctx, args): Promise<boolean> => {
@@ -269,9 +303,15 @@ export const addNote = mutation({
       );
     const saved = (await ctx.runMutation(args.addMessages as FunctionHandle<"mutation">, {
       threadId: row.threadId,
+      order: await controlOrder(ctx, row, args.getMessages),
       agentName: args.from,
       messages: [
         {
+          // Agent reserves the assistant slot before model I/O and fills it
+          // later (vercel/client/start.ts:213-232,383-395). A successful note
+          // here could split that assistant tool call from its result. Keep
+          // only in-flight notes pending until the completed-step boundary.
+          ...(row.pendingGeneration ? { status: "pending" } : {}),
           message: {
             role: "user",
             content: `<note from="${escape(args.from)}">${escape(args.text)}</note>`,
@@ -287,6 +327,7 @@ export const addNote = mutation({
       runId: row.runId!,
       kind: "note",
       passive: true,
+      ...(row.pendingGeneration ? { deferredNoteDelete: args.deleteMessages } : {}),
     });
     await ctx.db.patch("assignments", row._id, {
       notesPending: row.notesPending + 1,

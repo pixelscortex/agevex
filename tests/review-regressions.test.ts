@@ -643,9 +643,11 @@ it.each(["routing", "approval"])(
     // Independent passive capacity can coexist with every ready-work slot. Use
     // real, maximum-size escaped native notes on all 16 affected assignments;
     // cancel must delete only their small inbox metadata within the same budget.
-    const addMessages = await t.run(() =>
-      createFunctionHandle(components.agent.messages.addMessages),
-    );
+    const { addMessages, getMessages, deleteMessages } = await t.run(async () => ({
+      addMessages: await createFunctionHandle(components.agent.messages.addMessages),
+      getMessages: await createFunctionHandle(components.agent.messages.getMessagesByIds),
+      deleteMessages: await createFunctionHandle(components.agent.messages.deleteByIds),
+    }));
     for (const turn of turns)
       for (let i = 0; i < HOST_LIMITS.notesPending.max; i++)
         expect(
@@ -654,6 +656,8 @@ it.each(["routing", "approval"])(
             text: '"'.repeat(LIMITS.noteLength),
             from: '"'.repeat(LIMITS.requestKeyLength),
             addMessages,
+            getMessages,
+            deleteMessages,
           }),
         ).toBe(true);
     for (let i = mode === "approval" ? 1 : 0; i < HOST_LIMITS.queueLength.max; i++) {
@@ -718,7 +722,6 @@ it.each(["routing", "approval"])(
         cancellationEpoch: 1,
         queuedMessages: 0,
         notesPending: 0,
-        turnControlMessageIds: [],
         turnStatus: "idle",
       });
     expect(

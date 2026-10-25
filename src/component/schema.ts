@@ -194,9 +194,11 @@ export default defineSchema({
     notesTaken: v.optional(v.number()),
     // Read by note admission/draining/cancel; never charged to ready work.
     notesPending: v.number(),
-    // Exact native note/continue ids replayed across slices and hook turns.
-    // Cleared only at a new ready-work boundary (<=224 ids at hard maxima).
-    turnControlMessageIds: v.optional(v.array(v.string())),
+    // Read by beforeTurn: a continuation has its own prompt, while generation
+    // remains bounded by the original ready-work anchor below.
+    logicalPromptMessageId: v.optional(v.string()),
+    // Read by idle-note saves after the active promptMessageId is cleared.
+    latestRequestMessageId: v.optional(v.string()),
     // Only the first slice owns the shared routing bit; terminal fences settle it.
     routingAgentIndex: v.optional(v.number()),
     hookContinue: v.optional(v.boolean()),
@@ -279,6 +281,9 @@ export default defineSchema({
     // Deferred joins append later than their native save. Claim compares this
     // recorded save order, never queue insertion order, to retain newer answers.
     passive: v.optional(v.boolean()),
+    // Present only for an in-flight native note. Boundary draining replaces
+    // its pending payload document; cancel passes exact ids to native cleanup.
+    deferredNoteDelete: v.optional(v.string()),
     messageSequence: v.optional(v.number()),
     runId: v.id("runs"),
     kind: v.union(

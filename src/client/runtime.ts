@@ -16,7 +16,7 @@ import { z } from "zod";
 import type { ComponentApi } from "../component/_generated/component.js";
 import { denialCode, runErrorCode } from "../component/schema.js";
 import { LIMITS, resolveLimits } from "../component/limits.js";
-import { controlContext, postNote, type NoteArgs } from "./hooks.js";
+import { postNote, type NoteArgs } from "./hooks.js";
 import { bindOnceTool, fingerprint, noopMeter } from "./once.js";
 import type {
   HookResult,
@@ -1064,6 +1064,12 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                     text: result.note,
                     from: managed.name,
                     addMessages: await createFunctionHandle(managed.component.messages.addMessages),
+                    getMessages: await createFunctionHandle(
+                      managed.component.messages.getMessagesByIds,
+                    ),
+                    deleteMessages: await createFunctionHandle(
+                      managed.component.messages.deleteByIds,
+                    ),
                   });
                 return result;
               } catch (error) {
@@ -1081,7 +1087,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
               let selectedModel = claimed.modelId;
               if (claimed.isTurnStart && managed.hooks?.beforeTurn) {
                 const docs = await ctx.runQuery(managed.component.messages.getMessagesByIds, {
-                  messageIds: [claimed.promptMessageId],
+                  messageIds: [claimed.logicalPromptMessageId],
                 });
                 const before = await hook(
                   () =>
@@ -1278,21 +1284,31 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                     return response;
                   },
                 });
-              const controls = await fencedCtx.runMutation(component.hooks.takeNotes, {
-                assignmentId: claimed.assignmentId,
-                executionId: args.turnToken,
-                getMessages: await createFunctionHandle(
+              const drainNotes = async () => {
+                const getMessages = await createFunctionHandle(
                   managed.component.messages.getMessagesByIds,
-                ),
-              });
+                );
+                const addMessages = await createFunctionHandle(
+                  managed.component.messages.addMessages,
+                );
+                for (let n = 0; n < limits.notesPerTurn; n++) {
+                  if (
+                    !(await fencedCtx.runMutation(component.hooks.takeNotes, {
+                      assignmentId: claimed.assignmentId,
+                      executionId: args.turnToken,
+                      getMessages,
+                      addMessages,
+                    }))
+                  )
+                    break;
+                }
+              };
+              await drainNotes();
               const result = await managed.streamText(
-                controlContext(fencedCtx, managed.component, controls.excludeMessageIds),
+                fencedCtx,
                 { threadId: claimed.threadId },
                 {
                   promptMessageId: claimed.promptMessageId,
-                  // Already saved natively and excluded by exact id below.
-                  // saveInputMessages.ts:48-50 saves no extra copies with an anchor.
-                  messages: controls.messages,
                   // Agent 0.7.7 vercel/client/start.ts:107-108,234 supports this
                   // per-call override natively; never mutate a shared Agent's options.
                   ...(selectedModel
@@ -1315,16 +1331,6 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 {
                   saveStreamDeltas: { chunking: "word", throttleMs: LIMITS.streamThrottleMs },
                   storageOptions: { saveMessages: "promptAndOutput" },
-                  // Native history includes the anchor's complete response group.
-                  // Append controls after it, never between a tool call/result.
-                  // Agent 0.7.7 vercel/client/types.ts:673, start.ts:194-200.
-                  contextHandler: async (_ctx, context) => [
-                    ...context.search,
-                    ...context.recent,
-                    ...context.inputPrompt,
-                    ...context.existingResponses,
-                    ...context.inputMessages,
-                  ],
                 },
               );
               let streamError = false;
@@ -1334,6 +1340,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 },
               });
               const reason = await result.finishReason;
+              await drainNotes();
               const accepted = ["stop", "length", "tool-calls"];
               if (
                 hookFailed ||
@@ -1413,6 +1420,9 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                     executionId: args.turnToken,
                     prompt: after.continue,
                     addMessages: await createFunctionHandle(managed.component.messages.addMessages),
+                    getMessages: await createFunctionHandle(
+                      managed.component.messages.getMessagesByIds,
+                    ),
                   })
                 : null;
               if (continuation) {

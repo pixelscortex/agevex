@@ -83,8 +83,12 @@ export const HOST_LIMITS = {
  * hashed tool-call dedup keys, ids, counters and <=4 small events. Assignments
  * allow <=32 KiB: the original <=8 KiB (16 approval/deferred-call keys),
  * <=4 KiB exact message references, <=6 KiB side-review boundaries, <=3 KiB
- * private hook error, <=10 KiB consumed-control ids, plus scalar counters. Notes
- * have their own bounded queue N. Run additions are scalar counters plus
+ * private hook error, two prompt ids and scalar counters. The original 32 KiB
+ * envelope remains conservative after removing the <=10 KiB control-id replay
+ * list. Notes have their own bounded queue N; each inbox row, including the
+ * deferred native delete handle, stays <=1 KiB. Up to 24 deferred-note ids fit
+ * the existing <=4 KiB cleanup-job allowance; their bodies are read only by
+ * separate bounded cleanup transactions. Run additions are scalar counters plus
  * two 64-bit start/routing masks, keeping each run within its <=1 KiB envelope.
  *
  * Other proportional paths: claim drains <=152 consecutive ready rows,

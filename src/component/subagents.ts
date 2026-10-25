@@ -390,6 +390,7 @@ export const attach = mutation({
       errorCode: null,
       queuedMessages: 1,
       notesPending: 0,
+      latestRequestMessageId: args.promptMessageId,
       nextSequence: 1,
       nextTurn: 0,
       cancellationEpoch: 0,

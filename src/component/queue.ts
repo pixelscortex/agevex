@@ -330,6 +330,7 @@ export const accept = mutation({
     });
     await ctx.db.patch("assignments", row._id, {
       models,
+      latestRequestMessageId: args.promptMessageId,
       queuedMessages: row.queuedMessages + 1,
       nextSequence: row.nextSequence + 1,
     });
@@ -388,6 +389,7 @@ export const claim = mutation({
     v.object({
       ...scope.fields,
       promptMessageId: v.string(),
+      logicalPromptMessageId: v.string(),
       runId: v.string(),
       modelId: v.optional(v.string()),
       isTurnStart: v.boolean(),
@@ -471,7 +473,12 @@ export const claim = mutation({
       turnStatus: "running",
       continueSlice: false,
       hookContinue: false,
-      ...(first ? { turnControlMessageIds: [] } : {}),
+      ...(first
+        ? {
+            logicalPromptMessageId: row.promptMessageId,
+            latestRequestMessageId: row.promptMessageId,
+          }
+        : {}),
       ...(first || row.hookContinue ? { notesTaken: 0, hookError: undefined } : {}),
       approvals: row.approvals
         ? {
@@ -532,6 +539,7 @@ export const claim = mutation({
         subject: row.subject,
         agent: row.agent,
         promptMessageId: row.promptMessageId!,
+        logicalPromptMessageId: first ? row.promptMessageId! : row.logicalPromptMessageId!,
         runId: row.runId!,
         modelId,
         ...hooks,
@@ -575,6 +583,7 @@ export const claim = mutation({
       subject: row.subject,
       agent: row.agent,
       promptMessageId: row.promptMessageId!,
+      logicalPromptMessageId: first ? row.promptMessageId! : row.logicalPromptMessageId!,
       runId: row.runId!,
       modelId,
       ...hooks,
@@ -1357,9 +1366,8 @@ export const continueTurn = mutation({
       await disarmSlice(ctx, row);
       await sealGroups(ctx, row);
       // Keep the claimed ready-work prompt as the generation boundary across
-      // slices. Native Agent includes its whole response order, including this
-      // slice's tool results. Anchoring on the last tool result would place
-      // Agent's explicit `messages` between a tool call and its result.
+      // slices. Native Agent includes the whole response order, including
+      // tool results, notes and continuation prompts in stepOrder chronology.
       await ctx.db.patch("assignments", row._id, {
         continueSlice: true,
       });
@@ -1451,12 +1459,6 @@ export const cancel = mutation({
       await disarmSlice(ctx, row);
       await disarmRecovery(ctx, row);
       const approvalCleanup = !!row.approvals?.requests.length;
-      if (row.pendingGeneration || approvalCleanup)
-        await ctx.scheduler.runAfter(0, internal.cancellation.cleanup, {
-          assignmentId: row._id,
-          pending: row.pendingGeneration,
-          approvalEpoch: approvalCleanup ? row.approvals!.epoch : undefined,
-        });
       await ctx.db.patch("assignments", row._id, {
         cancelled: true,
         cancellationEpoch: row.cancellationEpoch + 1,
@@ -1470,7 +1472,7 @@ export const cancel = mutation({
         pinged: false,
         queuedMessages: 0,
         notesPending: 0,
-        turnControlMessageIds: [],
+        logicalPromptMessageId: undefined,
         continueSlice: false,
         approvalBlocked: !!approvalCleanup,
         approvals: approvalCleanup ? { ...row.approvals!, cleanupPending: true } : undefined,
@@ -1483,6 +1485,21 @@ export const cancel = mutation({
             (row.limits?.notesPending ?? LIMITS.notesPending) +
             2,
         );
+      const deferredNotes = inbox.filter((item) => item.deferredNoteDelete);
+      if (row.pendingGeneration || approvalCleanup || deferredNotes.length)
+        await ctx.scheduler.runAfter(0, internal.cancellation.cleanup, {
+          assignmentId: row._id,
+          pending: row.pendingGeneration,
+          approvalEpoch: approvalCleanup ? row.approvals!.epoch : undefined,
+          ...(deferredNotes.length
+            ? {
+                notes: {
+                  messageIds: deferredNotes.map((item) => item.messageId),
+                  deleteMessages: deferredNotes[0].deferredNoteDelete!,
+                },
+              }
+            : {}),
+        });
       for (const item of inbox) {
         if (!item.passive) await ctx.db.patch("runs", item.runId, { cancelled: true });
         await ctx.db.delete("inbox", item._id);

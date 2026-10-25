@@ -9,7 +9,7 @@ import {
   type CoordinateArgs,
   type CoordinateResult,
 } from "../src/client/index.js";
-import { mockModel, createTool } from "@convex-dev/agent";
+import { mockModel, createTool, type ContextHandler } from "@convex-dev/agent";
 import {
   mutationGeneric,
   makeFunctionReference,
@@ -32,6 +32,7 @@ export const fixture = {
   calls: [] as { agent: string; args: Args }[],
   effects: [] as string[],
   authorizeExecution: undefined as Registration["authorizeExecution"] | undefined,
+  contextHandler: undefined as ContextHandler | undefined,
   steps: {} as Record<
     string,
     (n: number, args: Args) => LanguageModelV4Content[] | Promise<LanguageModelV4Content[]>
@@ -77,6 +78,7 @@ const echo = {
 export const main = new Agent(components.agent, {
   name: "Main",
   languageModel: model("Main"),
+  contextHandler: (ctx, context) => fixture.contextHandler?.(ctx, context) ?? context.allMessages,
   subagents: [builder],
   tools: {
     echo: tool(echo),
@@ -104,6 +106,7 @@ export function reset() {
   fixture.calls = [];
   fixture.effects = [];
   fixture.authorizeExecution = undefined;
+  fixture.contextHandler = undefined;
   fixture.steps = {};
 }
 export function registration(limits?: Registration["limits"]) {

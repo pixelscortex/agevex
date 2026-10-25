@@ -6,7 +6,7 @@ import type {
   FunctionReference,
 } from "convex/server";
 import type { Infer } from "convex/values";
-import type { AgentComponent, ContextHandler, MessageDoc } from "@convex-dev/agent";
+import type { AgentComponent, MessageDoc } from "@convex-dev/agent";
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import type { LanguageModel, ToolSet } from "ai";
 import type { ToolContext } from "./once.js";
@@ -283,7 +283,6 @@ export type ManagedAgent = {
     target: { threadId: string },
     args: {
       promptMessageId: string;
-      messages?: { role: "user"; content: string }[];
       model?: Extract<LanguageModel, string | LanguageModelV4>;
       /** Only present when the managed delegation tool is merged in. */
       tools?: ToolSet;
@@ -295,7 +294,6 @@ export type ManagedAgent = {
     options: {
       saveStreamDeltas: { chunking: "word"; throttleMs: number };
       storageOptions: { saveMessages: "promptAndOutput" };
-      contextHandler?: ContextHandler;
     },
   ): Promise<{
     consumeStream(options?: { onError: (error: unknown) => void }): PromiseLike<void>;

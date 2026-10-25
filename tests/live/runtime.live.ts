@@ -75,15 +75,32 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
           });
         if (critic) {
           expect(live.criticCalls).toBe(1);
-          const transcript = await owner.query(api.agents.messages, {
-            threadId: receipt.threadId,
-            paginationOpts: { cursor: null, numItems: 20 },
-          });
-          expect(
-            transcript.page.some(
-              (message) => message.role === "user" && message.text.includes('<note from="Critic">'),
-            ),
-          ).toBe(true);
+          // R3 lets the watched parent finish before its side review's native
+          // note delivery commits. An inactive child is settled, not necessarily
+          // delivered; wait for the promised note rather than racing that write.
+          await expect
+            .poll(
+              async () => {
+                const deliveries = await owner.query(api.agents.delegations, {
+                  threadId: receipt.threadId,
+                  paginationOpts: { cursor: null, numItems: 20 },
+                });
+                const failed = deliveries.page.find(
+                  (run) => run.deliveryStatus === "failed" || run.deliveryStatus === "blocked",
+                );
+                if (failed) throw new Error(`LIVE_CRITIC_DELIVERY_FAILED:${failed.errorCode}`);
+                const transcript = await owner.query(api.agents.messages, {
+                  threadId: receipt.threadId,
+                  paginationOpts: { cursor: null, numItems: 20 },
+                });
+                return transcript.page.some(
+                  (message) =>
+                    message.role === "user" && message.text.includes('<note from="Critic">'),
+                );
+              },
+              { timeout: 180_000, interval: 200 },
+            )
+            .toBe(true);
         }
         if (delegation) {
           const runs = await owner.query(api.agents.delegations, {

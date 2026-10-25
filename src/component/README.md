@@ -9,9 +9,14 @@ Workpool: root parallelism 2, child parallelism 4. Hosts export `runTurn` and
   one execution token and cancellation epoch, the next-run model policy, and
   bounded native approval/deferred-call references, exact message references,
   side-review boundaries, note/turn counters and private hook errors.
-  `turnControlMessageIds` holds at most 224 native note/continue ids: context
-  consumption reads them for exact-id replay and exclusion, new ready-work
-  claims clear them, and cancellation drops them without reading native bodies.
+  `logicalPromptMessageId` identifies the prompt read by `beforeTurn`, including
+  a continuation. `promptMessageId` bounds native generation context, while
+  `latestRequestMessageId` gives idle notes an exact anchor after a turn ends.
+  Notes and continuation prompts append to that anchor's native order group;
+  in-flight notes use native pending status until a boundary atomically replaces
+  them after the complete step, preserving tool call/result adjacency. The
+  inbox's `deferredNoteDelete` holds the exact native delete handle used by
+  draining and cancel cleanup; no note body is copied into coordination tables.
 - `inbox`: FIFO ready message references and passive notes. The ready index
   excludes passive notes, so a note cannot start a turn or block settlement.
   A reserved row stays until claim, so approvals retain their work.

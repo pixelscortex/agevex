@@ -197,6 +197,23 @@ builderModel.doStream = (args) => {
   return builderStream({
     ...args,
     maxOutputTokens: LIVE_LIMITS.outputTokens,
+    // Match the root's model-facing constraint: the depth scenario requires
+    // Reviewer, while a forced tool choice alone leaves its agent argument
+    // unconstrained. Every child still uses the real managed delegation path.
+    tools: args.tools?.map((tool) =>
+      tool.type === "function" && tool.name === "agevex_delegate"
+        ? {
+            ...tool,
+            inputSchema: {
+              ...tool.inputSchema,
+              properties: {
+                ...tool.inputSchema.properties,
+                agent: { type: "string", enum: ["Reviewer"] },
+              },
+            },
+          }
+        : tool,
+    ),
     toolChoice: call === 0 ? { type: "tool", toolName: "agevex_delegate" } : { type: "none" },
   });
 };
