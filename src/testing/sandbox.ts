@@ -1,3 +1,8 @@
+/**
+ * Deterministic in-memory sandbox provider for offline behavior tests.
+ * Lifecycle, execution queues and bounded filesystem operations share isolated state.
+ * Hooks simulate uncertain provider outcomes without shell commands or credentials.
+ */
 import type { SandboxProvider, JobOutcome, FileEntry } from "../modules/sandbox/client/types.js";
 
 type FakeMachine = {
@@ -5,63 +10,98 @@ type FakeMachine = {
   files: Map<string, Uint8Array>;
 };
 type ExecResult = { exitCode: number; stdout: string; stderr: string; timedOut?: boolean };
-
+type FakeOptions = {
+  exec?: (command: string, sandboxId: string) => Promise<ExecResult> | ExecResult;
+  beforeReady?: (sandboxId: string) => Promise<void>;
+  create?: () => Promise<void>;
+  background?: (command: string) => JobOutcome[];
+};
+type FakeContext = {
+  opts: FakeOptions;
+  sandboxes: Map<string, FakeMachine>;
+  jobs: Map<string, JobOutcome[]>;
+  calls: {
+    create: number;
+    resume: number;
+    stop: number;
+    delete: number;
+    exec: string[];
+    background: string[];
+    poll: string[];
+    cancel: string[];
+  };
+  nextSandbox: number;
+  nextJob: number;
+};
 /** In-memory provider: deterministic, no fetch, no shell, no provider credentials. */
-export function fakeSandboxProvider(
-  opts: {
-    exec?: (command: string, sandboxId: string) => Promise<ExecResult> | ExecResult;
-    beforeReady?: (sandboxId: string) => Promise<void>;
-    create?: () => Promise<void>;
-    background?: (command: string) => JobOutcome[];
-  } = {},
-) {
-  const sandboxes = new Map<string, FakeMachine>();
-  const jobs = new Map<string, JobOutcome[]>();
-
-  const calls = {
-    create: 0,
-    resume: 0,
-    stop: 0,
-    delete: 0,
-    exec: [] as string[],
-    background: [] as string[],
-    poll: [] as string[],
-    cancel: [] as string[],
-  };
-
-  let nextSandbox = 0;
-  let nextJob = 0;
-
-  const machine = (id: string) => {
-    const found = sandboxes.get(id);
-
-    if (!found || found.state === "deleted") throw new Error("FAKE_SANDBOX_GONE");
-
-    return found;
-  };
-
-  const ready = (id: string) => {
-    const found = machine(id);
-
-    if (found.state !== "ready") throw new Error("FAKE_SANDBOX_STOPPED");
-
-    return found;
-  };
-
-  const bytes = (id: string, path: string) => {
-    const file = ready(id).files.get(path);
-
-    if (!file) throw new Error("FAKE_FILE_NOT_FOUND");
-
-    return file;
+export function fakeSandboxProvider(opts: FakeOptions = {}) {
+  const runtime: FakeContext = {
+    opts,
+    sandboxes: new Map(),
+    jobs: new Map(),
+    calls: {
+      create: 0,
+      resume: 0,
+      stop: 0,
+      delete: 0,
+      exec: [],
+      background: [],
+      poll: [],
+      cancel: [],
+    },
+    nextSandbox: 0,
+    nextJob: 0,
   };
 
   const provider: SandboxProvider = {
     id: "fake",
+    ...fakeLifecycle(runtime),
+    ...fakeExecution(runtime),
+    ...fakeFiles(runtime),
+  };
+
+  return { provider, sandboxes: runtime.sandboxes, jobs: runtime.jobs, calls: runtime.calls };
+}
+
+/** Require an existing machine before any fake effect. */
+function machine(runtime: FakeContext, id: string) {
+  const { sandboxes } = runtime;
+  const found = sandboxes.get(id);
+
+  if (!found || found.state === "deleted") throw new Error("FAKE_SANDBOX_GONE");
+
+  return found;
+}
+
+/** Reject file and exec access while the fake is stopped. */
+function ready(runtime: FakeContext, id: string) {
+  const found = machine(runtime, id);
+
+  if (found.state !== "ready") throw new Error("FAKE_SANDBOX_STOPPED");
+
+  return found;
+}
+
+/** Read only files owned by a ready fake machine. */
+function bytes(runtime: FakeContext, id: string, path: string) {
+  const file = ready(runtime, id).files.get(path);
+
+  if (!file) throw new Error("FAKE_FILE_NOT_FOUND");
+
+  return file;
+}
+
+/** Bind deterministic lifecycle behavior to this fake's isolated state. */
+function fakeLifecycle(
+  runtime: FakeContext,
+): Pick<SandboxProvider, "create" | "resume" | "stop" | "delete"> {
+  const { opts, sandboxes, calls } = runtime;
+
+  return {
     async create() {
       calls.create++;
       await opts.create?.();
-      const sandboxId = `fake-sandbox-${++nextSandbox}`;
+      const sandboxId = `fake-sandbox-${++runtime.nextSandbox}`;
 
       sandboxes.set(sandboxId, { state: "creating", files: new Map() });
 
@@ -69,14 +109,14 @@ export function fakeSandboxProvider(
     },
     async resume(_ctx, id) {
       calls.resume++;
-      const found = machine(id);
+      const found = machine(runtime, id);
 
       await opts.beforeReady?.(id);
       found.state = "ready";
     },
     async stop(_ctx, id) {
       calls.stop++;
-      machine(id).state = "stopped";
+      machine(runtime, id).state = "stopped";
     },
     async delete(_ctx, id) {
       calls.delete++;
@@ -84,17 +124,27 @@ export function fakeSandboxProvider(
 
       if (found) found.state = "deleted";
     },
+  };
+}
+
+/** Bind deterministic execution behavior to this fake's isolated state. */
+function fakeExecution(
+  runtime: FakeContext,
+): Pick<SandboxProvider, "exec" | "startBackground" | "poll" | "cancelBackground"> {
+  const { opts, jobs, calls } = runtime;
+
+  return {
     async exec(_ctx, id, command, { signal }) {
       signal.throwIfAborted();
-      ready(id);
+      ready(runtime, id);
       calls.exec.push(command);
 
       return opts.exec ? opts.exec(command, id) : { exitCode: 0, stdout: command, stderr: "" };
     },
     async startBackground(_ctx, id, command, job) {
-      ready(id);
+      ready(runtime, id);
       calls.background.push(command);
-      const jobId = job?.jobId ?? `fake-job-${++nextJob}`;
+      const jobId = job?.jobId ?? `fake-job-${++runtime.nextJob}`;
 
       jobs.set(
         jobId,
@@ -118,17 +168,25 @@ export function fakeSandboxProvider(
       calls.cancel.push(id);
       jobs.set(id, [{ state: "unknown" }]);
     },
+  };
+}
+
+/** Bind deterministic files behavior to this fake's isolated state. */
+function fakeFiles(
+  runtime: FakeContext,
+): Pick<SandboxProvider, "readFile" | "writeFile" | "listFiles" | "upload" | "download"> {
+  return {
     async readFile(_ctx, id, path, { maxBytes }) {
-      return new TextDecoder().decode(bytes(id, path).slice(-maxBytes));
+      return new TextDecoder().decode(bytes(runtime, id, path).slice(-maxBytes));
     },
     async writeFile(_ctx, id, path, content) {
-      ready(id).files.set(path, new TextEncoder().encode(content));
+      ready(runtime, id).files.set(path, new TextEncoder().encode(content));
     },
     async listFiles(_ctx, id, path, { limit }) {
       const prefix = path.endsWith("/") ? path : `${path}/`;
       const result = new Map<string, FileEntry>();
 
-      for (const [name, content] of ready(id).files) {
+      for (const [name, content] of ready(runtime, id).files) {
         if (!name.startsWith(prefix)) continue;
 
         const relative = name.slice(prefix.length);
@@ -147,16 +205,14 @@ export function fakeSandboxProvider(
       return [...result.values()];
     },
     async upload(_ctx, id, path, content) {
-      ready(id).files.set(path, new Uint8Array(content));
+      ready(runtime, id).files.set(path, new Uint8Array(content));
     },
     async download(_ctx, id, path, { maxBytes, offset = 0, totalSizeLimit = maxBytes }) {
-      const content = bytes(id, path);
+      const content = bytes(runtime, id, path);
 
       if (content.byteLength > totalSizeLimit) throw new Error("SANDBOX_EXPORT_TOO_LARGE");
 
       return content.slice(offset, offset + maxBytes);
     },
   };
-
-  return { provider, sandboxes, jobs, calls };
 }

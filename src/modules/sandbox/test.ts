@@ -1,3 +1,8 @@
+/**
+ * convex-test registration for the optional sandbox component.
+ * Offline host fixtures mount its schema and functions through register().
+ * Native Agent remains a separate fixture dependency when exercising binary exports.
+ */
 /// <reference types="vite/client" />
 import type { TestConvex } from "convex-test";
 import { componentsGeneric, type GenericSchema, type SchemaDefinition } from "convex/server";
