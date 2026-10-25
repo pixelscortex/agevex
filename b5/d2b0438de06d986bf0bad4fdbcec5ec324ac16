@@ -1,0 +1,33 @@
+src/sandbox/component/state.ts
+  s_d863bd773ba186::t_73943fd24d4afa 27-33,39-43
+src/sandbox/daytona.ts
+  s_d863bd773ba186::t_381c2b575cc6a8 291-312
+src/sandbox/index.ts
+  s_d863bd773ba186::t_e07faae075d8b6 109-115,117-120,248,258,606-613,861-863
+src/sandbox/limits.ts
+  s_d863bd773ba186::t_e9cbe23993aaae 34-38
+tests/sandbox/daytona.test.ts
+  s_d863bd773ba186::t_ff355af05007e4 779-783,786,828-893
+tests/sandbox/fixture/host.ts
+  s_d863bd773ba186::t_40b49b752623cc 8,25,48-51,88-96
+tests/sandbox/sandbox.test.ts
+  s_d863bd773ba186::t_96ec39d923fe65 904,916-917,919,924-963,1039-1058
+tests/sandbox/setup.ts
+  s_d863bd773ba186::t_6097729e456c70 26-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b5d2b0438de06d986bf0bad4fdbcec5ec324ac16",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "unknown"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
