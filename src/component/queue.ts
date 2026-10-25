@@ -22,7 +22,7 @@ import {
 } from "./schema.js";
 import { LIMITS, limitsValidator } from "./limits.js";
 import { approvalKey, callKey, keyString, saveResponses } from "./approvals.js";
-import { sealGroups, settlementBlocked } from "./subagents.js";
+import { sealGroups, settleIdleParent, settlementBlocked } from "./subagents.js";
 
 async function existing(
   ctx: Pick<QueryCtx, "db">,
@@ -151,10 +151,24 @@ export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = tru
     await disarmRecovery(ctx, row);
     return;
   }
-  // A full inbox may have deferred a completed group's single anchor. Release
-  // one cohort after a slot frees, without retrying its native deliveries.
-  if (await ctx.runMutation(api.subagents.releaseGroups, { assignmentId: row._id }))
+  // A full inbox may defer a join. Drain empty ready cohorts until either
+  // work is published or no cohort remains, so several all-failed groups
+  // sealed by the same last slice cannot strand an idle child. A child owns
+  // one run budget: <=50 members TOTAL, <=50 indexed probes/releases,
+  // <8 MiB metadata and <1,000 reads/writes at all host maxima. Root loops
+  // keep their existing one-cohort cadence; claim drains ready FIFO work.
+  const releases = row.childRunId ? (row.limits ?? LIMITS).runLaunches : 1;
+  for (let i = 0; i < releases; i++) {
+    if (!(await ctx.runMutation(api.subagents.releaseGroups, { assignmentId: row._id }))) break;
     row = (await ctx.db.get("assignments", row._id))!;
+    if (await needsRecovery(ctx, row)) break;
+  }
+  // Re-evaluate R3 after every blocker-clearing wake, including failed delivery
+  // and empty group release. Idle children cannot wait for nonexistent work.
+  if (await settleIdleParent(ctx, row)) {
+    await disarmRecovery(ctx, row);
+    return;
+  }
   // Failed/blocked child delivery also calls wake, but may leave no inbox work.
   // Such a doorbell would immediately lose its coalescing flag in
   // disarmRecovery and accumulate unconsumed events across loop rotation.
@@ -455,6 +469,7 @@ export const claim = mutation({
     if (first)
       await ctx.db.patch("subagentRuns", run._id, {
         childResultMessageId: undefined,
+        lastTurnResult: undefined,
         status: "running",
         startedAt: run.startedAt ?? Date.now(),
         events: [
@@ -495,7 +510,7 @@ export const finish = mutation({
       return null;
     await disarmSlice(ctx, row);
     await sealGroups(ctx, row);
-    if (args.errorCode && (await deferChildFailure(ctx, row))) return null;
+    if (args.errorCode && (await deferChildFailure(ctx, row, args.errorCode))) return null;
     if (args.errorCode) {
       await failChild(ctx, row, args.errorCode);
       await ctx.db.patch("assignments", row._id, {
@@ -528,8 +543,15 @@ async function disarmSlice(ctx: MutationCtx, row: Doc<"assignments">) {
  * continue the run, but this failed paid generation is never retried. Clear its
  * token so any late native writes lose ownership before waking queued work.
  */
-async function deferChildFailure(ctx: MutationCtx, row: Doc<"assignments">) {
+async function deferChildFailure(
+  ctx: MutationCtx,
+  row: Doc<"assignments">,
+  code: Doc<"assignments">["errorCode"] = "EXECUTION_AMBIGUOUS",
+) {
   if (!row.childRunId || !(await settlementBlocked(ctx, row))) return false;
+  // Persist the failed last-turn outcome before releasing its execution token.
+  // Escalation obeys the same fence, so it cannot settle over pending work.
+  await failChild(ctx, row, code);
   await disarmSlice(ctx, row);
   await sealGroups(ctx, row);
   await ctx.db.patch("assignments", row._id, {
@@ -562,6 +584,16 @@ async function markAmbiguous(ctx: MutationCtx, assignmentId: Id<"assignments">, 
     row.turnToken === turnToken &&
     (row.turnStatus === "queued" || row.turnStatus === "running")
   ) {
+    // wake already removed the reserved head from queuedMessages. A dispatch
+    // that fails before claim must retire that exact row without decrementing
+    // again; otherwise the fence mistakes it for pending work and wake reserves
+    // the same head a second time. The token/status fence makes duplicates no-ops.
+    if (row.turnStatus === "queued" && row.inboxId) {
+      const head = await ctx.db.get("inbox", row.inboxId);
+      if (head) await ctx.db.delete("inbox", head._id);
+      await ctx.db.patch("assignments", row._id, { inboxId: undefined });
+      row.inboxId = undefined;
+    }
     if (await deferChildFailure(ctx, row)) return null;
     await ctx.db.patch("assignments", row._id, {
       turnStatus: "recovery_required",
@@ -749,7 +781,7 @@ export const write = mutation({
         // stops on the rejected save, and its stale finish cannot overwrite it.
         await disarmSlice(ctx, row);
         await disarmRecovery(ctx, row);
-        if (await deferChildFailure(ctx, row)) return null;
+        if (await deferChildFailure(ctx, row, "APPROVAL_LIMIT")) return null;
         await failChild(ctx, row, "APPROVAL_LIMIT");
         await ctx.db.patch("assignments", row._id, {
           turnStatus: "recovery_required",

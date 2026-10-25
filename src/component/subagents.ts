@@ -128,6 +128,43 @@ async function settleRunState(
       historyRuns: (root.historyRuns ?? 0) + 1,
     });
   }
+  const parent = await ctx.db.get("assignments", run.actorAssignmentId);
+  if (parent) await settleIdleParent(ctx, parent);
+  return true;
+}
+
+/** R3 is an invariant, not just a turn-end check. Delivery failure and an
+ * empty join can remove the last blocker without creating another turn. Use
+ * only the host-verified outcome recorded by settle; a native save alone is
+ * not proof that the last turn reported a valid result. The same notification
+ * path propagates the terminal outcome to the next ancestor without paid work.
+ * Depth <=2 bounds propagation to fixed-size run/assignment reads and three
+ * indexed fence probes per level (<128 KiB metadata); no native bodies here.
+ */
+export async function settleIdleParent(ctx: MutationCtx, parent: Doc<"assignments">) {
+  if (parent.cancelled || parent.turnStatus !== "idle" || !parent.childRunId) return false;
+  const run = await runById(ctx, parent.childRunId);
+  if (!run || run.status === "asking") return false;
+  if (run.status === "completed" || run.status === "failed") return true;
+  const root = await ctx.db.get("assignments", run.rootAssignmentId);
+  if (!root || root.cancelled || root.cancellationEpoch !== run.rootCancellationEpoch) return false;
+  const result = run.lastTurnResult;
+  const errorCode = result?.errorCode ?? (result?.messageId ? null : "RESULT_UNVERIFIED");
+  if (
+    !(await settleRunState(
+      ctx,
+      run,
+      errorCode ? "failed" : "completed",
+      errorCode,
+      result?.messageId,
+    ))
+  )
+    return false;
+  await ctx.scheduler.runAfter(0, internal.subagents.notify, {
+    runId: run.runId,
+    deliveryToken: run.deliveryToken,
+    coordinateHandle: run.coordinateHandle,
+  });
   return true;
 }
 
@@ -433,13 +470,18 @@ export const settle = mutation({
     const child = await ctx.db.get("assignments", args.assignmentId);
     if (!child || child.childRunId !== args.runId || child.turnToken !== args.turnToken)
       throw new Error("FORBIDDEN");
-    // Verification and this fence share the host mutation transaction. Only
-    // the last turn before an empty inbox / descendant fence supplies a result.
-    if (await settlementBlocked(ctx, child)) return null;
     // A released or escalated turn cannot report an outcome any more.
     if (child.cancelled || child.turnStatus !== "running") throw new Error("FORBIDDEN");
     const run = await runById(ctx, args.runId);
     if (!run || run.childAssignmentId !== child._id) throw new Error("FORBIDDEN");
+    // Verification and the deferred outcome commit together, even while the
+    // descendant fence holds. Claim clears this before any later turn starts.
+    await ctx.db.patch("subagentRuns", run._id, {
+      lastTurnResult: {
+        ...(args.childResultMessageId ? { messageId: args.childResultMessageId } : {}),
+        errorCode: args.errorCode,
+      },
+    });
     await settleRunState(
       ctx,
       run,
@@ -456,7 +498,10 @@ export const escalate = internalMutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const run = await runById(ctx, args.runId);
-    if (!run) return null;
+    if (!run || run.status === "completed" || run.status === "failed") return null;
+    await ctx.db.patch("subagentRuns", run._id, {
+      lastTurnResult: { errorCode: args.errorCode ?? "EXECUTION_AMBIGUOUS" },
+    });
     const first = await settleRunState(
       ctx,
       run,
@@ -775,7 +820,9 @@ export const releaseGroups = mutation({
           .eq("group", candidate.group ?? ""),
       )
       .take((root.limits ?? LIMITS).activeChildrenPerRoot);
-    return releaseGroup(ctx, parent, root, members);
+    const released = await releaseGroup(ctx, parent, root, members);
+    if (released) await settleIdleParent(ctx, (await ctx.db.get("assignments", parent._id))!);
+    return released;
   },
 });
 

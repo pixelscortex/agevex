@@ -277,6 +277,15 @@ export default defineSchema({
     // Recorded with native final saves, cleared on every new turn claim, and
     // read by settlement verification: only the last turn may supply a result.
     childResultMessageId: v.optional(v.string()),
+    // Host-verified outcome of the last ended turn, retained while descendants
+    // or inbox work fence settlement. Claim clears it before the next turn.
+    // Read by idle settlement; no native transcript is scanned or copied.
+    lastTurnResult: v.optional(
+      v.object({
+        messageId: v.optional(v.string()),
+        errorCode: runErrorCode,
+      }),
+    ),
     agent: v.string(),
     rootAgent: v.string(),
     actorAgent: v.string(),

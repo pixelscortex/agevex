@@ -3,7 +3,7 @@ import { beforeEach, afterEach, it, expect, vi } from "vite-plus/test";
 import { convexTest } from "convex-test";
 import agent from "@convex-dev/agent/test";
 import { createThread, saveMessage } from "@convex-dev/agent";
-import { createFunctionHandle } from "convex/server";
+import { componentsGeneric, type FunctionReference, createFunctionHandle } from "convex/server";
 import { workflowCall } from "../src/testing/expect-journal.js";
 import agevex from "../src/test.js";
 import schema from "./fixture/schema.js";
@@ -28,7 +28,7 @@ import { mockModel } from "@convex-dev/agent";
 const modules = import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]);
 const maxima = Object.fromEntries(Object.entries(HOST_LIMITS).map(([key, { max }]) => [key, max]));
 const enforced = { bytesRead: 8 << 20, documentsRead: 4096, documentsWritten: 8000 };
-function setup(limits?: Registration["limits"]) {
+function setup(limits?: Registration["limits"], preclaimFailure = false) {
   reset();
   const t = convexTest({
     schema,
@@ -37,8 +37,12 @@ function setup(limits?: Registration["limits"]) {
       ...modules,
       "./fixture/agents.ts": async () => {
         const host = await import("./delegation-v2.host.js");
-        const runtime = host.registration(limits);
-        return { ...runtime.internalFunctions(), ...runtime.authorizedEndpoints() };
+        const runtime = host.registration(limits, preclaimFailure);
+        return {
+          ...runtime.internalFunctions(),
+          ...runtime.authorizedEndpoints(),
+          failBeforeClaim: host.failBeforeClaim,
+        };
       },
     },
   });
@@ -643,11 +647,6 @@ it("cancel at all maxima fences live loop → turn → Workpool dispatch chains 
   for (let i = 1; i < HOST_LIMITS.activeChildrenPerRoot.max; i++)
     descendants.push(await launch(t, parent, "Reviewer"));
   for (const child of descendants) {
-    await t.mutation(components.agevex.queue.finish, {
-      assignmentId: child.assignmentId,
-      turnToken: child.turnToken,
-      errorCode: null,
-    });
     expect(
       await t.mutation(api.agents.coordinate, {
         op: "message",
@@ -657,6 +656,13 @@ it("cancel at all maxima fences live loop → turn → Workpool dispatch chains 
         text: "resume through the real dispatch",
       }),
     ).toMatchObject({ status: "accepted" });
+    // R3 settles an ended child with no blockers. Admit the follow-up first
+    // so the real queued dispatch, rather than a terminal run, owns this work.
+    await t.mutation(components.agevex.queue.finish, {
+      assignmentId: child.assignmentId,
+      turnToken: child.turnToken,
+      errorCode: null,
+    });
   }
   for (let i = 0; i < HOST_LIMITS.queueLength.max; i++)
     await owner(t).mutation(api.agents.send, {
@@ -755,7 +761,9 @@ it("cancel at all maxima fences live loop → turn → Workpool dispatch chains 
 it("message_child reaches running and idle children, rejects foreign and finished runs, and enforces eight messages", async () => {
   const t = setup(maxima);
   const root = await manualRoot(t);
-  const child = await launch(t, root, "Reviewer");
+  const child = await launch(t, root, "Builder");
+  // An idle child remains live only while a real R3 blocker exists.
+  await launch(t, child, "Reviewer");
   const send = (target = child.runId, message = "follow-up") =>
     t.mutation(api.agents.coordinate, {
       op: "message",
@@ -1362,7 +1370,9 @@ it("cancel bounds every descendant inbox across nineteen independent maximum-lau
       (await t.query(components.agent.messages.getMessagesByIds, { messageIds: [messageId] }))[0],
     ).toMatchObject({ status: "failed", error: "CANCELLED" });
   expect(v2.calls).toEqual([]);
-}, 60_000);
+  // This exercises nineteen independent maximum budgets (~88 s under shared
+  // review load). Keep the full cancellation arithmetic covered with headroom.
+}, 180_000);
 
 it("cancelled groups cannot hide a fresh run's deferred join behind their archived members", async () => {
   const t = setup({ ...maxima, queueLength: 1 });
@@ -2034,3 +2044,345 @@ it("a claim drains fifty ready deferred groups at the maximum launch and hop bud
   await owner(t).mutation(api.agents.cancel, { threadId: root.threadId });
   await drain(t);
 }, 30_000);
+
+it.each(
+  (["each", "all"] as const).flatMap((wait) =>
+    (["failed", "blocked"] as const).flatMap((deliveryStatus) =>
+      (["verified", "missing", "failed"] as const).map((result) => ({
+        wait,
+        deliveryStatus,
+        result,
+      })),
+    ),
+  ),
+)(
+  "an idle Builder settles after Reviewer delivery: wait=$wait delivery=$deliveryStatus result=$result",
+  async ({ wait, deliveryStatus, result }) => {
+    const t = setup(maxima);
+    const root = await manualRoot(t);
+    const builder = await launch(t, root, "Builder");
+    const reviewer = await launch(t, builder, "Reviewer", { group: "review", wait });
+    const resultMessageId =
+      result === "verified"
+        ? await nativeSave(t, builder, "Builder", "verified provisional Builder result")
+        : undefined;
+    expect(
+      await t.mutation(api.agents.coordinate, {
+        op: "settle",
+        assignmentId: builder.assignmentId,
+        turnToken: builder.turnToken,
+        runId: builder.runId,
+        resultMessageId,
+        errorCode: result === "failed" ? "GENERATION_FAILED" : null,
+      }),
+    ).toMatchObject({ status: "deferred" });
+    await t.mutation(components.agevex.queue.finish, {
+      assignmentId: builder.assignmentId,
+      turnToken: builder.turnToken,
+      errorCode: null,
+    });
+    await t.mutation(components.agevex.subagents.settle, {
+      assignmentId: reviewer.assignmentId,
+      turnToken: reviewer.turnToken,
+      runId: reviewer.runId,
+      childResultMessageId: null,
+      errorCode: "GENERATION_FAILED",
+    });
+    // The terminal-to-delivery gap remains fenced even after Builder ended.
+    expect((await tree(t, root.threadId))[0].status).toBe("running");
+    await t.mutation(components.agevex.subagents.deliver, {
+      runId: reviewer.runId,
+      deliveryToken: reviewer.deliveryToken,
+      deliveryStatus,
+      parentMessageId: null,
+      errorCode: deliveryStatus === "failed" ? "DELIVERY_FAILED" : "AUTHORIZATION_DENIED",
+    });
+    // No scheduler tick: the last blocker and settlement commit together,
+    // including an all cohort that releases without any accepted messages.
+    expect((await tree(t, root.threadId))[0].status).toBe(
+      result === "verified" ? "completed" : "failed",
+    );
+    await t.mutation(components.agevex.queue.finish, {
+      assignmentId: reviewer.assignmentId,
+      turnToken: reviewer.turnToken,
+      errorCode: null,
+    });
+    await t.mutation(components.agevex.queue.finish, {
+      assignmentId: root.assignmentId,
+      turnToken: root.turnToken,
+      errorCode: null,
+    });
+    await drain(t);
+    expect(calls("Builder")).toHaveLength(0);
+    expect(calls("Main")).toHaveLength(1);
+    expect(JSON.stringify(calls("Main")[0].args.prompt)).toContain(
+      result === "verified"
+        ? "verified provisional Builder result"
+        : result === "failed"
+          ? "GENERATION_FAILED"
+          : "RESULT_UNVERIFIED",
+    );
+    expect(
+      (
+        await owner(t).query(api.agents.delegations, {
+          threadId: root.threadId,
+          paginationOpts: { cursor: null, numItems: 20 },
+        })
+      ).page.find((run) => run.runId === builder.runId),
+    ).toMatchObject({
+      deliveryStatus: "accepted",
+      errorCode:
+        result === "verified"
+          ? null
+          : result === "failed"
+            ? "GENERATION_FAILED"
+            : "RESULT_UNVERIFIED",
+    });
+  },
+  30_000,
+);
+
+it.each(["each", "all"] as const)(
+  "a two-hop Main → Builder → Reviewer run settles every idle ancestor with wait=%s",
+  async (wait) => {
+    const t = setup({ runHops: 2 });
+    v2.steps.Main = (n) => (n === 0 ? [delegate("Builder")] : text("Main finished"));
+    v2.steps.Builder = (n) =>
+      n === 0 ? [delegate("Reviewer", { group: "review", wait })] : text("Builder finished");
+    const root = await open(t);
+    await drain(t);
+    const runs = (
+      await owner(t).query(api.agents.delegations, {
+        threadId: root.threadId,
+        paginationOpts: { cursor: null, numItems: 20 },
+      })
+    ).page;
+    expect(runs).toHaveLength(2);
+    expect(runs.every((run) => ["completed", "failed"].includes(run.status))).toBe(true);
+    expect(runs.every((run) => run.deliveryStatus !== "pending")).toBe(true);
+    expect(
+      (await owner(t).query(api.agents.activity, { threadId: root.threadId })).subagents.active,
+    ).toBe(0);
+  },
+);
+
+it.each([1, HOST_LIMITS.queueLength.max])(
+  "pre-claim dispatch failures retire once, preserve queue capacity %s, and cancel leaves no inbox rows",
+  async (queueLength) => {
+    const t = setup({ ...maxima, queueLength }, true);
+    let root = await manualRoot(t);
+    const queuedWork = () =>
+      t.query(
+        componentsGeneric().agevex.agevexTest.queuedWork as unknown as FunctionReference<
+          "query",
+          "internal",
+          {},
+          { inbox: { assignmentId: string }[] }
+        >,
+        {},
+      );
+    const queued = async () => {
+      const receipt = await t.mutation(api.agents.coordinate, {
+        op: "launch",
+        assignmentId: root.assignmentId,
+        turnToken: root.turnToken,
+        toolCallId: crypto.randomUUID(),
+        agent: "Reviewer",
+        task: "dispatch fails before claim",
+      });
+      if (receipt?.status !== "queued") throw new Error(JSON.stringify(receipt));
+      const run = (await tree(t, root.threadId)).find((run) => run.runId === receipt.runId)!;
+      const row = (await t.query(components.agevex.queue.execution, {
+        assignmentId: run.childAssignmentId!,
+      }))!;
+      return { run, row };
+    };
+    const message = (runId: string) =>
+      t.mutation(api.agents.coordinate, {
+        op: "message",
+        assignmentId: root.assignmentId,
+        turnToken: root.turnToken,
+        runId,
+        text: "follow-up",
+      });
+    const failed = [];
+    for (let i = 0; i < 5; i++) {
+      const { run, row } = await queued();
+      const args = {
+        assignmentId: row._id,
+        executionId: row.turnToken!,
+        sliceId: row.turnToken! + "/0",
+      };
+      const dispatch = componentsGeneric().agevex.worker.dispatch as unknown as FunctionReference<
+        "action",
+        "internal",
+        typeof args,
+        null
+      >;
+      await t.action(dispatch, args);
+      // Duplicate dispatch completion must neither decrement nor escalate again.
+      await t.action(dispatch, args);
+      const current = (await t.query(components.agevex.queue.execution, {
+        assignmentId: row._id,
+      }))!;
+      expect(current.queuedMessages).toBe(0);
+      expect(
+        (await queuedWork()).inbox.filter((item) => item.assignmentId === row._id),
+      ).toHaveLength(0);
+      const terminal = (
+        await owner(t).query(api.agents.delegations, {
+          threadId: root.threadId,
+          paginationOpts: { cursor: null, numItems: 50 },
+        })
+      ).page.find((entry) => entry.runId === run.runId)!;
+      expect(terminal).toMatchObject({
+        status: "failed",
+        errorCode: "EXECUTION_AMBIGUOUS",
+        deliveryStatus: "pending",
+      });
+      expect(terminal.events.filter((event) => event.phase === "failed")).toHaveLength(1);
+      expect(await message(run.runId)).toMatchObject({ status: "denied" });
+      failed.push(run.runId);
+    }
+    // All active slots and the root queue are filled at host maxima. The real
+    // inbox contains the counter plus one reserved head per queued assignment.
+    const live = [];
+    for (let i = 0; i < HOST_LIMITS.activeChildrenPerRoot.max; i++) {
+      if (i) {
+        await t.mutation(components.agevex.queue.finish, {
+          assignmentId: root.assignmentId,
+          turnToken: root.turnToken,
+          errorCode: null,
+        });
+        await owner(t).mutation(api.agents.send, {
+          threadId: root.threadId,
+          text: "independent child budget",
+          requestKey: "live-child-" + i,
+        });
+        const current = (await t.query(components.agevex.queue.execution, {
+          assignmentId: root.assignmentId,
+        }))!;
+        root = { ...root, turnToken: current.turnToken! };
+        expect(
+          await t.mutation(components.agevex.queue.claim, {
+            assignmentId: root.assignmentId,
+            turnToken: root.turnToken,
+          }),
+        ).not.toBeNull();
+      }
+      const child = await queued();
+      live.push(child);
+      expect(
+        await t.mutation(components.agevex.queue.claim, {
+          assignmentId: child.row._id,
+          turnToken: child.row.turnToken!,
+        }),
+      ).not.toBeNull();
+      for (let n = 0; n < Math.min(queueLength, HOST_LIMITS.messagesPerChild.max); n++)
+        expect(await message(child.run.runId)).toMatchObject({ status: "accepted" });
+      expect(await message(child.run.runId)).toMatchObject({ status: "denied" });
+      await t.mutation(components.agevex.queue.finish, {
+        assignmentId: child.row._id,
+        turnToken: child.row.turnToken!,
+        errorCode: null,
+      });
+    }
+    for (let n = 0; n < queueLength; n++)
+      await owner(t).mutation(api.agents.send, {
+        threadId: root.threadId,
+        text: "root backlog",
+        requestKey: "backlog-" + n,
+      });
+    const inbox = (await queuedWork()).inbox;
+    for (const assignmentId of [root.assignmentId, ...live.map(({ row }) => row._id)]) {
+      const row = (await t.query(components.agevex.queue.execution, { assignmentId }))!;
+      expect(row.queuedMessages).toBe(
+        inbox.filter((item) => item.assignmentId === assignmentId).length - (row.inboxId ? 1 : 0),
+      );
+    }
+    await owner(t).mutation(api.agents.cancel, { threadId: root.threadId });
+    expect((await queuedWork()).inbox).toEqual([]);
+    await drain(t);
+    const runs = (
+      await owner(t).query(api.agents.delegations, {
+        threadId: root.threadId,
+        paginationOpts: { cursor: null, numItems: 50 },
+      })
+    ).page;
+    for (const runId of failed)
+      expect(runs.find((run) => run.runId === runId)).toMatchObject({
+        status: "failed",
+        errorCode: "ROOT_UNAVAILABLE",
+        deliveryStatus: "blocked",
+      });
+    expect(calls("Reviewer")).toHaveLength(0);
+  },
+  30_000,
+);
+
+it("an ended Builder releases every empty all cohort at the maximum launch budget before settling", async () => {
+  const t = setup(maxima);
+  const root = await manualRoot(t);
+  const builder = await launch(t, root, "Builder");
+  for (let i = 1; i < HOST_LIMITS.runLaunches.max; i++) {
+    const reviewer = await launch(t, builder, "Reviewer", { group: "empty-" + i, wait: "all" });
+    await t.mutation(components.agevex.subagents.settle, {
+      assignmentId: reviewer.assignmentId,
+      turnToken: reviewer.turnToken,
+      runId: reviewer.runId,
+      childResultMessageId: null,
+      errorCode: "GENERATION_FAILED",
+    });
+    await t.mutation(components.agevex.subagents.deliver, {
+      runId: reviewer.runId,
+      deliveryToken: reviewer.deliveryToken,
+      deliveryStatus: "failed",
+      parentMessageId: null,
+      errorCode: "DELIVERY_FAILED",
+    });
+    await t.mutation(components.agevex.queue.finish, {
+      assignmentId: reviewer.assignmentId,
+      turnToken: reviewer.turnToken,
+      errorCode: null,
+    });
+  }
+  const resultMessageId = await nativeSave(
+    t,
+    builder,
+    "Builder",
+    "verified result after empty cohorts",
+  );
+  expect(
+    await t.mutation(api.agents.coordinate, {
+      op: "settle",
+      assignmentId: builder.assignmentId,
+      turnToken: builder.turnToken,
+      runId: builder.runId,
+      resultMessageId,
+      errorCode: null,
+    }),
+  ).toMatchObject({ status: "deferred" });
+  const metrics = await t.run(async (ctx) => {
+    await ctx.runMutation(components.agevex.queue.finish, {
+      assignmentId: builder.assignmentId,
+      turnToken: builder.turnToken,
+      errorCode: null,
+    });
+    return ctx.meta.getTransactionMetrics();
+  });
+  expect(metrics.bytesRead.used).toBeLessThan(8 << 20);
+  expect(metrics.documentsRead.used).toBeLessThan(4096);
+  expect(metrics.documentsWritten.used).toBeLessThan(8000);
+  expect((await tree(t, root.threadId))[0].status).toBe("completed");
+  await t.mutation(components.agevex.queue.finish, {
+    assignmentId: root.assignmentId,
+    turnToken: root.turnToken,
+    errorCode: null,
+  });
+  await drain(t);
+  expect(calls("Builder")).toHaveLength(0);
+  expect(calls("Main")).toHaveLength(1);
+  expect(JSON.stringify(calls("Main")[0].args.prompt)).toContain(
+    "verified result after empty cohorts",
+  );
+});

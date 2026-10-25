@@ -1,7 +1,9 @@
+import { v } from "convex/values";
 import type { LanguageModelV4Content } from "@ai-sdk/provider";
 import { mockModel } from "@convex-dev/agent";
 import {
   makeFunctionReference,
+  internalActionGeneric,
   type FunctionReference,
   type ApiFromModules,
   anyApi,
@@ -67,14 +69,20 @@ export const main = new Agent(components.agent, {
   languageModel: model("Main"),
   subagents: [builder, reviewer],
 });
-export function registration(limits?: Registration["limits"]) {
+export const failBeforeClaim = internalActionGeneric({
+  args: { assignmentId: v.string(), turnToken: v.string(), sliceId: v.optional(v.string()) },
+  handler: async () => {
+    throw new Error("pre-claim dispatch failure");
+  },
+});
+export function registration(limits?: Registration["limits"], preclaimFailure = false) {
   return registerAgent(components.agevex, {
     agents: [main],
     limits,
     refs: {
       runTurn: () =>
         makeFunctionReference<"action", TurnArgs, null>(
-          "agents:runTurn",
+          preclaimFailure ? "agents:failBeforeClaim" : "agents:runTurn",
         ) as unknown as FunctionReference<"action", "internal", TurnArgs, null>,
       coordinate: () =>
         makeFunctionReference<"mutation", CoordinateArgs, CoordinateResult>(

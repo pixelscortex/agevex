@@ -621,7 +621,6 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 runId: args.runId,
               });
               if (!settlement) throw new Error("FORBIDDEN");
-              if (settlement.blocked) return { status: "deferred" as const, runId: args.runId };
               let errorCode: RunErrorCode = args.errorCode;
               let childResultMessageId: string | null = null;
               if (!errorCode) {
@@ -647,6 +646,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 childResultMessageId,
                 errorCode,
               });
+              if (settlement.blocked) return { status: "deferred" as const, runId: args.runId };
               return null;
             }
 
@@ -1043,8 +1043,9 @@ export function registerAgent(component: ComponentApi, config: Registration) {
               errorCode: childError,
             });
             if (settlement?.status === "deferred") {
-              // This turn ended; descendants/inbox own a later continuation.
-              // Its final output, verified afresh, will become the run result.
+              // This verified outcome is retained while descendants/inbox
+              // fence settlement. New work replaces it on the next claim; if
+              // delivery leaves no work, clearing the fence settles it as-is.
               await ctx.runMutation(component.queue.finish, {
                 assignmentId: args.assignmentId,
                 turnToken: args.turnToken,
