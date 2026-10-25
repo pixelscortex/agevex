@@ -1,0 +1,105 @@
+docs/site/registry/todo/todo.ts
+  s_dc484781677c2e::t_6dc66fc0ccf27c 1-5,7-14,17-27,30-40,42-46,48-62,66
+  s_dc484781677c2e::t_99f399ebbe1daa 6,15-16,28-29,41,63-65
+  s_dc484781677c2e::t_9d260037251b06 47
+  s_dc484781677c2e::t_67e5ace8699709 67-75
+tests/tools/setup.ts
+  s_dc484781677c2e::t_cf27371fbcf615 6,14,20
+  s_dc484781677c2e::t_845e33366064f3 1-5,7-13,15-19,21-38
+docs/site/content/docs/tools/todo.mdx
+  s_dc484781677c2e::t_7b4dd1e2f7190a 1-51
+docs/site/registry/goals/goals.ts
+  s_dc484781677c2e::t_99f399ebbe1daa 5-6,8-10,20,41-43
+  s_dc484781677c2e::t_6dc66fc0ccf27c 1-4,7,11-19,21-40,44
+  s_dc484781677c2e::t_625f81bfa2758d 45-54
+docs/site/content/docs/tools/meta.json
+  s_dc484781677c2e::t_7b4dd1e2f7190a 1-4
+tests/tools/install.test.ts
+  s_dc484781677c2e::t_06a3076e8a8dcf 1-19,30-31,68,86-88,94,145,149-152,167,171-175
+  s_dc484781677c2e::t_7effb43cc47243 32-35,42-44,50-52,95-99,101-135,137-144,146-148
+  s_dc484781677c2e::t_c907c62863ad3a 20-29,36-41,45-49,53-67,69-85,89-93,100,136,153-166,168-170,176-184
+  s_dc484781677c2e::t_6eaba8befcf531 185-192
+docs/site/registry/todo/todoState.ts
+  s_dc484781677c2e::t_da95a854ab9b1d 14-16,29-33,45-46,49-53
+  s_dc484781677c2e::t_99f399ebbe1daa 24-28
+  s_dc484781677c2e::t_6dc66fc0ccf27c 1-13,17-23,34-44,47-48,54-59
+docs/site/registry/ask-user/askUser.ts
+  s_dc484781677c2e::t_6dc66fc0ccf27c 1-3,5,7-10,17-18,20-27,32
+  s_dc484781677c2e::t_bab162f91abb5d 11-16
+  s_dc484781677c2e::t_62144f55eca76e 19,28-31
+  s_dc484781677c2e::t_99f399ebbe1daa 4,6
+  s_dc484781677c2e::t_845aa1f0fa2742 33
+README.md
+  s_dc484781677c2e::t_7b4dd1e2f7190a 391-414
+docs/site/content/docs/tools/index.mdx
+  s_dc484781677c2e::t_7b4dd1e2f7190a 1-24
+package.json
+  s_dc484781677c2e::t_99f399ebbe1daa 41,48
+  s_dc484781677c2e::t_c017f4182c50d7 51
+  s_dc484781677c2e::t_7b4dd1e2f7190a 49-50
+tests/tools/state.test.ts
+  s_dc484781677c2e::t_9a0369ba4f8939 9-12,15-22,25-30,34,37-44,58,60-68,72-74,77,90,95-97,99-101,105-107,110,113-140,144-148,153,157-161,165-167,184-190,197-222,228,230,234-235
+  s_dc484781677c2e::t_62144f55eca76e 31-33,35-36,223-227,229,231-233,236-239
+  s_dc484781677c2e::t_845e33366064f3 1-8,13-14,23-24,45-57,59,69-71,75-76,78-89,91-94,98,102-104,108-109,111-112,141-143,149-152,154-156,162-164,168-183,191-196,240
+tests/tools/approvals.test.ts
+  s_dc484781677c2e::t_bab162f91abb5d 30,36-41,59
+  s_dc484781677c2e::t_cf27371fbcf615 1-29,31-35,42-58,60-87
+  s_dc484781677c2e::t_5c3f9217a7aff1 88-166
+docs/site/content/docs/tools/continue-budget.mdx
+  s_dc484781677c2e::t_7b4dd1e2f7190a 1-43
+tests/tools/fixture/host.ts
+  s_dc484781677c2e::t_e4cc32dc031c65 12-18,30,33-35,39-44,48,60-67,69
+  s_dc484781677c2e::t_845e33366064f3 1-11,19-29,31-32,36-38,45-47,49-59,68,70-80
+tests/tools/fixture/schema.ts
+  s_dc484781677c2e::t_845e33366064f3 1-6
+docs/site/content/docs/tools/goals.mdx
+  s_dc484781677c2e::t_7b4dd1e2f7190a 1-48
+docs/site/registry/continue-budget/continueBudget.ts
+  s_dc484781677c2e::t_6dc66fc0ccf27c 1-3,5,11-15,17-19,21-26,31
+  s_dc484781677c2e::t_bab162f91abb5d 16
+  s_dc484781677c2e::t_99f399ebbe1daa 4
+  s_dc484781677c2e::t_62144f55eca76e 6-10,20,27-30
+  s_dc484781677c2e::t_df07d4910c77fc 32
+docs/site/registry/goals/goalsSchema.ts
+  s_dc484781677c2e::t_99f399ebbe1daa 4-8
+  s_dc484781677c2e::t_6dc66fc0ccf27c 1-3,9-18
+docs/site/content/docs/tools/ask-user.mdx
+  s_dc484781677c2e::t_7b4dd1e2f7190a 1-46
+docs/site/registry/todo/todoSchema.ts
+  s_dc484781677c2e::t_6dc66fc0ccf27c 1-3,9-20
+  s_dc484781677c2e::t_99f399ebbe1daa 4-8
+docs/site/registry/goals/goalsState.ts
+  s_dc484781677c2e::t_99f399ebbe1daa 20-23
+  s_dc484781677c2e::t_6dc66fc0ccf27c 1-19,24,30-38,44,46,52-57
+  s_dc484781677c2e::t_da95a854ab9b1d 25-29,39-43,45,47-51
+tests/tools/fixture/_generated/api.js
+  s_dc484781677c2e::t_845e33366064f3 1-5
+docs/site/public/r/ask-user.json
+  s_dc484781677c2e::t_76ca26ee98707d 1-21
+docs/site/public/r/continue-budget.json
+  s_dc484781677c2e::t_c649a17afa23e8 1-21
+docs/site/public/r/goals.json
+  s_dc484781677c2e::t_b0aa19bdc6d040 1-33
+docs/site/public/r/registry.json
+  s_dc484781677c2e::t_a55209568c853a 7,9-10,12-14,16,19-98
+docs/site/public/r/todo.json
+  s_dc484781677c2e::t_f654bfff033224 1-33
+docs/site/registry.json
+  s_dc484781677c2e::t_64f8b39ec2c55f 7,9-10,12-14,16,19-98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7d5e832e418b6ae864248f31ee39031462a482e9",
+  "prompts": {},
+  "sessions": {
+    "s_dc484781677c2e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1704c-466d-7503-a620-5aba26f88e31",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
