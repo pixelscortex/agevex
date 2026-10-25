@@ -33,3 +33,15 @@ export type { NoteArgs } from "./hooks.js";
 export type { ToolContext, ScopedMeter, MeterCharge } from "./once.js";
 
 export type { OriginMessage } from "./endpoints.js";
+export type {
+  SlotFacts,
+  SlotActionCtx,
+  ChargeCost,
+  UsageSlot,
+  BudgetSlot,
+  TelemetrySlot,
+  SandboxSlot,
+  ExtractSlot,
+  MeterBackend,
+  MeterChargeBackend,
+} from "./slots.js";
