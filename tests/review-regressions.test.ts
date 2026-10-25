@@ -632,7 +632,7 @@ it("cancel commits a full approval-blocked backlog with maximum limits, children
       text: "over capacity",
       requestKey: "over-capacity",
     }),
-  ).rejects.toThrow("QUEUE_LIMIT");
+  ).resolves.toEqual({ status: "rejected", code: "QUEUE_FULL" });
   const queuedWork = () =>
     t.query(
       componentsGeneric().agevex.agevexTest.queuedWork as unknown as FunctionReference<"query">,
@@ -1081,7 +1081,7 @@ it("registration queue limits govern admission before native writes", async () =
       text: "over limit",
       requestKey: "denied",
     }),
-  ).rejects.toThrow("QUEUE_LIMIT");
+  ).resolves.toEqual({ status: "rejected", code: "QUEUE_FULL" });
   state.release!();
   state.gate = undefined;
   await drain(t);
