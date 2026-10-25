@@ -1,4 +1,5 @@
 import { expect, it, vi } from "vite-plus/test";
+import { setup, attribution } from "./setup.js";
 import {
   polarSink,
   webhookSink,
@@ -38,7 +39,7 @@ it("Polar serializes signed integer nanos as exact decimal cents within twelve p
     "-0.0000001",
     "12.3456789",
     "-12.3456789",
-    "1000",
+    "9000",
     "0",
   ];
   const sink = polarSink({
@@ -62,38 +63,56 @@ it("Polar serializes signed integer nanos as exact decimal cents within twelve p
   await sink.deliver(amounts.map((nanos, index) => ({ ...event(index), nanos })));
 });
 
-it("Polar sends at most 100 events per batch with charge keys as external ids and accepts duplicate acknowledgements", async () => {
-  const seen = new Set<string>();
-  const sizes: number[] = [];
-  const fakeFetch = vi.fn<typeof fetch>(async (url, init) => {
-    expect(url).toBe("https://sandbox-api.polar.sh/v1/events/ingest");
-    const payload = JSON.parse(String(init?.body)) as {
-      events: { external_id: string; external_customer_id: string; metadata: { nanos: number } }[];
-    };
-    sizes.push(payload.events.length);
-    let inserted = 0;
-    for (const entry of payload.events) {
-      expect(entry.external_customer_id).toBe("customer");
-      expect(entry.metadata.nanos).toBe(100_000_000);
-      if (!seen.has(entry.external_id)) {
-        inserted++;
-        seen.add(entry.external_id);
-      }
-    }
-    return Response.json({ inserted, duplicates: payload.events.length - inserted });
-  });
-  const sink = polarSink({
-    meter: "usage",
-    accessToken: "test-token",
-    server: "sandbox",
-    fetch: fakeFetch,
-  });
-  const batch = Array.from({ length: LIMITS.sinkBatch + 1 }, (_, index) => event(index));
-  await sink.deliver([...batch, batch[0]]);
-  await sink.deliver(batch);
-  expect(sizes).toEqual([LIMITS.sinkBatch, 1, LIMITS.sinkBatch, 1]);
-  expect(seen.size).toBe(LIMITS.sinkBatch + 1);
-  expect([...seen]).toEqual(batch.map((e) => e.key));
+it("one delivery job drains up to 100 pending charges into a single Polar ingest request and accepts duplicate acknowledgements", async () => {
+  vi.useFakeTimers();
+  try {
+    const seen = new Set<string>(["charge0"]); // Polar already holds one event.
+    const sizes: number[] = [];
+    const sink = polarSink({
+      meter: "usage",
+      accessToken: "test-token",
+      server: "sandbox",
+      fetch: async (url, init) => {
+        expect(url).toBe("https://sandbox-api.polar.sh/v1/events/ingest");
+        const payload = JSON.parse(String(init?.body)) as {
+          events: {
+            external_id: string;
+            external_customer_id: string;
+            metadata: { nanos: number };
+          }[];
+        };
+        sizes.push(payload.events.length);
+        let inserted = 0;
+        for (const entry of payload.events) {
+          expect(entry.external_customer_id).toBe(attribution.subject);
+          expect(entry.metadata.nanos).toBe(100_000_000);
+          if (!seen.has(entry.external_id)) inserted++;
+          seen.add(entry.external_id);
+        }
+        return Response.json({ inserted, duplicates: payload.events.length - inserted });
+      },
+    });
+    const { t, meter, component } = setup({ sinks: [sink] });
+    const keys = Array.from({ length: LIMITS.sinkBatch + 1 }, (_, index) => `charge${index}`);
+    for (const key of keys)
+      await t.run(async (ctx) => {
+        await meter.scope(ctx, attribution).record("openrouter", {
+          key,
+          providerMetadata: { openrouter: { usage: { cost: 0.1 } } },
+        });
+      });
+    await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100), 1000);
+    // The production job path, not the adapter alone: per-charge requests would be 101 x 1.
+    expect(sizes).toEqual([LIMITS.sinkBatch, 1]);
+    expect([...seen].sort()).toEqual([...keys].sort());
+    for (const key of [keys[0], keys[LIMITS.sinkBatch]])
+      expect((await t.query(component.charges.get, { key }))?.sinkState[0]).toMatchObject({
+        deliveredNanos: 100_000_000,
+        failed: false,
+      });
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 it("Polar honors Retry-After and refuses incomplete or oversized acknowledgements", async () => {

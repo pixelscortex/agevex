@@ -14,7 +14,7 @@ export type Group = (typeof groups)[number];
 export type Axis = "agent" | "model" | "provider";
 export const axes: Axis[] = ["agent", "model", "provider"];
 
-function group(row: Doc<"charges">): Group {
+function group(row: Pick<Doc<"charges">, "status" | "nanos" | "source">): Group {
   return row.status === "unknown" || row.nanos === undefined
     ? "unknown"
     : row.source === "estimate"
@@ -22,23 +22,52 @@ function group(row: Doc<"charges">): Group {
       : "settled";
 }
 
-function projections(row: Doc<"charges">) {
+/** The root thread owns every thread-scoped tree; rootless charges have none. */
+export function rootOf(attribution: Doc<"charges">["attribution"]) {
+  return attribution.rootThreadId ?? attribution.threadId;
+}
+
+type Projection = { tree: Tree; key: Key; namespace: string[]; depth: number };
+
+/**
+ * Every namespace is owned by ONE subject or ONE root thread; none is shared
+ * across the deployment. Writes for different subjects therefore never touch
+ * a common B-tree node, and no read sums the whole mount.
+ *
+ * Membership depends only on immutable fields (attribution, provider, frozen
+ * breakdowns, creation reason) plus the status group, so a replacement always
+ * finds the entry the previous state inserted at the same index.
+ *
+ * `depth` is the worst-case tree depth used by prune's transaction accounting:
+ * thread-scoped trees are capped at maxThreadCharges entries (depth <=10 at
+ * node size 4: depth 11 needs >=2*3^10-1 = 118,097 entries); subject- and
+ * run-scoped trees use the design ceiling LIMITS.subjectTreeDepth.
+ */
+export function projections(row: Doc<"charges">): Projection[] {
   const a = row.attribution;
   const state = group(row);
   const day = Math.floor(row._creationTime / LIMITS.dayMs);
-  const entries: { tree: Tree; key: Key; namespace: string[] }[] = [
-    {
-      tree: byThread,
-      key: [a.rootThreadId ?? a.threadId ?? "", a.agent ?? ""],
-      namespace: ["cost", state],
-    },
-    { tree: bySubject, key: [a.subject, day], namespace: ["cost", state] },
+  const root = rootOf(a);
+  const thread = LIMITS.threadTreeDepth;
+  const subject = LIMITS.subjectTreeDepth;
+  const entries: Projection[] = [
+    { tree: bySubject, key: ["", day], namespace: ["subject", a.subject, state], depth: subject },
   ];
+  if (root !== undefined)
+    entries.push({
+      tree: byThread,
+      key: [a.agent ?? "", day],
+      // Over-capacity charges go to a count-only namespace that threadCost reads
+      // without bounds (O(1) on a lazy root), keeping the paged trees capped.
+      namespace: [row.reason === "THREAD_CAPACITY" ? "overflow" : "thread", root, state],
+      depth: row.reason === "THREAD_CAPACITY" ? subject : thread,
+    });
   if (a.runId)
     entries.push({
       tree: bySubject,
       key: ["", day],
       namespace: ["run", a.subject, a.runId, state],
+      depth: subject,
     });
   for (const axis of axes) {
     if (!row.breakdowns.includes(`subject.${axis}`)) continue;
@@ -46,36 +75,41 @@ function projections(row: Doc<"charges">) {
       tree: bySubject,
       key: [axis === "provider" ? row.provider : (a[axis] ?? ""), day],
       namespace: ["axis", a.subject, axis, state],
+      depth: subject,
     });
   }
-  // Agent grouping already has the leading [root, agent] thread prefix. Only
-  // model/provider need extra projections; namespaces keep their keys small.
-  for (const axis of ["model", "provider"] as const) {
-    if (!row.breakdowns.includes(`thread.${axis}`)) continue;
-    entries.push({
-      tree: bySubject,
-      key: [axis === "provider" ? row.provider : (a.model ?? ""), day],
-      namespace: ["thread", a.rootThreadId ?? a.threadId ?? "", axis, state],
-    });
-  }
+  // Agent grouping is the thread tree's own leading key. Only model/provider
+  // need extra projections; overflow charges stay out of the paged trees.
+  if (root !== undefined && row.reason !== "THREAD_CAPACITY")
+    for (const axis of ["model", "provider"] as const) {
+      if (!row.breakdowns.includes(`thread.${axis}`)) continue;
+      entries.push({
+        tree: bySubject,
+        key: [axis === "provider" ? row.provider : (a.model ?? ""), day],
+        namespace: ["thread", root, axis, state],
+        depth: thread,
+      });
+    }
   return entries;
 }
 
 /**
- * Upstream src/client/index.ts:866-915 and component/btree.ts:120-138:
- * replace atomically deletes and inserts; synchronous calls share our transaction.
- * We cap the WHOLE mount at 100k charges, making each tree <=100k entries.
- * Node size 4 (min occupancy 2, branching >=3) needs <=12 levels. UTF-8 bounds
- * keep every node <=2 KiB, including temporary
- * split items. Defaults write 3 projections (2 without runId); all opt-ins
- * write at most 8 projections per charge. The usual default-size
- * insert ~=12 writes / replace ~=24 becomes a conservative 2*12*4=96 split/merge operations
- * per projection, <=768 total. Allowing namespace initialization and helpers:
- * <3072 reads/queries (<12 MiB) and <1024 writes (<4 MiB), plus the <=280-KiB
- * charge including operation receipts (<=3 row patches, <840 KiB written)
- * and four Workpool admissions. ONE charge per mutation only.
- * The brief's two replacements cannot provide non-leading axis/run queries;
- * namespaces add projections without adding mounts or owned tables.
+ * Upstream btree.ts:56-138 (insert/delete/replace handlers) and 590-805
+ * (deleteFromNode/mergeNodes): replace deletes and inserts atomically; calls
+ * share our transaction. Node size 4 (min occupancy 2, branching >=3), with
+ * UTF-8 bounded labels, keeps every node <=2 KiB including temporary split items.
+ *
+ * Per projection and level, a delete reads <=8 docs (node, deficient child,
+ * tree size lookup, both siblings, grandchild, merge re-reads; plus the
+ * predecessor descent) and writes <=4; an insert reads <=2 and writes <=3.
+ * The emptiness probe below reads one path. So one projection replacement is
+ * <=11*D+7 reads and <=7*D+4 writes. At the hard maximum, eight projections:
+ * 3 thread-scoped at D=10 and 5 subject/run-scoped at D=24:
+ *   reads  3*117 + 5*271 = 1,706 docs (<3.4 MiB at 2 KiB)
+ *   writes 3*74  + 5*172 = 1,082 docs (<2.2 MiB)
+ * plus the <=280 KiB charge (<=3 patches), <=4 outbox rows, the 3-count
+ * thread-capacity read (<=21 docs) and <=4 Workpool admissions: well under
+ * 16 MiB / 32k docs read and 16 MiB / 16k docs written. ONE charge per mutation.
  */
 export async function updateAggregates(
   ctx: MutationCtx,
@@ -86,26 +120,50 @@ export async function updateAggregates(
   const previous = old && projections(old);
   for (const [index, entry] of entries.entries()) {
     const next = { key: entry.key, namespace: entry.namespace, sumValue: row.nanos ?? 0 };
-    // Small, eagerly aggregated nodes bound bytes on range reads; default-size
-    // lazy roots can visit many large siblings. clear() is used ONLY on an
-    // empty namespace, under OCC in this transaction, never on live data.
-    if ((await entry.tree.count(ctx, { namespace: entry.namespace })) === 0)
-      await entry.tree.clear(ctx, {
-        namespace: entry.namespace,
-        maxNodeSize: LIMITS.aggregateNodeSize,
-        rootLazy: false,
-      });
-    if (previous) {
-      const before = previous[index];
+    const before = previous?.[index];
+    if (before?.namespace.join("\u0000") !== entry.namespace.join("\u0000")) {
+      // Small nodes bound bytes on range reads, but an aggregate insert into a
+      // missing namespace creates a 16-wide tree (btree.ts:56-63). Initialize
+      // only an EMPTY namespace, under OCC in this transaction. `min` reads one
+      // path; unlike a full count it does not read every child of the lazy
+      // root, so it does not conflict with every other write to the namespace.
+      if (!(await entry.tree.min(ctx, { namespace: entry.namespace })))
+        await entry.tree.clear(ctx, {
+          namespace: entry.namespace,
+          maxNodeSize: LIMITS.aggregateNodeSize,
+        });
+    }
+    if (before)
       await entry.tree.replace(
         ctx,
         { key: before.key, namespace: before.namespace, id: row._id },
         next,
       );
-    } else await entry.tree.insert(ctx, { ...next, id: row._id });
+    else await entry.tree.insert(ctx, { ...next, id: row._id });
   }
 }
 
+/** Remove every contribution of a deleted charge (prune). */
+export async function deleteAggregates(ctx: MutationCtx, row: Doc<"charges">) {
+  for (const entry of projections(row))
+    await entry.tree.delete(ctx, { key: entry.key, namespace: entry.namespace, id: row._id });
+}
+
+/** Worst-case reads (docs) a prune of this row costs in the aggregate trees. */
+export function deleteCost(row: Doc<"charges">) {
+  // <=8 reads per level plus the tree lookup, root check and handler entry.
+  return projections(row).reduce((sum, entry) => sum + 8 * entry.depth + 4, 0);
+}
+
+/** Entries currently in this root thread's capped trees (all three groups). */
+export async function threadCount(ctx: QueryCtx, root: string) {
+  let count = 0;
+  for (const state of groups)
+    count += await byThread.count(ctx, { namespace: ["thread", root, state] });
+  return count;
+}
+
+export type Summary = Awaited<ReturnType<typeof summary>>;
 export async function summary(
   ctx: QueryCtx,
   tree: Tree,
@@ -116,18 +174,25 @@ export async function summary(
   for (const state of groups)
     sums.push(await tree.sum(ctx, { namespace: [...namespace, state], bounds }));
   const unknown = await tree.count(ctx, { namespace: [...namespace, "unknown"], bounds });
+  return totals(sums[0], sums[1], sums[2], unknown);
+}
+
+function totals(estimated: number, settled: number, unknownNanos: number, unknown: number) {
   return {
-    totalNanos: sums[0] + sums[1],
-    estimatedNanos: sums[0],
-    settledNanos: sums[1],
+    totalNanos: estimated + settled,
+    estimatedNanos: estimated,
+    settledNanos: settled,
     unknown,
-    unknownNanos: sums[2],
-    usd: { estimated: sums[0] / LIMITS.nanosPerUsd, settled: sums[1] / LIMITS.nanosPerUsd },
+    unknownNanos,
+    usd: { estimated: estimated / LIMITS.nanosPerUsd, settled: settled / LIMITS.nanosPerUsd },
   };
 }
 
-export async function chargeCount(ctx: QueryCtx) {
-  let count = 0;
-  for (const state of groups) count += await bySubject.count(ctx, { namespace: ["cost", state] });
-  return count;
+export function combine(a: Summary, b: Summary): Summary {
+  return totals(
+    a.estimatedNanos + b.estimatedNanos,
+    a.settledNanos + b.settledNanos,
+    a.unknownNanos + b.unknownNanos,
+    a.unknown + b.unknown,
+  );
 }

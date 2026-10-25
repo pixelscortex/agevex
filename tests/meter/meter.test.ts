@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
+import type { FunctionReference } from "convex/server";
 import {
   usageHandlerFor,
+  inline,
   LIMITS,
   observeProviderOutcome,
   type SinkEvent,
@@ -589,7 +591,10 @@ it("registration and public inputs reject unbounded or invalid overrides", async
   expect(() =>
     setup({ providers: { lookup: { lookup: async () => undefined } }, workers: {} }),
   ).toThrow("LOOKUP_WORKER_REQUIRED");
-  const { t, meter } = setup({ limits: { maxCharges: 1 } });
+  expect(() => setup({ limits: { maxThreadCharges: LIMITS.maxThreadCharges + 1 } })).toThrow(
+    "INVALID_LIMIT",
+  );
+  const { t, meter } = setup();
   await expect(
     t.run(async (ctx) => {
       await meter
@@ -597,18 +602,6 @@ it("registration and public inputs reject unbounded or invalid overrides", async
         .estimate("fal", { key: "invalid", profile: "image", quantity: Infinity });
     }),
   ).rejects.toThrow("INVALID_QUANTITY");
-  await t.run(async (ctx) => {
-    await meter
-      .scope(ctx, attribution)
-      .estimate("fal", { key: "one", profile: "image", quantity: 1 });
-  });
-  await expect(
-    t.run(async (ctx) => {
-      await meter
-        .scope(ctx, attribution)
-        .estimate("fal", { key: "two", profile: "image", quantity: 1 });
-    }),
-  ).rejects.toThrow("METER_CAPACITY");
 });
 
 it("host authorization runs for writes and reads before component access", async () => {
@@ -746,4 +739,128 @@ it("billing observation failures preserve both successful results and original p
       },
     }),
   ).rejects.toBe(original);
+});
+
+it("unpriceable, over-cap and unregistered-provider usage is recorded unknown and the next check denies", async () => {
+  const { t, meter, component } = setup({
+    providers: {
+      openrouter: inline(),
+      broken: inline(() => {
+        throw new Error("decoder");
+      }),
+      fal: { profiles: { image: { unit: "image", usd: 0.25 } } },
+    },
+  });
+  const cost = (usd: number) => ({ openrouter: { usage: { cost: usd } } });
+  await t.run(async (ctx) => {
+    const scoped = meter.scope(ctx, attribution);
+    await scoped.record("openrouter", { key: "at-cap", providerMetadata: cost(90) });
+    // None of these may throw: core swallows record errors, which would drop the charge.
+    await scoped.record("openrouter", { key: "over-cap", providerMetadata: cost(90.01) });
+    await scoped.record("broken", { key: "decode", providerMetadata: cost(1) });
+    await scoped.record("model", { key: "unregistered", providerMetadata: cost(1) });
+    await scoped.estimate("fal", { key: "estimate-over-cap", profile: "image", quantity: 400 });
+    await scoped.estimate("missing", { key: "estimate-unregistered", quantity: 1 });
+  });
+  expect(await t.query(component.charges.get, { key: "at-cap" })).toMatchObject({
+    status: "settled",
+    nanos: LIMITS.maxChargeNanos,
+  });
+  const reasons = {
+    "over-cap": "OVER_CAP",
+    decode: "DECODE_FAILED",
+    unregistered: "PROVIDER_NOT_REGISTERED",
+    "estimate-over-cap": "OVER_CAP",
+    "estimate-unregistered": "PROVIDER_NOT_REGISTERED",
+  };
+  for (const [key, reason] of Object.entries(reasons))
+    expect(await t.query(component.charges.get, { key })).toMatchObject({
+      status: "unknown",
+      reason,
+    });
+  expect(await t.run((ctx) => meter.check(ctx, { subject: "owner", runId: "run" }))).toMatchObject({
+    allowed: false,
+    unknown: 5,
+  });
+});
+
+it("charge capacity is per root thread: a full thread records unknown without throwing while other threads keep pricing", async () => {
+  const { t, meter, component } = setup({ limits: { maxThreadCharges: 1 } });
+  const cost = { openrouter: { usage: { cost: 0.1 } } };
+  const other = { ...attribution, rootThreadId: "other", threadId: "other", runId: "run2" };
+  await t.run(async (ctx) => {
+    await meter
+      .scope(ctx, attribution)
+      .record("openrouter", { key: "first", providerMetadata: cost });
+    await meter
+      .scope(ctx, attribution)
+      .record("openrouter", { key: "overflow", providerMetadata: cost });
+    await meter
+      .scope(ctx, other)
+      .record("openrouter", { key: "elsewhere", providerMetadata: cost });
+  });
+  expect(await t.query(component.charges.get, { key: "overflow" })).toMatchObject({
+    status: "unknown",
+    reason: "THREAD_CAPACITY",
+    nanos: 100_000_000,
+  });
+  expect(await t.query(component.charges.get, { key: "elsewhere" })).toMatchObject({
+    status: "settled",
+  });
+  // The overflow stays visible in the thread total, never as zero.
+  expect(await t.run((ctx) => meter.threadCost(ctx, { threadId: "root" }))).toMatchObject({
+    settledNanos: 100_000_000,
+    unknown: 1,
+  });
+  expect(await t.run((ctx) => meter.check(ctx, { subject: "owner", runId: "run" }))).toMatchObject({
+    allowed: false,
+  });
+  expect(await t.run((ctx) => meter.check(ctx, { subject: "owner", runId: "run2" }))).toMatchObject(
+    { allowed: true, settledNanos: 100_000_000 },
+  );
+});
+
+it("two subjects' charges never write a shared aggregate namespace", async () => {
+  const { t, meter } = setup({ breakdowns: allBreakdowns });
+  const charge = (subject: string) =>
+    t.run(async (ctx) => {
+      const root = `${subject}-root`;
+      const scoped = meter.scope(ctx, {
+        ...attribution,
+        subject,
+        rootThreadId: root,
+        threadId: root,
+        runId: `${subject}-run`,
+      });
+      const estimate = await scoped.estimate("fal", {
+        key: `${subject}-estimate`,
+        profile: "image",
+        quantity: 1,
+      });
+      await estimate.settle({ usd: 0.2, key: "settle" });
+      await scoped.record("openrouter", { key: `${subject}-unknown` });
+    });
+  await charge("alice");
+  await charge("bob");
+  const owners = (namespace: string[]) =>
+    ["alice", "bob"].filter((subject) =>
+      namespace.some((part) => part === subject || part === `${subject}-root`),
+    );
+  for (const mount of ["costByThread", "costBySubject"]) {
+    // convex-test's function-handle address reaches the nested aggregate mount.
+    const trees = (await t.query(
+      `function://meter/${mount};inspect:listTrees` as unknown as FunctionReference<
+        "query",
+        "internal",
+        { take: number },
+        { namespace: string[] }[]
+      >,
+      { take: 1_000 },
+    )) as { namespace: string[] }[];
+    expect(trees.length).toBeGreaterThan(0);
+    for (const { namespace } of trees) expect(owners(namespace)).toHaveLength(1);
+    expect(new Set(trees.flatMap(({ namespace }) => owners(namespace)))).toEqual(
+      new Set(["alice", "bob"]),
+    );
+  }
 });

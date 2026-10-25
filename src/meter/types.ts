@@ -1,5 +1,7 @@
 import type { GenericActionCtx, GenericDataModel, FunctionReference } from "convex/server";
+import type { Infer } from "convex/values";
 import type { Doc } from "./component/_generated/dataModel.js";
+import type { reason, sinkView } from "./component/schema.js";
 import type { ResolvedLimits } from "./limits.js";
 import type { Breakdown } from "./breakdowns.js";
 
@@ -10,7 +12,13 @@ export type WriteCtx = Pick<
 >;
 export type ActionCtx = GenericActionCtx<GenericDataModel>;
 export type Attribution = Doc<"charges">["attribution"];
-export type Charge = Omit<Doc<"charges">, "_id" | "operations"> & { _id: string };
+/** Why a charge was created `unknown` (kept after a later settlement). */
+export type UnknownReason = Infer<typeof reason>;
+export type Charge = Omit<Doc<"charges">, "_id" | "operations" | "terminal" | "sinkState"> & {
+  _id: string;
+  /** Delivery state per sink; `attempts`/`failed` describe the pending event. */
+  sinkState: Infer<typeof sinkView>;
+};
 export type Cost = { usd: number } | { credits: number };
 export type Provider = {
   inline?: (args: { usage: unknown; providerMetadata: unknown }) => Cost | undefined;

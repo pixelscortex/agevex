@@ -1,5 +1,4 @@
 import { v } from "convex/values";
-import { event } from "./schema.js";
 
 export const jobs = v.object({
   lookup: v.optional(v.string()),
@@ -14,4 +13,5 @@ export const lookupJob = {
   attempt: v.number(),
   jobs,
 };
-export const deliveryJob = { key: v.string(), sink: v.string(), event, jobs };
+/** One delivery job drains one sink's due outbox rows; `claim` names its batch. */
+export const deliveryJob = { sink: v.string(), claim: v.string(), jobs };

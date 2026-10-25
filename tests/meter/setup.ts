@@ -1,7 +1,13 @@
 import { convexTest } from "convex-test";
 import { makeFunctionReference, type FunctionReference } from "convex/server";
 import { register } from "../../src/meter/test.js";
-import { defineMeter, inline, type MeterOptions } from "../../src/meter/index.js";
+import {
+  defineMeter,
+  inline,
+  type ComponentApi,
+  type Meter,
+  type MeterOptions,
+} from "../../src/meter/index.js";
 import schema from "./fixture/schema.js";
 
 const modules = import.meta.glob("./fixture/**/*.ts");
@@ -12,13 +18,20 @@ export const allBreakdowns: NonNullable<MeterOptions["breakdowns"]> = [
   "subject.model",
   "subject.provider",
 ];
-export function setup(overrides: Partial<MeterOptions> = {}) {
+type HostFunctions = ReturnType<Meter["internalFunctions"]>;
+/** `host` may replace the exported workers, e.g. to make a job crash. */
+export function setup(
+  overrides: Partial<MeterOptions> = {},
+  host: (functions: HostFunctions, component: ReturnType<typeof register>) => object = (
+    functions,
+  ) => functions,
+) {
   const t = convexTest({
     schema,
     transactionLimits: true,
     modules: {
       ...modules,
-      "./fixture/host.ts": async () => meter.internalFunctions(),
+      "./fixture/host.ts": async (): Promise<object> => host(meter.internalFunctions(), component),
     },
   });
   const component = register(t);
@@ -40,7 +53,8 @@ export function setup(overrides: Partial<MeterOptions> = {}) {
     },
     ...overrides,
   });
-  return { t, meter, component };
+  // Name the component type: inferring it would print the private Exposed alias.
+  return { t, meter, component: component as ComponentApi };
 }
 export const attribution = {
   subject: "owner",

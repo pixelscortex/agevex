@@ -15,6 +15,7 @@ export type {
   ScopedMeter,
   Sink,
   SinkEvent,
+  UnknownReason,
   WriteCtx,
 } from "./types.js";
 export type { ComponentApi } from "./component/_generated/component.js";

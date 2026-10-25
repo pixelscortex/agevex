@@ -7,7 +7,7 @@ import { setup, allBreakdowns } from "./setup.js";
 
 const TEST_LIMITS = { seedBatch: 256, timeoutMs: 180_000, days: LIMITS.maxDays, idBytes: 64 };
 type Item = { k: Value; v: string; s: number };
-type Node = { items: Item[]; children: number[]; aggregate: { count: number; sum: number } };
+type Node = { items: Item[]; children: number[]; aggregate?: { count: number; sum: number } };
 
 /**
  * Bulk fixture, NOT a second meter implementation: construct the upstream
@@ -53,10 +53,11 @@ async function seedProjection(
       children.push(build(childSize + (index < extra ? 1 : 0), height - 1));
       if (index < count - 1) entries.push(items[offset++]);
     }
+    // Roots stay lazy (the aggregate default the meter keeps): no root total.
     nodes.push({
       items: entries,
       children,
-      aggregate: { count: size, sum: size * LIMITS.maxChargeNanos },
+      ...(root ? {} : { aggregate: { count: size, sum: size * LIMITS.maxChargeNanos } }),
     });
     return nodes.length - 1;
   }
@@ -71,7 +72,7 @@ async function seedProjection(
               v.object({
                 items: v.array(v.object({ k: v.any(), v: v.string(), s: v.number() })),
                 children: v.array(v.union(v.string(), v.number())),
-                aggregate: v.object({ count: v.number(), sum: v.number() }),
+                aggregate: v.optional(v.object({ count: v.number(), sum: v.number() })),
               }),
             ),
           },
@@ -128,9 +129,11 @@ async function seedProjection(
   });
 }
 
-/** All eight projections contain the same 99,999 charges, split over every
- * status, five maximum-byte axis labels and seven days. This catches missing
- * projection fixtures: thread/run/axis totals must equal the subject total.
+/** All eight projections contain the same 99,999 charges (one below the
+ * per-root-thread cap), split over every status, five maximum-byte axis labels
+ * and seven days. This catches missing projection fixtures: thread/run/axis
+ * totals must equal the subject total. Every namespace is owned by the one
+ * subject/root thread under test; nothing is deployment-wide.
  * Fixture IDs exceed real system-generated charge ids (not caller-controlled).
  * Each seed batch is <=256*2 KiB (<512 KiB), <=256 document writes.
  */
@@ -143,13 +146,13 @@ async function seedAtCapacity(t: ReturnType<typeof setup>["t"], subject: string,
   const projections = [
     {
       mount: "costByThread",
-      namespace: ["cost"],
-      key: (label: string, _day: number): Value[] => [subject, label],
+      namespace: ["thread", subject],
+      key: (label: string, ordinal: number): Value[] => [label, ordinal],
     },
     {
       mount: "costBySubject",
-      namespace: ["cost"],
-      key: (_label: string, ordinal: number): Value[] => [subject, ordinal],
+      namespace: ["subject", subject],
+      key: (_label: string, ordinal: number): Value[] => ["", ordinal],
     },
     {
       mount: "costBySubject",
@@ -171,7 +174,7 @@ async function seedAtCapacity(t: ReturnType<typeof setup>["t"], subject: string,
   for (const projection of projections) {
     for (const [stateIndex, state] of states.entries()) {
       const items: Item[] = [];
-      for (let index = stateIndex; index < LIMITS.maxCharges - 1; index += states.length) {
+      for (let index = stateIndex; index < LIMITS.maxThreadCharges - 1; index += states.length) {
         const ordinal = day - TEST_LIMITS.days + 1 + (index % TEST_LIMITS.days);
         const id = String(index).padStart(TEST_LIMITS.idBytes, "x");
         const key = projection.key(labels[index % labels.length], ordinal);
@@ -237,14 +240,14 @@ it(
         .scope(ctx, attribution)
         .estimate(label, { key, profile: label, quantity: LIMITS.maxQuantity });
     });
-    const knownFixtures = ((LIMITS.maxCharges - 1) / 3) * 2;
+    const knownFixtures = ((LIMITS.maxThreadCharges - 1) / 3) * 2;
     const maxTotal = (knownFixtures + 1) * LIMITS.maxChargeNanos;
     expect(await t.run((ctx) => meter.subjectCost(ctx, { subject: label }))).toMatchObject({
       totalNanos: maxTotal,
     });
     expect(await t.run((ctx) => meter.threadCost(ctx, { threadId: label }))).toMatchObject({
       totalNanos: maxTotal,
-      unknown: (LIMITS.maxCharges - 1) / 3,
+      unknown: (LIMITS.maxThreadCharges - 1) / 3,
       byAgent: {
         page: labels.slice(0, LIMITS.maxGroups).map((key) => ({ key })),
         cursor: labels[LIMITS.maxGroups - 1],
@@ -326,18 +329,30 @@ it(
       ).toBe(maxTotal);
       expect(next[axis]!.cursor).toBeNull();
     }
-    await expect(
-      t.run(async (ctx) => {
-        await meter
-          .scope(ctx, attribution)
-          .estimate(label, { key: "capacity-overflow", profile: label, quantity: 1 });
-      }),
-    ).rejects.toThrow("METER_CAPACITY");
+    // The thread is now full: a new charge is recorded unknown, never thrown.
+    await t.run(async (ctx) => {
+      await meter
+        .scope(ctx, attribution)
+        .estimate(label, { key: "capacity-overflow", profile: label, quantity: 1 });
+    });
+    expect(await t.run((ctx) => meter.check(ctx, { subject: label, runId: label }))).toMatchObject({
+      allowed: false,
+    });
     await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100), 1000);
     expect(events).toHaveLength(LIMITS.maxSinks * 2);
     expect(events.reduce((sum, event) => sum + event.nanos, 0)).toBe(
       LIMITS.maxSinks * LIMITS.maxChargeNanos,
     );
+    // Retention of the settled, delivered maximum charge fits one transaction
+    // with all eight projections in maximally populated trees.
+    expect(
+      await t.run((ctx) =>
+        meter.prune(ctx, { before: Date.now() + 1, limit: LIMITS.maxPruneLimit }),
+      ),
+    ).toEqual({ deleted: 1, more: false });
+    expect(await t.run((ctx) => meter.subjectCost(ctx, { subject: label }))).toMatchObject({
+      totalNanos: maxTotal - LIMITS.maxChargeNanos,
+    });
   },
   TEST_LIMITS.timeoutMs,
 );

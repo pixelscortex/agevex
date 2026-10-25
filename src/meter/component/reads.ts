@@ -3,6 +3,7 @@ import { query, type QueryCtx } from "./_generated/server.js";
 import {
   byThread,
   bySubject,
+  combine,
   summary,
   groups,
   type Axis,
@@ -14,13 +15,15 @@ import { requireBreakdown, resolveBreakdowns } from "../breakdowns.js";
 import { breakdowns } from "./schema.js";
 
 /** Seek one next label per status, then aggregate the complete label prefix.
- * min/pageSize=1 follows <=two boundary paths plus one result path, <=36
- * nodes (aggregate client:404-418, btree:1158-1231); range sums visit <=96
- * nodes (btree:333-415). At maxGroups=4, each axis costs <=15*36 + 16*96=2076
- * node reads. All keys have two fields and nodes <=2 KiB, so three pages plus
- * totals use (3*2076 + 4*96)*2 KiB =12.92 MiB.
- * Tree/index/worker metadata adds <0.5 MiB; <7k docs, <256 index queries, zero
- * writes. No charge scans; every axis has its own continuation cursor.
+ * Thread trees are capped at maxThreadCharges entries: depth D<=10.
+ * min/pageSize=1 follows <=two boundary paths plus one result path, <=3D=30
+ * nodes (aggregate client:404-418, btree:1158-1231); range sums visit <=8D=80
+ * nodes (btree:333-415). At maxGroups=4, each axis costs <=15*30 + 16*80=1730
+ * node reads. All keys have two fields and nodes <=2 KiB, so three pages use
+ * 3*1730*2 KiB =10.14 MiB. Totals read the thread and overflow namespaces
+ * WITHOUT bounds: on a lazy root that is the root plus <=5 children per call,
+ * 8 calls * 7 docs. Tree/index metadata adds <0.5 MiB; <6k docs, <256 index
+ * queries, zero writes. No charge scans; every axis has its own cursor.
  */
 async function threadPage(
   ctx: QueryCtx,
@@ -30,7 +33,7 @@ async function threadPage(
   cursor?: string,
 ) {
   const tree: Tree = axis === "agent" ? byThread : bySubject;
-  const namespace = axis === "agent" ? ["cost"] : ["thread", root, axis];
+  const namespace = axis === "agent" ? ["thread", root] : ["thread", root, axis];
   let after = cursor;
   const page = [];
   for (let index = 0; index <= maxGroups; index++) {
@@ -38,34 +41,20 @@ async function threadPage(
     for (const state of groups) {
       const item = await tree.min(ctx, {
         namespace: [...namespace, state],
+        // Day ordinals are numbers, which Convex sorts before every string,
+        // so [after, maxTimestamp] exclusively skips all of `after`'s entries.
         bounds:
-          axis === "agent"
-            ? {
-                // Convex arrays sort after every string; the upper sentinel
-                // includes exactly this root. An exclusive tuple skips all ids
-                // for the previous agent without reading any charge documents.
-                lower: {
-                  key: (after === undefined ? [root] : [root, after]) as unknown as Key,
-                  inclusive: false,
-                },
-                upper: { key: [root, []] as unknown as Key, inclusive: false },
-              }
-            : after === undefined
-              ? undefined
-              : { lower: { key: [after, LIMITS.maxTimestamp], inclusive: false } },
+          after === undefined
+            ? undefined
+            : { lower: { key: [after, LIMITS.maxTimestamp] as Key, inclusive: false } },
       });
-      if (item) labels.push(item.key[axis === "agent" ? 1 : 0] as string);
+      if (item) labels.push(item.key[0]);
     }
     labels.sort();
     const label = labels[0];
     if (label === undefined) return { page, cursor: null as string | null };
     if (index === maxGroups) return { page, cursor: after ?? null };
-    page.push({
-      key: label,
-      ...(await summary(ctx, tree, namespace, {
-        prefix: axis === "agent" ? [root, label] : [label],
-      })),
-    });
+    page.push({ key: label, ...(await summary(ctx, tree, namespace, { prefix: [label] })) });
     after = label;
   }
   return { page, cursor: null as string | null };
@@ -95,7 +84,11 @@ export const threadCost = query({
     for (const axis of ["model", "provider"] as const)
       if (cursors?.[axis] !== undefined) requireBreakdown(enabled, `thread.${axis}`);
     return {
-      ...(await summary(ctx, byThread, ["cost"], { prefix: [threadId] })),
+      // Over-capacity charges are counted here (never zero), not in the pages.
+      ...combine(
+        await summary(ctx, byThread, ["thread", threadId]),
+        await summary(ctx, byThread, ["overflow", threadId]),
+      ),
       byAgent: await threadPage(ctx, threadId, "agent", maxGroups, cursors?.agent),
       ...(enabled.includes("thread.model")
         ? { byModel: await threadPage(ctx, threadId, "model", maxGroups, cursors?.model) }
@@ -112,9 +105,11 @@ export const cost = query({
   handler: async (ctx, { subject, runId }) => {
     text(subject, "SUBJECT");
     if (runId) text(runId, "RUN");
+    // Both are unbounded reads of ONE owned namespace: on a lazy root that is
+    // the root plus <=5 children per call, independent of how many charges exist.
     return runId
       ? await summary(ctx, bySubject, ["run", subject, runId])
-      : await summary(ctx, bySubject, ["cost"], { prefix: [subject] });
+      : await summary(ctx, bySubject, ["subject", subject]);
   },
 });
 
@@ -151,9 +146,7 @@ export const breakdown = query({
       for (let day = from; day < to; day++) {
         page.push({
           key: String(day),
-          ...(await summary(ctx, bySubject, ["cost"], {
-            eq: [args.subject, day],
-          })),
+          ...(await summary(ctx, bySubject, ["subject", args.subject], { eq: ["", day] })),
         });
       }
       return { page, cursor: null as string | null };
@@ -161,10 +154,12 @@ export const breakdown = query({
     const axis: Axis = args.by;
     let after = args.cursor;
     // At the hard maximum: 4 groups * (3 seeks + 4 summary reads), plus
-    // 3 final seeks =31 aggregate queries. Upstream btree.ts:333-415 visits
-    // <=2 boundary paths plus <=4 siblings per level: <=2*12*4=96 nodes,
-    // <=2 KiB each. Thus <=2976 docs / 5.82 MiB; helper/index overhead stays
-    // below 4096 queries / 16 MiB. Day reads: 7*4*96*2 KiB =5.25 MiB.
+    // 3 final seeks =31 aggregate queries. Subject trees are not count-capped;
+    // at the design depth D=24 (LIMITS.subjectTreeDepth) upstream
+    // btree.ts:333-415 visits <=2 boundary paths plus <=4 siblings per level:
+    // <=8*24=192 nodes, <=2 KiB each. Thus <=5952 docs / 11.63 MiB; helper and
+    // index overhead stays below 4096 queries / 16 MiB. Day reads use keys
+    // ["", day] (<=1 KiB nodes): 7*4*192*1 KiB =5.25 MiB.
     // No charge scan, no offset
     // pagination, and a cursor lets hosts enumerate arbitrary cardinalities.
     for (let index = 0; index <= args.maxGroups; index++) {

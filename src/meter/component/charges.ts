@@ -1,6 +1,6 @@
-import { v, type Infer } from "convex/values";
+import { v, getDocumentSize, type Infer } from "convex/values";
 import type { DefaultFunctionArgs, FunctionReference } from "convex/server";
-import { Workpool } from "@convex-dev/workpool";
+import { Workpool, vOnCompleteArgs } from "@convex-dev/workpool";
 import {
   mutation,
   query,
@@ -10,10 +10,16 @@ import {
 } from "./_generated/server.js";
 import { components, internal } from "./_generated/api.js";
 import type { Doc } from "./_generated/dataModel.js";
-import { attribution, status, source, breakdowns } from "./schema.js";
+import { attribution, status, source, breakdowns, reason } from "./schema.js";
 import { resolveBreakdowns } from "../breakdowns.js";
 import { jobs, lookupJob, deliveryJob } from "./contracts.js";
-import { updateAggregates, chargeCount } from "./aggregates.js";
+import {
+  updateAggregates,
+  deleteAggregates,
+  deleteCost,
+  threadCount,
+  rootOf,
+} from "./aggregates.js";
 import { LIMITS, integer, text, chargeKey } from "../limits.js";
 
 const pool = new Workpool(components.workpool, { maxParallelism: LIMITS.maxParallelism });
@@ -24,6 +30,7 @@ function actionHandle<A extends DefaultFunctionArgs>(handle: string) {
   return handle as unknown as FunctionReference<"action", "internal", A>;
 }
 type DeliveryJob = Infer<ReturnType<typeof v.object<typeof deliveryJob>>>;
+type Delivery = Doc<"deliveries">;
 
 async function find(ctx: Pick<QueryCtx, "db">, key: string) {
   chargeKey(key);
@@ -45,6 +52,15 @@ function final(row: Doc<"charges">) {
 function resolved(row: Doc<"charges">) {
   return row.source !== "estimate" || row.status === "unknown";
 }
+/** Settled and acknowledged by every sink (vacuously true without sinks).
+ * `corrected` is not terminal: a settlement or lookup may still replace it. */
+function isTerminal(row: Doc<"charges">) {
+  return (
+    row.status === "settled" &&
+    row.nanos !== undefined &&
+    row.sinkState.every((sink) => !sink.pending && sink.deliveredNanos === row.nanos)
+  );
+}
 
 async function stale(ctx: MutationCtx, row: Doc<"charges">, operation: string, revision: number) {
   if (row.lastStale?.operation === operation && row.lastStale.revision === revision) return row;
@@ -53,53 +69,95 @@ async function stale(ctx: MutationCtx, row: Doc<"charges">, operation: string, r
   return { ...row, lastStale };
 }
 
-async function enqueueDelivery(
-  ctx: MutationCtx,
-  row: Doc<"charges">,
-  sink: Doc<"charges">["sinkState"][number],
-  config: Jobs,
-) {
-  if (!config.deliver || !sink.pending) return;
+type Outcome = Omit<Doc<"charges">, "operations" | "terminal" | "sinkState"> & {
+  sinkState: (Doc<"charges">["sinkState"][number] & { attempts: number; failed: boolean })[];
+};
+/** Caller-facing charge: retry state is joined from the <=4 outbox rows (one
+ * bounded index read), so failures never have to rewrite the large charge row. */
+async function outcome(ctx: Pick<QueryCtx, "db">, row: Doc<"charges">): Promise<Outcome> {
+  const { operations: _operations, terminal: _terminal, ...result } = row;
+  const pending = await ctx.db
+    .query("deliveries")
+    .withIndex("by_key", (q) => q.eq("key", row.key))
+    .take(LIMITS.maxSinks);
+  return {
+    ...result,
+    sinkState: row.sinkState.map((sink) => {
+      const delivery = pending.find((entry) => entry.sink === sink.name);
+      return { ...sink, attempts: delivery?.attempts ?? 0, failed: delivery?.failed ?? false };
+    }),
+  };
+}
+
+/**
+ * Start one delivery job for a sink. The job drains up to LIMITS.sinkBatch due
+ * events of that sink, so a burst shares requests; jobs that find nothing
+ * claimed return without contacting the sink. `claim` identifies the rows the
+ * job takes, so its Workpool onComplete can count a crash as a failed attempt.
+ */
+async function enqueueDrain(ctx: MutationCtx, sink: string, config: Jobs, runAt: number) {
+  if (!config.deliver) return;
+  const claim = crypto.randomUUID();
   await pool.enqueueAction(
     ctx,
     actionHandle<DeliveryJob>(config.deliver),
+    { sink, claim, jobs: config },
     {
-      key: row.key,
-      sink: sink.name,
-      event: sink.pending,
-      jobs: config,
+      retry: false,
+      runAt,
+      onComplete: internal.charges.deliveryComplete,
+      onCompleteExcludeKinds: ["success"],
+      context: { sink, claim, jobs: config },
     },
-    { retry: false },
   );
 }
 
-/** Outbox snapshots are immutable until acknowledged, including on uncertain delivery. */
-async function prepareSinks(ctx: MutationCtx, row: Doc<"charges">, config: Jobs) {
-  if (!final(row) || row.nanos === undefined) return row;
-  for (const sink of row.sinkState) {
-    if (sink.pending || sink.failed || sink.deliveredNanos === row.nanos) continue;
-    sink.revision++;
-    sink.attempts = 0;
-    sink.pending = {
-      externalId:
-        sink.deliveredNanos === undefined
-          ? row.key
-          : `${row.key}${LIMITS.deltaSeparator}${sink.revision}`,
-      revision: sink.revision,
-      nanos: row.nanos - (sink.deliveredNanos ?? 0),
-      totalNanos: row.nanos,
-    };
-    await enqueueDelivery(ctx, row, sink, config);
-  }
-  await ctx.db.patch(row._id, { sinkState: row.sinkState });
-  return row;
+/** Outbox snapshots are immutable until acknowledged, including on uncertain
+ * delivery. A pending event exists on the charge exactly while its outbox row
+ * exists; the row is the copy delivery jobs read. */
+async function prepareSinks(ctx: MutationCtx, row: Doc<"charges">, config: Jobs, changed = false) {
+  const sinkState = row.sinkState.map((sink) => ({ ...sink }));
+  const due: string[] = [];
+  if (final(row) && row.nanos !== undefined)
+    for (const sink of sinkState) {
+      if (sink.pending || sink.deliveredNanos === row.nanos) continue;
+      sink.revision++;
+      sink.pending = {
+        externalId:
+          sink.deliveredNanos === undefined
+            ? row.key
+            : `${row.key}${LIMITS.deltaSeparator}${sink.revision}`,
+        revision: sink.revision,
+        nanos: row.nanos - (sink.deliveredNanos ?? 0),
+        totalNanos: row.nanos,
+      };
+      await ctx.db.insert("deliveries", {
+        sink: sink.name,
+        key: row.key,
+        event: sink.pending,
+        attribution: row.attribution,
+        provider: row.provider,
+        attempts: 0,
+        limited: false,
+        failed: false,
+        dueAt: Date.now(),
+      });
+      due.push(sink.name);
+    }
+  const next = { ...row, sinkState };
+  const terminal = isTerminal(next);
+  if (changed || due.length || terminal !== row.terminal)
+    await ctx.db.patch(row._id, { sinkState, terminal });
+  for (const sink of due)
+    await enqueueDrain(ctx, sink, config, Date.now() + LIMITS.deliveryWindowMs);
+  return { ...next, terminal };
 }
 
 export const get = query({
   args: { key: v.string() },
   handler: async (ctx, { key }) => {
     const row = await find(ctx, key);
-    return row && outcome(row);
+    return row && (await outcome(ctx, row));
   },
 });
 
@@ -115,11 +173,12 @@ export const create = mutation({
     source,
     nanos: v.optional(v.number()),
     credits: v.optional(v.number()),
+    reason: v.optional(reason),
     sinks: v.array(v.string()),
-    maxCharges: v.number(),
+    maxThreadCharges: v.number(),
     jobs,
   },
-  handler: async (ctx, args): Promise<Doc<"charges">> => {
+  handler: async (ctx, args): Promise<null> => {
     const enabledBreakdowns = resolveBreakdowns(args.breakdowns);
     text(args.key, "KEY", LIMITS.maxKeyBytes);
     text(args.provider, "PROVIDER");
@@ -129,7 +188,9 @@ export const create = mutation({
     if (args.quantity !== undefined) integer(args.quantity, LIMITS.maxQuantity, "QUANTITY");
     if (args.credits !== undefined) integer(args.credits, LIMITS.maxQuantity, "CREDITS");
     if (args.nanos !== undefined) integer(args.nanos, LIMITS.maxChargeNanos, "NANOS");
-    integer(args.maxCharges, LIMITS.maxCharges, "CHARGES");
+    integer(args.maxThreadCharges, LIMITS.maxThreadCharges, "THREAD_CHARGES");
+    if (!args.maxThreadCharges) throw new Error("INVALID_THREAD_CHARGES");
+    if (args.reason && args.status !== "unknown") throw new Error("INVALID_REASON");
     validateJobs(args.jobs);
     if (args.sinks.length > LIMITS.maxSinks || new Set(args.sinks).size !== args.sinks.length)
       throw new Error("INVALID_SINKS");
@@ -151,14 +212,21 @@ export const create = mutation({
         )
       )
         throw new Error("KEY_CONFLICT");
-      return args.source === "estimate" &&
+      if (
+        args.source === "estimate" &&
         (existing.status === "settled" || existing.status === "unknown")
-        ? await stale(ctx, existing, "estimate", 0)
-        : existing;
+      )
+        await stale(ctx, existing, "estimate", 0);
+      return null;
     }
-    // Mount capacity bounds ALL namespaces, numeric sums (100k*$10 <=1e15
-    // nanos < MAX_SAFE_INTEGER), and worst-case B-tree depth, not just one user.
-    if ((await chargeCount(ctx)) >= args.maxCharges) throw new Error("METER_CAPACITY");
+    // No deployment-wide capacity: the only count read is this ROOT THREAD's
+    // own trees (3 unbounded counts, root + <=5 children each on a lazy root).
+    // It serializes charge creation within one root thread, never across
+    // threads or subjects. Past the cap the charge is still recorded, as
+    // `unknown`, so the budget gate denies instead of a swallowed error
+    // admitting unmetered work.
+    const root = rootOf(args.attribution);
+    const full = root !== undefined && (await threadCount(ctx, root)) >= args.maxThreadCharges;
     const id = await ctx.db.insert("charges", {
       key: args.key,
       attribution: args.attribution,
@@ -166,17 +234,20 @@ export const create = mutation({
       breakdowns: enabledBreakdowns,
       profile: args.profile,
       quantity: args.quantity,
-      status: args.status,
+      status: full ? "unknown" : args.status,
       source: args.source,
       nanos: args.nanos,
       credits: args.credits,
-      sinkState: args.sinks.map((name) => ({ name, revision: 0, attempts: 0, failed: false })),
+      reason: full ? "THREAD_CAPACITY" : args.reason,
+      sinkState: args.sinks.map((name) => ({ name, revision: 0 })),
+      terminal: false,
       revision: 0,
       operations: [],
     });
     const row = (await ctx.db.get(id))!;
     await updateAggregates(ctx, row);
-    return await prepareSinks(ctx, row, args.jobs);
+    await prepareSinks(ctx, row, args.jobs);
+    return null;
   },
 });
 
@@ -196,12 +267,6 @@ async function change(
   return await prepareSinks(ctx, next, config);
 }
 
-type Outcome = Omit<Doc<"charges">, "operations">;
-function outcome(row: Doc<"charges">): Outcome {
-  const { operations: _operations, ...result } = row;
-  return result;
-}
-
 function replay(row: Doc<"charges">, key: string) {
   text(key, "OPERATION_KEY", LIMITS.maxKeyBytes);
   const receipt = row.operations.find((entry) => entry.key === key);
@@ -212,12 +277,12 @@ function replay(row: Doc<"charges">, key: string) {
   // Each outcome is <8 KiB (bounded fields/four sinks, no nested ledger):
   // 32 * (8 KiB + 256-byte key + 128-byte wrapper) + 8 KiB = 276 KiB < 1 MiB.
   // One charge per transaction adds <280 KiB read and <840 KiB for at most
-  // three row patches to the aggregate budget (<12 MiB read / <4 MiB written).
+  // three row patches to the aggregate budget (aggregates.ts).
   if (row.operations.length >= LIMITS.maxOperations) throw new Error("OPERATION_CAPACITY");
 }
 
 async function remember(ctx: MutationCtx, row: Doc<"charges">, key: string): Promise<Outcome> {
-  const result = outcome(row);
+  const result = await outcome(ctx, row);
   await ctx.db.patch(row._id, { operations: [...row.operations, { key, outcome: result }] });
   return result;
 }
@@ -404,37 +469,146 @@ export const lookupResult = mutation({
   },
 });
 
+/** Due, unclaimed, non-failed events of one sink, oldest due first. */
+function dueRows(ctx: Pick<QueryCtx, "db">, sink: string) {
+  return ctx.db
+    .query("deliveries")
+    .withIndex("by_due", (q) =>
+      q.eq("sink", sink).eq("failed", false).eq("claim", undefined).lte("dueAt", Date.now()),
+    )
+    .take(LIMITS.sinkBatch);
+}
+
+/**
+ * Called by the host delivery action. Takes <=100 due outbox rows of one sink
+ * (<=2 KiB each: event, <=6 attribution labels of 128 bytes, 256-byte key):
+ * <=200 KiB read and written, 100 docs. Never reads charge rows.
+ */
+export const claimDeliveries = mutation({
+  args: deliveryJob,
+  handler: async (ctx, args) => {
+    validateJobs(args.jobs);
+    text(args.sink, "SINK");
+    text(args.claim, "CLAIM");
+    const rows = await dueRows(ctx, args.sink);
+    for (const row of rows) await ctx.db.patch(row._id, { claim: args.claim });
+    return rows.map((row) => ({
+      ...row.event,
+      key: row.key,
+      attribution: row.attribution,
+      provider: row.provider,
+    }));
+  },
+});
+
+/**
+ * One failed delivery attempt for each row, shared by sink errors and crashed
+ * jobs (onComplete). A 429 with Retry-After reschedules at that delay without
+ * consuming an attempt once; the next consecutive 429 consumes one, so a sink
+ * that keeps answering 429 still reaches `failed` after maxAttempts+1 tries.
+ * Retries are on demand: at most one job per distinct (sink, due time), and
+ * none once a row has failed. Rows are outbox rows only (<=100, small).
+ */
+async function failRows(
+  ctx: MutationCtx,
+  rows: Delivery[],
+  result: { retryAfterMs?: number; rateLimited: boolean },
+  config: Jobs,
+) {
+  const now = Date.now();
+  const retries = new Map<string, { sink: string; dueAt: number }>();
+  for (const row of rows) {
+    const free = result.rateLimited && result.retryAfterMs !== undefined && !row.limited;
+    const attempts = row.attempts + (free ? 0 : 1);
+    const failed = attempts >= config.maxAttempts;
+    const backoff = Math.min(
+      LIMITS.maxBackoffMs,
+      LIMITS.backoffMs * LIMITS.backoffBase ** attempts,
+    );
+    const dueAt = now + (free ? result.retryAfterMs! : Math.max(result.retryAfterMs ?? 0, backoff));
+    await ctx.db.patch(row._id, {
+      attempts,
+      failed,
+      limited: result.rateLimited,
+      claim: undefined,
+      dueAt,
+    });
+    if (!failed) retries.set(`${row.sink}\u0000${dueAt}`, { sink: row.sink, dueAt });
+  }
+  for (const { sink, dueAt } of retries.values()) await enqueueDrain(ctx, sink, config, dueAt);
+}
+
+/** Acknowledge one delivered event: the only delivery path that patches a charge. */
+async function acknowledge(ctx: MutationCtx, row: Delivery, config: Jobs) {
+  await ctx.db.delete(row._id);
+  const charge = await find(ctx, row.key);
+  const sink = charge?.sinkState.find((entry) => entry.name === row.sink);
+  if (!charge || !sink?.pending || sink.pending.externalId !== row.event.externalId) return;
+  const totalNanos = sink.pending.totalNanos;
+  const sinkState = charge.sinkState.map((entry) =>
+    entry.name === row.sink
+      ? { name: entry.name, revision: entry.revision, deliveredNanos: totalNanos }
+      : entry,
+  );
+  // May enqueue the next signed delta if the amount changed during delivery.
+  await prepareSinks(ctx, { ...charge, sinkState }, config, true);
+}
+
+/**
+ * Results for <=LIMITS.ackBatch events of one claimed batch. An acknowledgement
+ * reads and rewrites its charge (<=280 KiB): 16 * 280 KiB =4.4 MiB read and
+ * written, plus <=16 new outbox rows and Workpool admissions. Stale results
+ * (a different claim holds the row, or it is gone) are ignored.
+ */
 export const deliveryResult = mutation({
-  args: { ...deliveryJob, ok: v.boolean(), retryAfterMs: v.optional(v.number()) },
+  args: {
+    sink: v.string(),
+    claim: v.string(),
+    keys: v.array(v.string()),
+    ok: v.boolean(),
+    retryAfterMs: v.optional(v.number()),
+    rateLimited: v.boolean(),
+    jobs,
+  },
   handler: async (ctx, args): Promise<null> => {
     validateJobs(args.jobs);
+    if (args.keys.length > LIMITS.ackBatch) throw new Error("INVALID_KEYS");
     if (args.retryAfterMs !== undefined)
       integer(args.retryAfterMs, LIMITS.maxLookupMs, "RETRY_AFTER");
-    const row = await find(ctx, args.key);
-    const sink = row?.sinkState.find((s) => s.name === args.sink);
-    if (!row || !sink?.pending || sink.pending.externalId !== args.event.externalId) return null;
-    if (args.ok) {
-      sink.deliveredNanos = sink.pending.totalNanos;
-      sink.pending = undefined;
-      sink.attempts = 0;
-      sink.failed = false;
-      await ctx.db.patch(row._id, { sinkState: row.sinkState });
-      await prepareSinks(ctx, row, args.jobs);
-    } else {
-      sink.attempts++;
-      sink.failed = sink.attempts >= args.jobs.maxAttempts;
-      await ctx.db.patch(row._id, { sinkState: row.sinkState });
-      if (!sink.failed && args.jobs.deliver) {
-        const { ok: _ok, retryAfterMs: _retry, ...job } = args;
-        await pool.enqueueAction(ctx, actionHandle<DeliveryJob>(args.jobs.deliver), job, {
-          retry: false,
-          runAfter: Math.max(
-            args.retryAfterMs ?? 0,
-            Math.min(LIMITS.maxBackoffMs, LIMITS.backoffMs * LIMITS.backoffBase ** sink.attempts),
-          ),
-        });
-      }
+    const failures: Delivery[] = [];
+    for (const key of args.keys) {
+      chargeKey(key);
+      const row = await ctx.db
+        .query("deliveries")
+        .withIndex("by_key", (q) => q.eq("key", key).eq("sink", args.sink))
+        .unique();
+      if (!row || row.claim !== args.claim) continue;
+      if (args.ok) await acknowledge(ctx, row, args.jobs);
+      else failures.push(row);
     }
+    await failRows(ctx, failures, args, args.jobs);
+    return null;
+  },
+});
+
+/**
+ * Workpool onComplete for delivery jobs (success is excluded at enqueue). A
+ * failed or cancelled job counts as one failed attempt for the rows it still
+ * holds, exactly like deliveryResult(ok:false). A job that died before
+ * claiming holds nothing; then the due rows it would have claimed take the
+ * attempt, so a job that can never run still drives them to `failed` instead
+ * of leaving them due with no job. <=100 outbox rows, never a charge row.
+ */
+export const deliveryComplete = internalMutation({
+  args: vOnCompleteArgs(v.object(deliveryJob)),
+  handler: async (ctx, { context, result }) => {
+    if (result.kind === "success") return null;
+    let rows = await ctx.db
+      .query("deliveries")
+      .withIndex("by_claim", (q) => q.eq("claim", context.claim))
+      .take(LIMITS.sinkBatch);
+    if (!rows.length) rows = await dueRows(ctx, context.sink);
+    await failRows(ctx, rows, { rateLimited: false }, context.jobs);
     return null;
   },
 });
@@ -445,13 +619,72 @@ export const retrySinks = mutation({
     validateJobs(args.jobs);
     const row = await find(ctx, args.key);
     if (!row) throw new Error("CHARGE_NOT_FOUND");
-    for (const sink of row.sinkState)
-      if (sink.pending) {
-        sink.failed = false;
-        sink.attempts = 0;
-        await enqueueDelivery(ctx, row, sink, args.jobs);
-      }
-    await ctx.db.patch(row._id, { sinkState: row.sinkState });
+    for (const sink of row.sinkState) {
+      if (!sink.pending) continue;
+      const delivery = await ctx.db
+        .query("deliveries")
+        .withIndex("by_key", (q) => q.eq("key", row.key).eq("sink", sink.name))
+        .unique();
+      // An in-flight job keeps its claim; resetting it would resend the batch.
+      if (!delivery || delivery.claim !== undefined) continue;
+      await ctx.db.patch(delivery._id, {
+        attempts: 0,
+        failed: false,
+        limited: false,
+        dueAt: Date.now(),
+      });
+      await enqueueDrain(ctx, sink.name, args.jobs, Date.now());
+    }
     return null;
+  },
+});
+
+/**
+ * Host-driven retention. Deletes settled charges whose sinks all acknowledged
+ * (index by_terminal, no scan of live rows) created before `before`, with
+ * their aggregate entries, so remaining totals stay exact. No rescheduling:
+ * the host calls it again while `more`.
+ *
+ * Transaction bound: each candidate is charged its real size (getDocumentSize,
+ * <=280 KiB with receipts) plus the worst-case aggregate delete cost of its
+ * projections (aggregates.ts deleteCost: 8*D+4 docs each, D=10 thread-scoped,
+ * D=24 subject/run-scoped, 2 KiB per node). The batch stops before 16k docs /
+ * 12 MiB of reads; writes are at most half the node reads (4*D+2 per
+ * projection) plus each deleted row, so also <=12 MiB / 8k docs. A default
+ * charge (3 projections: 84 + 196 + 196) costs <=476 nodes (952 KiB): >=9 per
+ * call with full 280-KiB receipt ledgers, >=12 with small rows; a fully
+ * opted-in one (8: 3*84 + 5*196) <=1,232 nodes (2.4 MiB): >=4. `limit` caps the count.
+ */
+export const prune = mutation({
+  args: { before: v.number(), limit: v.optional(v.number()) },
+  handler: async (ctx, { before, limit = LIMITS.pruneLimit }) => {
+    integer(before, LIMITS.maxTimestamp, "BEFORE");
+    integer(limit, LIMITS.maxPruneLimit, "LIMIT");
+    if (!limit) throw new Error("INVALID_LIMIT");
+    let deleted = 0;
+    let docs = 0;
+    let bytes = 0;
+    while (true) {
+      // Re-query after each delete: reads observe this transaction's deletes,
+      // so the next eligible row is always the first one. <=501 index queries.
+      const row = await ctx.db
+        .query("charges")
+        .withIndex("by_terminal", (q) => q.eq("terminal", true).lt("_creationTime", before))
+        .first();
+      if (!row) return { deleted, more: false };
+      const nodes = deleteCost(row);
+      const cost = getDocumentSize(row) + nodes * LIMITS.nodeBytes;
+      if (
+        deleted === limit ||
+        docs + nodes + 1 > LIMITS.pruneReadDocs ||
+        bytes + cost > LIMITS.pruneReadBytes
+      )
+        return { deleted, more: true };
+      docs += nodes + 1;
+      bytes += cost;
+      await deleteAggregates(ctx, row);
+      await ctx.db.delete(row._id);
+      deleted++;
+    }
   },
 });

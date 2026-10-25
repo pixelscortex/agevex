@@ -31,8 +31,8 @@ const optionalProjections = allBreakdowns.map((breakdown) => ({
 async function counts(t: ReturnType<typeof setup>["t"]) {
   return await t.run(async (ctx) => {
     const projections = [
-      { tree: thread, namespace: ["cost"] },
-      { tree: subject, namespace: ["cost"] },
+      { tree: thread, namespace: ["thread", attribution.rootThreadId] },
+      { tree: subject, namespace: ["subject", attribution.subject] },
       { tree: subject, namespace: ["run", attribution.subject, attribution.runId] },
       ...optionalProjections.map(({ namespace }) => ({ tree: subject, namespace })),
     ];

@@ -7,13 +7,25 @@ export const LIMITS = {
   centDecimalPlaces: 7,
   maxOperations: 32,
   aggregateNodeSize: 4,
-  aggregateMaxDepth: 12,
   dayMs: 86_400_000,
   maxStringBytes: 128,
   maxKeyBytes: 256,
-  maxChargeNanos: 10_000_000_000,
+  /**
+   * $90 per charge. Every namespace whose totals must stay exact holds at most
+   * maxThreadCharges priced entries (see aggregates.ts), so its sum is at most
+   * 100_000 * 90_000_000_000 = 9_000_000_000_000_000 nanodollars, below
+   * Number.MAX_SAFE_INTEGER = 9_007_199_254_740_991. Aggregate sums are float64;
+   * staying under 2^53 keeps every integer total exact.
+   */
+  maxChargeNanos: 90_000_000_000,
   maxQuantity: 1_000_000,
-  maxCharges: 100_000,
+  /**
+   * Per ROOT THREAD, never per deployment. threadCost range-reads the thread's
+   * own trees, and that read budget needs a depth bound (aggregates.ts). A
+   * charge past the bound is recorded `unknown` (reason THREAD_CAPACITY) in a
+   * count-only overflow namespace, so the gate fails closed instead of throwing.
+   */
+  maxThreadCharges: 100_000,
   maxProviders: 16,
   maxProfiles: 32,
   maxSinks: 4,
@@ -26,14 +38,37 @@ export const LIMITS = {
   backoffBase: 2,
   maxAttempts: 8,
   maxParallelism: 4,
+  /** Polar accepts at most 100 events per ingest request; one job sends one batch. */
   sinkBatch: 100,
+  /** Acknowledgements patch charge rows (<=280 KiB each, see charges.ts), so one
+   * result mutation handles at most 16: 16 * 280 KiB = 4.4 MiB read and written. */
+  ackBatch: 16,
+  /** New sink events wait this long so a burst shares one delivery request. */
+  deliveryWindowMs: 1_000,
+  pruneLimit: 100,
+  maxPruneLimit: 500,
+  /**
+   * Worst-case prune accounting (charges.ts prune). Thread-scoped trees hold
+   * <=maxThreadCharges entries: depth <=10. Subject- and run-scoped trees are
+   * unbounded in count but depth 25 needs >=2*3^24-1 (~5.6e11) retained charges
+   * for ONE subject, so 24 is the design ceiling. Node bytes <=2 KiB (aggregates.ts).
+   */
+  threadTreeDepth: 10,
+  subjectTreeDepth: 24,
+  nodeBytes: 2_048,
+  pruneReadBytes: 12 * 1024 * 1024,
+  pruneReadDocs: 16_000,
   maxResponseBytes: 16_384,
   requestTimeoutMs: 30_000,
   maxTimestamp: 8_640_000_000_000_000,
 } as const;
 
-export type Limits = Pick<typeof LIMITS, "maxCharges" | "maxGroups" | "maxDays" | "maxAttempts">;
+export type Limits = Pick<
+  typeof LIMITS,
+  "maxThreadCharges" | "maxGroups" | "maxDays" | "maxAttempts"
+>;
 export type ResolvedLimits = { [K in keyof Limits]: number };
+const overridable = ["maxThreadCharges", "maxGroups", "maxDays", "maxAttempts"];
 
 export function integer(value: number, max: number, name: string) {
   if (!Number.isSafeInteger(value) || value < 0 || value > max) throw new Error(`INVALID_${name}`);
@@ -60,13 +95,12 @@ export function chargeKey(value: string) {
 
 export function resolveLimits(overrides: Partial<ResolvedLimits> = {}): ResolvedLimits {
   for (const [key, value] of Object.entries(overrides)) {
-    if (!["maxCharges", "maxGroups", "maxDays", "maxAttempts"].includes(key))
-      throw new Error("INVALID_LIMIT");
+    if (!overridable.includes(key)) throw new Error("INVALID_LIMIT");
     integer(value, LIMITS[key as keyof Limits], "LIMIT");
     if (!value) throw new Error("INVALID_LIMIT");
   }
   return {
-    maxCharges: LIMITS.maxCharges,
+    maxThreadCharges: LIMITS.maxThreadCharges,
     maxGroups: LIMITS.maxGroups,
     maxDays: LIMITS.maxDays,
     maxAttempts: LIMITS.maxAttempts,

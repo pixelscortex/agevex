@@ -11,6 +11,7 @@ import type {
   Provider,
   ReadCtx,
   ScopedMeter,
+  UnknownReason,
   WriteCtx,
 } from "./types.js";
 import { openRouterCost } from "./helpers.js";
@@ -40,6 +41,55 @@ function costNanos(provider: Provider, cost: Cost) {
   integer(cost.credits, LIMITS.maxQuantity, "CREDITS");
   if (!provider.credits) throw new Error("CREDIT_RATE_REQUIRED");
   return { nanos: nanos(cost.credits * provider.credits.usdPerCredit), credits: cost.credits };
+}
+type Priced = { nanos?: number; credits?: number } | { reason: UnknownReason };
+/** Above the per-charge cap is OVER_CAP; any other malformed amount is INVALID_COST. */
+function unpriced(error: unknown): { reason: UnknownReason } {
+  return {
+    reason:
+      error instanceof Error && error.message === "INVALID_NANOS" ? "OVER_CAP" : "INVALID_COST",
+  };
+}
+/**
+ * Core records model steps under `message.provider ?? "model"` and swallows
+ * meter errors (src/client/runtime.ts ~1245), so a throw here would drop the
+ * charge and the budget gate would admit unmetered work. Every business
+ * condition that prevents pricing becomes an `unknown` charge with a reason
+ * instead; `check` denies while any unknown charge exists.
+ */
+function priceInline(
+  provider: Provider | undefined,
+  evidence: Parameters<NonNullable<Provider["inline"]>>[0],
+): Priced {
+  if (!provider) return { reason: "PROVIDER_NOT_REGISTERED" };
+  let cost: Cost | undefined;
+  try {
+    cost = provider.inline?.(evidence);
+  } catch {
+    return { reason: "DECODE_FAILED" };
+  }
+  if (!cost) return { reason: "NO_COST" };
+  try {
+    return costNanos(provider, cost);
+  } catch (error) {
+    return unpriced(error);
+  }
+}
+/** Same rule for estimates, which managed tools reach through core's slot. */
+function priceEstimate(
+  provider: Provider | undefined,
+  profile: string | undefined,
+  quantity: number,
+): Priced {
+  if (!provider) return { reason: "PROVIDER_NOT_REGISTERED" };
+  if (!profile) return {};
+  const price = provider.profiles?.[profile];
+  if (!price) return { reason: "PROFILE_NOT_REGISTERED" };
+  try {
+    return { nanos: nanos(price.usd * quantity) };
+  } catch (error) {
+    return unpriced(error);
+  }
 }
 
 export function defineMeter(component: ComponentApi, options: MeterOptions) {
@@ -71,11 +121,14 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
   for (const sink of sinks) text(sink.name, "SINK");
   if (sinks.length && !options.workers?.deliver) throw new Error("DELIVERY_WORKER_REQUIRED");
 
-  function providerFor(name: string) {
+  function registered(name: string) {
     text(name, "PROVIDER");
-    const provider = Object.prototype.hasOwnProperty.call(options.providers, name)
+    return Object.prototype.hasOwnProperty.call(options.providers, name)
       ? options.providers[name]
       : undefined;
+  }
+  function providerFor(name: string) {
+    const provider = registered(name);
     if (!provider) throw new Error("PROVIDER_NOT_REGISTERED");
     return provider;
   }
@@ -98,8 +151,9 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
 
   function scope(ctx: WriteCtx, attribution: Attribution): ScopedMeter {
     text(attribution.subject, "SUBJECT");
-    function handle(key: string, name: string): ChargeHandle {
-      const provider = providerFor(name);
+    /** `provider` is undefined for an unregistered name: the charge exists as
+     * `unknown`, and only a USD settlement can resolve it. */
+    function handle(key: string, provider: Provider | undefined): ChargeHandle {
       return {
         key,
         get: async () => {
@@ -113,8 +167,8 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
             key,
             requestId,
             operationKey,
-            lookupMs: lookupMs(provider),
-            jobs: { ...(await jobs()), ...(!provider.lookup ? { lookup: undefined } : {}) },
+            lookupMs: lookupMs(provider ?? {}),
+            jobs: { ...(await jobs()), ...(!provider?.lookup ? { lookup: undefined } : {}) },
           });
         },
         correct: async ({ quantity, key: operationKey }) => {
@@ -122,7 +176,7 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
           await authorize(ctx, attribution);
           integer(quantity, LIMITS.maxQuantity, "QUANTITY");
           const row = await ctx.runQuery(component.charges.get, { key });
-          const price = row?.profile && provider.profiles?.[row.profile];
+          const price = row?.profile && provider?.profiles?.[row.profile];
           if (!price) throw new Error("PROFILE_REQUIRED");
           return await ctx.runMutation(component.charges.update, {
             key,
@@ -140,20 +194,21 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
             key,
             operation: "settle",
             operationKey: cost.key,
-            ...costNanos(provider, cost),
+            ...costNanos(provider ?? {}, cost),
             jobs: await jobs(),
           });
         },
       };
     }
     return {
+      // Malformed keys, names and quantities are caller bugs and still throw;
+      // unpriceable amounts and unregistered names are recorded `unknown`.
       estimate: async (name, args) => {
         await authorize(ctx, attribution);
-        const provider = providerFor(name);
+        const provider = registered(name);
         text(args.key, "KEY", LIMITS.maxKeyBytes);
         integer(args.quantity, LIMITS.maxQuantity, "QUANTITY");
-        const price = args.profile && provider.profiles?.[args.profile];
-        if (args.profile && !price) throw new Error("PROFILE_NOT_REGISTERED");
+        const priced = priceEstimate(provider, args.profile, args.quantity);
         await ctx.runMutation(component.charges.create, {
           key: args.key,
           attribution,
@@ -161,20 +216,20 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
           breakdowns,
           ...(args.profile ? { profile: args.profile } : {}),
           quantity: args.quantity,
-          status: "estimate",
+          status: "reason" in priced ? "unknown" : "estimate",
           source: "estimate",
-          ...(price ? { nanos: nanos(price.usd * args.quantity) } : {}),
+          ...priced,
           sinks: sinks.map((s) => s.name),
-          maxCharges: limits.maxCharges,
+          maxThreadCharges: limits.maxThreadCharges,
           jobs: await jobs(),
         });
-        return handle(args.key, name);
+        return handle(args.key, provider);
       },
       record: async (name, args) => {
         await authorize(ctx, attribution);
-        const provider = providerFor(name);
+        const provider = registered(name);
         text(args.key, "KEY", LIMITS.maxKeyBytes);
-        const cost = provider.inline?.({
+        const priced = priceInline(provider, {
           usage: args.usage,
           providerMetadata: args.providerMetadata,
         });
@@ -183,14 +238,14 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
           attribution,
           provider: name,
           breakdowns,
-          status: cost ? "settled" : "unknown",
+          status: "reason" in priced ? "unknown" : "settled",
           source: "inline",
-          ...(cost ? costNanos(provider, cost) : {}),
+          ...priced,
           sinks: sinks.map((s) => s.name),
-          maxCharges: limits.maxCharges,
+          maxThreadCharges: limits.maxThreadCharges,
           jobs: await jobs(),
         });
-        return handle(args.key, name);
+        return handle(args.key, provider);
       },
     };
   }
@@ -202,16 +257,13 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
   ) {
     await authorize(ctx, args);
     const policy = await budgetPolicy?.(args);
-    // Budget caps can cover many charges; allow the mount's exact maximum,
-    // rather than reusing the smaller per-charge dollar conversion ceiling.
+    // Budget caps can cover many charges, so the bound is the exact-integer
+    // ceiling, not the per-charge cap. A total at or beyond 2^53 is still
+    // >= any such cap, so imprecision there can only deny, never admit.
     if (policy && (!Number.isFinite(policy.maxUsd) || policy.maxUsd < 0))
       throw new Error("INVALID_BUDGET");
     const maxNanos = policy
-      ? integer(
-          Math.round(policy.maxUsd * LIMITS.nanosPerUsd),
-          LIMITS.maxCharges * LIMITS.maxChargeNanos,
-          "BUDGET",
-        )
+      ? integer(Math.round(policy.maxUsd * LIMITS.nanosPerUsd), Number.MAX_SAFE_INTEGER, "BUDGET")
       : undefined;
     const cost = await ctx.runQuery(component.reads.cost, args);
     return {
@@ -279,6 +331,18 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
       });
     },
     check: (ctx: ReadCtx, args: { subject: string; runId?: string }) => check(ctx, args),
+    /**
+     * Retention for host crons (server-only; never expose it to clients).
+     * Deletes up to `limit` (default 100, max 500) settled charges whose sinks
+     * all acknowledged, created before `before`, and their aggregate entries.
+     * It also stops at its transaction budget; call again while `more`. Choose
+     * `before` past any replay window: a pruned key recorded again is new.
+     */
+    prune: async (
+      ctx: WriteCtx,
+      args: { before: number; limit?: number },
+    ): Promise<{ deleted: number; more: boolean }> =>
+      await ctx.runMutation(component.charges.prune, args),
     retrySinks: async (ctx: WriteCtx, args: { key: string; subject: string }) => {
       await authorize(ctx, { subject: args.subject });
       const row = await ctx.runQuery(component.charges.get, { key: args.key });
@@ -324,31 +388,36 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
           args: deliveryJob,
           returns: v.null(),
           handler: async (ctx, args) => {
-            const row = await ctx.runQuery(component.charges.get, { key: args.key });
-            const state = row?.sinkState.find((s) => s.name === args.sink);
-            if (!row || state?.pending?.externalId !== args.event.externalId) return null;
+            // One job, one batch: <=LIMITS.sinkBatch due events of this sink in
+            // a single deliver() call, i.e. one Polar ingest request.
+            const events = await ctx.runMutation(component.charges.claimDeliveries, args);
+            if (!events.length) return null;
             const sink = sinks.find((s) => s.name === args.sink);
             let ok = false;
+            let rateLimited = false;
             let retryAfterMs: number | undefined;
             try {
               if (!sink) throw new Error("SINK_NOT_REGISTERED");
-              await sink.deliver([
-                {
-                  ...args.event,
-                  key: row.key,
-                  attribution: row.attribution,
-                  provider: row.provider,
-                },
-              ]);
+              await sink.deliver(events);
               ok = true;
             } catch (error) {
-              if (error instanceof SinkDeliveryError) retryAfterMs = error.retryAfterMs;
+              if (error instanceof SinkDeliveryError) {
+                retryAfterMs = error.retryAfterMs;
+                rateLimited = error.rateLimited;
+              }
             }
-            await ctx.runMutation(component.charges.deliveryResult, {
-              ...args,
-              ok,
-              ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
-            });
+            // Acknowledgements rewrite charge rows, so record the batch's one
+            // outcome in chunks that keep each mutation within its budget.
+            for (let offset = 0; offset < events.length; offset += LIMITS.ackBatch)
+              await ctx.runMutation(component.charges.deliveryResult, {
+                sink: args.sink,
+                claim: args.claim,
+                keys: events.slice(offset, offset + LIMITS.ackBatch).map((event) => event.key),
+                ok,
+                rateLimited,
+                jobs: args.jobs,
+                ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
+              });
             return null;
           },
         }),

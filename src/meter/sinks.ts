@@ -20,8 +20,13 @@ function polarAmount(nanos: number) {
   return `${value < 0n ? "-" : ""}${magnitude / divisor}${fraction ? `.${fraction}` : ""}`;
 }
 
+/** `rateLimited` marks an HTTP 429: with `retryAfterMs`, the delivery job
+ * reschedules once at that delay without consuming an attempt. */
 export class SinkDeliveryError extends Error {
-  constructor(public readonly retryAfterMs?: number) {
+  constructor(
+    public readonly retryAfterMs?: number,
+    public readonly rateLimited = false,
+  ) {
     super("METER_SINK_DELIVERY_FAILED");
   }
 }
@@ -64,6 +69,7 @@ async function checkResponse(response: Response) {
     Number.isFinite(delay)
       ? Math.min(LIMITS.maxLookupMs, Math.max(0, Math.ceil(delay)))
       : undefined,
+    response.status === 429,
   );
 }
 
@@ -84,7 +90,8 @@ function batches(batch: SinkEvent[]) {
   return output;
 }
 
-/** Thin REST adapter: @convex-dev/polar 0.9 has no event-ingestion API. */
+/** Thin REST adapter: @convex-dev/polar 0.9 has no event-ingestion API. The
+ * delivery job hands it <=100 events (LIMITS.sinkBatch), one ingest request. */
 export function polarSink(options: {
   meter: string;
   accessToken: string;
