@@ -1,0 +1,21 @@
+bun.lock
+  s_d863bd773ba186::t_8badfed665e2ee 8,12,22,69-71,81-82,175-176,633-634
+package.json
+  s_d863bd773ba186::t_782f445f1514c6 96-97,101,110,118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "be2f0ed644705fff8d48239b72bfcd4803803e60",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
