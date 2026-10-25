@@ -59,6 +59,8 @@ type FileArgs = Scoped & { fileId: string; backend?: string; optionsHash?: strin
 type ArtifactArgs = Scoped & { artifactId: string };
 type Completion = FunctionReference<"mutation", "internal", { artifactId: string }, null | void>;
 const storageId = (id: string) => id as GenericId<"_storage">;
+/** Fixed identity backend of files that no configured backend accepts. */
+const UNSUPPORTED_BACKEND = "unsupported";
 const retryable = new Set(["PROVIDER_UNAVAILABLE", "OBJECT_UNAVAILABLE", "CHECKSUM_FAILED"]);
 /** The runtime-specific byte ceiling (see LIMITS) is chosen by input kind. */
 const kindOf = (mimeType: string): "document" | "image" | "text" =>
@@ -122,6 +124,7 @@ function extractRuntime(component: ComponentApi, options: ExtractOptions, nodeRu
     bounded(backend.id);
     bounded(backend.version);
     if (ids.has(backend.id)) throw new Error("DUPLICATE_EXTRACT_BACKEND");
+    if (backend.id === UNSUPPORTED_BACKEND) throw new Error("INVALID_EXTRACT_ARGUMENT");
     ids.add(backend.id);
   }
   if (typeof options.authorize !== "function") throw new Error("EXTRACT_AUTHORIZE_REQUIRED");
@@ -196,7 +199,11 @@ function extractRuntime(component: ComponentApi, options: ExtractOptions, nodeRu
     const backend = selected
       ? backends.find((value) => value.id === selected)
       : backends.find((value) => value.accepts(file.info));
-    if (!backend || !backend.accepts(file.info)) throw new ExtractError("UNSUPPORTED_TYPE");
+    const supported = !!backend && backend.accepts(file.info);
+    // An explicitly requested backend that cannot take the file is a caller
+    // error. When nothing accepts the file at all, the identity is a fixed
+    // "unsupported" receipt (see `run`) so an attachment never fails a turn.
+    if (!supported && args.backend !== undefined) throw new ExtractError("UNSUPPORTED_TYPE");
     // An indexing-only lease change must not create another paid extraction
     // identity. Keep the extraction ceilings as the identity's options input.
     const optionsHash =
@@ -205,8 +212,13 @@ function extractRuntime(component: ComponentApi, options: ExtractOptions, nodeRu
     if (!/^[a-f0-9]{64}$/.test(optionsHash)) throw new Error("INVALID_EXTRACT_ARGUMENT");
     return {
       file,
-      backend,
-      key: { fileId: args.fileId, backend: backend.id, version: backend.version, optionsHash },
+      backend: supported ? backend : undefined,
+      key: {
+        fileId: args.fileId,
+        backend: supported ? backend.id : UNSUPPORTED_BACKEND,
+        version: supported ? backend.version : "1",
+        optionsHash,
+      },
     };
   }
   async function raw(
@@ -474,7 +486,17 @@ function extractRuntime(component: ComponentApi, options: ExtractOptions, nodeRu
         fileId: args.fileId,
         ...subjectOf(args),
       });
-      const { key, file } = await identity(ctx, args);
+      const { key, file, backend } = await identity(ctx, args);
+      if (!backend) {
+        // No backend accepts this file: record the terminal failure without any
+        // provider call and return normally, so a turn with such an attachment
+        // still completes. `read_file` then returns the typed error.
+        const artifactId = await ctx.runMutation(component.artifacts.reject, {
+          ...key,
+          failure: "UNSUPPORTED_TYPE",
+        });
+        return { artifactId, action: "reuse" as const };
+      }
       // Files above the default runtime's ceiling can only be extracted by the
       // opt-in Node worker; without one the default worker records TOO_LARGE.
       const worker =
@@ -650,7 +672,12 @@ function extractRuntime(component: ComponentApi, options: ExtractOptions, nodeRu
             ...owner,
           });
           if (!artifact || artifact.status !== "ready")
-            return { status: artifact?.status ?? "missing" };
+            return {
+              status: artifact?.status ?? "missing",
+              // The typed failure (for example UNSUPPORTED_TYPE) is what the
+              // model can act on; provider bodies never reach this field.
+              ...(artifact?.failure ? { error: artifact.failure.code } : {}),
+            };
           const args = {
             artifactId: artifact.artifactId,
             threadId: context.threadId,

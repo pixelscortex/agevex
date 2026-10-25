@@ -50,12 +50,14 @@ const storageMetadata = makeFunctionReference<
  * nested Workflow/Workpool). `useSlot: false` registers the same agent without
  * the slot, which is the core default (native file parts).
  */
-async function setup(input: { slot?: boolean; autoIndex?: boolean; rag?: boolean } = {}) {
+async function setup(
+  input: { slot?: boolean; autoIndex?: boolean; rag?: boolean; textOnly?: boolean } = {},
+) {
   const state = { backendCalls: [] as string[] };
   const backend: ExtractBackend = {
     id: "fake",
     version: "1",
-    accepts: () => true,
+    accepts: (file) => !input.textOnly || file.mimeType === "text/plain",
     run: async ({ bytes, file }) => {
       state.backendCalls.push(file.fileId);
       return { ok: true, doc: { kind: "text", text: await (await bytes()).text() } };
@@ -129,11 +131,11 @@ const send = (h: Host, threadId: string, requestKey: string, files?: string[]) =
     })
     .then(requireReceipt);
 const drain = (h: Host) => h.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100), 3000);
-async function upload(h: Host, content: string, subject = "alice") {
+async function upload(h: Host, content: string, subject = "alice", type = "text/plain") {
   const file = await h.t.action(
     async (ctx) =>
       (
-        await storeFile(ctx, mounts.agent, new Blob([content], { type: "text/plain" }), {
+        await storeFile(ctx, mounts.agent, new Blob([content], { type }), {
           filename: "doc.txt",
         })
       ).file,
@@ -312,4 +314,32 @@ it("without autoIndex the slot offers read_file only", async () => {
   await drain(h);
   expect(toolNames().has("read_file")).toBe(true);
   expect(toolNames().has("search_files")).toBe(false);
+});
+
+it("a turn with an attachment no backend accepts completes and read_file returns the typed error", async () => {
+  const h = await setup({ textOnly: true });
+  const zip = await upload(h, "PK binary", "alice", "application/zip");
+  const receipt = await open(h, [zip]);
+  await drain(h);
+  // The turn ran: it was not failed by the unsupported attachment, no provider
+  // was called, and the model was told the file is attached.
+  expect(fixture.calls.length).toBeGreaterThan(0);
+  expect(
+    (await as(h).query(api.agents.activity, { threadId: receipt.threadId })).errorCode,
+  ).toBeNull();
+  expect(JSON.stringify(fixture.calls[0].args.prompt)).toContain(`Attached files: ${zip}`);
+  expect(h.state.backendCalls).toEqual([]);
+  const before = fixture.calls.length;
+  fixture.steps.Main = (n) => (n === before ? call("read_file", { fileId: zip }) : text("done"));
+  await send(h, receipt.threadId, "read it");
+  await drain(h);
+  expect(toolOutputs()).toContain("UNSUPPORTED_TYPE");
+  expect(
+    await h.t.action((ctx) =>
+      h.extract.get(ctx, { threadId: receipt.threadId, fileId: zip, subject: "alice" }),
+    ),
+  ).toMatchObject({
+    status: "failed",
+    failure: { code: "UNSUPPORTED_TYPE", retryable: false },
+  });
 });

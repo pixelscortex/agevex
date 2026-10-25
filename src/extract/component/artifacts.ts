@@ -176,6 +176,44 @@ export const admit = mutation({
     return { artifactId, action: "run" };
   },
 });
+/**
+ * Record a terminal failure for an identity that can never be dispatched (no
+ * backend accepts the file). No workflow, no lease, no provider call: just the
+ * receipt, so reads return the typed error and the identity is reused instead
+ * of failing the caller. Budget: one indexed lookup and at most one insert,
+ * both < 4 KiB.
+ */
+export const reject = mutation({
+  args: { ...identity, failure },
+  handler: async (ctx, args): Promise<Id<"artifacts">> => {
+    bounded(args.fileId);
+    bounded(args.backend);
+    bounded(args.version);
+    bounded(args.optionsHash, LIMITS.hashBytes);
+    const row = await ctx.db
+      .query("artifacts")
+      .withIndex("by_identity", (q) =>
+        q
+          .eq("fileId", args.fileId)
+          .eq("backend", args.backend)
+          .eq("version", args.version)
+          .eq("optionsHash", args.optionsHash),
+      )
+      .unique();
+    if (row) return row._id;
+    return ctx.db.insert("artifacts", {
+      fileId: args.fileId,
+      backend: args.backend,
+      version: args.version,
+      optionsHash: args.optionsHash,
+      status: "failed",
+      failure: args.failure,
+      attempt: LIMITS.initialAttempt,
+      claim: crypto.randomUUID(),
+      leaseUntil: Date.now(),
+    });
+  },
+});
 export const get = query({
   args: { artifactId: v.id("artifacts") },
   handler: (ctx, args) => ctx.db.get("artifacts", args.artifactId),
