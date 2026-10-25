@@ -1,0 +1,21 @@
+src/component/files.ts
+  s_d863bd773ba186::t_581dc1e660488d 88-98
+tests/slots.test.ts
+  s_d863bd773ba186::t_fd25c253f3b2b8 577-600
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8e01cf581d51ac2751b1664a66a82e81bdee03b6",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
