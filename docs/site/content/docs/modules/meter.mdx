@@ -43,8 +43,13 @@ export const { meterLookup, meterDeliver } = meter.internalFunctions();
 ```
 
 Lookup providers require `workers.lookup`; sinks require `workers.deliver`.
-Authorize public wrappers with the host's ownership policy; optional
-`authorize(ctx, scope)` runs before every client read/write.
+Authorize public wrappers with the host's ownership policy.
+
+Host `authorize(ctx, scope)` guards host-facing calls: `scope`, `threadCost`,
+`subjectCost`, `breakdown`, `check`, `retrySinks` and `prune`. The slot
+adapters (`usageSlot`, including `tc.meter`, and `budgetSlot`) skip it: their
+attribution is server-derived, core authorized the turn, and they run in
+background actions without user identity.
 
 ## Wire it into agevex
 
@@ -64,8 +69,16 @@ const runtime = registerAgent(components.agevex, {
 
 Managed tools receive `tc.meter` with subject, root/thread, run and agent
 attribution plus stable hashed keys. Core records one charge per saved model
-step, including model attribution, and adds none on replay. Register the model's
-provider name in `providers`; for OpenRouter enable `usage: { include: true }`.
+step, including model attribution, and adds none on replay. For OpenRouter
+enable `usage: { include: true }`.
+
+Core passes the Agent's stored `message.provider`, the AI SDK provider id
+(`"openrouter.chat"` for `@openrouter/ai-sdk-provider`), else `"model"`. The
+slot resolves an exact registered name, then an explicit
+`usageSlot({ providers: { "<sdk id>": "<registered name>" } })` mapping, then
+the prefix before the first `.`, so `openrouter: inline()` prices
+`"openrouter.chat"`. An unresolved name is recorded `unknown` and denies the
+next slice. A model id over 128 bytes is stored as `sha256:<hex>`.
 Use `usageHandlerFor` only for standalone Agent calls outside this registration
 to avoid charging the same step twice.
 
@@ -90,8 +103,13 @@ Providers are host-named `Provider` objects; capabilities can be combined.
 `record` and `estimate` never throw on a charge they cannot price: it is
 recorded `unknown` with a `reason` and `check` denies. Reasons: `NO_COST`,
 `DECODE_FAILED`, `INVALID_COST`, `OVER_CAP` (above $90), `PROVIDER_NOT_REGISTERED`
-(core records model steps under `message.provider ?? "model"`),
 `PROFILE_NOT_REGISTERED` and `THREAD_CAPACITY`. A USD `settle` can resolve it.
+
+Budgeting and billing differ: `unknown` always denies `check`, but a known
+amount is still billed. A `THREAD_CAPACITY` charge with a settled/inline
+amount and an `OVER_CAP` charge (its full amount is kept) are delivered to
+sinks; unknown estimates are not. `correct`/`settle` above $90 likewise become
+`unknown` / `OVER_CAP` with the amount, instead of throwing.
 
 ### Charge lifecycle and keys
 
@@ -145,7 +163,7 @@ from `@convex-dev/agent`.
 | `defineMeter(component: ComponentApi, options: MeterOptions): Meter` | Register providers, projections, budgets, guards and workers. |
 | `inline(decode?: NonNullable<Provider["inline"]>): Provider` | Create an inline cost provider. |
 | `meter.scope(ctx: WriteCtx, attribution: Attribution): ScopedMeter` | Bind required subject and optional root/thread/run/agent/model attribution. |
-| `meter.usageSlot(): UsageSlot` | Adapt core usage and managed tool calls to the attributed, idempotent meter. |
+| `meter.usageSlot(options?: { providers?: Record<string, string> }): UsageSlot` | Adapt core usage and managed tool calls to the attributed, idempotent meter; resolves AI SDK provider ids. |
 | `meter.budgetSlot(policy?: MeterOptions["budgets"]): BudgetSlot` | Gate core slices with the configured or overridden budget policy. |
 | `scoped.estimate(provider: string, args: { key: string; profile?: string; quantity: number }): Promise<ChargeHandle>` | Create or replay an estimate. |
 | `scoped.record(provider: string, args: { key: string; usage?: unknown; providerMetadata?: unknown }): Promise<ChargeHandle>` | Decode inline evidence and record settled or unknown cost. |
@@ -229,7 +247,8 @@ one sink in one `deliver` call (one Polar request); new events wait one second
 so bursts share it. Failures back off and stop after `limits.maxAttempts`. A 429
 with `Retry-After` reschedules once without consuming an attempt; the next
 consecutive 429 consumes one. A crashed or cancelled job counts as one failed
-attempt. Failed events stay pending for explicit `retrySinks` recovery.
+attempt for the events it claimed and charges no other event; a job that died
+before claiming is retried without charging. Failed events stay pending for explicit `retrySinks` recovery.
 
 The first external id is the charge key. Later events use `key:delta:revision`
 and signed `nanos` deltas, with `totalNanos` holding the new absolute amount.
@@ -285,11 +304,14 @@ their aggregate contributions. It stops early at its transaction budget and
 returns `{ deleted, more }`; call it from a host cron until `more` is false. It
 never reschedules itself. Totals then cover retained charges only; pick `before`
 past any replay window, since a pruned key recorded again is a new charge.
+`before` must precede every active run and budget window: pruning lowers
+run and subject totals. `prune` refuses a cutoff newer than now minus
+`limits.pruneMinAgeMs` (7 days; hosts may lower it) with `PRUNE_TOO_RECENT`.
 
 ## Limits
 
-From exported `LIMITS`; only `maxThreadCharges`, `maxGroups`, `maxDays` and
-`maxAttempts` accept positive integer overrides, and only downward.
+From exported `LIMITS`; only `maxThreadCharges`, `maxGroups`, `maxDays`,
+`maxAttempts` and `pruneMinAgeMs` accept positive integer overrides, and only downward.
 
 | Limit | Default | Hard maximum |
 | --- | --- | --- |
@@ -310,6 +332,7 @@ From exported `LIMITS`; only `maxThreadCharges`, `maxGroups`, `maxDays` and
 | `maxParallelism` (Workpool) | 4 | 4 |
 | `sinkBatch` (events per delivery job) | 100 events | 100 |
 | `pruneLimit` / `maxPruneLimit` | 100 | 500 |
+| `pruneMinAgeMs` (then `PRUNE_TOO_RECENT`) | 604,800,000 ms (7 days) | Same |
 | `maxResponseBytes` (Polar acknowledgement) | 16,384 bytes | 16,384 |
 | `requestTimeoutMs` (built-in HTTP sinks) | 30,000 ms | 30,000 |
 | `maxTimestamp` (breakdown endpoints) | 8,640,000,000,000,000 ms ceiling | Same |
