@@ -431,7 +431,9 @@ export const claim = mutation({
     const first = row.turnStatus === "queued";
     if (
       !first &&
-      !(row.turnStatus === "running" && row.continueSlice && sliceId && row.lastSlice !== sliceId)
+      // A running turn without a watchdog is between slices: continueTurn
+      // disarmed it, and only a fresh slice id may claim the next one.
+      !(row.turnStatus === "running" && !row.watchdogId && sliceId && row.lastSlice !== sliceId)
     )
       return null;
     let noteAnchor = row.promptMessageId;
@@ -519,7 +521,6 @@ export const claim = mutation({
     }
     await ctx.db.patch("assignments", row._id, {
       turnStatus: "running",
-      continueSlice: false,
       hookContinue: false,
       ...(first
         ? {
@@ -540,9 +541,8 @@ export const claim = mutation({
         sliceId: activeSlice,
       },
     );
-    await ctx.db.patch("assignments", row._id, { watchdogId, activeSlice });
+    await ctx.db.patch("assignments", row._id, { watchdogId });
     row.watchdogId = watchdogId;
-    row.activeSlice = activeSlice;
     const budget = row.runId ? await ctx.db.get("runs", row.runId) : null;
     const modelId = budget?.models?.[row.agent];
     if (
@@ -679,7 +679,7 @@ async function disarmSlice(ctx: MutationCtx, row: Doc<"assignments">) {
     // fence without attempting to cancel that in-progress detector itself.
     if (job?.state.kind === "pending") await ctx.scheduler.cancel(row.watchdogId);
   }
-  await ctx.db.patch("assignments", row._id, { watchdogId: undefined, activeSlice: undefined });
+  await ctx.db.patch("assignments", row._id, { watchdogId: undefined });
 }
 
 /** A failed turn also obeys the run fence. A later descendant delivery may
@@ -708,7 +708,6 @@ async function deferChildFailure(
     turnStatus: "idle",
     turnToken: undefined,
     promptMessageId: undefined,
-    continueSlice: false,
     ...(row.hookContinue ? { hookContinue: false, inboxId: undefined } : {}),
     errorCode: null,
   });
@@ -778,7 +777,11 @@ export const stalled = internalMutation({
       !row.cancelled &&
       row.turnToken === args.turnToken &&
       row.turnStatus === "running" &&
-      row.activeSlice === (args.sliceId ?? args.turnToken)
+      // The active slice is the armed watchdog's: claim writes lastSlice (or
+      // none for a first slice keyed by its token) with watchdogId, and only
+      // disarmSlice clears it. A newer slice's watchdog never matches here.
+      !!row.watchdogId &&
+      (row.lastSlice ?? row.turnToken) === (args.sliceId ?? args.turnToken)
     ) {
       if (await deferChildFailure(ctx, row)) return null;
       await ctx.db.patch("assignments", row._id, {
@@ -1004,7 +1007,6 @@ export const write = mutation({
           turnStatus: "recovery_required",
           errorCode: "APPROVAL_LIMIT",
           turnToken: undefined,
-          continueSlice: false,
         });
         return null;
       }
@@ -1196,7 +1198,6 @@ export const write = mutation({
           turnToken: undefined,
           promptMessageId: undefined,
           inboxId: undefined,
-          continueSlice: false,
           queuedMessages: row.queuedMessages + 1,
           nextSequence: row.nextSequence + 1,
         });
@@ -1438,18 +1439,17 @@ export const continueTurn = mutation({
       row.cancellationEpoch === args.cancellationEpoch &&
       row.turnStatus === "running"
     ) {
-      await disarmSlice(ctx, row);
-      await sealGroups(ctx, row);
+      // Disarming the slice's watchdog while the turn stays running is what
+      // marks it between slices (claim and betweenSlices read that pair).
       // Keep the claimed ready-work prompt as the generation boundary across
       // slices. Native Agent includes the whole response order, including
       // tool results, notes and continuation prompts in stepOrder chronology.
-      await ctx.db.patch("assignments", row._id, {
-        continueSlice: true,
-      });
+      await disarmSlice(ctx, row);
+      await sealGroups(ctx, row);
       // Release sealed results inside this existing step; v1's positional
       // Workflow sequence remains untouched. A running slice cannot be claimed
       // again by wake, so its normal between-slice continuation still owns it.
-      await wake(ctx, { ...row, continueSlice: true });
+      await wake(ctx, { ...row, watchdogId: undefined });
     }
     return null;
   },
@@ -1466,7 +1466,8 @@ export const betweenSlices = internalMutation({
       row.cancelled ||
       row.turnToken !== args.executionId ||
       row.turnStatus !== "running" ||
-      !row.continueSlice
+      // An armed watchdog means the slice never reached continueTurn.
+      row.watchdogId
     )
       return null;
     await disarmSlice(ctx, row);
@@ -1545,7 +1546,6 @@ export const cancel = mutation({
         queuedMessages: 0,
         notesPending: 0,
         logicalPromptMessageId: undefined,
-        continueSlice: false,
         hookContinue: false,
         approvalBlocked: !!approvalCleanup,
         approvals: approvalCleanup ? { ...row.approvals!, cleanupPending: true } : undefined,

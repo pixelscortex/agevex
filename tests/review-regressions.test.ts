@@ -1269,10 +1269,13 @@ it("registration child lane limits bound concurrent child slices without blockin
   });
 });
 
-it("completed slices ignore stale watchdogs and exclude time between slices", async () => {
+it("completed slices ignore stale watchdogs, refuse replayed or overlapping slice claims and exclude time between slices", async () => {
   const t = setup();
   const receipt = await open(t);
   const args = { assignmentId: receipt.assignmentId, turnToken: receipt.assignmentId + ":0" };
+  const watchdog = (components.agevex.queue as Record<string, unknown>).stalled as Parameters<
+    typeof t.mutation
+  >[0];
   const claimed = await t.mutation(components.agevex.queue.claim, { ...args, sliceId: "first" });
   if (!claimed) throw new Error("not claimed");
   await t.mutation(components.agevex.queue.continueTurn, {
@@ -1286,10 +1289,19 @@ it("completed slices ignore stale watchdogs and exclude time between slices", as
     turnStatus: "running",
     errorCode: null,
   });
-  await t.mutation(components.agevex.queue.claim, { ...args, sliceId: "second" });
-  const watchdog = (components.agevex.queue as Record<string, unknown>).stalled as Parameters<
-    typeof t.mutation
-  >[0];
+  // Between slices no slice is active: even the finished slice's own watchdog
+  // is inert, and replaying that slice id cannot buy a second generation.
+  await t.mutation(watchdog, { ...args, sliceId: "first" });
+  expect(await activity(t, receipt.threadId)).toMatchObject({
+    turnStatus: "running",
+    errorCode: null,
+  });
+  expect(await t.mutation(components.agevex.queue.claim, { ...args, sliceId: "first" })).toBeNull();
+  expect(
+    await t.mutation(components.agevex.queue.claim, { ...args, sliceId: "second" }),
+  ).not.toBeNull();
+  // A slice in flight admits no other slice until it continues.
+  expect(await t.mutation(components.agevex.queue.claim, { ...args, sliceId: "third" })).toBeNull();
   await t.mutation(watchdog, { ...args, sliceId: "first" });
   expect(await activity(t, receipt.threadId)).toMatchObject({
     turnStatus: "running",

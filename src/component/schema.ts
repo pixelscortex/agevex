@@ -217,8 +217,11 @@ export default defineSchema({
     recoveryAt: v.optional(v.number()),
     recoveryJobId: v.optional(v.id("_scheduled_functions")),
     recoveryDelayMs: v.optional(v.number()),
+    // Set by claim with each slice, cleared only by disarmSlice. Present on a
+    // running turn = a slice is in flight; absent on a running turn = between
+    // slices (continueTurn disarmed it). Read by claim (next-slice admission),
+    // betweenSlices, stalled (with lastSlice, the active slice) and disarmSlice.
     watchdogId: v.optional(v.id("_scheduled_functions")),
-    activeSlice: v.optional(v.string()),
     pendingGeneration: v.optional(pendingGeneration),
     cancellationEpoch: v.number(),
     cancelled: v.boolean(),
@@ -267,7 +270,9 @@ export default defineSchema({
         ),
       }),
     ),
-    continueSlice: v.optional(v.boolean()),
+    // The slice id the last claim accepted (absent for a first slice keyed by
+    // its turn token). Read by claim (a replayed slice id is refused) and
+    // stalled (lastSlice ?? turnToken is the watchdog's slice).
     lastSlice: v.optional(v.string()),
     // Roots only (0 elsewhere). activeRuns is the live (queued, running or
     // asking) run count, read by reserve admission, delegateContext and activity.
