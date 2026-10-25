@@ -1,0 +1,64 @@
+tests/review-regressions.test.ts
+  s_ddaaba8136483b::t_b8ea68e788f784 679
+  s_f63f2471b9d897::t_f624dd6555ebf3 5,509-513,515-527,529-538,540,542-626,628-629,631-632,634-647,649-665,667-678,680-701,703-709,711-741,743-748
+README.md
+  s_f63f2471b9d897::t_92b8df51386d6d 152-157,180,202,214-217
+src/client/hooks.ts
+  s_1ac51c76b03d80::t_560229f88af871 1,4-5,30-64
+src/client/runtime.ts
+  s_1ac51c76b03d80::t_85e7df8d184b49 19,1281,1289,1293-1295,1318-1327,1410-1418,1423
+src/client/types.ts
+  s_1ac51c76b03d80::t_30b1a70f44f54c 9,298
+src/component/README.md
+  s_f63f2471b9d897::t_df27f209add99e 12-14
+src/component/hooks.ts
+  s_1ac51c76b03d80::t_43803860ba2a5e 69,72,74-94,105,107-112,145-150,152-153,165-173,175-179,356-359
+src/component/limits.ts
+  s_1ac51c76b03d80::t_cc5e67cca575f8 39,52,54-60,62-63,65-79,85-86,92
+src/component/queue.ts
+  s_1ac51c76b03d80::t_62077b95059eb9 474-475,1473
+src/component/schema.ts
+  s_1ac51c76b03d80::t_9c3d7bb7de0b2f 197-199
+src/component/subagents.ts
+  s_f63f2471b9d897::t_9b13d0124d7c0d 299,681-682,684,774,831
+src/testing/bridge.ts
+  s_f63f2471b9d897::t_35823cba2ddcb0 95-102
+tests/delegation-v2.test.ts
+  s_f63f2471b9d897::t_c13c0f9ef37955 839,856-860,873,887,928,1280,1307-1308,1332,1376,1793,1834,1866
+tests/hooks.test.ts
+  s_f63f2471b9d897::t_5a322fe3bc9cae 7,12-26,28,31-33,77,174-340
+tests/live/convex/agents.ts
+  s_f63f2471b9d897::t_491ff748d8c781 138-146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a31063663a4c3f0b2b63356643f740c260a8f4e6",
+  "prompts": {},
+  "sessions": {
+    "s_1ac51c76b03d80": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a170ca-124a-7f23-9c35-430154ce6f31",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_ddaaba8136483b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a170b9-63ac-71b1-adc4-cc7407877f9e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_f63f2471b9d897": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a170c5-6dd6-7d73-9c95-256ddd157e03",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
