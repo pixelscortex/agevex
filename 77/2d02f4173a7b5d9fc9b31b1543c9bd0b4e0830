@@ -1,0 +1,248 @@
+README.md
+  s_189912c4fd883f::t_0d48dc5947f69a 72-74,77-79
+  s_afd4a2d5b85bdf::t_ac9d10de4ec8c9 289-297
+  s_189912c4fd883f::t_9ea6ad789b5b6a 236-246
+  s_189912c4fd883f::t_a8b0e101e11eb4 48-59,298-307
+  s_fb856f624e63c4::t_54b5553cbcb70e 75-76,308-311
+  s_b39d195254f51a::t_6d2956453f4a0f 106-155
+src/client/endpoints.ts
+  s_ffb3db3ed07b04::t_3be959152e4d7f 73,75,161-165,201,222-223,233-237,261
+  s_189912c4fd883f::t_8e34f1429c015c 25,133-148,151-156,166-167,169,199,213-218,224-226,259
+  s_189912c4fd883f::t_2bd14c02a55ec1 121-124,126-127,345-353
+  s_34bb9d03c667d3::t_5ca726ec03b2e3 105,125,292-304
+  s_ca761f50d785e7::t_7bd843684a70dd 415-419
+  s_b39d195254f51a::t_ce4334deea6df1 21,91,178,190-196,238,250-256
+src/component/queue.ts
+  s_ffb3db3ed07b04::t_35d41fca46745e 37-40,49-62,67-72,350-354,356
+  s_189912c4fd883f::t_b3c6ca94dce27e 25,273,277,316,318,331,391,500-501,530,573
+  s_189912c4fd883f::t_2264e8c365fd99 909-913,921-926,930-932
+  s_fb856f624e63c4::t_641b3ee88e697e 6,804,857-862,865-868,870-883,997-1047,1185-1186,1232-1234,1235,1236-1254,1257-1285,1288-1309,1311-1330
+  s_fb856f624e63c4::t_252e8d2b9beaa5 63-66,312-315,355,364
+  s_9456e2b4316f52::t_6f4e1495681e39 1053-1057,1286-1287
+  s_b39d195254f51a::t_532e593b75b53c 27,148,207-209,269-270,302-305,335,382-383,392-394,413,449-451,472-473,502-520,531,574,817-818,908,1061-1063
+src/component/schema.ts
+  s_ffb3db3ed07b04::t_af6b57bb367c9d 84,88-104,106-109
+  s_afd4a2d5b85bdf::t_bbb78f43eebee7 4-5,105,200-201,292-293
+  s_189912c4fd883f::t_fa4be283bc20d1 238-240
+  s_b39d195254f51a::t_00c5030ed524eb 17,27,40,170-196,274,284-286,290-291,294-297,320,383
+tests/authorization.test.ts
+  s_ffb3db3ed07b04::t_e87fb92b674471 2,16-18,20-26,51-57,72-74
+  s_189912c4fd883f::t_4e4e23e9cbb1ef 36-41
+tests/bounded-reads.test.ts
+  s_ffb3db3ed07b04::t_8375f39b2c7c19 2,22-28,362
+  s_189912c4fd883f::t_ac485d8299e024 1026-1124
+  s_189912c4fd883f::t_0d59c554c50d28 733,735,752,754,769,771,799,801,840,842,856-859,861-866,869,874-879,881-915,917-931,958,960
+  s_ca761f50d785e7::t_1c1f3680aa68fa 1125-1150
+tests/delegation-v2.test.ts
+  s_ffb3db3ed07b04::t_badfdbbf99a24e 2,57-59,1494
+  s_e7b4298ce355c6::t_9ce75d4fbdb574 1378
+  s_9456e2b4316f52::t_cc745a06734977 2051,2527-2618
+tests/delegation.test.ts
+  s_ffb3db3ed07b04::t_39c9bf2c040286 1,40-47
+tests/durable-core.test.ts
+  s_ffb3db3ed07b04::t_3d03e955565360 2,25-26
+tests/host-bridge.test.ts
+  s_ffb3db3ed07b04::t_89233fc4aa1d60 2,15-21
+  s_189912c4fd883f::t_7bf0978654b571 37-42
+tests/live/runtime.live.ts
+  s_ffb3db3ed07b04::t_31ac6268b13bba 1,38-39,41-46,48-49
+  s_afd4a2d5b85bdf::t_461643375e1d9c 47
+  s_b39d195254f51a::t_a2b853882bfce6 18,22,25-26,40,69,71,73-84
+tests/managed-bounds.test.ts
+  s_ffb3db3ed07b04::t_5722aba4cc657d 2,20,41,71,95
+tests/managed-turn.test.ts
+  s_ffb3db3ed07b04::t_fb6cd409e8b7e0 2,19-27,30-38,50,88,106,124,130-133,140,158
+tests/native-readers.test.ts
+  s_ffb3db3ed07b04::t_7b8ff2bc17c3ea 2,15-21
+  s_189912c4fd883f::t_4e388030fc4dcc 36-37
+tests/observability.test.ts
+  s_ffb3db3ed07b04::t_680cb8c979cc92 2,18-24
+tests/one-thread-reader.test.ts
+  s_ffb3db3ed07b04::t_92806deb41955f 1,32-39,100-107
+tests/receipt.ts
+  s_189912c4fd883f::t_b399a96a3086ac 1-7
+tests/receipts.test.ts
+  s_ffb3db3ed07b04::t_e28d63ff4fadc2 1-2,4-20,22-72
+  s_fb856f624e63c4::t_59aea476cfd065 3,21,73-126
+tests/review-regressions.test.ts
+  s_ffb3db3ed07b04::t_822e35c656ee01 2,34-41,1182-1188
+  s_34bb9d03c667d3::t_753b203113c33a 653,1104
+  s_af727f03560e39::t_d2492a72c17d88 526-534,629
+  s_b39d195254f51a::t_8938c1d7065b69 542,576-580,628,630-632,703-705
+tests/watchdog-backlog.test.ts
+  s_ffb3db3ed07b04::t_658471c7403ef1 2,17-19
+  h_51b7a781d7f2c3 44
+  s_9456e2b4316f52::t_683822e40511b7 21-23
+src/client/runtime.ts
+  s_189912c4fd883f::t_64c058ad50fc6e 202-210,1293-1294,1296-1297,1299,1301-1303
+  s_34bb9d03c667d3::t_643752f5e7ba6e 211-220,1003-1008
+  s_b39d195254f51a::t_cd1b0cc3f176ae 13,19-20,22-23,66,135-153,157,171,221-224,227-247,347-350,372-374,376-379,423-443,498-510,544-550,572-586,601,613-647,649,651,658-664,733,756-765,855-859,1027-1079,1081-1134,1149,1160-1199,1213-1234,1240-1243,1281-1287,1292,1295,1298,1300,1325-1330,1362-1420,1437-1442,1446-1452
+src/client/types.ts
+  s_d863bd773ba186::t_ecfe15edb6df7e 10-11,286,309-312
+  s_b39d195254f51a::t_1bc0184b43f137 12,15-51,83-91,202,233,268-269
+src/component/limits.ts
+  s_afd4a2d5b85bdf::t_4c896ab96322a2 157-160
+  s_fb856f624e63c4::t_a7a7486c05b72e 129-136
+  s_34bb9d03c667d3::t_4a58d357e85e25 127-128
+  s_b39d195254f51a::t_532e593b75b53c 25-27,63,65-66,70-74,81,90-102,167-169
+src/component/models.ts
+  s_189912c4fd883f::t_4e48675ce3cce9 1-23
+tests/host.ts
+  s_189912c4fd883f::t_7f16c5be5d871b 50-51,367-377,382
+  s_189912c4fd883f::t_fdeba521795f18 47-48,80,193-198,200-201,239-252,280,282,295,434
+  s_189912c4fd883f::t_e90943f73f8bab 49,199,383
+tests/live/convex/agents.ts
+  s_afd4a2d5b85bdf::t_933aad1abec0d8 205-206
+  s_189912c4fd883f::t_35bb47000ff11a 231
+  s_b39d195254f51a::t_58668abf86babb 21,180-202,204
+tests/model-overrides.test.ts
+  s_189912c4fd883f::t_5d074d9a5a9a6e 1-4,5,6-100,113,119,129
+  s_62f9da7bfda341::t_82afe22ed38fcb 101-112,114-118,120-128
+tests/registration.test.ts
+  s_189912c4fd883f::t_e2ccac2c9a54c2 193-206
+  s_189912c4fd883f::t_6d42943d2dfb67 54
+  s_189912c4fd883f::t_f3424a85a7d36b 46
+tests/setup.ts
+  s_afd4a2d5b85bdf::t_cf6cdfc987498b 150-151
+  s_fb856f624e63c4::t_1c24021292e21c 147-148,179
+  s_189912c4fd883f::t_711d90bd0b30cb 149
+tests/fixture/api.ts
+  s_189912c4fd883f::t_b1ba25d2d5cf57 26,68
+  s_189912c4fd883f::t_7ee43d60222f45 31,65
+src/component/README.md
+  s_189912c4fd883f::t_c7b47160704431 9,20-21
+  s_b39d195254f51a::t_532e593b75b53c 10-14,16-18,23-25,33-35
+src/component/cancellation.ts
+  s_34bb9d03c667d3::t_ba0f998f8e6fd8 105-111
+tests/deferred-answers.test.ts
+  s_189912c4fd883f::t_74f8aa9b8451a6 1-2,4-39,41-64,66-69,71,93-350
+  s_ca761f50d785e7::t_2de9a0e7f447c0 3,351-388
+tests/delegation-v2.host.ts
+  s_9456e2b4316f52::t_99a624fd8c6e28 107,116
+src/component/subagents.ts
+  s_b39d195254f51a::t_532e593b75b53c 17,41,56-67,71,79-80,86-88,240,264-265,286-289,296-297,312-318,324,364-370,380,408-409,480,637-638,657,983,1132-1133,1149-1152
+src/client/agent.ts
+  s_b39d195254f51a::t_e24ced2fa327a0 4,21-23,49-50,62-64
+src/client/hooks.ts
+  s_b39d195254f51a::t_df5da2f021bb2c 1-26
+src/client/index.ts
+  s_b39d195254f51a::t_943d91dc924961 9-12,32-33
+src/client/once.ts
+  s_b39d195254f51a::t_4ba457e4155705 7-24,32
+src/component/_generated/api.ts
+  s_b39d195254f51a::t_0ab2ed6e460b67 13,32
+src/component/_generated/component.ts
+  s_b39d195254f51a::t_8d212ff2caed0f 11,38
+src/component/hooks.ts
+  s_b39d195254f51a::t_c4154af95009b0 1-331
+src/testing/bridge.ts
+  s_b39d195254f51a::t_f296f15c5e1909 10,70-98
+tests/hooks.host.ts
+  s_b39d195254f51a::t_3e7c05c3fac77b 1-65,67-149
+tests/hooks.test.ts
+  s_b39d195254f51a::t_6eba2ae34c76f5 1-339,491-688
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "772d02f4173a7b5d9fc9b31b1543c9bd0b4e0830",
+  "prompts": {},
+  "sessions": {
+    "s_189912c4fd883f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17062-ed77-7ef3-9c80-3bb059f3e19d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_34bb9d03c667d3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17066-d581-7f81-8865-2040a231b243",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_62f9da7bfda341": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17066-3401-7dc0-a9c1-6ac7ab1d53a0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_9456e2b4316f52": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17077-e424-7f42-ade9-7c1eb5440600",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_af727f03560e39": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17069-0881-7b51-9379-4422f3fb23ee",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_afd4a2d5b85bdf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17063-8862-79f1-a6e8-55a09d72d148",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_b39d195254f51a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17083-09f3-7672-a03e-e770d3b91c60",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_ca761f50d785e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17067-cc8b-78b2-9606-d2e117ad4daf",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_e7b4298ce355c6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17035-2158-76f0-8bd7-1a92452c0b8d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_fb856f624e63c4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17064-4619-7842-a63f-68a1be944929",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_ffb3db3ed07b04": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1704e-90a6-7cf0-b0e3-7f1f8a366f55",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
