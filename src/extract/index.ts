@@ -1,6 +1,6 @@
 import { getFile, storeFile } from "@convex-dev/agent";
-import { RAG } from "@convex-dev/rag";
-import { tool, wrapEmbeddingModel } from "ai";
+import { RAG, type EntryId } from "@convex-dev/rag";
+import { embedMany, tool, wrapEmbeddingModel } from "ai";
 import { createFunctionHandle, internalActionGeneric, internalQueryGeneric } from "convex/server";
 import type { FunctionReference } from "convex/server";
 import { v } from "convex/values";
@@ -18,7 +18,7 @@ import type {
   BackendResult,
 } from "./types.js";
 import { LIMITS, bounded, integer, resolveLimits, sliceText, utf8 } from "./limits.js";
-import { ExtractError } from "./backends.js";
+import { ExtractError, isTextMime } from "./backends.js";
 import { cleanUsage, document, parseDocument, textWindow } from "./payload.js";
 
 export { directText, firecrawlParse, visionOcr, ExtractError } from "./backends.js";
@@ -208,7 +208,7 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
       const file = await fileInfo(ctx, fileId);
       const kind = file.info.mimeType.startsWith("image/")
         ? "image"
-        : file.info.mimeType.startsWith("text/") || file.info.mimeType === "application/json"
+        : isTextMime(file.info.mimeType)
           ? "text"
           : "document";
       if (file.info.byteSize > limits.maxBytes[kind]) throw new ExtractError("TOO_LARGE");
@@ -463,7 +463,7 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
       return { read_file, search_files };
     },
     async index(ctx: ActionCtx, args: ArtifactArgs & { namespace: string; key: string }) {
-      if (!rag) throw new Error("EXTRACT_RAG_DISABLED");
+      if (!rag || !options.rag) throw new Error("EXTRACT_RAG_DISABLED");
       bounded(args.key);
       await authorize(ctx, {
         operation: "index",
@@ -484,19 +484,93 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
         cursor = window.cursor;
         if (chunks.length > LIMITS.indexChunks) throw new ExtractError("TOO_LARGE");
       } while (cursor !== null);
-      // RAG 0.7.8 src/client/index.ts:133 owns chunk batches and vector storage.
-      // <=1 MiB input, <=8 KiB/chunk, <=1024 chunks. Upstream batches 100:
-      // 100 * (8192 text + 4096 * 8 vector + <=1 KiB metadata) <4.1 MiB,
-      // <=201 docs written per batch, below 16 MiB / 16000 docs. Search:
-      // 10 * (8192 + 4096 * 8 + <=1 KiB metadata) <410 KiB per query.
-      // No vectors or chunk state in artifacts.
-      return rag.add(ctx, {
+      const admitted = await ctx.runMutation(component.indexing.admit, {
+        artifactId: row._id,
         namespace: args.namespace,
         key: args.key,
-        chunks,
-        contentHash: await fingerprint({ artifactId: row._id, claim: row.claim }),
-        metadata: { artifactId: row._id, fileId: row.fileId },
       });
+      if (admitted.action !== "run")
+        return {
+          entryId: admitted.entryId,
+          status: admitted.action === "reuse" ? ("ready" as const) : ("pending" as const),
+          created: false,
+          replacedEntry: null,
+          usage: { tokens: 0 },
+        };
+      const fence = { artifactId: row._id, claim: admitted.claim };
+      try {
+        if (admitted.entryId) {
+          // RAG 0.7.8 src/client/index.ts:768-786 deletes by exact entry id;
+          // entries.ts:511-529 pages chunk deletion before deleting that entry.
+          // Await it before creating a replacement; even a partially failed
+          // deletion remains addressable on our row for the next explicit retry.
+          const previous = { entryId: admitted.entryId as EntryId };
+          if (await rag.getEntry(ctx, previous)) await rag.delete(ctx, previous);
+        }
+        const { namespaceId } = await rag.getOrCreateNamespace(ctx, {
+          namespace: args.namespace,
+          status: "ready",
+        });
+        const entryId = await ctx.runMutation(component.indexing.start, {
+          ...fence,
+          add: await createFunctionHandle(options.rag.component.entries.add),
+          namespaceId,
+          // Caller keys are scoped to the artifact: otherwise independent
+          // artifacts using one key could rebuild the same unbounded pending
+          // history despite each artifact's own admission fence.
+          key: await fingerprint({ artifactId: row._id, key: args.key }),
+          contentHash: await fingerprint({ artifactId: row._id, claim: row.claim }),
+        });
+        let tokens = 0;
+        // Native RAG add cannot attach to an entry created in our admission
+        // transaction (src/client/index.ts:194). Use its public entry/chunk
+        // mutations, keeping all durable content/vectors inside RAG instead.
+        // Each batch writes 100 content + 100 chunk + 100 vector rows. Text
+        // appears in content AND searchableText; Convex numbers cost 9 bytes:
+        // 100*(2*8192+4096*9+1024) = 5,427,200 bytes (~5.2 MiB), 300 rows,
+        // below 16 MiB/16000. The 1 KiB allowance covers fields/ids per triplet.
+        for (let startOrder = 0; startOrder < chunks.length; startOrder += LIMITS.ragBatch) {
+          const batch = chunks.slice(startOrder, startOrder + LIMITS.ragBatch);
+          const result = await embedMany({
+            model: rag.options.textEmbeddingModel,
+            values: batch.map(({ text }) => text.trim() || "<empty>"),
+            maxRetries: 0,
+          });
+          tokens += result.usage.tokens;
+          await ctx.runMutation(options.rag.component.chunks.insert, {
+            entryId,
+            startOrder,
+            chunks: batch.map(({ text }, index) => ({
+              content: { text },
+              searchableText: text,
+              embedding: result.embeddings[index]!,
+            })),
+          });
+        }
+        await authorize(ctx, {
+          operation: "index",
+          threadId: args.threadId,
+          fileId: row.fileId,
+          namespace: args.namespace,
+        });
+        if (
+          !(await ctx.runMutation(component.indexing.complete, {
+            ...fence,
+            promote: await createFunctionHandle(options.rag.component.entries.promoteToReady),
+          }))
+        )
+          throw new Error("EXTRACT_INDEX_FENCED");
+        return {
+          entryId,
+          status: "ready" as const,
+          created: true,
+          replacedEntry: null,
+          usage: { tokens },
+        };
+      } catch (error) {
+        await ctx.runMutation(component.indexing.complete, fence);
+        throw error;
+      }
     },
     async search(
       ctx: ActionCtx,
@@ -526,7 +600,13 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
         const fileId = entry.metadata?.fileId;
         if (typeof artifactId !== "string" || typeof fileId !== "string") continue;
         const row = await raw(ctx, { artifactId, threadId: args.threadId });
-        if (row.status !== "ready" || row.fileId !== fileId) continue;
+        if (
+          row.status !== "ready" ||
+          row.fileId !== fileId ||
+          row.indexStatus !== "ready" ||
+          row.indexEntryId !== entry.entryId
+        )
+          continue;
         const remaining = LIMITS.toolBytes - utf8(text).length;
         if (!remaining) break;
         text += sliceText((text ? "\n" : "") + entry.text, remaining);

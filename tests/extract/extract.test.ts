@@ -287,6 +287,31 @@ it("does not invoke a provider when native file bytes exceed the registered admi
   });
   expect(h.state.calls).toBe(0);
 });
+it.each([
+  "text/plain",
+  "text/markdown",
+  "text/html",
+  "text/csv",
+  "text/xml",
+  "text/javascript",
+  "text/x-custom",
+  "application/json",
+  "application/xml",
+  "application/csv",
+  "application/javascript",
+])("enforces the configured text ceiling for accepted %s files", async (mimeType) => {
+  const h = setup({
+    backends: [directText()],
+    limits: { maxBytes: { text: LIMITS.summaryBytes } },
+  });
+  const admitted = await run(h, await h.upload("x".repeat(LIMITS.summaryBytes), mimeType));
+  expect(await h.action((ctx) => h.extract.get(ctx, admitted))).toMatchObject({ status: "ready" });
+  const oversized = await run(h, await h.upload("x".repeat(LIMITS.summaryBytes + 1), mimeType));
+  expect(await h.action((ctx) => h.extract.get(ctx, oversized))).toMatchObject({
+    status: "failed",
+    failure: { code: "TOO_LARGE" },
+  });
+});
 it("a duplicate worker dispatch cannot repeat a paid extraction", async () => {
   const h = setup();
   const fileId = await h.upload();

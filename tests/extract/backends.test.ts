@@ -11,7 +11,7 @@ const input = (blob: Blob) => ({
 });
 it("Firecrawl parsing makes one bounded multipart request and keeps failure credits", async () => {
   const fetch = vi.fn(
-    async () =>
+    async (_url: string, _init: RequestInit) =>
       new Response(
         JSON.stringify({ success: false, creditsUsed: 1, error: "SECRET_PROVIDER_BODY" }),
         { status: 503 },
@@ -19,9 +19,30 @@ it("Firecrawl parsing makes one bounded multipart request and keeps failure cred
   );
   vi.stubGlobal("fetch", fetch);
   const backend = firecrawlParse({ apiKey: "fake-offline-key" });
-  const result = await backend.run(input(new Blob(["pdf"], { type: "application/pdf" })));
+  const request = input(new Blob(["pdf"], { type: "application/pdf" }));
+  const result = await backend.run(request);
   expect(result).toEqual({ ok: false, failure: "PROVIDER_UNAVAILABLE", usage: { credits: 1 } });
   expect(fetch).toHaveBeenCalledTimes(1);
+  const [url, init] = fetch.mock.calls[0]!;
+  expect(url).toBe("https://api.firecrawl.dev/v2/parse");
+  expect(init.method).toBe("POST");
+  const headers = new Headers(init.headers);
+  expect(headers.get("Authorization")).toBe("Bearer fake-offline-key");
+  // The runtime must supply the multipart boundary for this exact FormData.
+  expect(headers.has("Content-Type")).toBe(false);
+  expect(init.signal).toBe(request.signal);
+  expect(init.body).toBeInstanceOf(FormData);
+  const body = init.body as FormData;
+  expect(Array.from(body.keys()).sort()).toEqual(["file", "options"]);
+  const file = body.get("file") as File;
+  expect(file.name).toBe("document.pdf");
+  expect(file.type).toBe("application/pdf");
+  expect(await file.text()).toBe("pdf");
+  expect(JSON.parse(body.get("options") as string)).toEqual({
+    formats: ["markdown"],
+    parsers: [{ type: "pdf", mode: "auto", pages: true }],
+    timeout: LIMITS.providerMs,
+  });
   expect(JSON.stringify(result)).not.toContain("SECRET");
 });
 it("Firecrawl maps text pages without preserving provider response fields", async () => {

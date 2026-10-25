@@ -47,6 +47,9 @@ const textTypes = new Set([
   "application/csv",
   "application/javascript",
 ]);
+/** Routing and admission must agree, including application/* text formats. */
+export const isTextMime = (mimeType: string) =>
+  mimeType.startsWith("text/") || textTypes.has(mimeType);
 const documentTypes = new Set([
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -57,7 +60,7 @@ export function directText(): ExtractBackend {
   return {
     id: "direct-text",
     version: "1",
-    accepts: (file) => file.mimeType.startsWith("text/") || textTypes.has(file.mimeType),
+    accepts: (file) => isTextMime(file.mimeType),
     run: async ({ bytes }) => {
       try {
         const text = new TextDecoder("utf-8", { fatal: true }).decode(

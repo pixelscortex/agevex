@@ -16,8 +16,11 @@
 4. Eight closed failure codes, sanitized JSON, bounded summaries, and numeric
    usage only. Reported paid usage remains on failed/released/expired attempts.
    A failing host usage hook cannot restart provider work; the row retains usage.
-5. Optional native RAG `add`/`search`; no chunk/vector copies. Default extraction
-   never initializes RAG. Embedding errors suppress upstream automatic retries.
+5. Optional native RAG entry/chunk mutations and `search`; no chunk/vector
+   copies. Default extraction never initializes RAG. Index admission fences paid
+   embedding; native entry creation and its recorded id commit atomically.
+   Explicit retries await deletion of the exact previous entry before creating
+   another. Embedding errors suppress upstream automatic retries.
 6. Thread-bound `read_file` and optional `search_files` provide bounded text and
    references. Ownership is the host's exact attachment check, called before
    reads and before/after backend work. Core slot/send wiring remains PR F.
@@ -40,6 +43,10 @@ Only owned table: `artifacts`.
 | `payloadStorageId`                                         | Exact host storage read, release cleanup, and stale-output cleanup.                                                                              |
 | `failure`                                                  | Closed status code and its retryable classification. Retryable describes the cause, not permission for automatic replay.                         |
 | `usage.inputTokens`, `usage.outputTokens`, `usage.credits` | Status/accounting evidence, including failures and late paid completion after release.                                                           |
+| `indexStatus`                                              | Index admission (`cleaning`/`running` waits, `ready` reuses, `failed` permits an explicit retry), completion fence, and search visibility.       |
+| `indexClaim`                                               | Fences entry creation and completion to the single admitted index action. No expired-action takeover can overlap paid work.                      |
+| `indexEntryId`                                             | Exact native RAG cleanup before retry, atomic promotion, returned id on reuse/wait, and filtering search to the current completed index.         |
+| `indexNamespace`, `indexKey`                               | Reuse only the same requested index target; a different target cleans up the recorded previous entry first.                                      |
 
 Request content, owner copies, file state, vectors, chunk state, and provider
 bodies are not stored in this table. Native Agent owns files. Host storage owns
@@ -57,21 +64,38 @@ payload JSON. Native Workflow owns its journal. Native RAG owns vectors/chunks.
   one action and an optional completion mutation; no loop or idle chain.
 - Input blob reads cap at 50,000,000 document / 10,000,000 image / 8,388,608 text
   bytes, with native storage metadata checked first and actual size/hash checked
-  on lazy read. Payload storage reads cap at 33,554,432 bytes before JSON parse.
+  on lazy read. Routing and byte enforcement share the same text classifier:
+  `text/*`, JSON, XML, CSV, and JavaScript application MIME types all use the text
+  ceiling. Payload storage reads cap at 33,554,432 bytes before JSON parse.
   These are action storage operations, outside database transaction read limits.
 - Output text caps at 1,048,576 UTF-8 bytes. Pages cap at 100 AND that aggregate
   byte ceiling; total payload pages cap at 10,000. A huge page returns a byte
   cursor. Tools cap at 65,536 bytes. Unicode continuation tests cover boundaries.
 - RAG input caps at 1,048,576 text bytes and 1,024 chunks. Chunks cap at 8,192
   bytes; embedding dimension caps at 4,096 and must be supported upstream.
-  RAG batches 100 chunks: `100 * (8192 + 4096 * 8 + 1024) = 4,198,400` bytes,
-  below 16 MiB, at most 201 writes, below 16,000. A 10-result search with no
-  neighboring context reads under 420 KiB of bounded chunk/vector metadata.
+  A batch writes 100 content + 100 chunk + 100 vector rows: **300 rows**.
+  Text appears twice (content and searchable text), and each Convex vector
+  number costs 9 bytes including its type marker. With a 1 KiB allowance for
+  fields/ids per triplet, `100 * (2 * 8192 + 4096 * 9 + 1024) = 5,427,200`
+  bytes, **about 5.2 MiB**, below 16 MiB / 16,000 rows. A 10-result search with no
+  neighboring context reads under 540 KiB of bounded chunk/vector/content data.
   A dedicated mount/namespace is required so foreign unbounded chunks cannot
   invalidate that bound. Final search text caps at 64 KiB.
+- The index fence reads/patches one artifact. Starting an index additionally
+  creates one small native entry in the same transaction; no chunks cross that
+  transaction. The native key hashes `(artifactId, caller key)`, preventing
+  unrelated artifacts sharing a caller key from accumulating native versions.
+  Before a new entry exists, exact-id synchronous cleanup completes in native
+  pages (8 MiB bandwidth threshold plus at most one bounded chunk's overhead).
+  There is at most one pending entry per artifact, and therefore per native
+  key. Promotion cannot collect a history of pending retries. A crashed index
+  action retains its fence: there is no automatic timeout takeover or paid retry.
 - All deterministic component tests enforce convex-test transaction limits.
   The exact 32 MiB payload, 10,000 pages / 100-page window, 32 simultaneous
   admissions/dispatches, and 1 MiB RAG input at 4,096 dimensions are exercised.
+  Index retries additionally exercise 32 partial failures followed by 32
+  concurrent calls at those maximum input/chunk/vector bounds, checking native
+  cleanup, the recorded in-flight id, successful completion, and free reuse.
 
 ## Source ladder and specification corrections
 
@@ -85,11 +109,22 @@ payload JSON. Native Workflow owns its journal. Native RAG owns vectors/chunks.
   `src/component/api.ts:102–137` retries requests and buffers unbounded responses.
   Its component cannot meet the brief. A bounded one-request v2 adapter replaces
   that transport, without cloning its tables. Firecrawl Parse uses multipart.
-- RAG 0.7.8 `src/client/index.ts:133` owns batched indexing and `:368` owns
-  retrieval; `src/shared.ts:16` sets batches to 100. Its embedding helper doesn't
-  expose `maxRetries`; a model middleware sanitizes failures to non-retryable
-  errors. RAG's source-only test export also has a non-type import incompatible
-  with verbatimModuleSyntax; its runtime harness is loaded dynamically in tests.
+- RAG 0.7.8 `src/client/index.ts:133` cannot continue an entry created by our
+  admission transaction. Instead, its native `src/component/entries.ts:194`
+  (`add`), `src/component/chunks.ts:50` (`insert`), and
+  `src/component/entries.ts:398` (`promoteToReady`) own all entries/chunks/vectors;
+  our thin action loop embeds batches of 100 with `maxRetries: 0`.
+  `src/client/index.ts:768-786` provides `RAG.delete(ctx, { entryId })`, calling
+  `entries.deleteSync`; `src/component/entries.ts:511-529` pages deletion by
+  that exact id. Neither cleanup nor admission lists versions by key.
+  The old native replace path collects pending versions at
+  `src/component/chunks.ts:202`; promotion does so at
+  `src/component/entries.ts:459`. Recording an id after native `RAG.add`
+  returns would miss entries left behind by failed embedding, so recording
+  happens transactionally before the first paid call instead.
+  A model middleware still sanitizes RAG search embedding failures into
+  non-retryable errors. RAG's source-only test export has a non-type import
+  incompatible with verbatimModuleSyntax; tests load its runtime dynamically.
 - Workflow 0.4.10 `src/client/step.ts:213` resolves function handles; Convex 1.47
   `src/server/components/paths.ts:28` accepts existing handles, letting
   the component own durability while the host owns configured backend code.
@@ -128,7 +163,7 @@ The PNG generator uses only local bitmap pixels and PNG compression.
 - keeps options hash in artifact identity — [tests/extract/extract.test.ts:42](../../tests/extract/extract.test.ts).
 - release wins over late completion and keeps paid usage without publishing output — [tests/extract/extract.test.ts:55](../../tests/extract/extract.test.ts).
 - marks a lost provider outcome unknown and never retries it after lease expiry — [tests/extract/extract.test.ts:83](../../tests/extract/extract.test.ts).
-- returns sanitized %s failures with paid usage and no automatic retry — [tests/extract/extract.test.ts:95](../../tests/extract/extract.test.ts).
+- returns sanitized %s failures with paid usage and no automatic retry — [tests/extract/extract.test.ts:104](../../tests/extract/extract.test.ts).
 - stores maximum-size payload JSON outside a small artifact row under transaction limits — [tests/extract/extract.test.ts:119](../../tests/extract/extract.test.ts).
 - bounds UTF-8 text windows by bytes and resumes without splitting characters — [tests/extract/extract.test.ts:138](../../tests/extract/extract.test.ts).
 - bounds page windows by both count and bytes and resumes a huge page — [tests/extract/extract.test.ts:161](../../tests/extract/extract.test.ts).
@@ -138,26 +173,49 @@ The PNG generator uses only local bitmap pixels and PNG compression.
 - rejects oversized registration limits and duplicate backend ids — [tests/extract/extract.test.ts:245](../../tests/extract/extract.test.ts).
 - rejects oversized payloads without persisting provider fields and retains paid usage — [tests/extract/extract.test.ts:267](../../tests/extract/extract.test.ts).
 - does not invoke a provider when native file bytes exceed the registered admission ceiling — [tests/extract/extract.test.ts:282](../../tests/extract/extract.test.ts).
-- a duplicate worker dispatch cannot repeat a paid extraction — [tests/extract/extract.test.ts:290](../../tests/extract/extract.test.ts).
-- changing a backend version creates a new artifact identity — [tests/extract/extract.test.ts:308](../../tests/extract/extract.test.ts).
-- lease expiry fences a late paid completion and preserves its usage without retry — [tests/extract/extract.test.ts:327](../../tests/extract/extract.test.ts).
-- rechecks the exact attachment after paid work before publishing output — [tests/extract/extract.test.ts:355](../../tests/extract/extract.test.ts).
-- admits %s at its hard byte maximum with bounded transaction reads — [tests/extract/extract.test.ts:375](../../tests/extract/extract.test.ts).
-- runs the completion callback after durable extraction without repeating it on reuse — [tests/extract/extract.test.ts:401](../../tests/extract/extract.test.ts).
-- completion callbacks observe saved results even when the host usage hook fails — [tests/extract/extract.test.ts:420](../../tests/extract/extract.test.ts).
+- a duplicate worker dispatch cannot repeat a paid extraction — [tests/extract/extract.test.ts:315](../../tests/extract/extract.test.ts).
+- changing a backend version creates a new artifact identity — [tests/extract/extract.test.ts:333](../../tests/extract/extract.test.ts).
+- lease expiry fences a late paid completion and preserves its usage without retry — [tests/extract/extract.test.ts:352](../../tests/extract/extract.test.ts).
+- rechecks the exact attachment after paid work before publishing output — [tests/extract/extract.test.ts:380](../../tests/extract/extract.test.ts).
+- admits %s at its hard byte maximum with bounded transaction reads — [tests/extract/extract.test.ts:405](../../tests/extract/extract.test.ts).
+- runs the completion callback after durable extraction without repeating it on reuse — [tests/extract/extract.test.ts:426](../../tests/extract/extract.test.ts).
+- completion callbacks observe saved results even when the host usage hook fails — [tests/extract/extract.test.ts:445](../../tests/extract/extract.test.ts).
 - Firecrawl parsing makes one bounded multipart request and keeps failure credits — [tests/extract/backends.test.ts:12](../../tests/extract/backends.test.ts).
-- Firecrawl maps text pages without preserving provider response fields — [tests/extract/backends.test.ts:27](../../tests/extract/backends.test.ts).
-- provider response reads stop at their byte ceiling without trusting headers — [tests/extract/backends.test.ts:54](../../tests/extract/backends.test.ts).
-- directText rejects malformed UTF-8 and routes supported local formats — [tests/extract/backends.test.ts:69](../../tests/extract/backends.test.ts).
-- vision OCR retains token usage and freezes model identity — [tests/extract/backends.test.ts:78](../../tests/extract/backends.test.ts).
-- fromUrl stores the fetched markdown as a native Agent file and records credits — [tests/extract/backends.test.ts:89](../../tests/extract/backends.test.ts).
-- indexes and searches through native RAG with maximum chunk, vector, and search bounds — [tests/extract/rag.test.ts:22](../../tests/extract/rag.test.ts).
-- never retries a failed paid embedding request inside RAG — [tests/extract/rag.test.ts:58](../../tests/extract/rag.test.ts).
+- Firecrawl maps text pages without preserving provider response fields — [tests/extract/backends.test.ts:48](../../tests/extract/backends.test.ts).
+- provider response reads stop at their byte ceiling without trusting headers — [tests/extract/backends.test.ts:75](../../tests/extract/backends.test.ts).
+- directText rejects malformed UTF-8 and routes supported local formats — [tests/extract/backends.test.ts:90](../../tests/extract/backends.test.ts).
+- vision OCR retains token usage and freezes model identity — [tests/extract/backends.test.ts:99](../../tests/extract/backends.test.ts).
+- fromUrl stores the fetched markdown as a native Agent file and records credits — [tests/extract/backends.test.ts:110](../../tests/extract/backends.test.ts).
+- indexes and searches through native RAG with maximum chunk, vector, and search bounds — [tests/extract/rag.test.ts:25](../../tests/extract/rag.test.ts).
+- never retries a failed paid embedding request inside RAG — [tests/extract/rag.test.ts:61](../../tests/extract/rag.test.ts).
+- repeated failed and concurrent indexing keeps one pending entry then succeeds under transaction limits — [tests/extract/rag.test.ts:87](../../tests/extract/rag.test.ts).
+- %s fences indexing before a late embedding can publish (release and ownership) — [tests/extract/rag.test.ts:187](../../tests/extract/rag.test.ts).
+- enforces the configured text ceiling for accepted %s files — [tests/extract/extract.test.ts:290](../../tests/extract/extract.test.ts).
 - live directText reads an Agent text file without provider credits — [tests/extract/extract.live.ts:37](../../tests/extract/extract.live.ts).
-- live Firecrawl parses one small public PDF and fetches one page within three calls — [tests/extract/extract.live.ts:42](../../tests/extract/extract.live.ts).
-- live visionOcr transcribes one tiny PNG with openrouter/free and no retries — [tests/extract/extract.live.ts:80](../../tests/extract/extract.live.ts).
+- live Firecrawl parses one small public PDF and fetches one page within three calls — [tests/extract/extract.live.ts:43](../../tests/extract/extract.live.ts).
+- live visionOcr transcribes one tiny PNG with openrouter/free and no retries — [tests/extract/extract.live.ts:81](../../tests/extract/extract.live.ts).
 
 ## Acceptance
+
+Review fixes:
+
+- `bun run check`, `bun run typecheck`, and `bun run typecheck:tests`: pass.
+- `bunx vp test --run`: **224 tests passed** across 17 files, including 52 extract
+  guarantees. Convex transaction limits remain enforced in the extract harness.
+- The RAG retry test failed on the original implementation with two pending
+  entries after the second failure. XML/CSV/JavaScript application MIME tests
+  failed because oversized files became ready. Release/ownership indexing tests
+  failed because late embedding still published a ready entry.
+- The multipart adapter already sent the correct request; the missing assertions
+  are fixed. Four deliberate regressions (file, options, Content-Type boundary,
+  abort signal) were each rejected by the strengthened test and then reverted.
+- No live tests or providers ran again: **0 Firecrawl calls/credits**, no paid
+  OCR or embedding tokens. All new embedding tests use fake models.
+- Notes moved from `src/extract/IMPLEMENTATION.md` to `docs/notes/extract.md`,
+  outside the package's `src`/`dist` file selection. Core sources and `bun.lock`
+  are excluded from this change.
+
+Original implementation evidence (historical):
 
 - `bun run check`, `bun run typecheck`, and `bun run typecheck:tests`: pass.
 - `bunx vp test --run`: **210 tests passed** across 17 files; 38 are extract

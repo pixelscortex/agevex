@@ -46,5 +46,12 @@ export default defineSchema({
     payloadStorageId: v.optional(v.string()),
     failure: v.optional(failure),
     usage: v.optional(usage),
+    indexStatus: v.optional(
+      v.union(v.literal("cleaning"), v.literal("running"), v.literal("failed"), v.literal("ready")),
+    ),
+    indexClaim: v.optional(v.string()),
+    indexEntryId: v.optional(v.string()),
+    indexNamespace: v.optional(v.string()),
+    indexKey: v.optional(v.string()),
   }).index("by_identity", ["fileId", "backend", "version", "optionsHash"]),
 });

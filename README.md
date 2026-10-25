@@ -486,9 +486,12 @@ chunk?: { maxBytes } }` and mount `@convex-dev/rag` separately to enable
 bounded chunks. The host authorizes namespaces; tools use `threadId` as the
 namespace and recheck each result's attachment. Index text caps at 1 MiB;
 chunks are 1–8 KiB. Embedding models must be instantiated AI SDK v3/v4 models.
+Index calls for one artifact admit one embedding action; concurrent calls return
+`pending`, and completed calls reuse the recorded entry. Caller keys are scoped
+to the artifact. Explicit retries delete the exact prior native entry first.
 
 `bun run test:live:extract` loads keys from the main checkout's `.env.local` and
 makes two Firecrawl requests plus one `openrouter/free` OCR request. Explicit
 empty key environment values skip those paid probes. See
-[src/extract/IMPLEMENTATION.md](src/extract/IMPLEMENTATION.md) for bounds and
+[docs/notes/extract.md](docs/notes/extract.md) for bounds and
 upstream decisions.
