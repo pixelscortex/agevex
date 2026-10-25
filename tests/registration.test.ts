@@ -5,6 +5,7 @@ import { Agent as NativeAgent, mockModel } from "@convex-dev/agent";
 import { Agent, registerAgent } from "../src/client/index.js";
 import { components, internal } from "./setup.js";
 import { main, researcher } from "./host.js";
+import { HOST_LIMITS } from "../src/component/limits.js";
 
 const coordinator = () =>
   makeFunctionReference<"mutation">("agents:coordinate") as unknown as FunctionReference<
@@ -42,9 +43,11 @@ it("registers a Main -> Researcher graph and rejects an unusable one", () => {
   expect(Object.keys(runtime.internalFunctions()).sort()).toEqual(["coordinate", "runTurn"]);
   expect(Object.keys(runtime.authorizedEndpoints()).sort()).toEqual([
     "activity",
+    "cancel", // Phase 1a adds root-only cancellation.
     "delegations",
     "messages",
     "open",
+    "respond",
     "send",
   ]);
   expect(() => registerAgent(components.agevex, { ...policy, agents: [main, main] })).toThrow(
@@ -155,3 +158,32 @@ it("rejects an invalid delegation graph instead of pretending collaboration exis
     "RESERVED_TOOL_NAME",
   );
 });
+
+it("registration rejects invalid tunable limits and platform overrides synchronously", () => {
+  for (const limits of [
+    { rootLane: 0 },
+    { childLane: 1.5 },
+    { rootLane: 5, childLane: 4 },
+    { runLaunches: NaN },
+    { leaseMs: -1 },
+    { slicesPerTurn: Infinity },
+    { scheduledConcurrency: 100 },
+    { stepBytes: 10 },
+  ])
+    expect(() =>
+      registerAgent(components.agevex, { ...policy, agents: [main], limits } as never),
+    ).toThrow("INVALID_LIMITS");
+});
+
+it.each(Object.entries(HOST_LIMITS))(
+  "registration rejects %s above its hard maximum",
+  (key, { max }) => {
+    expect(() =>
+      registerAgent(components.agevex, {
+        ...policy,
+        agents: [main],
+        limits: { [key]: max + 1 },
+      }),
+    ).toThrow(`INVALID_LIMITS: ${key} exceeds maximum ${max}`);
+  },
+);

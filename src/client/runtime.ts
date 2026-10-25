@@ -1,19 +1,7 @@
-// Managed turn runtime: the single host registration, its one bounded turn
-// action, its one coordinator mutation and the reserved delegation tool.
-//
-// Generation, tools, threads, messages and streaming stay native. What this
-// module adds is Workpool-backed execution of one root or child turn at a time,
-// a persisted parent result path back into the root transcript, and honest
-// coordination state around both.
-//
-// Collaboration is depth 1 by construction. A root may delegate to its declared
-// children during a caller-triggered turn; a child can never delegate, a
-// result-triggered continuation can never delegate, and inherited direct native
-// calls on a managed thread stay unmanaged.
-
-import { createThread, getThreadMetadata, listMessages, saveMessage } from "@convex-dev/agent";
+import { createThread, getThreadMetadata, saveMessage } from "@convex-dev/agent";
 import {
   createFunctionHandle,
+  getFunctionAddress,
   internalActionGeneric,
   internalMutationGeneric,
   type GenericActionCtx,
@@ -22,16 +10,13 @@ import {
   type RegisteredAction,
   type RegisteredMutation,
 } from "convex/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { tool } from "ai";
 import { z } from "zod";
 import type { ComponentApi } from "../component/_generated/component.js";
 import { denialCode, runErrorCode } from "../component/schema.js";
-import {
-  GENERATION_ABORT_MS,
-  MAX_DELEGATION_TASK_LENGTH,
-  MAX_OUTPUT_TOKENS,
-} from "../component/limits.js";
+import { LIMITS, resolveLimits } from "../component/limits.js";
+import { bindOnceTool, fingerprint } from "./once.js";
 import type {
   Activity,
   CoordinateArgs,
@@ -50,9 +35,6 @@ import { authorizedEndpoints } from "./endpoints.js";
  * tool, and a host cannot impersonate it.
  */
 export const DELEGATE_TOOL_NAME = "agevex_delegate";
-
-/** Bounded native read used to authenticate a child's final message. */
-const RESULT_VERIFICATION_PAGE = 20;
 
 /** Mutation context the coordinator runs with; also what native saves accept. */
 type CoordinatorCtx = GenericMutationCtx<GenericDataModel>;
@@ -151,13 +133,6 @@ function resolveGraph(config: Registration): Graph {
   return { byName, children, edges };
 }
 
-/** Stable hash of the requested delegation, used for the scoped conflict check. */
-async function fingerprint(input: unknown) {
-  const bytes = new TextEncoder().encode(JSON.stringify(input));
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 /**
  * Convex argument validator for the coordinator.
  *
@@ -192,6 +167,7 @@ const delegationResult = v.union(
  * native methods remain unmanaged.
  */
 export function registerAgent(component: ComponentApi, config: Registration) {
+  const limits = resolveLimits(config.limits);
   const graph = resolveGraph(config);
   const collaboration = [...graph.edges.values()].some((allowed) => allowed.size > 0);
   if (collaboration && !config.refs.coordinate) throw new Error("COORDINATE_REF_REQUIRED");
@@ -231,18 +207,24 @@ export function registerAgent(component: ComponentApi, config: Registration) {
     if (!child) return null;
     const thread = await getThreadMetadata(ctx, child.component, { threadId: target.threadId });
     if (!thread || thread.userId !== target.subject) return null;
-    const page = await listMessages(ctx, child.component, {
-      threadId: target.threadId,
-      paginationOpts: { cursor: null, numItems: RESULT_VERIFICATION_PAGE },
-    });
-    const found = page.page.find(
-      (message) =>
-        String(message._id) === target.messageId &&
-        message.message?.role === "assistant" &&
-        message.status === "success" &&
-        message.agentName === target.agentName,
-    );
-    if (!found) return null;
+    // An untrusted reported id can fail the native id validator. Treat that
+    // just like a missing document: no verified result, and no transcript scan.
+    const found = await ctx
+      .runQuery(child.component.messages.getMessagesByIds, {
+        messageIds: [target.messageId],
+      })
+      .then(
+        ([message]) => message,
+        () => null,
+      );
+    if (
+      !found ||
+      found.threadId !== target.threadId ||
+      found.message?.role !== "assistant" ||
+      found.status !== "success" ||
+      found.agentName !== target.agentName
+    )
+      return null;
     // `text` is the native extraction of this saved message's text parts.
     const text = found.text;
     return text && text.trim() ? text : null;
@@ -431,7 +413,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
             const args = raw as CoordinateArgs;
             if (args.op === "launch") {
               const task = args.task.trim();
-              if (!task || task.length > MAX_DELEGATION_TASK_LENGTH)
+              if (!task || task.length > limits.taskLength)
                 return { status: "denied" as const, code: "TASK_LIMIT" as const };
               const owned = await ctx.runQuery(component.subagents.delegateContext, {
                 assignmentId: args.assignmentId,
@@ -547,9 +529,19 @@ export function registerAgent(component: ComponentApi, config: Registration) {
         });
 
       const runTurn: RegisteredAction<"internal", TurnArgs, null> = internalActionGeneric({
-        args: { assignmentId: v.string(), turnToken: v.string() },
+        args: { assignmentId: v.string(), turnToken: v.string(), sliceId: v.optional(v.string()) },
         returns: v.null(),
         handler: async (ctx, args) => {
+          const queued = await ctx.runQuery(component.queue.execution, {
+            assignmentId: args.assignmentId,
+          });
+          if (!queued || queued.cancelled || queued.turnToken !== args.turnToken) return null;
+          const managed = graph.byName.get(queued.agent);
+          if (!managed) throw new Error("UNKNOWN_AGENT");
+          // Agent 0.7.7 auto-denies unresolved approvals at generation start.
+          // Only our recorded request can block a managed turn. Native history
+          // is never searched to discover requests.
+          if (queued.approvalBlocked) return null;
           const claimed = await ctx.runMutation(component.queue.claim, args);
           if (!claimed) return null;
           const child = claimed.subagent;
@@ -587,48 +579,190 @@ export function registerAgent(component: ComponentApi, config: Registration) {
           let childResultMessageId: string | undefined;
           if (!errorCode) {
             const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), GENERATION_ABORT_MS);
-            try {
-              const managed = graph.byName.get(claimed.agent);
-              if (!managed) throw new Error("UNKNOWN_AGENT");
-              // The managed tool is offered only to a root's caller-triggered
-              // turn, and only when that root actually declares children.
-              const eligible =
-                !child && claimed.turnOrigin === "user" && graph.edges.has(claimed.agent);
-              const tools = eligible
-                ? {
-                    ...managed.declaredTools,
-                    [DELEGATE_TOOL_NAME]: tool({
-                      description:
-                        "Delegate one bounded task to a registered child agent. Returns as soon as the child is queued; the result is delivered into this thread later.",
-                      inputSchema: z.object({ agent: z.string(), task: z.string() }),
-                      execute: async (input, options) =>
-                        ctx.runMutation(coordinateReference(), {
-                          op: "launch",
-                          assignmentId: args.assignmentId,
-                          turnToken: args.turnToken,
-                          toolCallId: options.toolCallId,
-                          agent: input.agent,
-                          task: input.task,
-                        }),
-                    }),
+            let fencedOut = false;
+            const timer = setTimeout(() => controller.abort(), LIMITS.generationAbortMs);
+            const poll = setInterval(() => {
+              void ctx
+                .runQuery(component.queue.execution, { assignmentId: args.assignmentId })
+                .then((row) => {
+                  if (
+                    !row ||
+                    row.cancelled ||
+                    row.turnToken !== args.turnToken ||
+                    row.cancellationEpoch !== claimed.cancellationEpoch ||
+                    row.turnStatus !== "running"
+                  ) {
+                    fencedOut = true;
+                    controller.abort();
                   }
-                : undefined;
+                })
+                .catch(() => {
+                  fencedOut = true;
+                  controller.abort();
+                });
+            }, LIMITS.cancelPollMs);
+            // Route native saves and tool mutations through one atomic check.
+            // Polling aborts cooperative providers; this fence also catches an
+            // uncooperative provider that returns after cancellation.
+            const nativeCtx: RunnerCtx = {
+              ...ctx,
+              runMutation: (async (
+                ref: Parameters<RunnerCtx["runMutation"]>[0],
+                payload: unknown,
+              ) => {
+                // An abort listener may only close its own recorded placeholder.
+                // queue.write verifies the exact handle, id, execution and epoch.
+                if (
+                  fencedOut &&
+                  JSON.stringify(getFunctionAddress(ref)) !==
+                    JSON.stringify(getFunctionAddress(managed.component.messages.finalizeMessage))
+                )
+                  return null;
+                return ctx.runMutation(component.queue.write, {
+                  assignmentId: args.assignmentId,
+                  executionId: args.turnToken,
+                  cancellationEpoch: claimed.cancellationEpoch,
+                  handle: await createFunctionHandle(ref),
+                  args: payload,
+                });
+              }) as RunnerCtx["runMutation"],
+            };
+            const assertActive = async () => {
+              const row = await ctx.runQuery(component.queue.execution, {
+                assignmentId: args.assignmentId,
+              });
+              if (
+                controller.signal.aborted ||
+                !row ||
+                row.cancelled ||
+                row.turnToken !== args.turnToken ||
+                row.cancellationEpoch !== claimed.cancellationEpoch ||
+                row.turnStatus !== "running"
+              ) {
+                fencedOut = true;
+                controller.abort();
+                throw new ConvexError({ code: "CANCELLED" });
+              }
+            };
+            // after cancel, the SDK refuses new nested calls and drops its own
+            // writes; writes your own code makes inside an already-running nested
+            // action are yours to guard with tc.signal. An action call cannot be
+            // made atomic with the cancel mutation: this is admission fencing,
+            // while SDK-owned/native writes retain the transactional write fence.
+            // Agent 0.7.7 fires these void saves from asynchronous abort listeners.
+            // They must resolve after cancellation to avoid an unhandled rejection;
+            // queue.write permits only their own terminal close after the fence. All other
+            // native operations, including createTool's injected ctx, reject new
+            // nested calls after revocation just like defineOnceTool does.
+            const nativeFinalizers = new Set(
+              [managed.component.messages.finalizeMessage, managed.component.streams.abort].map(
+                (ref) => JSON.stringify(getFunctionAddress(ref)),
+              ),
+            );
+            const fencedCtx: RunnerCtx = {
+              ...nativeCtx,
+              runAction: (async (ref, ...payload) => {
+                await assertActive();
+                return ctx.runAction(ref, ...payload);
+              }) as RunnerCtx["runAction"],
+              runMutation: (async (ref, payload) => {
+                if (nativeFinalizers.has(JSON.stringify(getFunctionAddress(ref))))
+                  return nativeCtx.runMutation(ref, payload);
+                await assertActive();
+                try {
+                  return await ctx.runMutation(component.queue.write, {
+                    assignmentId: args.assignmentId,
+                    executionId: args.turnToken,
+                    cancellationEpoch: claimed.cancellationEpoch,
+                    handle: await createFunctionHandle(ref),
+                    args: payload,
+                    rejectStale: true,
+                    ...(JSON.stringify(getFunctionAddress(ref)) ===
+                    JSON.stringify(getFunctionAddress(managed.component.streams.create))
+                      ? {
+                          nativeStream: await createFunctionHandle(managed.component.streams.abort),
+                        }
+                      : {}),
+                    ...(JSON.stringify(getFunctionAddress(ref)) ===
+                    JSON.stringify(getFunctionAddress(managed.component.messages.addMessages))
+                      ? {
+                          nativeMessages: {
+                            getMessages: await createFunctionHandle(
+                              managed.component.messages.getMessagesByIds,
+                            ),
+                            finalizeMessage: await createFunctionHandle(
+                              managed.component.messages.finalizeMessage,
+                            ),
+                          },
+                        }
+                      : {}),
+                  });
+                } catch (error) {
+                  if (error instanceof ConvexError && error.data?.code === "CANCELLED")
+                    controller.abort();
+                  throw error;
+                }
+              }) as RunnerCtx["runMutation"],
+            };
+            try {
+              const eligible = !child && graph.edges.has(claimed.agent);
+              const tools = Object.fromEntries(
+                Object.entries(managed.declaredTools).map(([name, declared]) => [
+                  name,
+                  bindOnceTool(
+                    declared,
+                    component,
+                    ctx,
+                    {
+                      ctx: fencedCtx,
+                      subject: claimed.subject,
+                      threadId: claimed.threadId,
+                      runId: claimed.runId,
+                      signal: controller.signal,
+                    },
+                    {
+                      assignmentId: args.assignmentId,
+                      executionId: args.turnToken,
+                      cancellationEpoch: claimed.cancellationEpoch,
+                    },
+                    limits.leaseMs,
+                  ),
+                ]),
+              );
+              let delegated = false;
+              if (eligible)
+                tools[DELEGATE_TOOL_NAME] = tool({
+                  description:
+                    "Delegate one bounded task to a registered child agent. Its result arrives later. A result continuation may delegate again within the same run budget.",
+                  inputSchema: z.object({ agent: z.string(), task: z.string() }),
+                  execute: async (input, options) => {
+                    const launch = await fencedCtx.runMutation(coordinateReference(), {
+                      op: "launch",
+                      assignmentId: args.assignmentId,
+                      turnToken: args.turnToken,
+                      toolCallId: options.toolCallId,
+                      agent: input.agent,
+                      task: input.task,
+                    });
+                    if (launch?.status === "queued") delegated = true;
+                    return launch;
+                  },
+                });
               const result = await managed.streamText(
-                ctx,
+                fencedCtx,
                 { threadId: claimed.threadId },
                 {
                   promptMessageId: claimed.promptMessageId,
-                  ...(tools ? { tools } : {}),
-                  maxOutputTokens: MAX_OUTPUT_TOKENS,
-                  maxRetries: 0,
+                  tools,
+                  maxOutputTokens: LIMITS.outputTokens,
+                  maxRetries: LIMITS.modelRetries,
                   // Native stop conditions are evaluated after each step: exactly
-                  // one model step per turn.
+                  // one model step per slice.
                   stopWhen: () => true,
                   abortSignal: controller.signal,
                 },
                 {
-                  saveStreamDeltas: { chunking: "word", throttleMs: 0 },
+                  saveStreamDeltas: { chunking: "word", throttleMs: LIMITS.streamThrottleMs },
                   storageOptions: { saveMessages: "promptAndOutput" },
                 },
               );
@@ -639,9 +773,31 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 },
               });
               const reason = await result.finishReason;
-              const accepted = child ? ["stop", "length"] : ["stop", "length", "tool-calls"];
+              const accepted = ["stop", "length", "tool-calls"];
               if (streamError || controller.signal.aborted || !accepted.includes(reason))
                 throw new Error("INCOMPLETE_GENERATION");
+              const snapshot = await ctx.runQuery(component.queue.execution, {
+                assignmentId: args.assignmentId,
+              });
+              if (
+                !snapshot ||
+                snapshot.cancelled ||
+                snapshot.turnToken !== args.turnToken ||
+                snapshot.cancellationEpoch !== claimed.cancellationEpoch
+              )
+                return null;
+              if (reason === "tool-calls" && !delegated) {
+                const last = result.savedMessages?.[result.savedMessages.length - 1];
+                if (last) {
+                  await ctx.runMutation(component.queue.continueTurn, {
+                    assignmentId: args.assignmentId,
+                    executionId: args.turnToken,
+                    cancellationEpoch: claimed.cancellationEpoch,
+                    messageId: String(last._id),
+                  });
+                  return null;
+                }
+              }
               if (child) {
                 // Native final saves have completed. A child result must be a
                 // saved, non-empty assistant text message; tool-only or empty
@@ -662,12 +818,27 @@ export function registerAgent(component: ComponentApi, config: Registration) {
               childError = "GENERATION_FAILED";
             } finally {
               clearTimeout(timer);
+              clearInterval(poll);
             }
           }
 
+          const current = await ctx.runQuery(component.queue.execution, {
+            assignmentId: args.assignmentId,
+          });
+          if (
+            !current ||
+            current.cancelled ||
+            current.turnToken !== args.turnToken ||
+            current.cancellationEpoch !== claimed.cancellationEpoch
+          )
+            return null;
           if (!child) {
             // A root turn owns nothing but its own queue state.
-            await ctx.runMutation(component.queue.finish, { ...args, errorCode });
+            await ctx.runMutation(component.queue.finish, {
+              assignmentId: args.assignmentId,
+              turnToken: args.turnToken,
+              errorCode,
+            });
             await observe(ctx, {
               type: "turn.finished",
               assignmentId: claimed.assignmentId,
@@ -719,7 +890,11 @@ export function registerAgent(component: ComponentApi, config: Registration) {
           // bounded and one-shot — `deliver` no-ops once delivery is no longer
           // `pending`, so the ambiguity path cannot replay it.
           await deliverTerminalRun(ctx, child.runId, child.deliveryToken);
-          await ctx.runMutation(component.queue.finish, { ...args, errorCode });
+          await ctx.runMutation(component.queue.finish, {
+            assignmentId: args.assignmentId,
+            turnToken: args.turnToken,
+            errorCode,
+          });
           await observe(ctx, {
             type: "turn.finished",
             assignmentId: claimed.assignmentId,

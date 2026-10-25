@@ -1,13 +1,16 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { mutationGeneric } from "convex/server";
+import { makeFunctionReference, mutationGeneric, queryGeneric } from "convex/server";
+import workflow from "@convex-dev/workflow/test";
+import { type Registration } from "../src/client/types.js";
 import agent from "@convex-dev/agent/test";
-import workpool from "@convex-dev/workpool/test";
+import { registerWorkflow } from "../src/test.js";
+import type { GenericId } from "convex/values";
 import agevex from "../src/test.js";
 import schema from "./fixture/schema.js";
 import type { MutationCtx } from "../src/component/_generated/server.js";
 import type { Id } from "../src/component/_generated/dataModel.js";
-import { state } from "./host.js";
+import { state, fixtureRuntime } from "./host.js";
 
 // The fixture app mirrors a real Convex host app: its `_generated` directory
 // marks the functions root, and its `agents` module is the deterministic test
@@ -21,6 +24,10 @@ const modules = import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]);
  * boundary, so the tested path is the real one up to that point.
  */
 export type Fault =
+  | "cleanupSave"
+  | "transcriptReads"
+  | "lostPing"
+  | "delayedWait"
   | "save"
   | "accept"
   | "finish"
@@ -29,8 +36,7 @@ export type Fault =
   | "settle"
   | "notificationSave"
   | "childFinish"
-  | "acceptedDelivery"
-  | "legacyAllowance";
+  | "acceptedDelivery";
 
 /** Shape of the `addMessages` argument the notification fault inspects. */
 type AddMessagesArgs = {
@@ -100,7 +106,7 @@ function childFinishFault(real: AgevexMutation) {
         "assignments",
         finishArgs.assignmentId as Id<"assignments">,
       );
-      if (row?.runId) throw new Error("injected child finish failure");
+      if (row?.childRunId) throw new Error("injected child finish failure");
       return (await real._handler(ctx, finishArgs)) as never;
     },
   });
@@ -112,44 +118,6 @@ type DeliverArgs = {
   deliveryToken: string;
   deliveryStatus: "accepted" | "failed" | "blocked";
 };
-
-/**
- * Reservation arguments whose root row carries the per-prompt launch pair.
- */
-type ReserveArgs = { assignmentId: string; turnToken: string };
-
-/** Root assignments already downgraded once by {@link legacyAllowanceFault}. */
-const legacyDowngraded = new Set<string>();
-
-/**
- * Allowance fault: make one root look like a row written before the persisted
- * per-prompt launch count existed.
- *
- * `subagents.reserve` treats a matching `delegatedTurnToken` with no
- * `delegatedTurnCount` as one already spent. There is no public way to produce
- * such a row now, so the first reservation from an already-served turn strips
- * the count just before the real handler reads it. Only that one transition is
- * rewritten: every other reservation, and the whole rest of the launch, stays
- * real, so the legacy reading is proven against the real decision rather than a
- * replica of it.
- */
-function legacyAllowanceFault(real: AgevexMutation) {
-  return mutationGeneric({
-    args: (real as unknown as { _args: unknown })._args as never,
-    returns: (real as unknown as { _returns: unknown })._returns as never,
-    handler: async (ctx, args) => {
-      const reserveArgs = args as ReserveArgs;
-      const db = (ctx as MutationCtx).db;
-      const id = reserveArgs.assignmentId as Id<"assignments">;
-      const row = await db.get(id);
-      if (row?.delegatedTurnToken === reserveArgs.turnToken && !legacyDowngraded.has(id)) {
-        legacyDowngraded.add(id);
-        await db.patch(id, { delegatedTurnCount: undefined });
-      }
-      return (await real._handler(ctx, args)) as never;
-    },
-  });
-}
 
 /**
  * Delivery fault: refuse the queue acceptance of a delivered result only.
@@ -171,9 +139,25 @@ function acceptedDeliveryFault(real: AgevexMutation) {
   });
 }
 
-export function setup(fault?: Fault) {
-  legacyDowngraded.clear();
+export function setup(
+  fault?: Fault,
+  limits?: Registration["limits"],
+  transactionLimits: NonNullable<Parameters<typeof convexTest>[0]>["transactionLimits"] = false,
+) {
+  state.dropPing = false;
+  state.forbidTranscriptReads = false;
+  state.transcriptReads = 0;
+  state.nestedCalls = 0;
+  state.nativeNested = false;
+  state.nestedAfterCancel = false;
+  state.nestedStarted = false;
+  state.nestedErrors.length = 0;
+  state.nestedSignals.length = 0;
+  state.nestedGate = undefined;
+  state.nestedRelease = undefined;
+  state.childToolSlices = 0;
   state.calls.length = 0;
+  state.modelStarted = undefined;
   state.offers.length = 0;
   state.events.length = 0;
   state.observerFails = false;
@@ -181,8 +165,20 @@ export function setup(fault?: Fault) {
   state.revoke = false;
   state.hang = false;
   state.tools = false;
+  state.approval = false;
+  state.approvalCount = 1;
+  state.echoStarted = false;
+  state.echoGate = undefined;
+  state.cleanupFails = false;
+  state.childApproval = false;
+  state.once = false;
+  state.onceCalls = 0;
+  state.onceContext = undefined;
   state.delegate = false;
   state.delegateFanout = 1;
+  state.delegationRounds = 1;
+  state.delegatedRounds = 0;
+  state.roundsByPrompt.clear();
   state.delegateAgent = "Researcher";
   state.delegateTask = "research the bounded question";
   state.denyDelegate = false;
@@ -196,9 +192,17 @@ export function setup(fault?: Fault) {
   state.release = undefined;
   state.childGate = undefined;
   state.childRelease = undefined;
-  const t = convexTest(schema, {
-    ...modules,
-    "./fixture/agents.ts": () => import("./host.js"),
+  const t = convexTest({
+    schema,
+    transactionLimits,
+    modules: {
+      ...modules,
+      "./fixture/agents.ts": async () => {
+        const host = await import("./host.js");
+        const runtime = fixtureRuntime(limits);
+        return { ...host, ...runtime.internalFunctions(), ...runtime.authorizedEndpoints() };
+      },
+    },
   });
   const failure = mutationGeneric({
     handler: async () => {
@@ -213,6 +217,35 @@ export function setup(fault?: Fault) {
         addMessages: failure,
       }),
     });
+  } else if (fault === "cleanupSave") {
+    t.registerComponent("agent", agent.schema, {
+      ...agent.modules,
+      "./component/messages.ts": async () => {
+        const real = (await agent.modules["./component/messages.ts"]()) as {
+          addMessages: NativeAddMessages;
+        };
+        return {
+          ...real,
+          addMessages: mutationGeneric({
+            args: real.addMessages._args as never,
+            returns: real.addMessages._returns as never,
+            handler: async (ctx, args) => {
+              const nativeArgs = args as unknown as AddMessagesArgs;
+              const saved = await real.addMessages._handler(
+                ctx as unknown as MutationCtx,
+                nativeArgs,
+              );
+              if (
+                state.cleanupFails &&
+                nativeArgs.messages.some(({ message }) => message.role === "tool")
+              )
+                throw new Error("injected cleanup save failure");
+              return saved as never;
+            },
+          }),
+        };
+      },
+    });
   } else if (fault === "notificationSave") {
     t.registerComponent("agent", agent.schema, {
       ...agent.modules,
@@ -223,6 +256,34 @@ export function setup(fault?: Fault) {
         return { ...real, addMessages: notificationSaveFault(real.addMessages) };
       },
     });
+  } else if (fault === "transcriptReads") {
+    t.registerComponent("agent", agent.schema, {
+      ...agent.modules,
+      "./component/messages.ts": async () => {
+        const real = (await agent.modules["./component/messages.ts"]()) as Record<
+          string,
+          NativeAddMessages
+        >;
+        const wrapped = Object.fromEntries(
+          ["getMessagesByIds", "listMessagesByThreadId"].map((name) => [
+            name,
+            queryGeneric({
+              args: real[name]._args as never,
+              returns: real[name]._returns as never,
+              handler: async (ctx, args) => {
+                state.transcriptReads++;
+                if (state.forbidTranscriptReads) throw new Error("TRANSCRIPT_READ_FORBIDDEN");
+                return (await real[name]._handler(
+                  ctx as unknown as MutationCtx,
+                  args as AddMessagesArgs,
+                )) as never;
+              },
+            }),
+          ]),
+        );
+        return { ...real, ...wrapped };
+      },
+    });
   } else agent.register(t);
   const queueFault = fault === "accept" || fault === "finish" ? fault : undefined;
   const conditionalFault =
@@ -230,9 +291,7 @@ export function setup(fault?: Fault) {
       ? { module: "./component/queue.ts", name: "finish" as const }
       : fault === "acceptedDelivery"
         ? { module: "./component/subagents.ts", name: "deliver" as const }
-        : fault === "legacyAllowance"
-          ? { module: "./component/subagents.ts", name: "reserve" as const }
-          : undefined;
+        : undefined;
   const subagentFault =
     fault === "attach" || fault === "deliver" || fault === "settle" ? fault : undefined;
   if (queueFault || conditionalFault || subagentFault) {
@@ -246,11 +305,7 @@ export function setup(fault?: Fault) {
               AgevexMutation
             >;
             const wrap =
-              conditionalFault.name === "finish"
-                ? childFinishFault
-                : conditionalFault.name === "reserve"
-                  ? legacyAllowanceFault
-                  : acceptedDeliveryFault;
+              conditionalFault.name === "finish" ? childFinishFault : acceptedDeliveryFault;
             return { ...real, [conditionalFault.name]: wrap(real[conditionalFault.name]) };
           },
         }
@@ -276,8 +331,88 @@ export function setup(fault?: Fault) {
         : {}),
     });
     // Preserve the real nested bridge even for failure injection.
-    workpool.register(t, "agevex/workpool");
+    registerWorkflow(t, "agevex/rootWorkflow");
+    registerWorkflow(t, "agevex/childWorkflow");
   } else agevex.register(t);
+  if (fault === "lostPing" || fault === "delayedWait") {
+    t.registerComponent("agevex/rootWorkflow", workflow.schema, {
+      ...workflow.modules,
+      "./component/agevexJournal.ts": () => import("../src/testing/journal.js"),
+      ...(fault === "delayedWait"
+        ? {
+            "./component/pool.ts": async () => {
+              const real = (await workflow.modules["./component/pool.ts"]()) as Record<
+                string,
+                NativeAddMessages
+              >;
+              return {
+                ...real,
+                onComplete: mutationGeneric({
+                  args: real.onComplete._args as never,
+                  returns: real.onComplete._returns as never,
+                  handler: async (ctx, args) => {
+                    const completion = args as {
+                      context: { stepId: GenericId<"steps">; delayed?: boolean };
+                      result: { kind: string; returnValue?: unknown };
+                    };
+                    const entry = await ctx.db.get(completion.context.stepId);
+                    if (
+                      !completion.context.delayed &&
+                      entry?.step.name === "queue:next" &&
+                      completion.result.kind === "success" &&
+                      completion.result.returnValue === null
+                    ) {
+                      // Delay the real completion callback, after next committed
+                      // loopWaiting but before Workflow can register awaitEvent.
+                      await ctx.scheduler.runAfter(
+                        45_000,
+                        makeFunctionReference<"mutation">("pool:onComplete"),
+                        { ...completion, context: { ...completion.context, delayed: true } },
+                      );
+                      return null as never;
+                    }
+                    return (await real.onComplete._handler(
+                      ctx as unknown as MutationCtx,
+                      args as AddMessagesArgs,
+                    )) as never;
+                  },
+                }),
+              };
+            },
+          }
+        : {}),
+      "./component/event.ts": async () => {
+        const real = (await workflow.modules["./component/event.ts"]()) as Record<
+          string,
+          NativeAddMessages
+        >;
+        return {
+          ...real,
+          send: mutationGeneric({
+            args: real.send._args as never,
+            returns: real.send._returns as never,
+            handler: async (ctx, args) => {
+              if (state.dropPing && (args as { name?: string }).name === "ping") {
+                state.dropPing = false;
+                // Model a lost doorbell without disturbing the existing awaited event.
+                const id = await ctx.db.insert("events", {
+                  workflowId: (args as { workflowId: string }).workflowId,
+                  name: "ping",
+                  state: { kind: "created" },
+                });
+                await ctx.db.delete(id);
+                return id as never;
+              }
+              return (await real.send._handler(
+                ctx as unknown as MutationCtx,
+                args as AddMessagesArgs,
+              )) as never;
+            },
+          }),
+        };
+      },
+    });
+  }
   return t;
 }
 export { api, internal, components } from "./fixture/api.js";

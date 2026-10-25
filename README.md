@@ -1,246 +1,175 @@
 # agevex
 
-A Convex component package: a **Workpool-backed** managed runtime for native
-Convex Agents, with a bounded, depth-1 delegation path.
+A Workflow-backed Convex component and host client for managed
+`@convex-dev/agent` agents. Native Agent owns threads, messages, tools and
+streaming. Agevex owns durable scheduling, authorization, depth-1 delegation,
+run budgets and idempotency.
 
-The native Agent component keeps owning threads, messages, tools, generation and
-streaming. Agevex adds authorized message acceptance, persisted scheduling and
-coordination state, and a bounded asynchronous delegation path. It never creates
-a second transcript, and it does not require Workflow.
+Git-only, private package, **UNLICENSED**.
 
-- Repository: <https://github.com/pixelscortex/agevex>
-- API contract and remaining proposals: [`docs/public-api-proposal.md`](docs/public-api-proposal.md)
-- Component design and tables: [`src/component/README.md`](src/component/README.md)
-
-## Status
-
-The package sets npm's `private: true` flag, so `npm publish` is refused: the
-package is not published to npm. That flag is only a publish guard and says
-nothing about repository visibility — this repository is public. The package is
-**UNLICENSED**: it carries no open-source license grant. The repository is the
-distribution channel.
-
-## What is implemented
-
-| Surface                          | What it is                                                                            |
-| -------------------------------- | ------------------------------------------------------------------------------------- |
-| `Agent`                          | Additive subclass of the native Agent. Native behavior is unchanged.                  |
-| `registerAgent`                  | One host registration: the managed runtime and its two internal entry points.         |
-| `open` / `send`                  | Authorized acceptance of work. They return a receipt, never generated text.           |
-| `messages`                       | Authorized reader for root and child threads, with native pagination and stream sync. |
-| `activity`                       | Authorized read of one root thread's coordination state.                              |
-| `delegations`                    | Authorized newest-first page of one root's delegated child runs.                      |
-| `agevex_delegate` + `coordinate` | The reserved managed tool and the only extra host entry point.                        |
-
-`src/component` mounts **Workpool only** — not the native Agent component and
-not a Workflow. `src/test.ts`, exported as `agevex/test`, registers the
-component for `convex-test`.
-
-## Stable bounds
-
-These are the implemented bounds, not aspirations. They live in
-`src/component/limits.ts` and are shared by the component and the host runtime.
-
-| Bound                                            | Value       |
-| ------------------------------------------------ | ----------- |
-| Delegation depth                                 | 1           |
-| Children launched per accepted user prompt       | 3           |
-| Concurrent active child runs per root            | 5           |
-| Shared Workpool parallelism (roots and children) | 4           |
-| Output tokens per managed generation             | 4096        |
-| Cooperative generation abort                     | 90 s        |
-| Claim-armed execution watchdog                   | 120 s       |
-| `agevex_delegate` task length                    | 4000 chars  |
-| Delegations page size                            | 20 / 50 max |
-
-A managed turn runs exactly **one** model step, and neither the AI SDK nor the
-Workpool retries a generation (`maxRetries: 0`).
-
-## Mount and register
+## Setup
 
 ```ts
 // convex/convex.config.ts
 import { defineApp } from "convex/server";
-import nativeAgent from "@convex-dev/agent/convex.config";
+import agent from "@convex-dev/agent/convex.config";
 import agevex from "agevex/convex.config";
-
 const app = defineApp();
-app.use(nativeAgent, { name: "agent" });
+app.use(agent);
 app.use(agevex);
 export default app;
 ```
 
 ```ts
 // convex/agents.ts
-import {
-  Agent,
-  registerAgent,
-  type CoordinateArgs,
-  type CoordinateResult,
-  type TurnArgs,
-} from "agevex";
-import type { FunctionReference, RegisteredAction, RegisteredMutation } from "convex/server";
+import { Agent, registerAgent } from "agevex";
 import { components, internal } from "./_generated/api.js";
 
-// Host-owned placeholders, defined by the host and not by this package:
-// `yourHostOwnedModel` is the host's model, `hostPolicy` and
-// `hostExecutionPolicy` are the host's two authorization callbacks.
-const main = new Agent(components.agent, {
-  name: "Main",
-  languageModel: yourHostOwnedModel,
+const researcher = new Agent(components.agent, {
+  name: "Researcher",
+  languageModel,
   subagents: [],
 });
-
+const main = new Agent(components.agent, {
+  name: "Main",
+  languageModel,
+  subagents: [researcher],
+});
 const runtime = registerAgent(components.agevex, {
-  // Only roots accept public work. Child transcripts use the same messages reader.
   agents: [main],
   refs: {
-    runTurn: (): FunctionReference<"action", "internal", TurnArgs, null> => internal.agents.runTurn,
-    // Required only when a root declares `subagents`.
-    coordinate: (): FunctionReference<"mutation", "internal", CoordinateArgs, CoordinateResult> =>
-      internal.agents.coordinate,
+    runTurn: () => internal.agents.runTurn,
+    coordinate: () => internal.agents.coordinate,
   },
   authorize: hostPolicy,
   authorizeExecution: hostExecutionPolicy,
 });
-
-// Explicit annotations break the generated-reference inference cycle.
-export const runTurn: RegisteredAction<"internal", TurnArgs, null> =
-  runtime.internalFunctions().runTurn;
-export const coordinate: RegisteredMutation<"internal", CoordinateArgs, CoordinateResult> =
-  runtime.internalFunctions().coordinate;
-export const { open, send, messages, activity, delegations } = runtime.authorizedEndpoints();
+export const { runTurn, coordinate } = runtime.internalFunctions();
+export const { open, send, respond, cancel, messages, activity, delegations } =
+  runtime.authorizedEndpoints();
 ```
 
-Both internal functions must be exported: `refs.runTurn` and `refs.coordinate`
-point at these two exports, and `coordinate` is the single host entry point the
-runtime uses for `launch`, `settle` and `notify`.
+`languageModel`, `hostPolicy` and `hostExecutionPolicy` are host-owned. For
+Convex generated-reference inference cycles, annotate `runTurn` with
+`RegisteredAction<"internal", TurnArgs, null>` and `coordinate` with
+`RegisteredMutation<"internal", CoordinateArgs, CoordinateResult>` from
+`convex/server`; the argument/result types are exported by `agevex`.
+A root without children only needs `refs.runTurn`.
 
-`Agent` adds exactly one thing to the native Agent: `subagents`. It declares
-the delegation graph as **real `Agent` objects**, not names, and the runtime
-resolves the executable child through that list. A child declares
-`subagents: []`, so managed depth is 1 and a child can never delegate.
+## Durable execution
 
-There is **no** `runChildTurn` entry point and **no** third authorization
-callback. A child turn is an ordinary managed turn dispatched through `runTurn`.
+`open({ agent, prompt, requestKey })` and
+`send({ threadId, text, requestKey })` return acceptance receipts immediately.
+Identical subject-scoped keys replay the receipt; different input throws
+`KEY_CONFLICT` before native writes. Up to 20 additional prompts queue while
+busy. Arrivals never silently enter an ongoing turn.
 
-## Mandatory host authorization
+Each thread has a component-internal loop workflow. It reads the durable
+`inbox`, starts turn child workflows, then sleeps on `awaitEvent("ping")`.
+Pings are doorbells; inbox rows own the work. Shared, batched reconciliation
+checks idle loops every 30 seconds, recovering lost doorbells. Each turn runs
+at most 16 slices,
+one native model step per action. Paid work uses `maxRetries: 0` and
+`retry: false`. Only ids and control values enter the workflow journal.
 
-The host supplies two callbacks, and both are required:
+Root and child lanes have 2 and 4 slots respectively, within the starter
+plan's 8 scheduled-job slots. Delegation returns immediately and releases the
+parent action slot. Consecutive results from already-launched children batch
+into one parent continuation. Every workflow carries a version argument;
+step order is protected by replay fixtures.
 
-- `authorize(ctx, scope)` runs for every public read and write (`open`, `send`,
-  `messages`, `activity`, `delegations`) and for the two background operations
-  (`delegate`, `deliver`). It returns the trusted `{ subject }`; the runtime
-  compares it with persisted ownership. `delegate` and `deliver` act with no end
-  user on the connection, so `ctx.auth` may be `null` there and the policy must
-  branch explicitly and recheck the stored principal against current policy.
-  Echoing the supplied subject back is not authorization.
-- `authorizeExecution(actionCtx, scope)` rechecks the trusted persisted scope
-  immediately before **every** managed generation, including a child turn and a
-  result-triggered continuation.
+A user prompt starts one run. Its turns and child results share a budget of
+12 launches / 24 hops (launches plus delivered results). Result turns may
+call `agevex_delegate` again. Over budget returns
+`{ status: "denied", code: "RUN_BUDGET" }`. Depth remains 1, with at most
+5 active children per root and 4000 characters per delegated task.
 
-`subagents: []` with only `refs.runTurn` remains a supported root-only
-registration.
+Failures are sanitized and never automatically replayed. Ambiguous execution
+sets `recovery_required`; the watchdog covers each active slice, excluding
+queue and between-slice time.
 
-## Reading root and child conversations
+## Cancellation and approvals
 
-Every managed conversation is a native Agent thread. Read root and child threads
-with the same `messages({ threadId, paginationOpts, streamArgs? })` endpoint;
-there is no opt-in flag. Get a child's `childThreadId` from its run in
-`delegations({ threadId: rootThreadId, paginationOpts })`, then pass that id to
-`messages`. `childThreadId` remains nullable defensively for the state between
-reservation and attachment, and for older rows; wait for a non-null id before
-reading it. The coordinator commits reservation and attachment together today.
+`cancel({ threadId })` is owner-authorized and root-only. It increments the
+epoch, cancels root/child workflows and clears queued work. Running actions
+poll about once a second and abort their signal. Native and managed-tool
+mutations check execution id plus epoch atomically; late writes are dropped.
+after cancel, the SDK refuses new nested calls and drops its own writes; writes your own code makes inside an already-running nested action are yours to guard with `tc.signal`.
+A fresh `send` can start new work after cancellation. External effects already
+accepted by a provider still depend on that provider's abort behavior.
 
-For either kind of thread, the host policy receives `{ operation: "messages",
-agent, threadId }` with that thread's own agent name and id. The subject returned
-by the policy must match the thread assignment's persisted owner. A child
-inherits its root owner's subject, so returning its id never grants another
-user access to its transcript.
+Pending native tool approvals block generation and leave the inbox row
+waiting, avoiding Agent 0.7.7's automatic denial on a new generation.
+Approval responses must go through `respond({ threadId, approvalId, approved, reason? })`; a response saved directly through the Agent component is not seen by the runtime.
 
-`send` and `activity` are root-only and return `FORBIDDEN` for child threads.
-Children execute through the managed coordinator; reading a child conversation
-does not let a caller enqueue another turn into it. `delegations` remains a
-root coordination read, authorized with the existing `activity` operation.
-
-## Optional lifecycle observation
-
-Hosts may provide an `observe` callback to receive metadata-only lifecycle
-events for analytics or tracing:
+## Effects that must run once
 
 ```ts
-const runtime = registerAgent(components.agevex, {
-  agents: [main],
-  refs,
-  authorize,
-  authorizeExecution,
-  observe: async (ctx, event) => {
-    await ctx.runMutation(internal.analytics.recordAgentEvent, { event });
-  },
+import { defineOnceTool } from "agevex";
+import { z } from "zod";
+
+const charge = defineOnceTool({
+  name: "charge",
+  input: z.object({ orderId: z.string() }),
+  key: (input) => input.orderId, // defaults to the native toolCallId
+  run: (input, tc) =>
+    hostCharge(input.orderId, {
+      subject: tc.subject,
+      signal: tc.signal,
+    }),
 });
 ```
 
-Events cover accepted requests, claimed and finished turns, and child
-delegation queue/settlement/delivery. They contain identifiers and statuses, not
-prompt text, tool inputs, results, or execution capabilities. Observation is
-best effort: a failing callback never changes the managed operation. Hosts
-should enqueue persistence from the callback and keep provider-specific
-exporters outside the Agevex core.
+Add the tool to the Agent's `tools`. Its context contains `ctx`, `subject`,
+`threadId`, `runId`, `toolCallId` and `signal`. Tools own their permissions.
+The receipts ledger fingerprints inputs and caches bounded results. Reused
+keys with different input return `KEY_CONFLICT`; expired 10-minute leases
+become `unknown`, with no silent rerun. Declare `repeatSafe: true` only when
+repeating an abandoned effect is safe. `leaseMs` overrides the lease. Results
+must fit 64 KiB; return a storage reference for larger payloads. Expired
+receipts are purged in scheduled batches after seven days.
 
-## Asynchronous semantics
+## Reads, policy and limits
 
-- `open` and `send` return an **acceptance receipt** immediately. The client
-  call is not held open until the model finishes.
-- Deduplication is keyed on the trusted `subject + requestKey`. An identical
-  operation, target and body replays the original receipt; changed input is a
-  conflict, detected before any native thread or message write.
-- Accepted work queues while its recipient is busy. Messages that arrive during
-  a running turn never silently enter that turn's context.
-- The `agevex_delegate` tool returns as soon as the child is **queued**. It
-  never waits for the child, never consumes the parent's execution slot, and
-  never takes over the native transcript. The child's result is delivered into
-  the parent thread **later**, as a native message in a separate turn.
-- Delivery `accepted` means the native parent message and the component backlog
-  both committed. It is not a read receipt, not an acknowledgement, and not an
-  exactly-once guarantee about provider, model or tool effects.
-- Every assignment — root and child — stays `open` forever. A finished turn is
-  not a finished task, and a terminal child run never changes its root's
-  status.
+`messages({ threadId, paginationOpts, streamArgs? })` reads roots and children
+with native pagination and stream sync. Find `childThreadId` in `delegations`.
+`activity` and `delegations` are root coordination reads. Public sends and
+cancels cannot drive a child's lifecycle.
 
-## Not implemented
+`authorize` checks public ownership and background `delegate`/`deliver`
+operations. Background calls may have no authenticated connection: recheck the
+stored subject against current host policy. `authorizeExecution` runs before
+every model slice. Optional `observe` receives metadata-only lifecycle events;
+observer failures do not change execution.
 
-Explicit assignment completion and any host completion check; a general
-coordination engine, peer-to-peer agent messaging, a review engine, or agents
-delegating to their own children; delegation deeper than one level; more than
-five concurrent children per root or more than three per accepted user prompt;
-Workflow-based continuation; recovery or repair APIs; and any transcript or
-hook that replaces native `useUIMessages`.
+`LIMITS`, exported from `agevex`, is the single source of runtime bounds,
+including lane sizes, model output/deadline, slices, run budgets, queue size,
+ledger retention. Registration accepts `limits?: Partial<Limits>` for lanes,
+run budgets, active children, task/queue size, slices and lease; positive
+integers are required and lanes must fit scheduled concurrency. Registrations
+sharing a component mount share its lane capacities. `PLATFORM` contains
+documented facts, not checked by the SDK, including Workflow journal/step
+ceilings (8 MiB / 800 KiB). Workflow enforces those byte limits.
 
 ## Development
 
-Bun 1.4.3, Vite+ and the official Convex rules through Oxlint. The Convex CLI
-is only needed to regenerate the component's bindings.
-
-```bash
+```sh
 bun install --frozen-lockfile
-bun run typecheck          # the library's own sources, strictly NodeNext
-bun run typecheck:tests    # the component tests and the test fixture
-bun x vp test --run        # deterministic convex-test suite; no provider, no network
-bun run build              # build the package into dist/
-bun run fmt:check
-bun run lint               # Oxlint through Vite+, warnings are errors
-bun run lint:convex:check  # proves the Convex rules really run
-bun run check              # format + lint + the Convex rule probe
-bun run codegen            # regenerate src/component/_generated (needs a Convex project)
+bun run test                  # scripted models, no network
+bun run test:live             # skips without OPENROUTER_API_KEY
+bun run check
+bun run typecheck
+bun run typecheck:tests
+bun run build
 ```
 
-`src/client` exports `Agent`, `registerAgent` and the public types.
-`src/component` owns the receipt, assignment, pending and `subagentRuns` state
-and mounts Workpool. `tests/` holds the component tests and the deterministic
-host fixture they run against; no provider, key or network is involved.
-`src/component/_generated/**` is genuine `convex codegen` output and is
-tracked — never hand-edit it.
+Live tests use OpenRouter, default `OPENROUTER_LIVE_MODEL=openrouter/free`,
+with a small request bound and a default $0.05 spend cap
+(`OPENROUTER_LIVE_MAX_USD`). Routed models, tokens and provider cost are saved
+in `.vite-plus/live-results.json`. `agevex/test` exports `register`,
+`scriptedModel` and `expectJournalUnchanged`; the latter checks committed
+journals and replays them through the real Workflow engine.
 
-## License
-
-`UNLICENSED`. All rights reserved; there is no open-source license grant.
+See [component ownership](src/component/README.md). Deferred: deeper delegation,
+groups/joins, peer messaging, approval UX, hooks, meter and other optional
+modules. No migration is supplied for this pre-adoption schema change.

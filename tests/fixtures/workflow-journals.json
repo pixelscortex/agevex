@@ -1,0 +1,330 @@
+{
+  "basic": [
+    {
+      "kind": "loop",
+      "version": 1,
+      "steps": [
+        {
+          "kind": "function",
+          "name": "queue:next",
+          "functionType": "mutation",
+          "args": {
+            "assignmentId": "$assignment"
+          },
+          "runResult": {
+            "kind": "success",
+            "returnValue": "$assignment:0"
+          }
+        },
+        {
+          "kind": "workflow",
+          "name": "workflows:rootTurn",
+          "args": {
+            "assignmentId": "$assignment",
+            "executionId": "$assignment:0",
+            "version": 1
+          },
+          "runResult": {
+            "kind": "success",
+            "returnValue": null
+          }
+        },
+        {
+          "kind": "function",
+          "name": "queue:next",
+          "functionType": "mutation",
+          "args": {
+            "assignmentId": "$assignment"
+          },
+          "runResult": {
+            "kind": "success",
+            "returnValue": null
+          }
+        },
+        {
+          "kind": "event",
+          "name": "ping",
+          "args": {}
+        }
+      ]
+    },
+    {
+      "kind": "turn",
+      "version": 1,
+      "steps": [
+        {
+          "kind": "function",
+          "name": "agentStep",
+          "functionType": "action",
+          "args": {
+            "assignmentId": "$assignment",
+            "executionId": "$execution",
+            "sliceId": "$execution/0"
+          },
+          "runResult": {
+            "kind": "success",
+            "returnValue": null
+          }
+        },
+        {
+          "kind": "function",
+          "name": "queue:betweenSlices",
+          "functionType": "mutation",
+          "args": {
+            "assignmentId": "$assignment",
+            "executionId": "$execution"
+          },
+          "runResult": {
+            "kind": "success",
+            "returnValue": null
+          }
+        }
+      ]
+    }
+  ],
+  "delegatingRoot": [
+    {
+      "kind": "loop",
+      "version": 1,
+      "steps": [
+        {
+          "kind": "function",
+          "name": "queue:next",
+          "functionType": "mutation",
+          "args": {
+            "assignmentId": "$assignment"
+          },
+          "runResult": {
+            "kind": "success",
+            "returnValue": "$assignment:0"
+          }
+        },
+        {
+          "kind": "workflow",
+          "name": "workflows:rootTurn",
+          "args": {
+            "assignmentId": "$assignment",
+            "executionId": "$assignment:0",
+            "version": 1
+          },
+          "runResult": {
+            "kind": "success",
+            "returnValue": null
+          }
+        },
+        {
+          "kind": "function",
+          "name": "queue:next",
+          "functionType": "mutation",
+          "args": {
+            "assignmentId": "$assignment"
+          },
+          "runResult": {
+            "kind": "success",
+            "returnValue": null
+          }
+        },
+        {
+          "kind": "event",
+          "name": "ping",
+          "args": {},
+          "runResult": {
+            "kind": "success",
+            "returnValue": null
+          }
+        },
+        {
+          "kind": "function",
+          "name": "queue:next",
+          "functionType": "mutation",
+          "args": {
+            "assignmentId": "$assignment"
+          },
+          "runResult": {
+            "kind": "success",
+            "returnValue": "$assignment:1"
+          }
+        },
+        {
+          "kind": "workflow",
+          "name": "workflows:rootTurn",
+          "args": {
+            "assignmentId": "$assignment",
+            "executionId": "$assignment:1",
+            "version": 1
+          },
+          "runResult": {
+            "kind": "success",
+            "returnValue": null
+          }
+        },
+        {
+          "kind": "function",
+          "name": "queue:next",
+          "functionType": "mutation",
+          "args": {
+            "assignmentId": "$assignment"
+          },
+          "runResult": {
+            "kind": "success",
+            "returnValue": null
+          }
+        },
+        {
+          "kind": "event",
+          "name": "ping",
+          "args": {}
+        }
+      ]
+    },
+    {
+      "kind": "turn",
+      "version": 1,
+      "steps": [
+        {
+          "kind": "function",
+          "name": "agentStep",
+          "functionType": "action",
+          "args": {
+            "assignmentId": "$assignment",
+            "executionId": "$execution",
+            "sliceId": "$execution/0"
+          },
+          "runResult": {
+            "kind": "success",
+            "returnValue": null
+          }
+        },
+        {
+          "kind": "function",
+          "name": "queue:betweenSlices",
+          "functionType": "mutation",
+          "args": {
+            "assignmentId": "$assignment",
+            "executionId": "$execution"
+          },
+          "runResult": {
+            "kind": "success",
+            "returnValue": null
+          }
+        }
+      ]
+    },
+    {
+      "kind": "turn",
+      "version": 1,
+      "steps": [
+        {
+          "kind": "function",
+          "name": "agentStep",
+          "functionType": "action",
+          "args": {
+            "assignmentId": "$assignment",
+            "executionId": "$execution",
+            "sliceId": "$execution/0"
+          },
+          "runResult": {
+            "kind": "success",
+            "returnValue": null
+          }
+        },
+        {
+          "kind": "function",
+          "name": "queue:betweenSlices",
+          "functionType": "mutation",
+          "args": {
+            "assignmentId": "$assignment",
+            "executionId": "$execution"
+          },
+          "runResult": {
+            "kind": "success",
+            "returnValue": null
+          }
+        }
+      ]
+    }
+  ],
+  "delegatingChild": [
+    {
+      "kind": "loop",
+      "version": 1,
+      "steps": [
+        {
+          "kind": "function",
+          "name": "queue:next",
+          "functionType": "mutation",
+          "args": {
+            "assignmentId": "$assignment"
+          },
+          "runResult": {
+            "kind": "success",
+            "returnValue": "$assignment:0"
+          }
+        },
+        {
+          "kind": "workflow",
+          "name": "workflows:childTurn",
+          "args": {
+            "assignmentId": "$assignment",
+            "executionId": "$assignment:0",
+            "version": 1
+          },
+          "runResult": {
+            "kind": "success",
+            "returnValue": null
+          }
+        },
+        {
+          "kind": "function",
+          "name": "queue:next",
+          "functionType": "mutation",
+          "args": {
+            "assignmentId": "$assignment"
+          },
+          "runResult": {
+            "kind": "success",
+            "returnValue": null
+          }
+        },
+        {
+          "kind": "event",
+          "name": "ping",
+          "args": {}
+        }
+      ]
+    },
+    {
+      "kind": "turn",
+      "version": 1,
+      "steps": [
+        {
+          "kind": "function",
+          "name": "agentStep",
+          "functionType": "action",
+          "args": {
+            "assignmentId": "$assignment",
+            "executionId": "$execution",
+            "sliceId": "$execution/0"
+          },
+          "runResult": {
+            "kind": "success",
+            "returnValue": null
+          }
+        },
+        {
+          "kind": "function",
+          "name": "queue:betweenSlices",
+          "functionType": "mutation",
+          "args": {
+            "assignmentId": "$assignment",
+            "executionId": "$execution"
+          },
+          "runResult": {
+            "kind": "success",
+            "returnValue": null
+          }
+        }
+      ]
+    }
+  ]
+}

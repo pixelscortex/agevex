@@ -8,7 +8,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 const drain = (t: ReturnType<typeof setup>) =>
-  t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100));
+  t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1_000), 2000);
 // A healthy generation spends virtual time but stays inside the 90s generation
 // abort budget, so only queue time can exceed the 120s claim-armed watchdog.
 const GENERATION_MS = 60_000;
@@ -21,8 +21,8 @@ it("a backlog larger than pool capacity runs every turn exactly once", async () 
   state.delayMs = GENERATION_MS;
   const receipts = [];
   for (let i = 0; i < 17; i++) receipts.push(await open(alice, `turn ${i}`));
-  // The pool runs 4 turns at once, so the last turn waits 4 full generations
-  // (240s) of queue time for a slot: queue time must never count as execution time.
+  // Phase 1a has two root slots, so the last turn waits eight generations
+  // (480s) of queue time for a slot: queue time must never count as execution time.
   await drain(t);
 
   expect(state.calls).toHaveLength(17);
