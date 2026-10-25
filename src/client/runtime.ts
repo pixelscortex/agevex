@@ -1057,7 +1057,10 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                     rejectStale: true,
                     args: {
                       assignmentId: claimed.assignmentId,
-                      text: "BUDGET_EXCEEDED: this run has reached its budget. Use the host's continue-budget tool to authorize more spending before starting another turn.",
+                      // Model-facing: a delegated child sees this at its next safe
+                      // claim (e.g. when descendant results arrive). Raising the
+                      // budget is a host decision outside the model's tools.
+                      text: "BUDGET_EXCEEDED: this run reached its spending budget and its last turn stopped before another model call. Finish with what you have; more spending needs the host's approval.",
                       from: "budget",
                     },
                   });
