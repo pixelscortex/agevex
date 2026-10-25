@@ -192,13 +192,11 @@ export default defineSchema({
       ),
     ),
     completedTurns: v.optional(v.number()),
-    // Read by note admission/draining/cancel; never charged to ready work.
+    // Read by note admission/claim/cancel; never charged to ready work.
     notesPending: v.number(),
     // Read by beforeTurn: a continuation has its own prompt, while generation
     // remains bounded by the original ready-work anchor below.
     logicalPromptMessageId: v.optional(v.string()),
-    // Read by idle-note saves after the active promptMessageId is cleared.
-    latestRequestMessageId: v.optional(v.string()),
     // Only the first slice owns the shared routing bit; terminal fences settle it.
     routingAgentIndex: v.optional(v.number()),
     hookContinue: v.optional(v.boolean()),
@@ -281,8 +279,10 @@ export default defineSchema({
     // Deferred joins append later than their native save. Claim compares this
     // recorded save order, never queue insertion order, to retain newer answers.
     passive: v.optional(v.boolean()),
-    // Only unsaved running notes hold a bounded body; saved controls retain ids.
+    // All posted notes retain text until claim; delivered controls retain ids.
     noteText: v.optional(v.string()),
+    // Hook continuations wait for claim so notes precede their native prompt.
+    continueText: v.optional(v.string()),
     // Separates cancelled payloads from fresh admission before cleanup runs.
     noteEpoch: v.optional(v.number()),
     from: v.optional(v.string()),

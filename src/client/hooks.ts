@@ -1,19 +1,12 @@
-import {
-  createFunctionHandle,
-  type GenericDataModel,
-  type GenericMutationCtx,
-} from "convex/server";
+import { type GenericDataModel, type GenericMutationCtx } from "convex/server";
 import type { ComponentApi } from "../component/_generated/component.js";
-import type { ManagedAgent } from "./types.js";
 
 export type NoteArgs = { threadId: string; text: string; from: string };
 
-/** Mutation-only: authorize and admit once. Idle native saves and exact-id
- * capture share that transaction; running bodies await the safe-step drain. */
+/** Mutation-only admission: all payloads wait for the next turn claim. */
 export async function postNote(
   ctx: GenericMutationCtx<GenericDataModel>,
   component: ComponentApi,
-  managed: ManagedAgent,
   assignmentId: string,
   args: NoteArgs,
 ): Promise<boolean> {
@@ -21,7 +14,5 @@ export async function postNote(
     assignmentId,
     text: args.text,
     from: args.from,
-    addMessages: await createFunctionHandle(managed.component.messages.addMessages),
-    getMessages: await createFunctionHandle(managed.component.messages.getMessagesByIds),
   });
 }

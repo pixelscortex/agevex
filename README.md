@@ -145,10 +145,10 @@ Inside an authorized host mutation, call
 and throws a typed `NOTES_PENDING_LIMIT` error at capacity. Notes are escaped
 user-role `<note from="…">` messages, capped at 4,000 characters.
 `limits.notesPending` is the single admission cap (default 8, hard maximum 24),
-independent of `queueLength`. Idle notes save immediately in the latest
-request's native order group. Running notes stay in the bounded inbox until
-a safe completed-step boundary saves all pending notes atomically, in arrival
-order, after the tool call/result pair. Notes never start a turn or schedule work.
+independent of `queueLength`. Posted notes stay pending until the next turn claim with no decided approvals awaiting committed tool results (including denials); deferred answers commit their results atomically.
+That claim saves all pending notes atomically in arrival order, after prior
+tool results. Ordinary tool-step slices never drain notes. Notes never start a
+turn or schedule work.
 
 Notes and hook continuation prompts use the claimed request's native order
 group, keeping future queued requests hidden without context injection.

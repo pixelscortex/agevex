@@ -10,14 +10,14 @@ Workpool: root parallelism 2, child parallelism 4. Hosts export `runTurn` and
   bounded native approval/deferred-call references, exact message references,
   side-review boundaries, note/turn counters and private hook errors.
   `logicalPromptMessageId` identifies the prompt read by `beforeTurn`, including
-  a continuation. `promptMessageId` bounds native generation context, while
-  `latestRequestMessageId` gives idle notes an exact anchor after a turn ends.
-  Notes and continuation prompts append to that anchor's native order group;
-  in-flight notes retain <=4,000 characters on a bounded inbox row until a
-  completed step saves them atomically. Agent cleanup never sees a pending note.
+  a continuation. `promptMessageId` bounds native generation context.
+  Posted notes wait for the next turn claim with no decided approvals awaiting
+  committed results; ordinary tool slices never drain them. `beforeTurn` hook
+  notes are saved before the first generation.
 - `inbox`: FIFO ready message references, passive notes and retained control ids.
-  `noteText` holds only unsaved running text; `noteEpoch` isolates cancelled
-  payloads from fresh admission/cleanup. `from` labels notes in context and
+  `noteText` holds every posted note until claim; `noteEpoch` isolates cancelled
+  payloads from fresh admission/cleanup. `continueText` stages a hook prompt so
+  claim saves notes before that prompt. `from` labels notes in context and
   the public reader. After save, `messageId`/`kind`/`from` retain origin metadata
   with `passive: false`; `by_message` reads only ids on the requested page.
   The ready index selects `passive: undefined`, so controls never start work or

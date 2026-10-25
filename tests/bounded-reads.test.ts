@@ -38,14 +38,17 @@ const nativePage = (t: Test, threadId: string) =>
     }),
   );
 
-it("one atomic maximum-note drain stays bounded with six near-1 MiB native merge heads", async () => {
+it("one atomic maximum-note claim stays bounded with six near-1 MiB native merge heads", async () => {
   const t = setup(undefined, { notesPending: HOST_LIMITS.notesPending.max }, true);
   const turn = await claimed(t);
+  const [anchor] = await t.query(components.agent.messages.getMessagesByIds, {
+    messageIds: [turn.promptMessageId],
+  });
   for (const status of ["success", "pending", "failed"] as const)
     for (const tool of [false, true]) {
       await t.mutation(components.agent.messages.addMessages, {
         threadId: turn.threadId,
-        order: 0,
+        order: anchor!.order,
         failPendingSteps: false,
         messages: [
           {
@@ -73,20 +76,32 @@ it("one atomic maximum-note drain stays bounded with six near-1 MiB native merge
       assignmentId: turn.assignmentId,
       text: '"'.repeat(LIMITS.noteLength),
       from: '"'.repeat(LIMITS.requestKeyLength),
-      addMessages: handles.handle,
-      getMessages: handles.nativeMessages.getMessages,
     });
   }
+  // Notes now drain in the next turn claim, never at a tool-step boundary.
+  await t.mutation(components.agevex.queue.finish, {
+    assignmentId: turn.assignmentId,
+    turnToken: turn.executionId,
+    errorCode: null,
+  });
+  await owner(t).mutation(api.agents.send, {
+    threadId: turn.threadId,
+    text: "claim notes",
+    requestKey: "claim notes",
+  });
+  const next = (await execution(t, turn.assignmentId))!;
   const metrics = await t.run(async (ctx) => {
     expect(
-      await ctx.runMutation(components.agevex.hooks.takeNotes, {
+      await ctx.runMutation(components.agevex.queue.claim, {
         assignmentId: turn.assignmentId,
-        executionId: turn.executionId,
-        updateMessage: await createFunctionHandle(components.agent.messages.updateMessage),
-        addMessages: handles.handle,
-        getMessages: handles.nativeMessages.getMessages,
+        turnToken: next.turnToken!,
+        notes: {
+          addMessages: handles.handle,
+          getMessages: handles.nativeMessages.getMessages,
+          updateMessage: await createFunctionHandle(components.agent.messages.updateMessage),
+        },
       }),
-    ).toBe(true);
+    ).not.toBeNull();
     return ctx.meta.getTransactionMetrics();
   });
   expect(metrics.bytesRead.used).toBeLessThan(10 << 20);
@@ -103,7 +118,9 @@ it("one atomic maximum-note drain stays bounded with six near-1 MiB native merge
     cursor = page.isDone ? null : page.continueCursor;
   } while (cursor);
   expect(notes).toHaveLength(HOST_LIMITS.notesPending.max);
-  expect(notes.every((message) => message.order === 0 && message.status === "success")).toBe(true);
+  expect(
+    notes.every((message) => message.order === anchor!.order && message.status === "success"),
+  ).toBe(true);
   await owner(t).mutation(api.agents.cancel, { threadId: turn.threadId });
   await drain(t);
 });
@@ -117,8 +134,6 @@ it("cancelled note cleanup cannot deliver old payloads or remove notes from a fr
       assignmentId: turn.assignmentId,
       text,
       from: "critic",
-      addMessages: handles.handle,
-      getMessages: handles.nativeMessages.getMessages,
     });
   await note("cancelled advice");
   await owner(t).mutation(api.agents.cancel, { threadId: turn.threadId });
@@ -129,17 +144,18 @@ it("cancelled note cleanup cannot deliver old payloads or remove notes from a fr
     requestKey: "fresh",
   });
   const fresh = (await execution(t, turn.assignmentId))!;
+  // Admission precedes the fresh claim so cleanup can race the new epoch.
+  await note("fresh advice");
   await t.mutation(components.agevex.queue.claim, {
     assignmentId: turn.assignmentId,
     turnToken: fresh.turnToken!,
-  });
-  await note("fresh advice");
-  await t.mutation(components.agevex.hooks.takeNotes, {
-    assignmentId: turn.assignmentId,
-    executionId: fresh.turnToken!,
-    addMessages: handles.handle,
-    getMessages: handles.nativeMessages.getMessages,
-    updateMessage: await t.run(() => createFunctionHandle(components.agent.messages.updateMessage)),
+    notes: {
+      addMessages: handles.handle,
+      getMessages: handles.nativeMessages.getMessages,
+      updateMessage: await t.run(() =>
+        createFunctionHandle(components.agent.messages.updateMessage),
+      ),
+    },
   });
   await drain(t);
   const page = await owner(t).query(api.agents.messages, {
@@ -347,6 +363,73 @@ it.each([true, false])(
     expect(state.calls).toHaveLength(calls);
   },
 );
+
+it("an approval-pause note is delivered exactly once at the first safe queued turn claim", async () => {
+  const t = setup(undefined, undefined, true);
+  state.approval = true;
+  const turn = await open(t);
+  await drain(t);
+  const pause = (await execution(t, turn.assignmentId))!;
+  expect(pause).toMatchObject({ approvalBlocked: true });
+  const [requestMessage] = await t.query(components.agent.messages.getMessagesByIds, {
+    messageIds: [pause.approvals!.requests[0].messageId],
+  });
+  const approval = Array.isArray(requestMessage?.message?.content)
+    ? requestMessage.message.content.find((part) => part.type === "tool-approval-request")
+    : undefined;
+  expect(approval).toBeDefined();
+  await t.mutation(components.agevex.hooks.addNote, {
+    assignmentId: turn.assignmentId,
+    text: "first safe claim advice",
+    from: "critic",
+  });
+  await owner(t).mutation(api.agents.send, {
+    threadId: turn.threadId,
+    text: "first safe queued turn",
+    requestKey: "first safe queued turn",
+  });
+  await drain(t);
+  expect(state.calls).toHaveLength(1);
+  await owner(t).mutation(api.agents.respond, {
+    threadId: turn.threadId,
+    approvalId: approval!.approvalId,
+    approved: true,
+  });
+  await drain(t);
+  expect(state.calls).toHaveLength(3);
+  expect(JSON.stringify(state.calls[1].prompt)).not.toContain("first safe claim advice");
+  expect(JSON.stringify(state.calls[2].prompt)).toContain("first safe queued turn");
+  expect(JSON.stringify(state.calls[2].prompt).match(/first safe claim advice/g)).toHaveLength(1);
+  expect(await execution(t, turn.assignmentId)).toMatchObject({ notesPending: 0 });
+  const page = (await nativePage(t, turn.threadId)).page.sort(
+    (a, b) => a.order - b.order || a.stepOrder - b.stepOrder,
+  );
+  const resultIndex = page.findIndex(
+    (doc) =>
+      doc.message?.role === "tool" &&
+      doc.message.content.some(
+        (part) => part.type === "tool-result" && part.toolCallId === "approval-call-0",
+      ),
+  );
+  const noteIndex = page.findIndex((doc) => doc.text?.includes("first safe claim advice"));
+  expect(resultIndex).toBeGreaterThanOrEqual(0);
+  expect(noteIndex).toBeGreaterThan(resultIndex);
+  expect(noteIndex).toBeLessThan(page.findIndex((doc) => doc.text === "first safe queued turn"));
+  await owner(t).mutation(api.agents.send, {
+    threadId: turn.threadId,
+    text: "later claim",
+    requestKey: "later claim",
+  });
+  await drain(t);
+  expect(state.calls).toHaveLength(4);
+  expect(JSON.stringify(state.calls[3].prompt).match(/first safe claim advice/g)).toHaveLength(1);
+  expect(
+    (await nativePage(t, turn.threadId)).page.filter((doc) =>
+      doc.text?.includes("first safe claim advice"),
+    ),
+  ).toHaveLength(1);
+  expect(await execution(t, turn.assignmentId)).toMatchObject({ notesPending: 0 });
+});
 
 it("respond rejects a changed decision or reason with typed KEY_CONFLICT and preserves the original result", async () => {
   const t = setup(undefined, undefined, true);
@@ -1266,3 +1349,71 @@ it("streams rejects non-finite, negative and fractional start orders and cursors
   await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
   await drain(t);
 });
+
+it.each([true, false])(
+  "notes during an approval pause follow committed tool results at the next claim (approved=%s)",
+  async (approved) => {
+    const t = setup(undefined, undefined, true);
+    const turn = await request(t, 2);
+    await drain(t);
+    await t.mutation(components.agevex.hooks.addNote, {
+      assignmentId: turn.assignmentId,
+      text: "approval-pause advice",
+      from: "critic",
+    });
+    expect(
+      (await nativePage(t, turn.threadId)).page.some((message) =>
+        message.text?.includes("approval-pause advice"),
+      ),
+    ).toBe(false);
+    for (let index = 0; index < 2; index++) {
+      await owner(t).mutation(api.agents.respond, {
+        threadId: turn.threadId,
+        approvalId: "approval-" + index,
+        approved,
+      });
+      if (index === 0) {
+        await drain(t);
+        expect(state.calls).toHaveLength(0);
+        expect(
+          (await nativePage(t, turn.threadId)).page.some((message) =>
+            message.text?.includes("approval-pause advice"),
+          ),
+        ).toBe(false);
+      }
+    }
+    await drain(t);
+    expect(state.calls).toHaveLength(1);
+    expect(JSON.stringify(state.calls[0].prompt)).not.toContain("approval-pause advice");
+    expect(await execution(t, turn.assignmentId)).toMatchObject({ notesPending: 1 });
+    expect((await execution(t, turn.assignmentId))?.approvals).toBeUndefined();
+    const results = (await nativePage(t, turn.threadId)).page.flatMap((doc) =>
+      doc.message?.role === "tool"
+        ? doc.message.content.filter((part) => part.type === "tool-result")
+        : [],
+    );
+    expect(results.map((part) => part.toolCallId).sort()).toEqual(["call-0", "call-1"]);
+    await owner(t).mutation(api.agents.send, {
+      threadId: turn.threadId,
+      text: "read approval-pause notes",
+      requestKey: "read approval-pause notes",
+    });
+    await drain(t);
+    expect(state.calls).toHaveLength(2);
+    expect(JSON.stringify(state.calls[1].prompt).match(/approval-pause advice/g)).toHaveLength(1);
+    expect(await execution(t, turn.assignmentId)).toMatchObject({ notesPending: 0 });
+    const page = (await nativePage(t, turn.threadId)).page.sort(
+      (a, b) => a.order - b.order || a.stepOrder - b.stepOrder,
+    );
+    const unresolved = new Set<string>();
+    for (const doc of page) {
+      if (doc.text?.includes("approval-pause advice")) expect(unresolved.size).toBe(0);
+      if (!Array.isArray(doc.message?.content)) continue;
+      for (const part of doc.message.content) {
+        if (part.type === "tool-call") unresolved.add(part.toolCallId);
+        if (part.type === "tool-result") unresolved.delete(part.toolCallId);
+      }
+    }
+    expect(unresolved.size).toBe(0);
+  },
+);

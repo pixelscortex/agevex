@@ -427,7 +427,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
         });
         const accepted =
           row &&
-          (await postNote(ctx, component, root, row.assignmentId, {
+          (await postNote(ctx, component, row.assignmentId, {
             threadId: context.parentThreadId,
             text: text.slice(0, LIMITS.noteLength),
             from: context.agent,
@@ -506,7 +506,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
       const owned = scope.subject === subject ? scope : null;
       const managed = graph.byName.get(scope.agent);
       if (!owned || !managed) throw new Error("FORBIDDEN");
-      return postNote(ctx, component, managed, owned.assignmentId, args);
+      return postNote(ctx, component, owned.assignmentId, args);
     },
     authorizedEndpoints: () => authorizedEndpoints(component, config),
     internalFunctions: () => {
@@ -649,6 +649,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
               const { messageId, message } = await saveTrackedMessage(ctx, child.component, {
                 threadId,
                 prompt: childTask,
+                order: LIMITS.firstPromptOrder,
                 userId: owned.subject,
               });
               await ctx.runMutation(component.subagents.attach, {
@@ -856,6 +857,11 @@ export function registerAgent(component: ComponentApi, config: Registration) {
             ...args,
             agentIndex: agentIndexes.get(queued.agent),
             routeModel: !!managed.hooks?.beforeTurn,
+            notes: {
+              getMessages: await createFunctionHandle(managed.component.messages.getMessagesByIds),
+              addMessages: await createFunctionHandle(managed.component.messages.addMessages),
+              updateMessage: await createFunctionHandle(managed.component.messages.updateMessage),
+            },
           });
           if (!claimed) return null;
           const child = claimed.subagent;
@@ -1059,15 +1065,24 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 )
                   throw new Error("MODEL_ONLY_AT_RUN_START");
                 if (result?.note)
-                  await fencedCtx.runMutation(component.hooks.addNote, {
-                    assignmentId: claimed.assignmentId,
-                    text: result.note,
-                    from: managed.name,
-                    addMessages: await createFunctionHandle(managed.component.messages.addMessages),
-                    getMessages: await createFunctionHandle(
-                      managed.component.messages.getMessagesByIds,
-                    ),
-                  });
+                  await fencedCtx.runMutation(
+                    allowModel ? component.hooks.beforeTurnNote : component.hooks.addNote,
+                    {
+                      assignmentId: claimed.assignmentId,
+                      text: result.note,
+                      from: managed.name,
+                      ...(allowModel
+                        ? {
+                            addMessages: await createFunctionHandle(
+                              managed.component.messages.addMessages,
+                            ),
+                            getMessages: await createFunctionHandle(
+                              managed.component.messages.getMessagesByIds,
+                            ),
+                          }
+                        : {}),
+                    },
+                  );
                 return result;
               } catch (error) {
                 hookFailed = true;
@@ -1281,24 +1296,6 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                     return response;
                   },
                 });
-              const drainNotes = async () => {
-                const getMessages = await createFunctionHandle(
-                  managed.component.messages.getMessagesByIds,
-                );
-                const addMessages = await createFunctionHandle(
-                  managed.component.messages.addMessages,
-                );
-                await fencedCtx.runMutation(component.hooks.takeNotes, {
-                  assignmentId: claimed.assignmentId,
-                  executionId: args.turnToken,
-                  getMessages,
-                  addMessages,
-                  updateMessage: await createFunctionHandle(
-                    managed.component.messages.updateMessage,
-                  ),
-                });
-              };
-              await drainNotes();
               const result = await managed.streamText(
                 fencedCtx,
                 { threadId: claimed.threadId },
@@ -1335,7 +1332,6 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 },
               });
               const reason = await result.finishReason;
-              await drainNotes();
               const accepted = ["stop", "length", "tool-calls"];
               if (
                 hookFailed ||
@@ -1414,10 +1410,6 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                     assignmentId: claimed.assignmentId,
                     executionId: args.turnToken,
                     prompt: after.continue,
-                    addMessages: await createFunctionHandle(managed.component.messages.addMessages),
-                    getMessages: await createFunctionHandle(
-                      managed.component.messages.getMessagesByIds,
-                    ),
                   })
                 : null;
               if (continuation) {

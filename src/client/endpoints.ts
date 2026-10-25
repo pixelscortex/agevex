@@ -186,6 +186,8 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
         const { messageId, message } = await saveMessage(ctx, native.component, {
           threadId,
           prompt: args.prompt,
+          // Reserve order zero for notes posted before the first turn claim.
+          order: LIMITS.firstPromptOrder,
           userId: subject,
         });
         const accepted = await ctx.runMutation(component.queue.accept, {

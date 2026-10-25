@@ -643,10 +643,6 @@ it.each(["routing", "approval"])(
     // Independent passive capacity can coexist with every ready-work slot. Use
     // real maximum-size raw notes on all 16 affected assignments; cancellation
     // fences them without loading bodies into its documented byte budget.
-    const { addMessages, getMessages } = await t.run(async () => ({
-      addMessages: await createFunctionHandle(components.agent.messages.addMessages),
-      getMessages: await createFunctionHandle(components.agent.messages.getMessagesByIds),
-    }));
     for (const turn of turns)
       for (let i = 0; i < HOST_LIMITS.notesPending.max; i++)
         expect(
@@ -654,8 +650,6 @@ it.each(["routing", "approval"])(
             assignmentId: turn.assignmentId,
             text: "\uFFFF".repeat(LIMITS.noteLength),
             from: '"'.repeat(LIMITS.requestKeyLength),
-            addMessages,
-            getMessages,
           }),
         ).toBe(true);
     for (let i = mode === "approval" ? 1 : 0; i < HOST_LIMITS.queueLength.max; i++) {

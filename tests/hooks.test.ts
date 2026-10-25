@@ -142,7 +142,7 @@ it("beforeTurn receives each continuation's own prompt", async () => {
   expect(prompts).toEqual(["first request", "instruction1", "instruction2"]);
 });
 
-it("a note consumed by A remains visible to an earlier-queued request B", async () => {
+it("a note posted during A is delivered once to the earlier-queued request B", async () => {
   const held = gate();
   fixture.steps.Main = async (n) => {
     if (n === 0) {
@@ -163,10 +163,11 @@ it("a note consumed by A remains visible to an earlier-queued request B", async 
   held.release();
   await drain(t);
   expect(calls()).toHaveLength(3);
-  for (const n of [1, 2])
-    expect(JSON.stringify(calls()[n].args.prompt).match(/shared advice for A and B/g)).toHaveLength(
-      1,
-    );
+  // A is already running; B is the next turn that can safely claim this note.
+  expect(JSON.stringify(calls()[1].args.prompt)).not.toContain("shared advice for A and B");
+  expect(JSON.stringify(calls()[2].args.prompt).match(/shared advice for A and B/g)).toHaveLength(
+    1,
+  );
   expect(JSON.stringify(calls()[1].args.prompt)).not.toContain("request B");
   expect(JSON.stringify(calls()[2].args.prompt)).toContain("request B");
 });
@@ -260,7 +261,7 @@ it("afterTurn control prompts appear once after the response while future reques
 });
 
 it.each(["idle", "mid-slice"])(
-  "%s notes appear once in every subsequent slice and retain tool call order",
+  "%s notes wait for the next turn, then appear once across its slices",
   async (arrival) => {
     const held = gate();
     const t = setup();
@@ -283,18 +284,16 @@ it.each(["idle", "mid-slice"])(
     await send(t, receipt.threadId, "queued future request");
     held.release();
     await drain(t);
-    for (let n = arrival === "idle" ? 1 : 2; n <= 3; n++) {
+    // Mid-turn posts wait for the queued user turn; idle posts join its first claim.
+    for (let n = 1; n <= 3; n++) {
       const prompt = JSON.stringify(calls()[n].args.prompt);
-      expect(prompt.match(/unique control advice/g)).toHaveLength(1);
-      expect(prompt).not.toContain("queued future request");
-      if (arrival === "idle")
+      if (arrival === "idle") {
+        expect(prompt.match(/unique control advice/g)).toHaveLength(1);
         expect(prompt.indexOf("unique control advice")).toBeLessThan(
           prompt.indexOf("second ready request"),
         );
-      else
-        expect(prompt.indexOf("unique control advice")).toBeGreaterThan(
-          prompt.indexOf("second ready request"),
-        );
+      } else expect(prompt).not.toContain("unique control advice");
+      expect(prompt).not.toContain("queued future request");
     }
     expect(fixture.effects).toEqual(["effect-1", "effect-2"]);
     // Once a new ready boundary owns these historical notes, native history
@@ -321,20 +320,17 @@ it("distinct identical requests and notes persist once across hook turns", async
 });
 
 it("maximum native control history fits platform limits across all eight hook continuations", async () => {
-  // Each turn posts one full pending backlog; all admitted notes reach native history.
+  // Posted hook notes wait for the following claim, including hook continuations.
   fixture.hooks.beforeTurn = async (hc) => {
     const row = await hc.ctx.runQuery(components.agevex.queue.assignment, {
       threadId: hc.threadId,
     });
-    const addMessages = await createFunctionHandle(components.agent.messages.addMessages);
     for (let n = 0; n < HOST_LIMITS.notesPending.max; n++)
       expect(
         await hc.ctx.runMutation(components.agevex.hooks.addNote, {
           assignmentId: row!.assignmentId,
           text: '"'.repeat(LIMITS.noteLength),
           from: '"'.repeat(LIMITS.requestKeyLength),
-          addMessages,
-          getMessages: await createFunctionHandle(components.agent.messages.getMessagesByIds),
         }),
       ).toBe(true);
   };
@@ -352,7 +348,7 @@ it("maximum native control history fits platform limits across all eight hook co
   const prompt = calls()[HOST_LIMITS.continuesPerRun.max].args.prompt;
   expect(
     prompt.filter((message) => JSON.stringify(message.content).includes("<note from=")),
-  ).toHaveLength((HOST_LIMITS.continuesPerRun.max + 1) * HOST_LIMITS.notesPending.max);
+  ).toHaveLength(HOST_LIMITS.continuesPerRun.max * HOST_LIMITS.notesPending.max);
   expect(prompt.filter((message) => JSON.stringify(message.content).includes("￿"))).toHaveLength(
     HOST_LIMITS.continuesPerRun.max,
   );
@@ -386,9 +382,13 @@ it("maximum in-flight notes retain tool adjacency and appear once within platfor
     ).toBe(true);
   held.release();
   await drain(t);
-  expect(calls()).toHaveLength(2);
+  // In-flight notes wait for a new turn; a tool-step slice is not a turn.
+  expect(JSON.stringify(calls()[1].args.prompt)).not.toContain("<note from=");
+  await send(t, receipt.threadId, "claim maximum notes");
+  await drain(t);
+  expect(calls()).toHaveLength(3);
   expect(
-    calls()[1].args.prompt.filter((message) =>
+    calls()[2].args.prompt.filter((message) =>
       JSON.stringify(message.content).includes("<note from="),
     ),
   ).toHaveLength(HOST_LIMITS.notesPending.max);
@@ -475,7 +475,7 @@ it("an idle note leaves queueLength one available for the next send", async () =
   expect(JSON.stringify(calls()[1].args.prompt)).toContain("passive advice");
 });
 
-it("a running request receives its note across slices without exposing or executing queued future work", async () => {
+it("a running request leaves notes for queued future work without exposing that work across slices", async () => {
   const held = gate();
   fixture.steps.Main = async (n) => {
     if (n === 0) await held.promise;
@@ -498,11 +498,13 @@ it("a running request receives its note across slices without exposing or execut
   for (const index of [1, 2]) {
     const prompt = JSON.stringify(calls()[index].args.prompt);
     expect(prompt).toContain("first request");
-    expect(prompt).toContain("&lt;advice for=&quot;A&quot;&gt;");
-    expect(prompt).toContain("critic&quot;");
+    // Current-turn slices never claim notes, so tool history remains untouched.
+    expect(prompt).not.toContain("&lt;advice for=&quot;A&quot;&gt;");
     expect(prompt).not.toContain("future request B");
   }
   expect(JSON.stringify(calls()[3].args.prompt)).toContain("future request B");
+  expect(JSON.stringify(calls()[3].args.prompt)).toContain("&lt;advice for=&quot;A&quot;&gt;");
+  expect(JSON.stringify(calls()[3].args.prompt)).toContain("critic&quot;");
   expect(fixture.effects).toEqual(["slice 0", "slice 1"]);
   expect((await status(t, receipt.threadId)).queuedMessages).toBe(0);
   expect(
@@ -544,8 +546,9 @@ it("two in-flight notes preserve the tool pair, arrival order and single deliver
   held.release();
   await drain(t);
   expect(calls()).toHaveLength(3);
-  expect(JSON.stringify(calls()[1].args.prompt)).toContain("first passive note");
-  const prompt = JSON.stringify(calls()[1].args.prompt);
+  // The queued request claims notes only after the entire tool turn finishes.
+  expect(JSON.stringify(calls()[1].args.prompt)).not.toContain("first passive note");
+  const prompt = JSON.stringify(calls()[2].args.prompt);
   expect(prompt.match(/first passive note/g)).toHaveLength(1);
   expect(prompt.match(/second passive note/g)).toHaveLength(1);
   expect(prompt.indexOf("second passive note")).toBeGreaterThan(
@@ -571,9 +574,10 @@ it("two in-flight notes preserve the tool pair, arrival order and single deliver
   );
   expect(callIndex).toBeGreaterThanOrEqual(0);
   expect(native[callIndex + 1].message?.role).toBe("tool");
-  expect(native[callIndex + 2].text).toContain("first passive note");
-  expect(native[callIndex + 3].text).toContain("second passive note");
-  expect(native[callIndex + 3].order).toBe(native[callIndex].order);
+  expect(native[callIndex + 2].text).toBe("done");
+  expect(native[callIndex + 3].text).toContain("first passive note");
+  expect(native[callIndex + 4].text).toContain("second passive note");
+  expect(native[callIndex + 4].order).toBe(native[callIndex].order);
   const page = (await messages(t, receipt.threadId)).page;
   expect(page.every((message) => message.status !== "failed")).toBe(true);
   const controls = page
@@ -590,8 +594,8 @@ it("two in-flight notes preserve the tool pair, arrival order and single deliver
   expect(await note("capacity is reusable")).toBe(true);
 });
 
-it("two idle notes at capacity are saved immediately and delivered exactly once on the next request", async () => {
-  // The pending backlog is the only cap; idle notes have no unadmitted state.
+it("two idle notes at capacity stay pending until the next request and are delivered exactly once", async () => {
+  // Idle posts wait for claim too, so no post can split a paused tool pair.
   const t = setup({ notesPending: 2 }, true);
   const receipt = await open(t);
   await drain(t);
@@ -599,7 +603,8 @@ it("two idle notes at capacity are saved immediately and delivered exactly once 
     await owner(t).mutation(api.agents.note, { threadId: receipt.threadId, text, from: "critic" });
   }
   const page = (await messages(t, receipt.threadId)).page;
-  expect(page.filter((message) => message.origin === "note")).toHaveLength(2);
+  expect(page.filter((message) => message.origin === "note")).toHaveLength(0);
+  expect(calls()).toHaveLength(1);
   expect(page.every((message) => message.status === "success")).toBe(true);
   await expect(
     owner(t).mutation(api.agents.note, {
@@ -683,7 +688,7 @@ it("delegations and runTree distinguish side runs from ordinary children", async
   }
 });
 
-it("a note arriving in a running slice becomes context in the next slice", async () => {
+it("a note arriving in a running slice waits for the next turn", async () => {
   const held = gate();
   fixture.steps.Main = async (n) => {
     if (n === 0) {
@@ -702,7 +707,11 @@ it("a note arriving in a running slice becomes context in the next slice", async
   });
   held.release();
   await drain(t);
-  expect(JSON.stringify(calls()[1].args.prompt)).toContain("between slices");
+  // Ordinary tool slices keep the same turn; only a new claim delivers notes.
+  expect(JSON.stringify(calls()[1].args.prompt)).not.toContain("between slices");
+  await send(t, receipt.threadId, "next turn");
+  await drain(t);
+  expect(JSON.stringify(calls()[2].args.prompt).match(/between slices/g)).toHaveLength(1);
 });
 
 it("notes enforce their hard count and length bounds and authorize the watched thread", async () => {
@@ -1286,4 +1295,207 @@ it("queued future prompts never hide an earlier assistant response from the next
   const second = JSON.stringify(calls("Critic")[1].args.prompt);
   expect(second).toContain("actual reply 1");
   expect(second).not.toContain("actual reply 0");
+});
+
+it("a note posted before the first claim precedes the first prompt and never starts another turn", async () => {
+  const t = setup(undefined, true);
+  const receipt = await open(t);
+  await owner(t).mutation(api.agents.note, {
+    threadId: receipt.threadId,
+    text: "early advice",
+    from: "critic",
+  });
+  expect(
+    (await messages(t, receipt.threadId)).page.some((message) => message.origin === "note"),
+  ).toBe(false);
+  await drain(t);
+  expect(calls()).toHaveLength(1);
+  const prompt = JSON.stringify(calls()[0].args.prompt);
+  expect(prompt.indexOf("early advice")).toBeLessThan(prompt.indexOf("first request"));
+  expect(
+    (await messages(t, receipt.threadId)).page.filter((message) => message.origin === "note"),
+  ).toHaveLength(1);
+});
+
+it.each([false, true])(
+  "an afterTurn note waits for the next claim (hook continue=%s) and persists exactly once",
+  async (continuation) => {
+    fixture.hooks.afterTurn = (_hc, event) =>
+      event.turn === 1
+        ? { note: "after-turn advice", ...(continuation ? { continue: "follow-up work" } : {}) }
+        : undefined;
+    const t = setup(undefined, true);
+    const receipt = await open(t);
+    await drain(t);
+    expect(JSON.stringify(calls()[0].args.prompt)).not.toContain("after-turn advice");
+    if (!continuation) {
+      expect(calls()).toHaveLength(1);
+      expect(
+        (await messages(t, receipt.threadId)).page.some((message) => message.origin === "note"),
+      ).toBe(false);
+      await send(t, receipt.threadId, "follow-up work");
+      await drain(t);
+    }
+    const prompt = JSON.stringify(calls()[1].args.prompt);
+    expect(prompt.match(/after-turn advice/g)).toHaveLength(1);
+    expect(prompt.indexOf("Main answer 0")).toBeLessThan(prompt.indexOf("after-turn advice"));
+    expect(prompt.indexOf("after-turn advice")).toBeLessThan(prompt.indexOf("follow-up work"));
+    await send(t, receipt.threadId, "one more request");
+    await drain(t);
+    expect(
+      (await messages(t, receipt.threadId)).page.filter((message) => message.origin === "note"),
+    ).toMatchObject([
+      { from: "Main", origin: "note", text: '<note from="Main">after-turn advice</note>' },
+    ]);
+  },
+);
+
+it("an in-flight note survives a failed child turn and is delivered once at the next result claim", async () => {
+  const failure = gate();
+  const descendant = gate();
+  fixture.builderHooks.afterTurn = (_hc, event) =>
+    event.turn === 1 ? { continue: "inspect while helper runs" } : undefined;
+  fixture.steps.Main = (n) =>
+    n === 0
+      ? call("agevex_delegate", { agent: "Builder", task: "build with a helper" })
+      : text("root done");
+  fixture.steps.Builder = async (n) => {
+    if (n === 0) return call("agevex_delegate", { agent: "Critic", task: "check the work" });
+    if (n === 1) {
+      await failure.promise;
+      throw new Error("paid turn failed");
+    }
+    return text("recovered from child result");
+  };
+  fixture.steps.Critic = async () => {
+    await descendant.promise;
+    return text("helper result");
+  };
+  const t = setup(undefined, true);
+  const receipt = await open(t);
+  await waitFor(t, () => calls("Builder").length === 2 && calls("Critic").length >= 1);
+  const builderRun = (
+    await owner(t).query(api.agents.runTree, { threadId: receipt.threadId })
+  ).find((run) => run.agent === "Builder")!;
+  await owner(t).mutation(api.agents.note, {
+    threadId: builderRun.childThreadId!,
+    text: "survives failure",
+    from: "watchdog",
+  });
+  failure.release();
+  await expect
+    .poll(async () => {
+      await t.action(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      return (
+        await t.query(components.agevex.queue.execution, {
+          assignmentId: builderRun.childAssignmentId!,
+        })
+      )?.turnStatus;
+    })
+    .toBe("idle");
+  expect(
+    (await messages(t, builderRun.childThreadId!)).page.some(
+      (message) => message.origin === "note",
+    ),
+  ).toBe(false);
+  descendant.release();
+  await drain(t);
+  expect(JSON.stringify(calls("Builder")[2].args.prompt).match(/survives failure/g)).toHaveLength(
+    1,
+  );
+  expect(
+    (await messages(t, builderRun.childThreadId!)).page.filter((message) =>
+      message.text.includes("survives failure"),
+    ),
+  ).toMatchObject([{ origin: "note", from: "watchdog" }]);
+});
+
+it("claim-time notes follow every result in a multi-tool step and precede the next prompt", async () => {
+  const held = gate();
+  fixture.steps.Main = async (n) => {
+    if (n === 0) {
+      await held.promise;
+      return [
+        ...call("echo", { text: "first effect" }),
+        ...call("echo", { text: "second effect" }),
+      ];
+    }
+    return text("complete");
+  };
+  const t = setup(undefined, true);
+  const receipt = await open(t);
+  await waitFor(t, () => calls().length === 1);
+  await owner(t).mutation(api.agents.note, {
+    threadId: receipt.threadId,
+    text: "after both tools",
+    from: "critic",
+  });
+  await send(t, receipt.threadId, "next multi-tool request");
+  held.release();
+  await drain(t);
+  expect(JSON.stringify(calls()[1].args.prompt)).not.toContain("after both tools");
+  const prompt = JSON.stringify(calls()[2].args.prompt);
+  expect(prompt.match(/after both tools/g)).toHaveLength(1);
+  expect(prompt.indexOf("after both tools")).toBeLessThan(
+    prompt.indexOf("next multi-tool request"),
+  );
+  const native = (
+    await t.run((ctx) =>
+      listMessages(ctx, components.agent, {
+        threadId: receipt.threadId,
+        paginationOpts: { cursor: null, numItems: 100 },
+      }),
+    )
+  ).page.sort((a, b) => a.order - b.order || a.stepOrder - b.stepOrder);
+  const unresolved = new Set<string>();
+  for (const doc of native) {
+    const message = doc.message;
+    if (message?.role === "user" && doc.text?.includes("<note")) expect(unresolved.size).toBe(0);
+    if (!Array.isArray(message?.content)) continue;
+    for (const part of message.content) {
+      if (part.type === "tool-call") unresolved.add(part.toolCallId);
+      if (part.type === "tool-result") unresolved.delete(part.toolCallId);
+    }
+  }
+  expect(unresolved.size).toBe(0);
+  expect(fixture.effects).toEqual(["first effect", "second effect"]);
+});
+
+it("cancel discards a staged hook continuation and its notes before a fresh send", async () => {
+  const t = setup({ notesPending: HOST_LIMITS.notesPending.max }, true);
+  const receipt = await open(t);
+  const row = (await t.query(components.agevex.queue.execution, {
+    assignmentId: receipt.assignmentId,
+  }))!;
+  await t.mutation(components.agevex.queue.claim, {
+    assignmentId: receipt.assignmentId,
+    turnToken: row.turnToken!,
+  });
+  await t.mutation(components.agevex.hooks.continueAdmission, {
+    assignmentId: receipt.assignmentId,
+    executionId: row.turnToken!,
+    prompt: "cancelled continuation".padEnd(LIMITS.messageLength, "x"),
+  });
+  for (let i = 0; i < HOST_LIMITS.notesPending.max; i++)
+    await owner(t).mutation(api.agents.note, {
+      threadId: receipt.threadId,
+      text: "cancelled advice".padEnd(LIMITS.noteLength, "x"),
+      from: "critic",
+    });
+  await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
+  await send(t, receipt.threadId, "fresh request after staged continuation");
+  await owner(t).mutation(api.agents.note, {
+    threadId: receipt.threadId,
+    text: "fresh advice",
+    from: "critic",
+  });
+  await drain(t);
+  expect(calls()).toHaveLength(1);
+  const prompt = JSON.stringify(calls()[0].args.prompt);
+  expect(prompt).toContain("fresh request after staged continuation");
+  expect(prompt.match(/fresh advice/g)).toHaveLength(1);
+  expect(prompt).not.toContain("cancelled continuation");
+  expect(prompt).not.toContain("cancelled advice");
 });

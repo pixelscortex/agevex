@@ -93,7 +93,8 @@ export const HOST_LIMITS = {
  * two 64-bit start/routing masks, keeping each run within its <=1 KiB envelope.
  *
  * Other proportional paths: claim drains <=152 consecutive ready rows,
- * including <=50 ready joins from its run, and reads no native bodies. Each
+ * including <=50 ready joins from its run. Notes additionally read one exact
+ * anchor and one native merge-head batch (hooks.ts); no history is scanned. Each
  * join uses an indexed ready representative and <=15 cohort metadata rows;
  * admission/send/attach handle one item. Membership sealing reads/patches
  * <=50 launch rows. Descendant/settlement fences use indexed existence probes,
@@ -110,6 +111,7 @@ export const LIMITS = {
   sideRunsPerRun: HOST_LIMITS.sideRunsPerRun.default,
   notesPending: HOST_LIMITS.notesPending.default,
   noteLength: 4_000,
+  firstPromptOrder: 1,
   hookErrorLength: 1_000,
   agents: 64,
   sideAgents: 8,

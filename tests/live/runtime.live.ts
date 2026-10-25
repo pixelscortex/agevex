@@ -75,9 +75,8 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
           });
         if (critic) {
           expect(live.criticCalls).toBe(1);
-          // R3 lets the watched parent finish before its side review's native
-          // note delivery commits. An inactive child is settled, not necessarily
-          // delivered; wait for the promised note rather than racing that write.
+          // Side delivery admits a pending note without starting another turn.
+          // Wait for admission, then claim it with a real follow-up request.
           await expect
             .poll(
               async () => {
@@ -89,18 +88,51 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
                   (run) => run.deliveryStatus === "failed" || run.deliveryStatus === "blocked",
                 );
                 if (failed) throw new Error(`LIVE_CRITIC_DELIVERY_FAILED:${failed.errorCode}`);
-                const transcript = await owner.query(api.agents.messages, {
-                  threadId: receipt.threadId,
-                  paginationOpts: { cursor: null, numItems: 20 },
-                });
-                return transcript.page.some(
-                  (message) =>
-                    message.role === "user" && message.text.includes('<note from="Critic">'),
-                );
+                return deliveries.page.some((run) => run.deliveryStatus === "accepted");
               },
               { timeout: 180_000, interval: 200 },
             )
             .toBe(true);
+          const beforeClaim = await owner.query(api.agents.messages, {
+            threadId: receipt.threadId,
+            paginationOpts: { cursor: null, numItems: 20 },
+          });
+          expect(beforeClaim.page.some((message) => message.origin === "note")).toBe(false);
+          requireReceipt(
+            await owner.mutation(api.agents.send, {
+              threadId: receipt.threadId,
+              text: "Read the critic note and reply in three words.",
+              requestKey: "consume critic note",
+            }),
+          );
+          await expect
+            .poll(
+              async () => {
+                const status = await owner.query(api.agents.activity, {
+                  threadId: receipt.threadId,
+                });
+                if (status.turnStatus === "recovery_required")
+                  throw new Error(`LIVE_TURN_FAILED:${status.errorCode}`);
+                return {
+                  status: status.turnStatus,
+                  active: status.subagents.active,
+                  rootCalls: live.rootCalls,
+                  criticCalls: live.criticCalls,
+                  queued: status.queuedMessages,
+                };
+              },
+              { timeout: 180_000, interval: 200 },
+            )
+            .toEqual({ status: "idle", active: 0, rootCalls: 2, criticCalls: 2, queued: 0 });
+          const afterClaim = await owner.query(api.agents.messages, {
+            threadId: receipt.threadId,
+            paginationOpts: { cursor: null, numItems: 20 },
+          });
+          expect(
+            afterClaim.page.filter(
+              (message) => message.origin === "note" && message.from === "Critic",
+            ),
+          ).toHaveLength(1);
         }
         if (delegation) {
           const runs = await owner.query(api.agents.delegations, {
