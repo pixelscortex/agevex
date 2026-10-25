@@ -1,7 +1,7 @@
 import type { MessageDoc } from "@convex-dev/agent";
 import type { FunctionHandle } from "convex/server";
 import type { WorkflowId } from "@convex-dev/workflow";
-import { rootLane, childLane, laneManager } from "./workflows.js";
+import { rootLane, childLane, laneManager } from "./workflows/lanes.js";
 import { findReceipt, armPurge } from "./ledger.js";
 import { ConvexError, getConvexSize, v } from "convex/values";
 import { api, internal } from "./_generated/api.js";

@@ -1,44 +1,24 @@
-import { WorkflowManager, type WorkflowCtx, type WorkflowId } from "@convex-dev/workflow";
+/**
+ * The two Workflow lanes and their versioned step sequences.
+ *
+ * Each assignment runs one long-lived *loop* workflow (root or child lane):
+ * it asks `queue.next` for a queued turn, runs that turn as a nested *turn*
+ * workflow (one `worker.dispatch` action per paid model slice, separated by
+ * `queue.betweenSlices`), and otherwise sleeps on a "ping" event that wake
+ * sends. The *done* callback rotates finished loops before their journal grows
+ * past 8 MiB. Step order here is the deployed journal format: never reorder it.
+ * The lane managers and loop start live in workflows/lanes.ts. Touches only
+ * `assignments` (workflowId, pinged, loopWaiting).
+ */
+import type { WorkflowManager, WorkflowCtx, WorkflowId } from "@convex-dev/workflow";
 import { v } from "convex/values";
 import { vResultValidator } from "@convex-dev/workpool";
-import { components, internal } from "./_generated/api.js";
+import { internal } from "./_generated/api.js";
 import { internalMutation } from "./_generated/server.js";
 import type { Id } from "./_generated/dataModel.js";
-import { LIMITS, type Limits } from "./limits.js";
+import { LIMITS } from "./limits.js";
+import { childLane, rootLane, startLoop } from "./workflows/lanes.js";
 
-// Workflow 0.4.10's StepExecutor.startSteps calls createFunctionHandle for
-// function steps, and Convex accepts an existing opaque handle there. Therefore
-// workflows can live inside this component: worker.dispatch resolves the host
-// runTurn handle without requiring host workflow exports or another mount.
-// Separate nested Workflow components give real independent Workpool lanes.
-export const rootLane = new WorkflowManager(components.rootWorkflow, {
-  workpoolOptions: {
-    retryActionsByDefault: false,
-    logLevel: "ERROR",
-  },
-});
-export const childLane = new WorkflowManager(components.childWorkflow, {
-  workpoolOptions: {
-    retryActionsByDefault: false,
-    logLevel: "ERROR",
-  },
-});
-
-/**
- * Set lane capacity through Workflow's supported async start API. Definitions
- * leave maxParallelism unset so nested turns inherit the mounted lane's config
- * instead of resetting a host override to the SDK default on every turn.
- * A mount owns one pair of lanes; registrations sharing it must share capacity.
- */
-export function laneManager(child: boolean, limits: Pick<Limits, "rootLane" | "childLane">) {
-  return new WorkflowManager(child ? components.childWorkflow : components.rootWorkflow, {
-    workpoolOptions: {
-      maxParallelism: child ? limits.childLane : limits.rootLane,
-      retryActionsByDefault: false,
-      logLevel: "ERROR",
-    },
-  });
-}
 const args = {
   assignmentId: v.id("assignments"),
   version: v.number(),
@@ -54,14 +34,16 @@ async function betweenSlices(
   return step.runMutation(internal.queue.betweenSlices, { assignmentId, executionId });
 }
 
-function lane(child: boolean) {
-  const manager = child ? childLane : rootLane;
-  const turn = manager
+/** One turn: up to `slicesPerTurn` paid slices, each a non-retried action,
+ * then `queue.sliceLimit` if the model never stopped on its own. */
+function defineTurn(manager: WorkflowManager) {
+  return manager
     .define({ args: { ...args, executionId: v.string() }, returns: v.null() })
     .handler(async (step, args): Promise<null> => {
       // Positional replay in 0.4.10 has no native versioning. Preserve this branch
       // when adding a new sequence; never silently reorder a deployed version.
       if (args.version !== LIMITS.workflowVersion) throw new Error("UNKNOWN_WORKFLOW_VERSION");
+
       for (let slice = 0; slice < (args.slicesPerTurn ?? LIMITS.slicesPerTurn); slice++) {
         await step.runAction(
           internal.worker.dispatch,
@@ -74,30 +56,41 @@ function lane(child: boolean) {
         );
         if (!(await betweenSlices(step, args.assignmentId, args.executionId))) return null;
       }
+
       await step.runMutation(internal.queue.sliceLimit, {
         assignmentId: args.assignmentId,
         executionId: args.executionId,
       });
       return null;
     });
-  const loop = manager
-    .define({ args, returns: v.null() })
-    .handler(async (step, args): Promise<null> => {
-      if (args.version !== LIMITS.workflowVersion) throw new Error("UNKNOWN_WORKFLOW_VERSION");
-      for (let turns = 0; turns < LIMITS.turnsPerLoop; turns++) {
-        const executionId: string | null = await step.runMutation(internal.queue.next, {
-          assignmentId: args.assignmentId,
+}
+
+/** The bounded loop: `turnsPerLoop` iterations of "run the queued turn, or
+ * sleep until wake's ping", then completion and rotation via done. */
+function defineLoop(manager: WorkflowManager, child: boolean) {
+  return manager.define({ args, returns: v.null() }).handler(async (step, args): Promise<null> => {
+    if (args.version !== LIMITS.workflowVersion) throw new Error("UNKNOWN_WORKFLOW_VERSION");
+
+    for (let turns = 0; turns < LIMITS.turnsPerLoop; turns++) {
+      const executionId: string | null = await step.runMutation(internal.queue.next, {
+        assignmentId: args.assignmentId,
+      });
+      if (executionId)
+        await step.runWorkflow(child ? internal.workflows.childTurn : internal.workflows.rootTurn, {
+          ...args,
+          executionId,
         });
-        if (executionId)
-          await step.runWorkflow(
-            child ? internal.workflows.childTurn : internal.workflows.rootTurn,
-            { ...args, executionId },
-          );
-        else await step.awaitEvent({ name: "ping" });
-      }
-      return null;
-    });
-  const done = internalMutation({
+      else await step.awaitEvent({ name: "ping" });
+    }
+    return null;
+  });
+}
+
+/** Loop completion: a failed loop marks its in-flight turn ambiguous; a
+ * finished loop is replaced by a fresh one and its journal cleaned up. Only
+ * the row's current, uncancelled workflow may do either. */
+function defineDone(manager: WorkflowManager, child: boolean) {
+  return internalMutation({
     args: {
       workflowId: v.string(),
       result: vResultValidator,
@@ -107,11 +100,13 @@ function lane(child: boolean) {
     handler: async (ctx, { workflowId, result, context }): Promise<null> => {
       const row = await ctx.db.get("assignments", context.assignmentId);
       if (!row || row.workflowId !== workflowId || row.cancelled) return null;
+
       await ctx.db.patch("assignments", row._id, {
         workflowId: undefined,
         pinged: false,
         loopWaiting: false,
       });
+
       if (result.kind !== "success") {
         if (row.turnToken)
           await ctx.runMutation(internal.queue.failWorkflow, {
@@ -120,25 +115,12 @@ function lane(child: boolean) {
           });
         return null;
       }
+
       // Rotate bounded loops before the journal reaches 8 MiB. Idle loops stay
       // asleep on events; rotation consumes no model work or inbox rows.
-      const nextId = await laneManager(child, row.limits).start(
-        ctx,
-        child ? internal.workflows.childLoop : internal.workflows.rootLoop,
-        {
-          assignmentId: row._id,
-          version: LIMITS.workflowVersion,
-          ...(row.limits.slicesPerTurn !== LIMITS.slicesPerTurn
-            ? { slicesPerTurn: row.limits.slicesPerTurn }
-            : {}),
-        },
-        {
-          onComplete: child ? internal.workflows.childDone : internal.workflows.rootDone,
-          context,
-          startAsync: true,
-        },
-      );
+      const nextId = await startLoop(ctx, row, child);
       await ctx.db.patch("assignments", row._id, { workflowId: nextId });
+
       // 0.4.10 exposes no event deletion API, and cleanup deletes only events
       // referenced by journal steps (workflow.ts/deleteSteps). wake sends only
       // to a sleeping loop with no pending ping; next clears that flag after
@@ -147,8 +129,18 @@ function lane(child: boolean) {
       return null;
     },
   });
-  return { turn, loop, done };
 }
+
+/** The turn, loop and done registrations of one lane. */
+function lane(child: boolean) {
+  const manager = child ? childLane : rootLane;
+  return {
+    turn: defineTurn(manager),
+    loop: defineLoop(manager, child),
+    done: defineDone(manager, child),
+  };
+}
+
 const root = lane(false);
 const child = lane(true);
 export const rootTurn = root.turn;
