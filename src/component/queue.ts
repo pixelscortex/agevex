@@ -22,6 +22,7 @@ import {
 } from "./schema.js";
 import { LIMITS, limitsValidator } from "./limits.js";
 import { approvalKey, callKey, keyString, saveResponses } from "./approvals.js";
+import { sealGroups } from "./subagents.js";
 
 async function existing(
   ctx: Pick<QueryCtx, "db">,
@@ -125,8 +126,67 @@ async function needsRecovery(ctx: MutationCtx, row: Doc<"assignments">) {
     .first());
 }
 
+/** Select ready rows independently of a blocked result at the inbox head.
+ * One indexed read takes <=100 id-only inbox rows. Per distinct budget, read
+ * one <=1 KiB run and probe four status-specific index ranges with first():
+ * <=100*(1+4) metadata reads, <=1,700 KiB, plus <=100 KiB inbox metadata.
+ * These existence probes include settled children awaiting delivery, but skip
+ * asking children and all-group members. Never load 50 launch rows per inbox
+ * item: 100 independent budgets would otherwise exceed the byte ceiling.
+ */
+async function readyInbox(ctx: MutationCtx, row: Doc<"assignments">) {
+  const inbox = await ctx.db
+    .query("inbox")
+    .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
+    .take((row.limits ?? LIMITS).queueLength);
+  const budgets = new Map<string, boolean>();
+  const pending = new Map<string, boolean>();
+  const ready: Doc<"inbox">[] = [];
+  for (const item of inbox) {
+    if (!budgets.has(item.runId))
+      budgets.set(item.runId, !!(await ctx.db.get("runs", item.runId))?.cancelled);
+    if (budgets.get(item.runId)) continue;
+    if (item.kind === "result") {
+      if (!pending.has(item.runId)) {
+        let blocked = false;
+        for (const status of ["queued", "running", "completed", "failed"] as const) {
+          if (
+            await ctx.db
+              .query("subagentRuns")
+              .withIndex("by_each_pending", (q) =>
+                q
+                  .eq("actorAssignmentId", row._id)
+                  .eq("parentRunId", item.runId)
+                  .eq("wait", "each")
+                  .eq("deliveryStatus", "pending")
+                  .eq("status", status),
+              )
+              .first()
+          ) {
+            blocked = true;
+            break;
+          }
+        }
+        pending.set(item.runId, blocked);
+      }
+      if (pending.get(item.runId)) continue;
+    }
+    ready.push(item);
+  }
+  return ready;
+}
+
+async function isAsking(ctx: MutationCtx, row: Doc<"assignments">) {
+  if (!row.childRunId) return false;
+  const child = await ctx.db
+    .query("subagentRuns")
+    .withIndex("by_run", (q) => q.eq("runId", row.childRunId!))
+    .unique();
+  return child?.status === "asking";
+}
+
 /**
- * Publish at most one inbox head and ring the thread's loop in the same
+ * Publish at most one ready inbox row and ring the thread's loop in the same
  * transaction as acceptance/delivery. Selection is metadata-only: claim keeps
  * deletion until after the host's native approval guard. The loop rechecks
  * this indexed queue after every child workflow, so early or duplicate events
@@ -135,6 +195,13 @@ async function needsRecovery(ctx: MutationCtx, row: Doc<"assignments">) {
  */
 export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = true) {
   if (row.cancelled || row.turnStatus === "recovery_required") return;
+  // Descendant results remain durable while this child awaits its parent.
+  // Only messageChild clears asking, atomically with posting the answer. Do
+  // not reserve/consume those results or keep a perpetual recovery chain alive.
+  if (await isAsking(ctx, row)) {
+    await disarmRecovery(ctx, row);
+    return;
+  }
   // A full inbox may have deferred a completed group's single anchor. Release
   // one cohort after a slot frees, without retrying its native deliveries.
   if (await ctx.runMutation(api.subagents.releaseGroups, { assignmentId: row._id }))
@@ -144,33 +211,8 @@ export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = tru
   // disarmRecovery and accumulate unconsumed events across loop rotation.
   const hasWork = await needsRecovery(ctx, row);
   if (row.turnStatus === "idle" && !row.approvalBlocked) {
-    const next = await ctx.db
-      .query("inbox")
-      .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
-      .first();
-    const run = next ? await ctx.db.get("runs", next.runId) : null;
-    // <=50 launches *4 KiB =200 KiB, plus two id-only inbox probes and
-    // assignment/run/Workflow bookkeeping (<256 KiB for this readiness probe). No transcript.
-    // Asking children and other explicit groups cannot block this continuation.
-    const pending =
-      next?.kind === "result"
-        ? await ctx.db
-            .query("subagentRuns")
-            .withIndex("by_parent_pending", (q) =>
-              q
-                .eq("actorAssignmentId", row._id)
-                .eq("parentRunId", next.runId)
-                .eq("deliveryStatus", "pending"),
-            )
-            .take((row.limits ?? LIMITS).runLaunches)
-        : [];
-    // Legacy/default each notifications coalesce per immediate parent. Explicit
-    // groups release independently; a grandchild never waits on its own parent.
-    if (
-      next &&
-      !run?.cancelled &&
-      !pending.some((child) => child.wait !== "all" && child.status !== "asking")
-    ) {
+    const [next] = await readyInbox(ctx, row);
+    if (next) {
       await ctx.db.patch("assignments", row._id, {
         turnStatus: "queued",
         turnToken: `${row._id}:${row.nextTurn}`,
@@ -347,6 +389,9 @@ export const claim = mutation({
   handler: async (ctx, { assignmentId, turnToken, sliceId }) => {
     const row = await ctx.db.get("assignments", assignmentId);
     if (!row || row.cancelled || row.approvalBlocked || row.turnToken !== turnToken) return null;
+    // An open question is a valid pause, never corrupt execution state. This
+    // guard also protects repeated/stale dispatches before any inbox deletion.
+    if (await isAsking(ctx, row)) return null;
     const first = row.turnStatus === "queued";
     if (
       !first &&
@@ -356,18 +401,21 @@ export const claim = mutation({
     if (first && row.inboxId) {
       const head = await ctx.db.get("inbox", row.inboxId);
       if (head) await ctx.db.delete("inbox", head._id);
-      if (head?.kind === "result" || head?.kind === "note") {
-        // <=100 following inbox rows +100 delete reads =200 KiB of ids;
-        // <=100 deletes, plus fixed claim/watchdog metadata (<512 KiB total).
-        const following = await ctx.db
-          .query("inbox")
-          .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
-          .take((row.limits ?? LIMITS).queueLength);
+      if (head?.kind === "result" || head?.kind === "note" || head?.kind === "parent") {
+        // Selection is bounded as in readyInbox, plus <=100 delete reads and
+        // writes (<2 MiB total). Include an answer and held descendant results
+        // in one continuation, but leave blocked each rows for their own wake.
+        const following = await readyInbox(ctx, row);
         let count = 0;
         for (const item of following) {
-          if (item.kind !== head.kind || item.runId !== head.runId) break;
+          if (item.kind === "user" || item.kind === "steer") break;
+          if (
+            item.runId !== head.runId ||
+            (item.kind !== "result" && item.kind !== "note" && item.kind !== "parent")
+          )
+            continue;
           await ctx.db.delete("inbox", item._id);
-          row.promptMessageId = item.messageId;
+          if (item.sequence > head.sequence) row.promptMessageId = item.messageId;
           count++;
         }
         await ctx.db.patch("assignments", row._id, {
@@ -478,6 +526,7 @@ export const finish = mutation({
     if (!row || row.cancelled || row.turnToken !== args.turnToken || row.turnStatus !== "running")
       return null;
     await disarmSlice(ctx, row);
+    await sealGroups(ctx, row);
     if (args.errorCode) {
       await failChild(ctx, row, args.errorCode);
       await ctx.db.patch("assignments", row._id, {
@@ -942,10 +991,15 @@ export const continueTurn = mutation({
       row.turnStatus === "running"
     ) {
       await disarmSlice(ctx, row);
+      await sealGroups(ctx, row);
       await ctx.db.patch("assignments", row._id, {
         continueSlice: true,
         promptMessageId: args.messageId,
       });
+      // Release sealed results inside this existing step; v1's positional
+      // Workflow sequence remains untouched. A running slice cannot be claimed
+      // again by wake, so its normal between-slice continuation still owns it.
+      await wake(ctx, { ...row, continueSlice: true, promptMessageId: args.messageId });
     }
     return null;
   },

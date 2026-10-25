@@ -69,7 +69,10 @@ export const HOST_LIMITS = {
  * Other proportional paths: claim reads/deletes at most 101 inbox rows;
  * admission/send/attach handle one item. Group admission/release reads <=20
  * metadata rows. Deferred release probes <=20*20 group rows plus <=20
- * candidates; readiness/tree reads <=50 launch rows (see local budgets).
+ * candidates. Membership sealing reads/patches <=50 launch rows. Readiness
+ * reads <=100 inbox rows and <=100 budgets, with four indexed existence
+ * probes per budget (<1.8 MiB); the tree reads <=50 launch rows. Local comments
+ * include the combined readiness/seal/release allowances.
  * Native verification/delivery reads one exact <=1 MiB message, never the
  * launch history. Tasks are <=16,000 UTF-16 units (<=64 KiB UTF-8), with at
  * most one native task save per delegation. Hops/leases are scalar counters;

@@ -98,8 +98,9 @@ cancellation cover every descendant; results return to the immediate parent.
 Parents receive `agevex_delegate({ agent, task, group?, wait? })` and
 `agevex_message_child({ runId, text })`. Default `wait: "each"` keeps
 consecutive child results batched as before. With `wait: "all"`, a group
-wakes its parent once after every member settles, including failures. Groups
-belong to one parent assignment and user run; choose a new name after a join.
+wakes its parent once after the launching slice ends and every member settles,
+including failures. Membership seals when that slice ends; later launches into
+the group return `GROUP_CLOSED`. Groups belong to one parent assignment and user run.
 A group has at most `activeChildrenPerRoot` members (hard maximum 20);
 omitting its name selects the unnamed group. Names are at most 200 characters.
 
@@ -109,7 +110,10 @@ even inside a waiting group. The parent answers with `agevex_message_child`.
 Follow-ups reach running or idle children in the same root; finished or foreign
 runs return typed denials. Each child accepts 4 follow-ups by default (maximum
 8); questions and follow-ups spend the originating run's hops. Both use the
-task-length bound. Asking children remain cancellable.
+task-length bound. Asking children hold descendant results until the answer
+resumes them; the answer and ready results share one continuation. Ready joins
+and questions can wake a parent past an unrelated blocked result. Asking
+children remain cancellable.
 
 `runTree({ threadId })` is an owner-authorized, root-only query returning the
 current request's descendants with agent, status, depth, group, parent

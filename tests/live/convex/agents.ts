@@ -77,6 +77,32 @@ rootModel.doStream = (args) => {
   return rootStream({
     ...args,
     maxOutputTokens: LIVE_LIMITS.outputTokens,
+    // Both child agents are registered on Main. Constrain this scenario's
+    // model-facing choice so repeated delegation cannot accidentally choose
+    // Builder and add an unrelated Reviewer run to its two-child assertion.
+    tools: args.tools?.map((tool) =>
+      tool.type === "function" && tool.name === "agevex_delegate"
+        ? {
+            ...tool,
+            inputSchema: {
+              ...tool.inputSchema,
+              properties: {
+                ...tool.inputSchema.properties,
+                agent: { type: "string", enum: [live.depth ? "Builder" : "Researcher"] },
+              },
+            },
+          }
+        : tool,
+    ),
+    // A forced tool choice still permits multiple calls in one response.
+    // OpenAI chat 4.0.102 src/chat/openai-chat-language-model.ts:116-120,205
+    // reads the openai namespace even with name="openrouter" and forwards
+    // this native option as parallel_tool_calls. Keep each scripted launch
+    // to one child so provider batching cannot invalidate the scenario count.
+    providerOptions: {
+      ...args.providerOptions,
+      openai: { ...args.providerOptions?.openai, parallelToolCalls: false },
+    },
     toolChoice:
       (live.depth && call === 0) || (live.delegation && call < 2)
         ? { type: "tool", toolName: "agevex_delegate" }
@@ -127,6 +153,10 @@ builderModel.doStream = (args) => {
   return builderStream({
     ...args,
     maxOutputTokens: LIVE_LIMITS.outputTokens,
+    providerOptions: {
+      ...args.providerOptions,
+      openai: { ...args.providerOptions?.openai, parallelToolCalls: false },
+    },
     toolChoice: call === 0 ? { type: "tool", toolName: "agevex_delegate" } : { type: "none" },
   });
 };

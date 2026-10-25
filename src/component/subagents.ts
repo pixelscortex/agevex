@@ -189,7 +189,7 @@ export const reserve = mutation({
         .take(wait === "all" ? (root.limits ?? LIMITS).activeChildrenPerRoot : 1);
       if (members.some((member) => (member.wait ?? "each") !== wait))
         return { kind: "denied" as const, code: "GROUP_CONFLICT" as const };
-      if (members.some((member) => member.groupReleased))
+      if (members.some((member) => member.groupSealed))
         return { kind: "denied" as const, code: "GROUP_CLOSED" as const };
       if (wait === "all" && members.length >= (root.limits ?? LIMITS).activeChildrenPerRoot)
         return { kind: "denied" as const, code: "GROUP_LIMIT" as const };
@@ -208,7 +208,7 @@ export const reserve = mutation({
       depth,
       group,
       wait,
-      ...(wait === "all" ? { groupReleased: false } : {}),
+      ...(wait === "all" ? { groupReleased: false, groupSealed: false } : {}),
       parentRunId: budget._id,
       dedupKey,
       sequence,
@@ -539,8 +539,8 @@ async function applyDelivery(
     throw new Error("RUN_BUDGET");
   if (run.wait === "all") {
     // <=20 members *4 KiB =80 KiB. Enqueue ONE id-only anchor, <=20
-    // release markers and bounded wake recovery (<600 reads/<128 writes;
-    // <2.5 MiB of metadata including the deferred-release probe below).
+    // release markers and bounded wake recovery (<1,200 reads/<128 writes;
+    // <4 MiB of metadata including readiness and deferred-release probes).
     // Native child bodies are verified ONE per delivery transaction (<=1 MiB);
     // this join reads ids only, never 20 potentially 1 MiB native results.
     const members = await ctx.db
@@ -596,6 +596,7 @@ async function releaseGroup(
     !members.length ||
     members.some(
       (member) =>
+        !member.groupSealed ||
         member.deliveryStatus === "pending" ||
         !["completed", "failed"].includes(member.status) ||
         member.rootCancellationEpoch !== root.cancellationEpoch,
@@ -626,11 +627,35 @@ async function releaseGroup(
   return true;
 }
 
+/** A fast child may settle between two tool calls in the same model slice.
+ * Seal only at that slice's existing completion mutation, never at settlement.
+ * There is only one running slice per assignment; all unsealed members of its
+ * current run belong to it. <=50 launch rows *4 KiB plus <=50 patch reads
+ * =400 KiB, <=100 reads/50 writes. The index excludes older request budgets
+ * and already sealed cohorts; no transcript or Workflow journal is consulted.
+ */
+export async function sealGroups(ctx: MutationCtx, parent: Doc<"assignments">) {
+  if (!parent.runId) return;
+  const members = await ctx.db
+    .query("subagentRuns")
+    .withIndex("by_membership", (q) =>
+      q
+        .eq("actorAssignmentId", parent._id)
+        .eq("parentRunId", parent.runId!)
+        .eq("groupSealed", false),
+    )
+    .take((parent.limits ?? LIMITS).runLaunches);
+  for (const member of members)
+    await ctx.db.patch("subagentRuns", member._id, { groupSealed: true });
+}
+
 /** Bounded control recovery for a join whose parent inbox was full.
  * <=20 candidate rows +20 groups*20 members +20 patch reads =440 run reads
  * *4 KiB =1,760 KiB, plus root/parent <=16 KiB and one inbox insert/patch.
- * <=20 run writes +2 queue writes. With wake's <=256 KiB metadata allowance
- * the whole path stays <2.25 MiB and <512 reads; native payloads are absent.
+ * <=20 run writes +2 queue writes. With wake's <=1,800 KiB readiness probe
+ * and fixed metadata, the path stays <4 MiB and <1,100 reads. A completion
+ * that also seals <=50 members adds <=400 KiB/100 reads/50 writes: still
+ * <4.5 MiB and <1,200 reads. Native payloads are absent from these probes.
  */
 export const releaseGroups = mutation({
   args: { assignmentId: v.id("assignments") },

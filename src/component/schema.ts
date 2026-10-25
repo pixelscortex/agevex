@@ -260,6 +260,9 @@ export default defineSchema({
     group: v.optional(v.string()),
     wait: v.optional(v.union(v.literal("each"), v.literal("all"))),
     groupReleased: v.optional(v.boolean()),
+    // The launching slice seals its cohorts before results may release them.
+    // Read by admission (closed membership), release, and the indexed seal.
+    groupSealed: v.optional(v.boolean()),
     // The exact native question id is recorded with its native save and read
     // for verification before delivery. `asking` itself is the open-question fence.
     questionMessageId: v.optional(v.string()),
@@ -293,6 +296,14 @@ export default defineSchema({
     .index("by_root_sequence", ["rootAssignmentId", "sequence"])
     .index("by_root_status", ["rootAssignmentId", "status"])
     .index("by_parent_pending", ["actorAssignmentId", "parentRunId", "deliveryStatus"])
+    .index("by_each_pending", [
+      "actorAssignmentId",
+      "parentRunId",
+      "wait",
+      "deliveryStatus",
+      "status",
+    ])
+    .index("by_membership", ["actorAssignmentId", "parentRunId", "groupSealed"])
     .index("by_group", ["actorAssignmentId", "parentRunId", "group"])
     .index("by_unjoined", ["actorAssignmentId", "rootCancellationEpoch", "wait", "groupReleased"])
     .index("by_root_run", ["rootAssignmentId", "parentRunId", "sequence"]),
