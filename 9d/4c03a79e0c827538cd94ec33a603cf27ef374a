@@ -1,0 +1,29 @@
+src/component/hooks.ts
+  s_d863bd773ba186::t_26c58be79931b4 17-23,33,359
+src/component/queue.ts
+  s_d863bd773ba186::t_f695fedb4bc656 648,650,834-835,838-839
+src/component/schema.ts
+  s_d863bd773ba186::t_76faf1a110a4a9 26-29,32,271-275
+src/component/subagents.ts
+  s_d863bd773ba186::t_4349c9b879210f 379,382,456,484,487,1033
+tests/delegation.test.ts
+  s_d863bd773ba186::t_7a028382dbf8a5 11
+tests/review-regressions.test.ts
+  s_d863bd773ba186::t_5451336079ec11 10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9d4c03a79e0c827538cd94ec33a603cf27ef374a",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
