@@ -2390,3 +2390,96 @@ it("an ended Builder releases every empty all cohort at the maximum launch budge
     "verified result after empty cohorts",
   );
 });
+
+it.each([1, HOST_LIMITS.messagesPerChild.max])(
+  "a deferred child answer uses reserved capacity at queueLength=%s and stays visible when FIFO heads coalesce",
+  async (queueLength) => {
+    const t = setup({ ...maxima, queueLength });
+    const root = await manualRoot(t);
+    const child = await launch(t, root, "Builder");
+    const descendant = await launch(t, child, "Reviewer");
+    await t.mutation(components.agevex.queue.finish, {
+      assignmentId: child.assignmentId,
+      turnToken: child.turnToken,
+      errorCode: null,
+    });
+    await complete(t, descendant, "review before deferred question");
+    const current = (await t.query(components.agevex.queue.execution, {
+      assignmentId: child.assignmentId,
+    }))!;
+    expect(current.turnOrigin).toBe("subagent_result");
+    await t.mutation(components.agevex.queue.claim, {
+      assignmentId: child.assignmentId,
+      turnToken: current.turnToken!,
+    });
+    // Fill the ordinary queue while the result-triggered turn is running. The
+    // eventual answer is control traffic and must not need another regular slot.
+    for (let index = 0; index < queueLength; index++)
+      expect(
+        await t.mutation(api.agents.coordinate, {
+          op: "message",
+          assignmentId: root.assignmentId,
+          turnToken: root.turnToken,
+          runId: child.runId,
+          text: `queued parent follow-up ${index}`,
+        }),
+      ).toMatchObject({ status: "accepted" });
+    await t.run(async (ctx) =>
+      ctx.runMutation(components.agevex.queue.write, {
+        assignmentId: child.assignmentId,
+        executionId: current.turnToken!,
+        cancellationEpoch: current.cancellationEpoch,
+        handle: await createFunctionHandle(components.agent.messages.addMessages),
+        nativeMessages: {
+          getMessages: await createFunctionHandle(components.agent.messages.getMessagesByIds),
+          finalizeMessage: await createFunctionHandle(components.agent.messages.finalizeMessage),
+        },
+        deferredTools: ["askHuman"],
+        args: {
+          threadId: child.threadId,
+          promptMessageId: current.promptMessageId,
+          failPendingSteps: false,
+          messages: [
+            {
+              message: {
+                role: "assistant",
+                content: [
+                  {
+                    type: "tool-call",
+                    toolCallId: "reserved-deferred-question",
+                    toolName: "askHuman",
+                    input: { question: "Which revision?" },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      }),
+    );
+    expect(
+      await t.query(components.agevex.queue.execution, { assignmentId: child.assignmentId }),
+    ).toMatchObject({ approvalBlocked: true, queuedMessages: queueLength + 1 });
+    expect((await tree(t, root.threadId)).find((run) => run.runId === child.runId)?.status).toBe(
+      "running",
+    );
+    await owner(t).mutation(api.agents.answer, {
+      threadId: child.threadId,
+      toolCallId: "reserved-deferred-question",
+      text: "Use the final revision from this deferred answer",
+    });
+    v2.steps.Builder = () => text("Builder completed after the deferred answer");
+    await t.mutation(components.agevex.queue.finish, {
+      assignmentId: root.assignmentId,
+      turnToken: root.turnToken,
+      errorCode: null,
+    });
+    await drain(t);
+    expect(calls("Builder")).toHaveLength(1);
+    const prompt = JSON.stringify(calls("Builder")[0].args.prompt);
+    expect(prompt).toContain("Use the final revision from this deferred answer");
+    for (let index = 0; index < queueLength; index++)
+      expect(prompt).toContain(`queued parent follow-up ${index}`);
+    expect((await tree(t, root.threadId)).every((run) => run.status === "completed")).toBe(true);
+  },
+);

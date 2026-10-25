@@ -1003,6 +1003,11 @@ export const write = mutation({
         await disarmRecovery(ctx, row);
         if (row.approvalBlocked) throw new Error("APPROVAL_ALREADY_PENDING");
         if (row.approvals?.requests.length) throw new Error("APPROVAL_RESULTS_MISSING");
+        // This is the suspended turn's control continuation, so it uses the
+        // reserved head/approval slot even when ordinary ready work is full.
+        // answer/respond update this exact row instead of admitting more work;
+        // 100 ordinary rows + one parent-answer slot + this continuation remain
+        // within the 102-row per-assignment cancel bound in limits.ts.
         // The response continuation must precede unrelated queued sends.
         const head = await ctx.db
           .query("inbox")
@@ -1123,7 +1128,7 @@ export const respond = mutation({
 /** Save a deferred native result and release its continuation atomically.
  * One exact <=1 MiB call + native prompt <=1 MiB + six <=1 MiB merge
  * heads (Agent messages.ts:436-477) + <=64 KiB saved result + <4.75 MiB
- * bounded readiness/group-release/wake metadata (readyInbox, releaseGroups):
+ * bounded indexed readiness/group-release/wake metadata (releaseGroups):
  * <13 MiB <16 MiB. Approval/deferred counts never multiply native reads.
  * At most 16 fixed-size references are reindexed per answer.
  * No tool payload is copied into coordination state, even for large inputs.
@@ -1172,6 +1177,8 @@ export const answer = mutation({
       throw new ConvexError({ code: "TOOL_CALL_NOT_FOUND" });
     // Agent 0.7.7 example/convex/chat/human.ts:135-148 uses exactly this
     // native tool-result. Our mutation also releases the existing inbox anchor.
+    // Reuse that control slot: a child with a full ready-FIFO backlog must
+    // still be answerable, and partial answers must never allocate more rows.
     const saved = (await ctx.runMutation(pause.addMessages as FunctionHandle<"mutation">, {
       threadId: row.threadId,
       agentName: row.agent,

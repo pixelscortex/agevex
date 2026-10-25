@@ -18,6 +18,9 @@ const open = (alice: ReturnType<ReturnType<typeof setup>["withIdentity"]>, promp
     .mutation(api.agents.open, { agent: "Main", prompt, requestKey: prompt })
     .then(requireReceipt);
 
+// Seventeen real Workflow turns can exceed the default five-second wall clock
+// on concurrent worktrees. The execution-window guarantee below uses fake time
+// and exact call counts, so a longer harness timeout cannot weaken it.
 it("a backlog larger than pool capacity runs every turn exactly once", async () => {
   const t = setup();
   const alice = t.withIdentity({ subject: "alice" });
@@ -38,7 +41,7 @@ it("a backlog larger than pool capacity runs every turn exactly once", async () 
       assignmentStatus: "open",
     });
   }
-});
+}, 15_000);
 
 it("an expired watchdog timer cannot strand a turn that is still queued", async () => {
   const t = setup();
