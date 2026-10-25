@@ -34,6 +34,18 @@
       "types": "./dist/component/_generated/component.d.ts"
     },
     "./test": "./src/test.ts",
+    "./meter": {
+      "types": "./dist/meter/index.d.ts",
+      "default": "./dist/meter/index.js"
+    },
+    "./meter/convex.config": {
+      "types": "./dist/meter/component/convex.config.d.ts",
+      "default": "./dist/meter/component/convex.config.js"
+    },
+    "./meter/_generated/component.js": {
+      "types": "./dist/meter/component/_generated/component.d.ts"
+    },
+    "./meter/test": "./src/meter/test.ts",
     "./extract": {
       "types": "./dist/extract/index.d.ts",
       "default": "./dist/extract/index.js"
@@ -73,13 +85,15 @@
     "lint:convex:check": "bun run scripts/check-convex-lint.ts",
     "check": "vp check . && bun run lint:convex:check",
     "test": "vp test --run",
-    "test:live": "vp test --run --config vite.live.config.ts && bun run test:live:extract && vp test --run --config tests/sandbox/vite.live.config.ts && bun run test:live:telemetry",
+    "test:live": "vp test --run --config vite.live.config.ts && bun run test:meter:live && bun run test:live:extract && vp test --run --config tests/sandbox/vite.live.config.ts && bun run test:live:telemetry",
+    "test:meter:live": "vp test --run --config tests/meter/live.config.ts",
     "test:live:extract": "vp test --run --config tests/extract/vite.live.config.ts",
     "test:tools": "bun run build && vp test --run tests/tools",
     "registry:build": "bun run --cwd docs/site registry:build",
     "test:live:telemetry": "vp test --run --config tests/telemetry/vite.live.config.ts --reporter verbose"
   },
   "dependencies": {
+    "@convex-dev/aggregate": "^0.3.4",
     "@convex-dev/rag": "0.7.8",
     "@convex-dev/workflow": "0.4.10",
     "@convex-dev/workpool": "0.4.14",
@@ -93,6 +107,7 @@
     "@convex-dev/agent": "0.7.7",
     "@convex-dev/eslint-plugin": "5.0.0",
     "@edge-runtime/vm": "5.0.0",
+    "@openrouter/ai-sdk-provider": "^3.1.0",
     "@types/node": "26.6.5",
     "ai": "7.0.153",
     "convex": "1.47.0",
