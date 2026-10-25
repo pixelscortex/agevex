@@ -1,0 +1,25 @@
+tests/extract/extract.test.ts
+  s_d863bd773ba186::t_b34ede3a6e7f0f 55,68,95-151,154-208,210-223,225,227-238,240-251,531-535
+tests/extract/rag.test.ts
+  s_d863bd773ba186::t_85660c3b828827 6,17-19,145-147,161-163,176-178,234-244,284-285,323,327,329,331,342,344-345,347,363,387,397,402,405,421,443-444,446-448,452,462-655
+tests/extract/setup.ts
+  s_d863bd773ba186::t_b9ab46c2e2734a 19,24,42-47,50-52,82,104-108,116
+tests/extract/slot.test.ts
+  s_d863bd773ba186::t_8b157c5e5fb845 11,29,36,53,71-89,91,106-112,115,171,197,211,264,271-315
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b5786b7fe00656e1c48934fdc1966c0ef78af9a8",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}

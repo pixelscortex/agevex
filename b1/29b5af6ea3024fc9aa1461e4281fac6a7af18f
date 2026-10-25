@@ -1,0 +1,22 @@
+docs/site/content/docs/modules/extract.mdx
+  s_d863bd773ba186::t_9ef35d5fbdca50 89-124
+  s_d863bd773ba186::t_a73b86b95abb2c 196-197,299
+README.md
+  s_d863bd773ba186::t_75b84717487125 443-446
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b129b5af6ea3024fc9aa1461e4281fac6a7af18f",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,41 @@
+README.md
+  s_d863bd773ba186::t_26cc8c71e3fec6 482
+docs/site/content/docs/modules/extract.mdx
+  s_d863bd773ba186::t_44e0b394743f16 190,194,207,304-307,358-359,368
+src/extract/adapter.ts
+  s_d863bd773ba186::t_c07d04c23f59e8 46,73
+src/extract/component/artifacts.ts
+  s_d863bd773ba186::t_6362349f62b88f 351-353,365,369-372
+src/extract/component/indexing.ts
+  s_d863bd773ba186::t_137168afdaeb2e 4,41-45,76,96-103,125-147
+src/extract/component/workflows.ts
+  s_d863bd773ba186::t_c46279aa8821ac 61,66-69
+src/extract/index.ts
+  s_d863bd773ba186::t_e5f9ef35d09a90 322-324,361-366,432,560-568,570,572-573,575-577,579-604,607,758-767,778-806,828,833-838
+src/extract/limits.ts
+  s_d863bd773ba186::t_4ff67d50019eb4 13,22,25
+src/extract/payload.ts
+  s_d863bd773ba186::t_d3faeea9341c34 48-54
+tests/extract/extract.test.ts
+  s_d863bd773ba186::t_1792392fbac4cf 7-11,173-176,178-180,182-192,200-202,538,550,552-558,560-563,566-576,578-605
+tests/extract/rag.test.ts
+  s_d863bd773ba186::t_7b46bf17a0cd70 493,656-750
+tests/extract/slot.test.ts
+  s_d863bd773ba186::t_70f5aaa5b704c5 56,79-89,350-394
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "72fd1512b82a216937d5be4342d6486b4d25eb17",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
