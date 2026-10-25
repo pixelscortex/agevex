@@ -8,6 +8,7 @@
  */
 import type { ApiFromModules, FunctionReference } from "convex/server";
 import type { GenericId } from "convex/values";
+import type * as files from "../files.js";
 import type * as hooks from "../hooks.js";
 import type * as queue from "../queue.js";
 import type * as subagents from "../subagents.js";
@@ -35,6 +36,7 @@ type Exposed<T, Name extends string | undefined> = {
 export type ComponentApi<Name extends string | undefined = string | undefined> = Exposed<
   ApiFromModules<{
     cancellation: typeof cancellation;
+    files: typeof files;
     hooks: typeof hooks;
     queue: typeof queue;
     subagents: typeof subagents;

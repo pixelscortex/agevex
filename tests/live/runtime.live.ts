@@ -7,7 +7,10 @@ import { anyApi, type ApiFromModules } from "convex/server";
 import { LIVE_LIMITS } from "./config.js";
 import agevex from "../../src/test.js";
 import schema from "../fixture/schema.js";
-import { live, modelId } from "./convex/agents.js";
+import { z } from "zod";
+import { defineTask, runTask } from "../../src/client/index.js";
+import { components } from "../fixture/api.js";
+import { live, modelId, taskModel, fakeUsage } from "./convex/agents.js";
 import type * as agents from "./convex/agents.js";
 
 declare const process: { env: Record<string, string | undefined> };
@@ -15,10 +18,41 @@ const api = anyApi as unknown as ApiFromModules<{ agents: typeof agents }>;
 const modules = import.meta.glob(["./convex/**/*.ts", "./convex/**/*.js"]);
 
 it.skipIf(!process.env.OPENROUTER_API_KEY)(
-  "live plain turn, repeated delegation, depth-two round trip and passive critic side review",
+  "live structured task, metered turn, delegation, depth-two round trip and passive critic review",
   async () => {
     const scenarios = [];
     try {
+      const classify = defineTask({
+        name: "live-classify",
+        input: z.string(),
+        output: z.object({ answer: z.string() }),
+        prompt: (value) => `Return JSON with answer containing only the word ${value}.`,
+        model: taskModel,
+        repair: 0,
+      });
+      const tasks = convexTest(schema, modules);
+      agent.register(tasks);
+      agevex.register(tasks);
+      const beforeTask = live.charges.length;
+      expect(
+        await tasks.action((ctx) =>
+          runTask(ctx, classify, "hello", {
+            component: components.agevex,
+            key: "live-structured",
+            usage: fakeUsage,
+            attribution: {
+              subject: "live-owner",
+              rootThreadId: "task",
+              threadId: "task",
+              runId: "task",
+              agent: "Classifier",
+            },
+          }),
+        ),
+      ).toMatchObject({ status: "done", value: { answer: expect.any(String) } });
+      const taskCharge = live.charges[beforeTask];
+      scenarios.push({ scenario: "structured-task", usage: taskCharge?.usage });
+      expect(taskCharge?.usage).toBeTruthy();
       for (const scenario of ["plain", "delegation", "depth", "critic"] as const) {
         const delegation = scenario === "delegation";
         const depth = scenario === "depth";
@@ -73,6 +107,21 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
             queued: 0,
             errorCode: null,
           });
+        if (scenario === "plain") {
+          const charges = live.charges.filter(
+            (charge) => charge.facts.threadId === receipt.threadId,
+          );
+          expect(charges).toHaveLength(1);
+          expect(charges[0]).toMatchObject({
+            facts: {
+              subject: "live-owner",
+              rootThreadId: receipt.threadId,
+              threadId: receipt.threadId,
+              agent: "Main",
+            },
+            usage: expect.any(Object),
+          });
+        }
         if (critic) {
           expect(live.criticCalls).toBe(1);
           // Side delivery admits a pending note without starting another turn.
@@ -98,6 +147,21 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
             paginationOpts: { cursor: null, numItems: 20 },
           });
           expect(beforeClaim.page.some((message) => message.origin === "note")).toBe(false);
+          const reviews = await owner.query(api.agents.delegations, {
+            threadId: receipt.threadId,
+            paginationOpts: { cursor: null, numItems: 20 },
+          });
+          const firstReview = await owner.query(api.agents.messages, {
+            threadId: reviews.page[0].childThreadId!,
+            paginationOpts: { cursor: null, numItems: 20 },
+          });
+          const reply = firstReview.page.find(
+            (message) => message.role === "assistant" && message.text.trim(),
+          )!.text;
+          // A real provider may choose the documented NONE response even when
+          // the scenario asks for useful advice. That reply posts no note;
+          // every other nonempty review must persist once at the next claim.
+          const expectedNotes = reply.trim() === "NONE" ? 0 : 1;
           requireReceipt(
             await owner.mutation(api.agents.send, {
               threadId: receipt.threadId,
@@ -132,7 +196,11 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
             afterClaim.page.filter(
               (message) => message.origin === "note" && message.from === "Critic",
             ),
-          ).toHaveLength(1);
+            JSON.stringify({
+              reply,
+              afterClaim: afterClaim.page,
+            }),
+          ).toHaveLength(expectedNotes);
         }
         if (delegation) {
           const runs = await owner.query(api.agents.delegations, {

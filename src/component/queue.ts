@@ -347,6 +347,7 @@ export const accept = mutation({
     // external effect can outlive an abandoned claim, so request receipts enter
     // the same ledger already done rather than leasing an action-shaped claim.
     const receiptId = await ctx.db.insert("receipts", {
+      kind: "effect",
       scope: `request:${args.subject}`,
       key: args.requestKey,
       fingerprint: args.fingerprint,
@@ -866,6 +867,7 @@ export const write = mutation({
     args: v.any(),
     rejectStale: v.optional(v.boolean()),
     nativeStream: v.optional(v.string()),
+    trackUsage: v.optional(v.boolean()),
     deferredTools: v.optional(v.array(v.string())),
     nativeMessages: v.optional(
       v.object({
@@ -971,6 +973,13 @@ export const write = mutation({
       // metadata in the SAME transaction as the native placeholder creation.
       const messages = (result as { messages: MessageDoc[] }).messages;
       await recordMessages(ctx, row, messages);
+      const modelStep = args.trackUsage
+        ? messages.find((message) => message.usage && message.status === "success")
+        : undefined;
+      if (modelStep)
+        await ctx.db.patch("assignments", row._id, {
+          modelStep: { messageId: String(modelStep._id), stepOrder: modelStep.stepOrder },
+        });
       // Claiming a continuation never consumes a decision: cancel can still
       // win while the tool/provider awaits I/O. Retire only with its native save.
       // Agent 0.7.7 src/vercel/client/prepareApprovalContext.ts:23-30 treats a
@@ -1210,6 +1219,7 @@ async function saveResponseReceipt(
   if (getConvexSize(messageId) > LIMITS.receiptResultBytes) throw new Error("RESULT_TOO_LARGE");
   await armPurge(ctx);
   await ctx.db.insert("receipts", {
+    kind: "effect",
     scope: receipt.scope,
     key: receipt.key,
     fingerprint: receipt.fingerprint,

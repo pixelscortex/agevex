@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { opaqueKey } from "../src/client/keys.js";
 import { requireReceipt } from "./receipt.js";
 import { it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { setup, api, internal, components, state } from "./setup.js";
@@ -1201,9 +1202,15 @@ it("registration lease limits expire an in-flight once tool without repeating it
     })
     .toBe(true);
   await tick(t, 26);
+  const execution = (await t.query(components.agevex.queue.execution, {
+    assignmentId: receipt.assignmentId,
+  }))!;
   const admission = await t.mutation(components.agevex.ledger.begin, {
-    scope: "tool:alice:" + receipt.threadId + ":nested-cancel-probe",
-    key: "nested",
+    scope: await opaqueKey("tool", "alice", receipt.threadId, "nested-cancel-probe"),
+    key: await opaqueKey(
+      "once",
+      await opaqueKey("tool-call", execution.runId, receipt.threadId, "nested"),
+    ),
     fingerprint: await (await import("../src/client/once.js")).fingerprint({}),
   });
   expect(admission).toEqual({ status: "unknown" });

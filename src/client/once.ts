@@ -4,30 +4,22 @@ import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import type { Value } from "convex/values";
 import type { ComponentApi } from "../component/_generated/component.js";
 
-/** The core context always exposes a meter. Until the optional meter component
- * is configured, its scoped API is a no-op (spec §6.3); callers need no branch
- * and hooks receive the same facts as tools. This stores no billing state. */
-export type MeterCharge = {
-  attach(input: { requestId: string }): Promise<void>;
-  correct(input: Record<string, unknown>): Promise<void>;
-  settle(input: { usd?: number; credits?: number }): Promise<void>;
-};
-export type ScopedMeter = {
-  estimate(provider: string, input: Record<string, unknown>): Promise<MeterCharge>;
-};
-const noCharge: MeterCharge = {
-  attach: () => Promise.resolve(),
-  correct: () => Promise.resolve(),
-  settle: () => Promise.resolve(),
-};
-export const noopMeter: ScopedMeter = { estimate: () => Promise.resolve(noCharge) };
+import { fingerprint, opaqueKey } from "./keys.js";
+export { fingerprint } from "./keys.js";
+import { scopedMeter, type MeterBackend, type ScopedMeter } from "./slots.js";
+export { noopMeter } from "./slots.js";
+export type { ScopedMeter, MeterCharge } from "./slots.js";
 
 export type ToolContext = {
   ctx: GenericActionCtx<GenericDataModel>;
   subject: string;
+  rootThreadId: string;
+  agent: string;
   threadId: string;
   runId: string;
+  /** Bounded opaque id; the provider id remains available for attribution. */
   toolCallId: string;
+  nativeToolCallId?: string;
   signal: AbortSignal;
   meter: ScopedMeter;
 };
@@ -40,25 +32,6 @@ type OnceConfig<Input, Output> = {
   repeatSafe?: boolean;
   leaseMs?: number;
 };
-
-/** Stable JSON for fingerprints: object property order is not part of an input. */
-export async function fingerprint(input: unknown): Promise<string> {
-  const canonical = (value: unknown): unknown =>
-    Array.isArray(value)
-      ? value.map(canonical)
-      : value && typeof value === "object"
-        ? Object.fromEntries(
-            Object.entries(value)
-              .sort(([a], [b]) => a.localeCompare(b))
-              .map(([k, v]) => [k, canonical(v)]),
-          )
-        : value;
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(JSON.stringify(canonical(input))),
-  );
-  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
-}
 
 /**
  * Opt a tool into the shared receipts ledger. Unknown outcomes are visible to
@@ -87,15 +60,22 @@ export function bindOnceTool(
   context: Omit<ToolContext, "toolCallId">,
   fence: { assignmentId: string; executionId: string; cancellationEpoch: number },
   leaseMs: number,
+  backend?: MeterBackend,
 ): Tool {
   const config = (declared as Tool & { [ONCE]?: OnceConfig<unknown, Value> })[ONCE];
   if (!config) return declared;
   return {
     ...declared,
     execute: async (input: unknown, options: ToolExecutionOptions<any>) => {
-      const tc = { ...context, toolCallId: options.toolCallId };
-      const scope = `tool:${tc.subject}:${tc.threadId}:${config.name}`;
-      const key = config.key?.(input, tc) ?? tc.toolCallId;
+      const tc = {
+        ...context,
+        toolCallId: options.toolCallId,
+        nativeToolCallId:
+          (options.context as ToolContext | undefined)?.nativeToolCallId ?? options.toolCallId,
+        meter: scopedMeter(backend, options.toolCallId),
+      };
+      const scope = await opaqueKey("tool", tc.subject, tc.threadId, config.name);
+      const key = await opaqueKey("once", config.key?.(input, tc) ?? tc.toolCallId);
       const common = { scope, key, ...fence };
       const admission = await rawCtx.runMutation(component.ledger.begin, {
         ...common,

@@ -9,6 +9,9 @@ import {
   type CoordinateArgs,
   type CoordinateResult,
   type AgentHooks,
+  type SlotFacts,
+  type MeterChargeBackend,
+  type UsageSlot,
 } from "../../../src/client/index.js";
 
 import { LIVE_LIMITS } from "../config.js";
@@ -22,13 +25,20 @@ export const live = {
   criticCalls: 0,
   rootCalls: 0,
   childCalls: 0,
+  charges: [] as { facts: SlotFacts; provider: string; key: string; usage?: unknown }[],
   requests: 0,
   inputTokens: 0,
   outputTokens: 0,
   usd: 0,
   costReported: false,
   models: new Set<string>(),
-  responses: [] as { status: number; tools: string[]; finishReasons: string[] }[],
+  responses: [] as {
+    status: number;
+    tools: string[];
+    finishReasons: string[];
+    errorCode?: string | number;
+    errorMessage?: string;
+  }[],
   evidence: [] as Promise<void>[],
 };
 export const modelId = process.env.OPENROUTER_LIVE_MODEL ?? "openrouter/free";
@@ -50,7 +60,7 @@ const provider = createOpenAI({
       ...init,
       body: JSON.stringify({ ...body, provider: { ...body.provider, require_parameters: true } }),
     });
-    const outcome = {
+    const outcome: (typeof live.responses)[number] = {
       status: response.status,
       tools: [] as string[],
       finishReasons: [] as string[],
@@ -62,10 +72,11 @@ const provider = createOpenAI({
       .clone()
       .text()
       .then((body) => {
-        for (const line of body.split("\n")) {
+        for (const line of body.trim().startsWith("{") ? [`data: ${body}`] : body.split("\n")) {
           if (!line.startsWith("data: ") || line === "data: [DONE]") continue;
           try {
             const chunk = JSON.parse(line.slice(6)) as {
+              error?: { code?: string | number; message?: string };
               model?: string;
               usage?: { cost?: number };
               choices?: {
@@ -82,6 +93,12 @@ const provider = createOpenAI({
                 if (tool.function?.name && outcome.tools.length < LIVE_LIMITS.requests)
                   outcome.tools.push(tool.function.name);
             }
+            if (response.status >= 400 && chunk.error) {
+              outcome.errorCode = chunk.error.code;
+              outcome.errorMessage = chunk.error.message
+                ?.replaceAll(process.env.OPENROUTER_API_KEY ?? "skipped", "[REDACTED]")
+                .slice(0, 500);
+            }
             if (chunk.model) live.models.add(chunk.model);
             if (typeof chunk.usage?.cost === "number") {
               live.costReported = true;
@@ -96,12 +113,30 @@ const provider = createOpenAI({
     return response;
   },
 });
+export const taskModel = provider.chat(modelId);
+const handle = (key: string): MeterChargeBackend => ({
+  key,
+  attach: async () => {},
+  correct: async () => {},
+  settle: async () => {},
+  get: async () => null,
+});
+export const fakeUsage: UsageSlot = {
+  scope: (_ctx, facts) => ({
+    estimate: async (_provider, args) => handle(args.key),
+    record: async (provider, args) => {
+      live.charges.push({ facts, provider, key: args.key, usage: args.usage });
+      return handle(args.key);
+    },
+  }),
+};
 const native = componentsGeneric().agent as unknown as NativeComponent<"agent">;
 const agevex = componentsGeneric().agevex as unknown as ComponentApi<"agevex">;
 const rootModel = provider.chat(modelId);
 const rootStream = rootModel.doStream.bind(rootModel);
 rootModel.doStream = (args) => {
   const call = live.rootCalls++;
+  const delegates = (live.depth && call === 0) || (live.delegation && call < 2);
   // Force exactly two real tool invocations in the collaboration scenario.
   // Choosing a tool is host policy supported by the native model interface;
   // the runtime still validates, creates, runs and verifies every child.
@@ -111,37 +146,36 @@ rootModel.doStream = (args) => {
     // Both child agents are registered on Main. Constrain this scenario's
     // model-facing choice so repeated delegation cannot accidentally choose
     // Builder and add an unrelated Reviewer run to its two-child assertion.
-    tools: args.tools?.map((tool) =>
-      tool.type === "function" && tool.name === "agevex_delegate"
-        ? {
-            ...tool,
-            inputSchema: {
-              ...tool.inputSchema,
-              properties: {
-                ...tool.inputSchema.properties,
-                agent: { type: "string", enum: [live.depth ? "Builder" : "Researcher"] },
-              },
-            },
-          }
-        : tool,
-    ),
-    toolChoice:
-      (live.depth && call === 0) || (live.delegation && call < 2)
-        ? { type: "tool", toolName: "agevex_delegate" }
-        : { type: "none" },
+    tools: delegates
+      ? args.tools?.map((tool) =>
+          tool.type === "function" && tool.name === "agevex_delegate"
+            ? {
+                ...tool,
+                inputSchema: {
+                  ...tool.inputSchema,
+                  properties: {
+                    ...tool.inputSchema.properties,
+                    agent: { type: "string", enum: [live.depth ? "Builder" : "Researcher"] },
+                  },
+                },
+              }
+            : tool,
+        )
+      : [],
+    toolChoice: delegates ? { type: "tool", toolName: "agevex_delegate" } : { type: "none" },
   });
 };
 const childModel = provider.chat(modelId);
 const childStream = childModel.doStream.bind(childModel);
 childModel.doStream = (args) => {
   live.childCalls++;
-  // This scenario requires a terminal Researcher answer, just like Reviewer
-  // and Critic below. Enforce that host policy: an instruction alone lets a
-  // free model ask_parent while the scripted root forces another delegation,
-  // stranding the asking child instead of testing repeated result delivery.
+  // This scenario requires a terminal Researcher answer. Withhold the tool
+  // inventory as well as setting toolChoice:none: some free routes otherwise
+  // emit a blocking ask_parent call despite that provider setting.
   return childStream({
     ...args,
     maxOutputTokens: LIVE_LIMITS.outputTokens,
+    tools: [],
     toolChoice: { type: "none" },
   });
 };
@@ -200,20 +234,23 @@ builderModel.doStream = (args) => {
     // Match the root's model-facing constraint: the depth scenario requires
     // Reviewer, while a forced tool choice alone leaves its agent argument
     // unconstrained. Every child still uses the real managed delegation path.
-    tools: args.tools?.map((tool) =>
-      tool.type === "function" && tool.name === "agevex_delegate"
-        ? {
-            ...tool,
-            inputSchema: {
-              ...tool.inputSchema,
-              properties: {
-                ...tool.inputSchema.properties,
-                agent: { type: "string", enum: ["Reviewer"] },
-              },
-            },
-          }
-        : tool,
-    ),
+    tools:
+      call === 0
+        ? args.tools?.map((tool) =>
+            tool.type === "function" && tool.name === "agevex_delegate"
+              ? {
+                  ...tool,
+                  inputSchema: {
+                    ...tool.inputSchema,
+                    properties: {
+                      ...tool.inputSchema.properties,
+                      agent: { type: "string", enum: ["Reviewer"] },
+                    },
+                  },
+                }
+              : tool,
+          )
+        : [],
     toolChoice: call === 0 ? { type: "tool", toolName: "agevex_delegate" } : { type: "none" },
   });
 };
@@ -260,6 +297,7 @@ const watched = new Agent(native, {
 });
 const runtime = registerAgent(agevex, {
   agents: [main, watched],
+  usage: fakeUsage,
   modelAllowlist: [modelId],
   models: () => rootModel,
   refs: {

@@ -22,6 +22,8 @@ export const PLATFORM = {
 
 /** Host defaults and hard ceilings are paired so raising policy cannot unbound a transaction. */
 export const HOST_LIMITS = {
+  // Shared message admission and generation download budget, including history.
+  attachmentBytes: { default: 8 << 20, max: 16 << 20 },
   continuesPerRun: { default: 3, max: 8 },
   sideRunsPerRun: { default: 2, max: 8 },
   // The single note admission cap is independent of the ready-work queue.
@@ -112,6 +114,14 @@ export const LIMITS = {
   notesPending: HOST_LIMITS.notesPending.default,
   noteLength: 4_000,
   firstPromptOrder: 1,
+  telemetryFlushMs: 3_000,
+  filesPerMessage: 8,
+  factBytes: 128,
+  attachmentBytes: HOST_LIMITS.attachmentBytes.default,
+  fileIdLength: 200,
+  functionHandleLength: 1024,
+  sandboxExitCode: 2 ** 31 - 1,
+  fileMetadataBytes: 4 << 10,
   taskRepairs: 1,
   taskPromptLength: 16_000,
   hookErrorLength: 1_000,
@@ -187,8 +197,9 @@ export const LIMITS = {
 
 /** Only these policy bounds are tunable; internal safety/platform facts are not. */
 export const limitsValidator = v.object({
-  // Optional on persisted v1 assignments; resolveLimits always fills both for
-  // new registrations. Missing legacy fields use the current safe defaults.
+  // resolveLimits fills every optional policy field at registration; version-1
+  // replay fixtures may omit newer policy fields without changing journal steps.
+  attachmentBytes: v.optional(v.number()),
   continuesPerRun: v.optional(v.number()),
   sideRunsPerRun: v.optional(v.number()),
   notesPending: v.number(),

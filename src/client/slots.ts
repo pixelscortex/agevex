@@ -1,8 +1,11 @@
+import { opaqueKey } from "./keys.js";
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import type { Telemetry, ToolSet } from "ai";
 import type { ToolContext } from "./once.js";
 
-/** Server-derived attribution. Optional modules depend on this contract; core
+/** All semantic facts are nonempty and at most LIMITS.factBytes (128 UTF-8 bytes).
+ * Opaque keys are full SHA-256 hex (64 bytes); original facts stay in attribution.
+ * Server-derived attribution. Optional modules depend on this contract; core
  * never depends on their components, provider clients or storage formats. */
 export type SlotFacts = {
   subject: string;
@@ -92,12 +95,21 @@ export function scopedMeter(backend: MeterBackend | undefined, callKey: string):
     return {
       key: charge.key,
       get: () => charge.get(),
-      attach: (args) =>
-        charge.attach({ ...args, key: args.key ?? `${charge.key}:attach:${counts.attach++}` }),
-      correct: (args) =>
-        charge.correct({ ...args, key: args.key ?? `${charge.key}:correct:${counts.correct++}` }),
-      settle: (args) =>
-        charge.settle({ ...args, key: args.key ?? `${charge.key}:settle:${counts.settle++}` }),
+      attach: async (args) =>
+        charge.attach({
+          ...args,
+          key: await opaqueKey("operation", charge.key, "attach", args.key ?? counts.attach++),
+        }),
+      correct: async (args) =>
+        charge.correct({
+          ...args,
+          key: await opaqueKey("operation", charge.key, "correct", args.key ?? counts.correct++),
+        }),
+      settle: async (args) =>
+        charge.settle({
+          ...args,
+          key: await opaqueKey("operation", charge.key, "settle", args.key ?? counts.settle++),
+        }),
     };
   };
   return {
@@ -105,14 +117,14 @@ export function scopedMeter(backend: MeterBackend | undefined, callKey: string):
       wrap(
         await backend.estimate(provider, {
           ...args,
-          key: args.key ?? `${callKey}:charge:${ordinal++}`,
+          key: await opaqueKey("charge", callKey, args.key ?? ordinal++),
         }),
       ),
     record: async (provider, args) =>
       wrap(
         await backend.record(provider, {
           ...args,
-          key: args.key ?? `${callKey}:charge:${ordinal++}`,
+          key: await opaqueKey("charge", callKey, args.key ?? ordinal++),
         }),
       ),
   };

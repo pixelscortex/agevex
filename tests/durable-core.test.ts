@@ -296,7 +296,8 @@ it("defineOnceTool reuses its result and injects trusted facts without repeating
   expect(state.onceContext).toMatchObject({
     subject: "alice",
     threadId: receipt.threadId,
-    toolCallId: "effect-1",
+    nativeToolCallId: "effect-1",
+    toolCallId: expect.stringMatching(/^[a-f0-9]{64}$/),
   });
   expect(state.onceContext?.runId).toBeTruthy();
   expect(state.onceContext?.signal).toBeInstanceOf(AbortSignal);

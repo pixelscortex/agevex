@@ -45,5 +45,6 @@ export type {
   MeterBackend,
   MeterChargeBackend,
 } from "./slots.js";
+export type { SandboxCompletion } from "./runtime.js";
 export { defineTask, runTask } from "./tasks.js";
 export type { Task, TaskOptions, TaskOutcome } from "./tasks.js";

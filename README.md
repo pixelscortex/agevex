@@ -168,6 +168,112 @@ hold a parent's settlement fence, never fail their parent, and cancel with the
 root. Side agents keep their own configured model; root model overrides do not
 apply to them. Their threads use the same authorized `messages` reader as other children.
 
+## Optional module slots
+
+Pass `usage`, `budget`, `telemetry`, `sandbox`, or `extract` to `registerAgent`.
+Core imports only the contracts in `src/client/slots.ts`; module adapters belong
+in their own packages. Omitted slots ignore usage, allow spending, export no
+telemetry, add no sandbox tools, and pass files as native model parts.
+
+Every managed tool receives a `ToolContext` through AI SDK `options.context`.
+Native `createTool` also receives these facts on its normal injected context;
+`defineOnceTool` receives them as its second argument. Facts include `subject`,
+`rootThreadId`, `threadId`, the shared user `runId`, `agent`, `toolCallId`,
+`signal`, and `meter`. The meter is always present. Charge keys hash the
+tool-call identity and ordinal; operations hash the charge, method and ordinal.
+Explicit keys distinguish logical operations when necessary. Model usage is
+recorded once per saved step with exact native thread/message/step ids;
+recording failures never replay or fail the generation.
+
+Budget `check(ctx, { subject, runId })` runs before each slice. A denial ends
+with `BUDGET_EXCEEDED` in activity and a passive thread note admitted under
+the same `notesPending` cap as host and sandbox notes. Notes remain inbox
+text until the next safe turn claim saves them natively. If the cap is full,
+the budget notice is omitted, existing notes wait for that claim, and the typed
+`BUDGET_EXCEEDED` still stops the turn; notices never displace notes or bypass
+admission. Pair this with the host's copied `continue-budget` registry tool:
+obtain explicit spending consent, update host budget policy, cancel the stopped
+run to clear its recovery state, and send a fresh request. Cancellation discards
+that run's pending notes. Core never resumes an uncertain paid step.
+
+Semantic slot facts (subject, agent, root/thread/run ids) are nonempty and at most
+128 UTF-8 bytes (`LIMITS.factBytes`); invalid registration/endpoint facts throw a
+typed `ConvexError`. Opaque keys use full SHA-256 hex (64 ASCII bytes) over
+canonical, domain-separated parts, including explicit meter keys and once-tool
+keys. Replay produces the same key; original semantic facts stay in attribution.
+`tc.toolCallId` is bounded the same way; `tc.nativeToolCallId` retains the provider id.
+
+Telemetry integrations receive all turn facts plus `turnKey` (hashed slice identity).
+`flush(facts, signal)` receives that same identity, so an adapter can create a
+separate action-scoped buffer for each turn and discard it after export. Flush
+runs in `finally`, fails open, and is bounded to three seconds even when an
+exporter ignores abort. Sandbox tools require both a slot and agent option
+`sandbox: true`. Connect a sandbox module's trusted `onComplete` mutation to
+`runtime.sandboxComplete(ctx, event)`; it authorizes background operation
+`sandbox` against the stored owner and posts a bounded passive note. Both idle
+and in-flight notes wait for the next safe turn claim; ordinary tool-step slices
+never deliver notes. A full shared `notesPending` cap throws typed
+`NOTES_PENDING_LIMIT`, just like host notes.
+Saved budget and sandbox messages expose `origin: "note"` and `from: "budget"`
+or `from: "sandbox"` through `messages`; passive notes never consume ready-work capacity.
+
+## File attachments
+
+`open` and `send` accept `files?: string[]`: at most eight distinct native Agent
+`storeFile` file ids. Agent 0.7.7 has no uploader ownership field. In the host's
+**trusted upload path**, attest the subject with
+`runtime.registerFile(mutationCtx, { agent, fileId, subject })` after storing on
+that subject's behalf. Never expose this helper as a public arbitrary-id claim.
+A deduplicated native file may have separate grants for several uploaders.
+
+Admission rejects unregistered/foreign files and records exact native message
+attachment ids atomically with saving the message. Ownership facts use tagged
+rows of the existing receipts ledger, excluded from effect-receipt TTL cleanup.
+File bytes, metadata and refcounts remain native. Admission reads actual storage
+sizes and rejects totals over `limits.attachmentBytes` (default 8 MiB, hard max
+16 MiB) per message with `{ status: "rejected", code: "ATTACHMENT_LIMIT" }`.
+Native downloads stream under the same per-generation budget, including history;
+overflow stops before the model call and ends the turn with `GENERATION_FAILED`.
+`runtime.fileAttached(ctx, { subject, threadId, fileId })`
+provides an indexed exact-attachment check for an extract adapter's authorized
+host callback; the helper itself is server-only. Without extract, files reach
+the model as native file parts. With extract, the first slice admits one durable
+extraction per attached file and adds the slot's thread-bound file tools.
+Extraction owns its own deduplication, status and reads.
+
+## Structured tasks
+
+```ts
+import { defineTask, runTask } from "agevex";
+const classify = defineTask({
+  name: "classify",
+  input: z.object({ text: z.string() }),
+  output: z.object({ category: z.string() }),
+  prompt: ({ text }) => `Classify: ${text}`,
+  model: languageModel,
+  repair: 1,
+});
+// Inside a managed hook: component, attribution, usage and fence are inherited.
+const result = await runTask(hc, classify, { text });
+// Inside an authorized host action: supply trusted attribution explicitly.
+const hostResult = await runtime.runTask(ctx, classify, { text }, { key, attribution });
+```
+
+Standalone `runTask(ctx, ...)` accepts `component`, `attribution`, and optional
+`usage` in its options. Hooks default to a key derived from run + turn + task
+name: replay in that turn reuses the result; another turn/run gets a fresh one.
+Supply explicit keys for multiple distinct calls to the same task in one turn.
+Explicit keys are scoped to subject + thread + task name, so host actions must
+include the run/turn identity when they want a fresh result. Tasks use AI SDK
+`generateText({ output: Output.object({ schema }) })` with no transport
+retries, one repair re-ask for invalid output by default (`repair: 0` disables
+it), and the core receipts ledger. Results are `{ status: "done", value }`,
+`{ status: "failed", code }`, `{ status: "running" | "unknown" }`, or a typed
+key/cancellation denial. Replays return the stored result; expired leases and
+uncertain transport outcomes remain `unknown` and never run again. Results fit
+64 KiB; use storage ids for larger artifacts. Each paid attempt records usage
+when configured. Tasks add no Workflow steps or tables.
+
 ## Delegation
 
 Agents may delegate two edges deep: Main → Builder → Reviewer. Set

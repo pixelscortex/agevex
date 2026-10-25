@@ -11,15 +11,22 @@ import { LIMITS } from "./limits.js";
 import type { Id } from "./_generated/dataModel.js";
 
 export async function findReceipt(ctx: Pick<QueryCtx, "db">, scope: string, key: string) {
-  return ctx.db
+  const row = await ctx.db
     .query("receipts")
     .withIndex("by_scope_key", (q) => q.eq("scope", scope).eq("key", key))
     .unique();
+  return row?.kind === "effect" ? row : null;
 }
 
-/** One purge chain per nonempty ledger, rather than one scheduled job per key. */
+/** One purge chain per nonempty effect ledger, rather than one scheduled job
+ * per key. Ownership attestations never arm or prolong this scheduled chain. */
 export async function armPurge(ctx: MutationCtx) {
-  if (!(await ctx.db.query("receipts").withIndex("by_expiry").first()))
+  if (
+    !(await ctx.db
+      .query("receipts")
+      .withIndex("by_expiry", (q) => q.eq("kind", "effect"))
+      .first())
+  )
     await ctx.scheduler.runAfter(LIMITS.purgeIntervalMs, internal.ledger.purge, {});
 }
 
@@ -64,13 +71,14 @@ export const begin = mutation({
     else {
       await armPurge(ctx);
       await ctx.db.insert("receipts", {
+        kind: "effect",
         scope: args.scope,
         key: args.key,
         fingerprint: args.fingerprint,
         ...fields,
       });
     }
-    return { status: "claimed" as const, claim };
+    return { status: "claimed" as const, claim, leaseUntil: fields.leaseUntil };
   },
 });
 
@@ -132,10 +140,15 @@ export const purge = internalMutation({
   handler: async (ctx) => {
     const expired = await ctx.db
       .query("receipts")
-      .withIndex("by_expiry", (q) => q.lte("expiresAt", Date.now()))
+      .withIndex("by_expiry", (q) => q.eq("kind", "effect").lte("expiresAt", Date.now()))
       .take(LIMITS.purgeBatch);
     for (const row of expired) await ctx.db.delete("receipts", row._id);
-    if (await ctx.db.query("receipts").withIndex("by_expiry").first())
+    if (
+      await ctx.db
+        .query("receipts")
+        .withIndex("by_expiry", (q) => q.eq("kind", "effect"))
+        .first()
+    )
       await ctx.scheduler.runAfter(
         expired.length === LIMITS.purgeBatch ? 0 : LIMITS.purgeIntervalMs,
         internal.ledger.purge,

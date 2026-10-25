@@ -1,11 +1,12 @@
-import { generateObject, NoObjectGeneratedError, type LanguageModel } from "ai";
+import { generateText, Output, NoObjectGeneratedError, type LanguageModel } from "ai";
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import { convexToJson, getConvexSize, type Value } from "convex/values";
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import type { z } from "zod";
 import type { ComponentApi } from "../component/_generated/component.js";
 import { HOST_LIMITS, LIMITS } from "../component/limits.js";
-import { fingerprint } from "./once.js";
+import { fingerprint, opaqueKey } from "./keys.js";
+import { assertFact } from "../component/facts.js";
 import type { SlotFacts, UsageSlot } from "./slots.js";
 
 type TaskModel = Extract<LanguageModel, string | LanguageModelV4>;
@@ -18,7 +19,7 @@ export type Task<Input, Output> = {
   repair?: 0 | 1;
 };
 export type TaskOptions = {
-  key: string;
+  key?: string;
   component?: ComponentApi;
   attribution?: SlotFacts;
   usage?: UsageSlot;
@@ -36,6 +37,7 @@ type Binding = {
   component: ComponentApi;
   attribution: SlotFacts;
   usage?: UsageSlot;
+  turnKey: string;
   fence?: { assignmentId: string; executionId: string; cancellationEpoch: number };
 };
 // Action-local capabilities are never serialized into Workflow arguments. Hook
@@ -45,8 +47,8 @@ export function bindTaskContext(ctx: ActionCtx, binding: Binding) {
   bindings.set(ctx, binding);
 }
 
-/** Thin schema/prompt declaration. SDK generateObject owns JSON parsing and
- * validation (ai/src/generate-object/generate-object.ts:481-489); no new task engine. */
+/** Thin schema/prompt declaration. SDK Output.object owns parsing and validation
+ * (ai/src/generate-text/output.ts:127-167); receipts only guard paid admission. */
 export function defineTask<Input, Output>(task: Task<Input, Output>): Task<Input, Output> {
   if (
     !task.name ||
@@ -62,18 +64,22 @@ export async function runTask<Input, Output>(
   context: ActionCtx | { ctx: ActionCtx; signal: AbortSignal },
   task: Task<Input, Output>,
   input: Input,
-  options: TaskOptions,
+  options: TaskOptions = {},
 ): Promise<TaskOutcome<Output>> {
   const ctx = "ctx" in context ? context.ctx : context;
   const binding = bindings.get(ctx);
   const component = binding?.component ?? options.component;
   const attribution = binding?.attribution ?? options.attribution;
   if (!component || !attribution) throw new Error("TASK_CONTEXT_REQUIRED");
-  if (!options.key || options.key.length > LIMITS.requestKeyLength)
-    throw new Error("INVALID_TASK_KEY");
-  for (const value of Object.values(attribution))
-    if (!value || value.length > LIMITS.requestKeyLength)
-      throw new Error("INVALID_TASK_ATTRIBUTION");
+  const key =
+    options.key ??
+    (binding
+      ? await opaqueKey("hook-task", attribution.runId, binding.turnKey, task.name)
+      : undefined);
+  if (!key || key.length > LIMITS.requestKeyLength) throw new Error("INVALID_TASK_KEY");
+  for (const key of ["subject", "rootThreadId", "threadId", "runId", "agent"] as const) {
+    assertFact(attribution[key], key, "INVALID_TASK_ATTRIBUTION");
+  }
   const leaseMs = options.leaseMs ?? LIMITS.leaseMs;
   if (!Number.isSafeInteger(leaseMs) || leaseMs <= 0 || leaseMs > HOST_LIMITS.leaseMs.max)
     throw new Error("INVALID_TASK_LEASE");
@@ -86,7 +92,7 @@ export async function runTask<Input, Output>(
   const signal = "ctx" in context ? context.signal : options.signal;
   if (signal?.aborted) return { status: "denied", code: "CANCELLED" };
   const scope = `task:${await fingerprint([attribution.subject, attribution.threadId, task.name])}`;
-  const common = { scope, key: options.key, ...binding?.fence };
+  const common = { scope, key, ...binding?.fence };
   const admission = await ctx.runMutation(component.ledger.begin, {
     ...common,
     fingerprint: await fingerprint([
@@ -107,7 +113,7 @@ export async function runTask<Input, Output>(
       await (binding?.usage ?? options.usage)
         ?.scope(ctx, { ...attribution, model: typeof model === "string" ? model : model.modelId })
         .record(provider, {
-          key: `task:${await fingerprint([scope, options.key])}:${attempt}`,
+          key: await opaqueKey("task-usage", scope, key, attempt),
           usage,
           providerMetadata,
         });
@@ -119,10 +125,16 @@ export async function runTask<Input, Output>(
   try {
     let repairText: string | undefined;
     for (let attempt = 0; attempt <= (task.repair ?? LIMITS.taskRepairs); attempt++) {
+      // Admission owns the authoritative deadline. A known invalid first answer
+      // does not authorize another paid attempt after that claim has expired.
+      if (Date.now() >= admission.leaseUntil) {
+        await ctx.runMutation(component.ledger.unknown, { ...common, claim: admission.claim });
+        return { status: "unknown" };
+      }
       try {
-        const generated = await generateObject({
+        const generated = await generateText({
           model,
-          schema: task.output,
+          output: Output.object({ schema: task.output }),
           prompt:
             repairText === undefined
               ? prompt
@@ -131,11 +143,14 @@ export async function runTask<Input, Output>(
           maxOutputTokens: LIMITS.outputTokens,
           abortSignal: signal,
         });
+        // Output validation can throw. Read it before recording so an invalid
+        // answer is charged only by the repair/error path below.
+        const value = generated.output;
         await record(attempt, generated.usage, generated.providerMetadata);
         // Convex validates the serializable result and its byte bound before
         // persistence. A huge response never becomes a >1 MiB receipt document.
-        convexToJson(generated.object as Value);
-        result = { status: "done", value: generated.object };
+        convexToJson(value as Value);
+        result = { status: "done", value };
         if (getConvexSize(result as Value) > LIMITS.receiptResultBytes)
           result = { status: "failed", code: "INVALID_OUTPUT" };
         break;
