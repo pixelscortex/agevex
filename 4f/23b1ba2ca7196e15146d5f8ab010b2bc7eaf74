@@ -1,0 +1,45 @@
+src/component/queue.ts
+  s_d863bd773ba186::t_49069cd4233af1 838-842,845-879
+  s_d863bd773ba186::t_4e01e4227d300f 22
+tests/fixture/api.ts
+  s_d863bd773ba186::t_cf333e85be7943 92-104
+  s_d863bd773ba186::t_1c3ad43c5df144 20
+src/testing/bridge.ts
+  s_d863bd773ba186::t_b6bc8800208dae 59-68
+src/client/runtime.ts
+  s_d863bd773ba186::t_8cd173cf10b93e 1624
+tests/bounded-reads.test.ts
+  s_d863bd773ba186::t_52f1a07de9b92a 7,30
+tests/deferred-answers.test.ts
+  s_d863bd773ba186::t_a7709ae9fa37b8 6,272,361
+tests/delegation-v2.test.ts
+  s_d863bd773ba186::t_581c9fcb005d27 12,241,342,346,441-444,478,516,550,572,607-609,633,648,665,676,689,773,810,843,862-864,974-978,1046,1057,1065-1067,1208,1299,1311,1331-1333,1354,1425-1428,1465,1496,1508,1542-1544,1651,1714-1716,1748,1765,1837,1849,1907-1910,2003,2015,2035-2037,2043-2046,2198,2228,2265,2301,2502-2506,2541,2594-2597,2648-2650
+tests/durable-core.test.ts
+  s_d863bd773ba186::t_867d013ca27b7c 6,240
+tests/hooks.test.ts
+  s_d863bd773ba186::t_45a517a083e9d6 12,1388,1465,1511,1533-1535
+tests/receipts.test.ts
+  s_d863bd773ba186::t_919c3dba0e1b00 3,80
+tests/review-regressions.test.ts
+  s_d863bd773ba186::t_5b55e327095ef1 5,127,282,345,631,662,685,710,727,863,881,895,934,1200,1308,1390,1404
+tests/setup.ts
+  s_d863bd773ba186::t_2c545b8c92c0e7 424
+tests/slots.test.ts
+  s_d863bd773ba186::t_d1cdefe407394c 11,191,710
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4f23b1ba2ca7196e15146d5f8ab010b2bc7eaf74",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
