@@ -1,0 +1,57 @@
+README.md
+  s_150f58983442d6::t_a7e3e1cf4d6490 182-183,194-201,223-228,248,254-259
+src/client/download.ts
+  s_150f58983442d6::t_338eb557d65ff0 1-54
+src/client/endpoints.ts
+  s_150f58983442d6::t_390cf24b044f92 22,116,120-121,178-179,183,189-197,254-255,278-279,353-354
+src/client/keys.ts
+  s_150f58983442d6::t_c69475daedfb5c 1-24
+src/client/once.ts
+  s_150f58983442d6::t_893ab6978c1941 7-8,20,22,73-74,77-78
+src/client/runtime.ts
+  s_150f58983442d6::t_1cf48c5cd88473 14-16,154,554,562-563,579-580,592-594,635,643,1000,1250-1255,1276,1420-1424,1432-1436,1477-1482,1485-1487,1498,1640,1909
+src/client/slots.ts
+  s_150f58983442d6::t_ca97d81bd68cd3 1,6-8,98-112,120,127
+src/client/tasks.ts
+  s_150f58983442d6::t_419fd74482e5a4 1,8-9,22,40,50-51,67,74-79,81,95,116,135,137,146-148,152-153
+src/client/types.ts
+  s_150f58983442d6::t_42c682afede978 296
+src/component/facts.ts
+  s_150f58983442d6::t_6c7a6e40f7c00e 1-18
+src/component/files.ts
+  s_150f58983442d6::t_53515b172c802c 1,21,48-49,73-74,124-125
+src/component/limits.ts
+  s_150f58983442d6::t_63cfb805f51ee5 25-26,117-118,198-200
+src/component/schema.ts
+  s_150f58983442d6::t_5892a95c336516 108
+tests/durable-core.test.ts
+  s_150f58983442d6::t_69e540a84c971e 299-300
+tests/hooks.host.ts
+  s_150f58983442d6::t_ed0293eca0ccf9 32,61-62,134
+tests/live/convex/agents.ts
+  s_150f58983442d6::t_2ed2b0e67c0082 35-41,63,79,96-101,139,149-165,172-180
+tests/live/runtime.live.ts
+  s_150f58983442d6::t_c3cdcb08010a83 112
+tests/review-regressions.test.ts
+  s_150f58983442d6::t_19cf85077de50d 2,1211-1213,1215-1219
+tests/slots.test.ts
+  s_150f58983442d6::t_d9c9d65278cc39 10,13-14,140-143,173-174,493-732
+tests/tasks.test.ts
+  s_150f58983442d6::t_696b38a635665f 12-22,43,234-292
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "27a766d198b527a6f7357d9573007dee809344a4",
+  "prompts": {},
+  "sessions": {
+    "s_150f58983442d6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a170d3-4d12-7af1-8a31-76ce00a5767c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}

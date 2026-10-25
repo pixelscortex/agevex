@@ -1,0 +1,21 @@
+src/client/index.ts
+  s_3cb8c4d6edfc03::t_22f23ee8e46543 34,36-47
+src/client/slots.ts
+  s_3cb8c4d6edfc03::t_bcb70aa0068a59 1-119
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "05eb2785a8982d3e7bb091fa3a844a07ffc9f517",
+  "prompts": {},
+  "sessions": {
+    "s_3cb8c4d6edfc03": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a170b4-8b30-70a2-b7bc-60180de42f5c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
