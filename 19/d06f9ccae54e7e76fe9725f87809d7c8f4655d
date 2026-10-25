@@ -1,0 +1,55 @@
+tests/meter/sinks.test.ts
+  s_fb856f624e63c4::t_ddcd0afdad0500 23-38
+  s_fb856f624e63c4::t_0c2682834b0b6f 39-64
+src/meter/limits.ts
+  s_fb856f624e63c4::t_970e6238ae6f57 6-8
+src/meter/README.md
+  s_fb856f624e63c4::t_eb8170fee2630e 60-68,89-93,133-135,150-153,192-196,207-214,217,219-221,227-230,235-239,251-253,260-263
+  s_fb856f624e63c4::t_70c69840415766 168,174-176,197-206,234
+src/meter/component/aggregates.ts
+  s_fb856f624e63c4::t_26125a894787ee 9,49-56,66,68-69
+  s_fb856f624e63c4::t_7434ea6ce30df1 67
+  s_fb856f624e63c4::t_8f1533287231be 8,32,65
+src/meter/component/charges.ts
+  s_fb856f624e63c4::t_b09bb9f6380947 211-212
+  s_fb856f624e63c4::t_970e6238ae6f57 48-54,148-151,167,181-183,195,204,209-210,213-232,262-266,285-290,311-312,317-318,335
+  s_fb856f624e63c4::t_a8b087559ebe8d 333-334,336,338-339,351-352
+src/meter/types.ts
+  s_fb856f624e63c4::t_970e6238ae6f57 51-52
+src/meter/client.ts
+  s_fb856f624e63c4::t_970e6238ae6f57 115,124,135-137
+  s_fb856f624e63c4::t_26125a894787ee 193-195
+  s_fb856f624e63c4::t_715b3587c0c636 196-201,265
+src/meter/component/schema.ts
+  s_fb856f624e63c4::t_970e6238ae6f57 54-58
+src/meter/sinks.ts
+  s_fb856f624e63c4::t_e0fdc3ef1addc5 2-21,110-114
+  s_fb856f624e63c4::t_d999610607c562 115-117,121-124
+src/meter/component/reads.ts
+  s_fb856f624e63c4::t_26125a894787ee 2-6,14-26,31-65
+  s_fb856f624e63c4::t_8f1533287231be 7-11,27-30
+  s_fb856f624e63c4::t_8abe1539972d8c 66-71,73-84,86-96
+tests/meter/bounds.test.ts
+  s_fb856f624e63c4::t_9eda248cf38f2f 3,20-24,26-28,92-102,104,108,125-126,129-134,136-140,142-146,148-151,154-191,201,233,239-240,244-250
+  s_fb856f624e63c4::t_8f1533287231be 8,25,64,127-128,135,141,147,152-153
+  s_fb856f624e63c4::t_78fd09b5f41eb1 65-74,76-91,251-254,261-262,274-310,319-322
+tests/meter/meter.test.ts
+  s_fb856f624e63c4::t_ddcd0afdad0500 20-115,117,124-125,128,133,154,157,163,165,167-168,174,504-505
+  s_fb856f624e63c4::t_bc9b604a5e5fdc 116,118-123,126-127,129-132,134-153,155-156,158-162,164,166,169-173,441,455,457-458,462-469,506,511,513-514,516
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "19d06f9ccae54e7e76fe9725f87809d7c8f4655d",
+  "prompts": {},
+  "sessions": {
+    "s_fb856f624e63c4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17064-4619-7842-a63f-68a1be944929",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
