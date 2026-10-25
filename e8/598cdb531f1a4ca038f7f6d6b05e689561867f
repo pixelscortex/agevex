@@ -1,0 +1,19 @@
+docs/site/content/docs/modules/sandbox.mdx
+  s_d863bd773ba186::t_c0a1c385d3741f 62-81,235
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e8598cdb531f1a4ca038f7f6d6b05e689561867f",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
