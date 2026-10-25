@@ -1,0 +1,27 @@
+docs/site/content/docs/concepts/delegation.mdx
+  s_d863bd773ba186::t_2100f474899837 46-47,61-62
+docs/site/content/docs/concepts/hooks.mdx
+  s_d863bd773ba186::t_70f284985571ba 55-56
+docs/site/content/docs/concepts/limits.mdx
+  s_d863bd773ba186::t_3bc211cbdfeb65 79-80
+docs/site/content/docs/concepts/receipts.mdx
+  s_d863bd773ba186::t_839655b377081c 47-49,56-59
+docs/site/content/docs/concepts/slots.mdx
+  s_d863bd773ba186::t_b7197da88764ac 9-10,14-17,79-80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f5b91a7ea3f897916f90f237a3ca6c1848c83ab4",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
