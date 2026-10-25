@@ -1,18 +1,24 @@
-// Component runtime source; keep host dependencies and environment access outside this boundary.
+/**
+ * Registered artifact API for admission, fencing, completion, expiry, and purge.
+ * Host clients call these functions; admission decisions live in artifactAdmission.ts.
+ * Only bounded artifact receipts are stored here; payload bytes live in host storage.
+ */
 import { v } from "convex/values";
-import { mutation, query, internalMutation, type MutationCtx } from "./_generated/server.js";
-import type { Doc, Id } from "./_generated/dataModel.js";
-import { internal } from "./_generated/api.js";
-import { identity, failure, summary, usage } from "./schema.js";
-import { manager } from "./workflows.js";
 import { LIMITS, bounded, integer } from "../shared/limits.js";
+import { internal } from "./_generated/api.js";
+import type { Doc, Id } from "./_generated/dataModel.js";
+import { internalMutation, mutation, query } from "./_generated/server.js";
+import { admitArtifact, newRejectedArtifact } from "./artifactAdmission.js";
+import { failure, identity, summary, usage } from "./schema.js";
 
 const fence = { artifactId: v.id("artifacts"), attempt: v.number(), claim: v.string() };
 
+/** Validate an attempt and claim before any fenced artifact read or write. */
 function validateFence(args: { attempt: number; claim: string }) {
   integer(args.attempt, LIMITS.maxAttempts, LIMITS.initialAttempt);
   bounded(args.claim);
 }
+/** Match both attempt and claim so stale dispatches cannot publish or drain callbacks. */
 function current(row: Doc<"artifacts"> | null, args: { attempt: number; claim: string }) {
   return row?.attempt === args.attempt && row.claim === args.claim;
 }
@@ -36,42 +42,7 @@ function addUsage(
 
   return Object.fromEntries(Object.entries(merged).filter(([, value]) => value !== undefined));
 }
-const retryable = new Set(["PROVIDER_UNAVAILABLE", "OBJECT_UNAVAILABLE", "CHECKSUM_FAILED"]);
 
-/**
- * Start (or restart) the one Workflow for this exact attempt and claim. Only
- * ids cross the boundary. The lease does NOT start here: a job waiting in the
- * queue has done no paid work, so its deadline is `queueMs` (see admit) and the
- * running lease starts in `start`, at the moment the provider may be paid.
- */
-async function dispatch(
-  ctx: MutationCtx,
-  artifactId: Id<"artifacts">,
-  attempt: number,
-  claim: string,
-  args: { threadId: string; subject?: string; worker: string },
-) {
-  await manager.start(
-    ctx,
-    internal.workflows.extract,
-    {
-      artifactId,
-      attempt,
-      claim,
-      threadId: args.threadId,
-      ...(args.subject === undefined ? {} : { subject: args.subject }),
-      worker: args.worker,
-      version: LIMITS.workflowVersion,
-    },
-    {
-      startAsync: true,
-      onComplete: internal.workflows.done,
-      // No callback handle here: callers' handles live on the row so that a
-      // superseded dispatch cannot take them with it.
-      context: { artifactId, attempt, claim },
-    },
-  );
-}
 /**
  * Constant transaction budget at every configured ceiling: identity lookup <= 1
  * artifact (< 4 KiB), insert/patch <= 1 artifact (< 4 KiB), plus a single native
@@ -98,148 +69,7 @@ export const admit = mutation({
     subject: v.optional(v.string()),
     onComplete: v.optional(v.string()),
   },
-  handler: async (
-    ctx,
-    args,
-  ): Promise<{
-    artifactId: Id<"artifacts">;
-    action: "run" | "wait" | "reuse";
-    callback?: "stored" | "dropped";
-  }> => {
-    bounded(args.fileId);
-    bounded(args.backend);
-    bounded(args.version);
-    bounded(args.optionsHash, LIMITS.hashBytes);
-    bounded(args.threadId);
-
-    if (args.subject !== undefined) bounded(args.subject);
-
-    bounded(args.worker, LIMITS.urlBytes);
-
-    if (args.onComplete) bounded(args.onComplete, LIMITS.callbackBytes);
-
-    const dispatchArgs = {
-      threadId: args.threadId,
-      ...(args.subject === undefined ? {} : { subject: args.subject }),
-      worker: args.worker,
-    };
-
-    /**
-     * Append the caller's handle (a repeat of a stored handle is a no-op) for
-     * any admission that will be followed by a completion: run, wait and
-     * re-admits alike. A full list drops the new handle and says so.
-     */
-    const callbacks = (existing: string[] | undefined) => {
-      const stored = existing ?? [];
-
-      if (!args.onComplete) return { list: stored, outcome: undefined };
-
-      if (stored.includes(args.onComplete)) return { list: stored, outcome: "stored" as const };
-
-      if (stored.length >= LIMITS.callbacksPerArtifact)
-        return { list: stored, outcome: "dropped" as const };
-
-      return { list: [...stored, args.onComplete], outcome: "stored" as const };
-    };
-
-    const result = (
-      artifactId: Id<"artifacts">,
-      action: "run" | "wait",
-      outcome: "stored" | "dropped" | undefined,
-    ) => ({ artifactId, action, ...(outcome ? { callback: outcome } : {}) });
-
-    const row = await ctx.db
-      .query("artifacts")
-      .withIndex("by_identity", (q) =>
-        q
-          .eq("fileId", args.fileId)
-          .eq("backend", args.backend)
-          .eq("version", args.version)
-          .eq("optionsHash", args.optionsHash),
-      )
-      .unique();
-
-    if (row) {
-      const expired = row.leaseUntil <= Date.now();
-
-      if (row.status === "pending" && expired) {
-        const claim = crypto.randomUUID();
-        const kept = callbacks(row.callbacks);
-
-        await ctx.db.patch("artifacts", row._id, {
-          claim,
-          leaseUntil: Date.now() + LIMITS.queueMs,
-          callbacks: kept.list.length ? kept.list : undefined,
-        });
-
-        await dispatch(ctx, row._id, row.attempt, claim, dispatchArgs);
-
-        return result(row._id, "run", kept.outcome);
-      }
-
-      if (row.status === "running" && expired) {
-        await ctx.db.patch("artifacts", row._id, { status: "unknown" });
-
-        return { artifactId: row._id, action: "reuse" };
-      }
-
-      if (
-        row.status === "failed" &&
-        row.failure &&
-        retryable.has(row.failure) &&
-        row.attempt < LIMITS.maxAttempts
-      ) {
-        const claim = crypto.randomUUID();
-        const attempt = row.attempt + 1;
-        const kept = callbacks(row.callbacks);
-
-        await ctx.db.patch("artifacts", row._id, {
-          status: "pending",
-          attempt,
-          claim,
-          leaseUntil: Date.now() + LIMITS.queueMs,
-          failure: undefined,
-          callbacks: kept.list.length ? kept.list : undefined,
-        });
-
-        await dispatch(ctx, row._id, attempt, claim, dispatchArgs);
-
-        return result(row._id, "run", kept.outcome);
-      }
-
-      if (row.status === "pending" || row.status === "running") {
-        // Waiting on a live dispatch: the caller is notified when it completes.
-        const kept = callbacks(row.callbacks);
-
-        if (kept.list.length !== (row.callbacks?.length ?? 0))
-          await ctx.db.patch("artifacts", row._id, { callbacks: kept.list });
-
-        return result(row._id, "wait", kept.outcome);
-      }
-
-      // Already terminal: no completion will follow, so nothing is stored.
-      return { artifactId: row._id, action: "reuse" };
-    }
-
-    const claim = crypto.randomUUID();
-    const attempt = LIMITS.initialAttempt;
-
-    const artifactId = await ctx.db.insert("artifacts", {
-      fileId: args.fileId,
-      backend: args.backend,
-      version: args.version,
-      optionsHash: args.optionsHash,
-      status: "pending",
-      attempt,
-      claim,
-      leaseUntil: Date.now() + LIMITS.queueMs,
-      ...(args.onComplete ? { callbacks: [args.onComplete] } : {}),
-    });
-
-    await dispatch(ctx, artifactId, attempt, claim, dispatchArgs);
-
-    return result(artifactId, "run", args.onComplete ? "stored" : undefined);
-  },
+  handler: admitArtifact,
 });
 /**
  * Record a terminal failure for an identity that can never be dispatched (no
@@ -269,23 +99,15 @@ export const reject = mutation({
 
     if (row) return row._id;
 
-    return ctx.db.insert("artifacts", {
-      fileId: args.fileId,
-      backend: args.backend,
-      version: args.version,
-      optionsHash: args.optionsHash,
-      status: "failed",
-      failure: args.failure,
-      attempt: LIMITS.initialAttempt,
-      claim: crypto.randomUUID(),
-      leaseUntil: Date.now(),
-    });
+    return ctx.db.insert("artifacts", newRejectedArtifact(args));
   },
 });
+/** Read one exact artifact for authorized host wrappers; no transcript lookup is needed. */
 export const get = query({
   args: { artifactId: v.id("artifacts") },
   handler: (ctx, args) => ctx.db.get("artifacts", args.artifactId),
 });
+/** Look up one extraction identity through its unique bounded index. */
 export const lookup = query({
   args: identity,
   handler: (ctx, args) => {
@@ -331,6 +153,7 @@ export const start = mutation({
     return true;
   },
 });
+/** Publish only the active running claim while retaining paid usage after expiry or purge. */
 export const complete = mutation({
   args: {
     ...fence,
@@ -478,6 +301,7 @@ export const abandon = internalMutation({
     return { owned: true, callbacks: row.callbacks ?? [] };
   },
 });
+/** Mark only the owning expired running attempt unknown; never dispatch more paid work. */
 export const expire = internalMutation({
   args: fence,
   handler: async (ctx, args) => {
