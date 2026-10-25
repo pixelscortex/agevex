@@ -71,8 +71,9 @@ function projections(row: Doc<"charges">) {
  * write at most 8 projections per charge. The usual default-size
  * insert ~=12 writes / replace ~=24 becomes a conservative 2*12*4=96 split/merge operations
  * per projection, <=768 total. Allowing namespace initialization and helpers:
- * <3072 reads/queries (<12 MiB) and <1024 writes (<4 MiB), plus the <=8-KiB
- * charge and four Workpool admissions. ONE charge per mutation only.
+ * <3072 reads/queries (<12 MiB) and <1024 writes (<4 MiB), plus the <=280-KiB
+ * charge including operation receipts (<=3 row patches, <840 KiB written)
+ * and four Workpool admissions. ONE charge per mutation only.
  * The brief's two replacements cannot provide non-leading axis/run queries;
  * namespaces add projections without adding mounts or owned tables.
  */

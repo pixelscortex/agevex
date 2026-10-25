@@ -50,10 +50,18 @@ Model calls are metered by core, once per saved step. Inside a tool,
 ```ts title="Planned tool usage"
 const charge = await tc.meter.estimate("fal", { profile: "image:high", quantity: 6 })
 const res = await fal.run(...)
-await charge.attach({ requestId: res.requestId })   // looked up later
-await charge.correct({ quantity: 5 })               // or fix it yourself
-await charge.settle({ usd: 4.87 })                  // or settle it directly
+await charge.attach({ requestId: res.requestId, key: `${tc.toolCallId}:attach` })
+await charge.correct({ quantity: 5, key: `${tc.toolCallId}:correct` })
+await charge.settle({ usd: 4.87, key: `${tc.toolCallId}:settle` })
 ```
+
+Standalone `correct`, `attach` and `settle` require stable operation keys.
+Replaying a key returns its original outcome without changing the charge. Each
+charge retains up to `LIMITS.maxOperations` (32) receipts; new keys then fail with
+`OPERATION_CAPACITY`, while existing keys remain replayable. Receipts are never
+evicted, so delayed corrections cannot become new writes. Once core wiring
+lands, keys inside agent tools will default to `tc.toolCallId`; use distinct
+explicit suffixes for multiple operations in a single tool call.
 
 Outside tools, `meter.scope(ctx, { subject, threadId? })` returns the same
 object. Without a configured meter, `tc.meter` is a no-op.

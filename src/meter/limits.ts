@@ -5,7 +5,7 @@ export const LIMITS = {
   centsPerUsd: 100,
   nanosPerCent: 10_000_000,
   centDecimalPlaces: 7,
-  maxRevision: Number.MAX_SAFE_INTEGER,
+  maxOperations: 32,
   aggregateNodeSize: 4,
   aggregateMaxDepth: 12,
   dayMs: 86_400_000,
@@ -41,7 +41,8 @@ export function integer(value: number, max: number, name: string) {
 }
 
 export function text(value: string, name: string, max: number = LIMITS.maxStringBytes) {
-  if (!value || new TextEncoder().encode(value).length > max) throw new Error(`INVALID_${name}`);
+  if (typeof value !== "string" || !value || new TextEncoder().encode(value).length > max)
+    throw new Error(`INVALID_${name}`);
   return value;
 }
 

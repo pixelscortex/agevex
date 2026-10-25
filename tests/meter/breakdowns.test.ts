@@ -68,8 +68,8 @@ it.each(["estimate", "record"] as const)(
         method === "estimate"
           ? await scoped.estimate("fal", { key: "default", profile: "image", quantity: 4 })
           : await scoped.record("openrouter", { key: "default" });
-      if (method === "estimate") await charge.correct({ quantity: 2 });
-      await charge.settle({ usd: 0.25 });
+      if (method === "estimate") await charge.correct({ quantity: 2, key: "correct-2" });
+      await charge.settle({ usd: 0.25, key: "settle-0.25" });
     });
     expect(await counts(t)).toEqual([1, 1, 1, 0, 0, 0, 0, 0]);
     expect(
@@ -120,8 +120,8 @@ it.each(allBreakdowns)("enabling %s writes only that optional projection", async
       profile: "image",
       quantity: 4,
     });
-    await charge.correct({ quantity: 2 });
-    await charge.settle({ usd: 0.25 });
+    await charge.correct({ quantity: 2, key: "correct-2" });
+    await charge.settle({ usd: 0.25, key: "settle-0.25" });
   });
   expect(await counts(t)).toEqual([
     1,
@@ -161,8 +161,8 @@ it("later opt-ins cover new charges while replays and old-charge transitions pre
       profile: "image",
       quantity: 4,
     });
-    await old.correct({ quantity: 2 });
-    await old.settle({ usd: 0.25 });
+    await old.correct({ quantity: 2, key: "correct-2" });
+    await old.settle({ usd: 0.25, key: "settle-0.25" });
     await enabled
       .scope(ctx, attribution)
       .estimate("fal", { key: "after", profile: "image", quantity: 4 });
@@ -173,7 +173,7 @@ it("later opt-ins cover new charges while replays and old-charge transitions pre
       profile: "image",
       quantity: 4,
     });
-    await newer.settle({ usd: 0.5 });
+    await newer.settle({ usd: 0.5, key: "settle-0.5" });
   });
   expect(await counts(t)).toEqual([2, 2, 2, 1, 1, 1, 1, 1]);
   const cost = await t.run((ctx) => enabled.threadCost(ctx, { threadId: "root" }));

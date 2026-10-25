@@ -105,16 +105,19 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
           await authorize(ctx, attribution);
           return await ctx.runQuery(component.charges.get, { key });
         },
-        attach: async ({ requestId }) => {
+        attach: async ({ requestId, key: operationKey }) => {
+          text(operationKey, "OPERATION_KEY", LIMITS.maxKeyBytes);
           await authorize(ctx, attribution);
           return await ctx.runMutation(component.charges.attach, {
             key,
             requestId,
+            operationKey,
             lookupMs: lookupMs(provider),
             jobs: { ...(await jobs()), ...(!provider.lookup ? { lookup: undefined } : {}) },
           });
         },
-        correct: async ({ quantity, revision }) => {
+        correct: async ({ quantity, key: operationKey }) => {
+          text(operationKey, "OPERATION_KEY", LIMITS.maxKeyBytes);
           await authorize(ctx, attribution);
           integer(quantity, LIMITS.maxQuantity, "QUANTITY");
           const row = await ctx.runQuery(component.charges.get, { key });
@@ -123,20 +126,19 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
           return await ctx.runMutation(component.charges.update, {
             key,
             operation: "correct",
-            revision: revision ?? row!.revision,
+            operationKey,
             quantity,
             nanos: nanos(price.usd * quantity),
             jobs: await jobs(),
           });
         },
         settle: async (cost) => {
+          text(cost.key, "OPERATION_KEY", LIMITS.maxKeyBytes);
           await authorize(ctx, attribution);
           return await ctx.runMutation(component.charges.update, {
             key,
             operation: "settle",
-            // Settlement is final, so the charge key itself identifies the
-            // authoritative result; estimate revisions never fence it out.
-            revision: 0,
+            operationKey: cost.key,
             ...costNanos(provider, cost),
             jobs: await jobs(),
           });

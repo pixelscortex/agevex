@@ -47,27 +47,42 @@ export const sinkState = v.array(
   }),
 );
 
+// Receipt outcomes deliberately exclude the receipt ledger, preventing recursive
+// snapshots and keeping every saved result bounded independently of operation count.
+const chargeFields = {
+  key: v.string(),
+  attribution,
+  provider: v.string(),
+  // Freeze projection membership at creation: later opt-ins must not insert
+  // historical charges, and workers must replace exactly the entries that exist.
+  breakdowns,
+  profile: v.optional(v.string()),
+  quantity: v.optional(v.number()),
+  status,
+  source,
+  nanos: v.optional(v.number()),
+  credits: v.optional(v.number()),
+  providerRequestId: v.optional(v.string()),
+  lookupUntil: v.optional(v.number()),
+  // Amount revisions describe outcomes; replay identity comes from operation keys.
+  revision: v.number(),
+  lastStale: v.optional(v.object({ operation: v.string(), revision: v.number() })),
+  lookupAttempt: v.optional(v.number()),
+  sinkState,
+};
+
 export default defineSchema({
   charges: defineTable({
-    key: v.string(),
-    attribution,
-    provider: v.string(),
-    // Freeze projection membership at creation: later opt-ins must not insert
-    // historical charges, and workers must replace exactly the entries that exist.
-    breakdowns,
-    profile: v.optional(v.string()),
-    quantity: v.optional(v.number()),
-    status,
-    source,
-    nanos: v.optional(v.number()),
-    credits: v.optional(v.number()),
-    providerRequestId: v.optional(v.string()),
-    lookupUntil: v.optional(v.number()),
-    // Monotonic amount revision fences estimate corrections without retaining
-    // an unbounded operation ledger. Keep only the latest stale diagnostic.
-    revision: v.number(),
-    lastStale: v.optional(v.object({ operation: v.string(), revision: v.number() })),
-    lookupAttempt: v.optional(v.number()),
-    sinkState,
+    ...chargeFields,
+    operations: v.array(
+      v.object({
+        key: v.string(),
+        outcome: v.object({
+          ...chargeFields,
+          _id: v.id("charges"),
+          _creationTime: v.number(),
+        }),
+      }),
+    ),
   }).index("by_key", ["key"]),
 });

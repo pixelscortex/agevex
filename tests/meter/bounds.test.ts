@@ -5,7 +5,7 @@ import aggregate from "@convex-dev/aggregate/test";
 import { LIMITS, type SinkEvent } from "../../src/meter/index.js";
 import { setup, allBreakdowns } from "./setup.js";
 
-const TEST_LIMITS = { seedBatch: 256, timeoutMs: 60_000, days: LIMITS.maxDays, idBytes: 64 };
+const TEST_LIMITS = { seedBatch: 256, timeoutMs: 180_000, days: LIMITS.maxDays, idBytes: 64 };
 type Item = { k: Value; v: string; s: number };
 type Node = { items: Item[]; children: number[]; aggregate: { count: number; sum: number } };
 
@@ -259,9 +259,26 @@ it(
       const charge = await meter
         .scope(ctx, attribution)
         .estimate(label, { key, profile: label, quantity: LIMITS.maxQuantity });
-      await charge.correct({ quantity: LIMITS.maxQuantity - 1 });
-      await charge.correct({ quantity: LIMITS.maxQuantity });
-      await charge.settle({ usd: LIMITS.maxChargeNanos / LIMITS.nanosPerUsd });
+      await charge.attach({ requestId: label, key: "é".repeat(LIMITS.maxKeyBytes / 2) });
+      await charge.correct({
+        quantity: LIMITS.maxQuantity - 1,
+        key: "lower-quantity".padEnd(LIMITS.maxKeyBytes, "x"),
+      });
+      await charge.correct({
+        quantity: LIMITS.maxQuantity,
+        key: "restore-quantity".padEnd(LIMITS.maxKeyBytes, "x"),
+      });
+      // Fill the receipt ledger before the final eight-projection replacement,
+      // so transactionLimits covers maximum charge bytes and aggregate fanout together.
+      for (let index = 0; index < LIMITS.maxOperations - 4; index++)
+        await charge.correct({
+          quantity: LIMITS.maxQuantity,
+          key: String(index).padEnd(LIMITS.maxKeyBytes, "x"),
+        });
+      await charge.settle({
+        usd: LIMITS.maxChargeNanos / LIMITS.nanosPerUsd,
+        key: "settle".padEnd(LIMITS.maxKeyBytes, "x"),
+      });
     });
     const days = await t.run((ctx) =>
       meter.breakdown(ctx, {

@@ -25,9 +25,9 @@ it("settlement survives replayed corrections and estimates, including concurrent
       profile: "image",
       quantity: 4,
     });
-    await charge.correct({ quantity: 3 });
-    await charge.settle({ usd: 0.5 });
-    await charge.correct({ quantity: 3 });
+    await charge.correct({ quantity: 3, key: "correct-3" });
+    await charge.settle({ usd: 0.5, key: "settle-0.5" });
+    await charge.correct({ quantity: 3, key: "correct-3" });
     expect(await charge.get()).toMatchObject({ status: "settled", nanos: 500_000_000 });
   });
   await t.run(async (ctx) => {
@@ -41,7 +41,10 @@ it("settlement survives replayed corrections and estimates, including concurrent
       profile: "image",
       quantity: 4,
     });
-    await Promise.all([charge.correct({ quantity: 3 }), charge.settle({ usd: 0.5 })]);
+    await Promise.all([
+      charge.correct({ quantity: 3, key: "correct-3" }),
+      charge.settle({ usd: 0.5, key: "settle-0.5" }),
+    ]);
     expect(await charge.get()).toMatchObject({ status: "settled", nanos: 500_000_000 });
   });
   expect(await t.query(component.charges.get, { key: "precedence" })).toMatchObject({
@@ -55,22 +58,29 @@ it("settlement survives replayed corrections and estimates, including concurrent
   });
 });
 
-it("a replayed correction revision cannot overwrite a newer correction", async () => {
-  const { t, meter } = setup();
-  await t.run(async (ctx) => {
-    const charge = await meter.scope(ctx, attribution).estimate("fal", {
-      key: "revision",
-      profile: "image",
-      quantity: 4,
+it("a replayed correction key returns its original outcome without overwriting a newer correction", async () => {
+  const { t, meter, component: setupComponent } = setup();
+  // Recreate the handle in a fresh invocation: replay identity must be durable,
+  // not captured in the in-memory handle or inferred from today's revision.
+  const correct = (quantity: number, key: string) =>
+    t.run(async (ctx) => {
+      const handle = await meter.scope(ctx, attribution).estimate("fal", {
+        key: "replay",
+        profile: "image",
+        quantity: 4,
+      });
+      return await handle.correct({ quantity, key });
     });
-    await charge.correct({ quantity: 3, revision: 0 });
-    await charge.correct({ quantity: 2, revision: 1 });
-    await charge.correct({ quantity: 3, revision: 0 });
-    const before = await charge.get();
-    expect(before).toMatchObject({ status: "corrected", nanos: 500_000_000, revision: 2 });
-    await charge.correct({ quantity: 3, revision: 0 });
-    expect(await charge.get()).toEqual(before);
+  const original = await correct(3, "quantity-three");
+  await correct(2, "quantity-two");
+  const before = await t.query(setupComponent.charges.get, { key: "replay" });
+  expect(before).toMatchObject({ quantity: 2, nanos: 500_000_000, revision: 2 });
+  expect(await correct(3, "quantity-three")).toEqual(original);
+  expect(await correct(1, "quantity-three")).toEqual(original);
+  expect(await t.run((ctx) => meter.subjectCost(ctx, { subject: "owner" }))).toMatchObject({
+    totalNanos: 500_000_000,
   });
+  expect(await t.query(setupComponent.charges.get, { key: "replay" })).toEqual(before);
 });
 
 it("expired unknown rejects corrections but accepts a late real provider result exactly once", async () => {
@@ -89,7 +99,7 @@ it("expired unknown rejects corrections but accepts a late real provider result 
       profile: "image",
       quantity: 4,
     });
-    await charge.attach({ requestId: "late-request" });
+    await charge.attach({ requestId: "late-request", key: "attach-late-request" });
   });
   await vi.advanceTimersByTimeAsync(LIMITS.backoffMs);
   await drain(t);
@@ -99,7 +109,7 @@ it("expired unknown rejects corrections but accepts a late real provider result 
       profile: "image",
       quantity: 4,
     });
-    await charge.correct({ quantity: 3 });
+    await charge.correct({ quantity: 3, key: "correct-3" });
     expect(await charge.get()).toMatchObject({ status: "unknown", nanos: 1_000_000_000 });
   });
   const row = (await t.query(component.charges.get, { key: "late" }))!;
@@ -228,8 +238,8 @@ it("estimate then quantity correction then settlement replaces thread and run to
     const handle = await meter
       .scope(ctx, attribution)
       .estimate("fal", { key: "image", profile: "image", quantity: 6 });
-    await handle.correct({ quantity: 5 });
-    await handle.correct({ quantity: 5 });
+    await handle.correct({ quantity: 5, key: "correct-5" });
+    await handle.correct({ quantity: 5, key: "correct-5" });
   });
   expect(await t.run((ctx) => meter.threadCost(ctx, { threadId: "root" }))).toMatchObject({
     totalNanos: 1_250_000_000,
@@ -238,8 +248,8 @@ it("estimate then quantity correction then settlement replaces thread and run to
     const handle = await meter
       .scope(ctx, attribution)
       .estimate("fal", { key: "image", profile: "image", quantity: 6 });
-    await handle.settle({ usd: 1.1 });
-    await handle.settle({ usd: 1.1 });
+    await handle.settle({ usd: 1.1, key: "settle-1.1" });
+    await handle.settle({ usd: 1.1, key: "settle-1.1" });
   });
   expect(
     await t.run((ctx) => meter.subjectCost(ctx, { subject: "owner", runId: "run" })),
@@ -271,7 +281,7 @@ it("unknown cost remains visible and denies admission rather than being treated 
     const charge = await meter
       .scope(ctx, attribution)
       .record("openrouter", { key: "missing-evidence" });
-    await charge.settle({ usd: 0 });
+    await charge.settle({ usd: 0, key: "settle-0" });
   });
   expect(await t.run((ctx) => meter.check(ctx, { subject: "owner", runId: "run" }))).toMatchObject({
     allowed: true,
@@ -316,7 +326,7 @@ it("breakdowns cover each axis with UTC ranges and bounded continuation pages", 
     const charge = await meter
       .scope(ctx, attribution)
       .estimate("fal", { key: "later", profile: "image", quantity: 2 });
-    await charge.settle({ usd: 0.5 });
+    await charge.settle({ usd: 0.5, key: "settle-0.5" });
   });
   const range = { subject: "owner", from: start, to: start + LIMITS.dayMs };
   const days = await t.run((ctx) =>
@@ -361,8 +371,8 @@ it("request-id lookup resolves with backoff without repeating a paid operation",
     const charge = await meter
       .scope(ctx, attribution)
       .estimate("async", { key: "lookup", profile: "request", quantity: 1 });
-    await charge.attach({ requestId: "provider-id" });
-    await charge.attach({ requestId: "provider-id" });
+    await charge.attach({ requestId: "provider-id", key: "attach-provider-id" });
+    await charge.attach({ requestId: "provider-id", key: "attach-provider-id" });
   });
   await drain(t);
   expect(lookups).toBe(2);
@@ -393,7 +403,7 @@ it("lookup expiry retains its last estimate and counts unknown even after retry 
     const charge = await meter
       .scope(ctx, attribution)
       .estimate("async", { key: "expires", profile: "request", quantity: 1 });
-    await charge.attach({ requestId: "missing" });
+    await charge.attach({ requestId: "missing", key: "attach-missing" });
   });
   await drain(t);
   expect(lookup).toHaveBeenCalledTimes(1);
@@ -457,7 +467,7 @@ it("settlement after a delivered correction sends a signed delta and cannot doub
         profile: "image",
         quantity: 4,
       });
-      await charge.settle({ usd });
+      await charge.settle({ usd, key: "settle" });
     });
   await t.run(async (ctx) => {
     const charge = await meter.scope(ctx, attribution).estimate("fal", {
@@ -465,7 +475,7 @@ it("settlement after a delivered correction sends a signed delta and cannot doub
       profile: "image",
       quantity: 4,
     });
-    await charge.correct({ quantity: 2 });
+    await charge.correct({ quantity: 2, key: "correct-2" });
   });
   await drain(t);
   await settle(0.3);
@@ -504,7 +514,7 @@ it("a correction during delivery retains the immutable event until acknowledgeme
       const charge = await meter
         .scope(ctx, attribution)
         .estimate("fal", { key: "inflight", profile: "image", quantity: 4 });
-      await charge.settle({ usd: 0.2 });
+      await charge.settle({ usd: 0.2, key: "settle-0.2" });
     });
   };
   await t.run(async (ctx) => {
@@ -513,7 +523,7 @@ it("a correction during delivery retains the immutable event until acknowledgeme
       profile: "image",
       quantity: 4,
     });
-    await charge.correct({ quantity: 2 });
+    await charge.correct({ quantity: 2, key: "correct-2" });
   });
   await drain(t);
   expect(events.map((e) => e.nanos)).toEqual([500_000_000, -300_000_000]);
@@ -552,7 +562,7 @@ it("credit settlement uses the registered rate and missing rates cannot invent m
     const charge = await meter
       .scope(ctx, attribution)
       .estimate("firecrawl", { key: "credits", quantity: 1 });
-    await charge.settle({ credits: 3 });
+    await charge.settle({ credits: 3, key: "settle-credits-3" });
     expect(await charge.get()).toMatchObject({ credits: 3, nanos: 3_000_000, status: "settled" });
   });
   await expect(
@@ -562,7 +572,7 @@ it("credit settlement uses the registered rate and missing rates cannot invent m
         profile: "image",
         quantity: 1,
       });
-      await charge.settle({ credits: 3 });
+      await charge.settle({ credits: 3, key: "settle-credits-3" });
     }),
   ).rejects.toThrow("CREDIT_RATE_REQUIRED");
   expect(await t.run((ctx) => meter.threadCost(ctx, { threadId: "root" }))).toMatchObject({
@@ -640,8 +650,8 @@ it("corrected estimates can still resolve through their attached provider reques
     const charge = await meter
       .scope(ctx, attribution)
       .estimate("async", { key: "corrected-lookup", profile: "request", quantity: 2 });
-    await charge.correct({ quantity: 1 });
-    await charge.attach({ requestId: "corrected-id" });
+    await charge.correct({ quantity: 1, key: "correct-1" });
+    await charge.attach({ requestId: "corrected-id", key: "attach-corrected-id" });
   });
   await drain(t);
   expect(await t.query(component.charges.get, { key: "corrected-lookup" })).toMatchObject({
@@ -665,7 +675,7 @@ it("credit lookups retain provider units alongside their converted nanodollar co
     const charge = await meter
       .scope(ctx, attribution)
       .estimate("async", { key: "lookup-credits", quantity: 1 });
-    await charge.attach({ requestId: "credit-id" });
+    await charge.attach({ requestId: "credit-id", key: "attach-credit-id" });
   });
   await drain(t);
   expect(await t.query(component.charges.get, { key: "lookup-credits" })).toMatchObject({

@@ -10,7 +10,7 @@ export type WriteCtx = Pick<
 >;
 export type ActionCtx = GenericActionCtx<GenericDataModel>;
 export type Attribution = Doc<"charges">["attribution"];
-export type Charge = Omit<Doc<"charges">, "_id"> & { _id: string };
+export type Charge = Omit<Doc<"charges">, "_id" | "operations"> & { _id: string };
 export type Cost = { usd: number } | { credits: number };
 export type Provider = {
   inline?: (args: { usage: unknown; providerMetadata: unknown }) => Cost | undefined;
@@ -50,10 +50,11 @@ export type MeterOptions = {
 
 export type ChargeHandle = {
   key: string;
-  attach(args: { requestId: string }): Promise<Charge>;
-  /** Persist revision with a replayable operation; otherwise use the current revision. */
-  correct(args: { quantity: number; revision?: number }): Promise<Charge>;
-  settle(args: Cost): Promise<Charge>;
+  /** Stable keys are required today; agent tools will default to tc.toolCallId once core wiring lands. */
+  attach(args: { requestId: string; key: string }): Promise<Charge>;
+  /** Reuse a stable operation key on replay; keys are shared across all three methods. */
+  correct(args: { quantity: number; key: string }): Promise<Charge>;
+  settle(args: Cost & { key: string }): Promise<Charge>;
   get(): Promise<Charge | null>;
 };
 export type ScopedMeter = {

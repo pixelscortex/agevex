@@ -45,9 +45,9 @@ const charge = await scoped.estimate("fal", {
   profile: "image",
   quantity: 6,
 });
-await charge.attach({ requestId });
-await charge.correct({ quantity: 5 });
-await charge.settle({ usd: 0.19 }); // or { credits: 3 }
+await charge.attach({ requestId, key: `${toolCallId}:attach` });
+await charge.correct({ quantity: 5, key: `${toolCallId}:correct` });
+await charge.settle({ usd: 0.19, key: `${toolCallId}:settle` }); // or credits: 3
 ```
 
 Keys are required, unique within the mount, and bounded to 256 UTF-8 bytes.
@@ -59,13 +59,27 @@ contribution. `correct` reprices the quantity from the registered profile and
 marks it `source: "estimate"`; a later settlement supplies authoritative cost.
 Settlement is final: subsequent amount changes are ignored. Corrections also
 cannot revive an expired `unknown`; only real provider evidence can settle it.
-Each amount transition advances `revision`. For replayable application steps,
-persist the observed revision and pass `correct({ quantity, revision })`; a
-stale revision cannot overwrite a newer correction. Without that argument the
-client reads the current revision before submitting the mutation. The bounded
-`lastStale` diagnostic records the latest rejected operation/revision; replaying
-that same rejection is a no-op. Creation, attachment, lookup and delivery use
-the charge key, request id/deadline, attempt and external id as their fences.
+Every `correct`, `attach` and `settle` call requires a stable operation `key`
+(up to 256 UTF-8 bytes), shared across these methods for one charge. Reuse it
+for retries; use a new key for each distinct operation. A repeated key returns
+the original charge snapshot without changing current state, totals, jobs or
+sinks, even if its arguments differ. `get()` returns current state. Revisions
+only describe amount transitions; there is no revision argument or fallback.
+
+The charge retains at most `LIMITS.maxOperations` (32) operation receipts. A
+new key at capacity throws `OPERATION_CAPACITY`; old keys remain replayable.
+Receipts are never evicted: forgetting a key would make a delayed correction
+look new again. This lifetime cap preserves both replay safety and the exact
+original outcome with bounded storage; plan for settlement within the cap.
+Rejected-by-state operations also save their result, while validation errors
+and request-id conflicts consume no slot.
+
+Once core wiring lands, keys inside agent tools will default to `tc.toolCallId`.
+For several distinct operations within one tool call, pass explicit keys with
+a distinct suffix per operation, as above. Standalone calls require explicit
+keys today. Core is unchanged. The bounded `lastStale` diagnostic records the
+latest rejected operation and observed amount revision. Lookup and delivery
+keep their request-id/deadline, attempt and external-id fences.
 Profile assumptions are host configuration, not provider facts. Fal and Daytona
 have no per-request cost endpoint. Firecrawl credits require an explicit plan
 rate; they are not dollars.
@@ -181,8 +195,10 @@ Only `charges` is owned. Aggregate and Workpool own their own component state.
 | `status`, `source`                                         | State transitions, unknown fencing, estimated/settled aggregate classification and sink eligibility.               |
 | `nanos`, `credits`                                         | Exact aggregate summand / provider credit evidence and settlement result.                                          |
 | `providerRequestId`, `lookupUntil`                         | Lookup identity, reattach conflict detection, deadline and stale-result fencing.                                   |
-| `revision`                                                 | Monotonic amount revision; rejects a correction from an older snapshot.                                            |
-| `lastStale.{operation,revision}`                           | Bounded stale-operation diagnostic via `get`; identical stale replay skips its write.                              |
+| `revision`                                                 | Monotonic amount revision returned with the saved outcome; no longer used as a correction input.                   |
+| `lastStale.{operation,revision}`                           | Latest rejected operation and observed revision exposed by `get`.                                                  |
+| `operations[].key`                                         | Bounded charge-wide replay lookup before any state change or worker admission.                                     |
+| `operations[].outcome`                                     | Original charge snapshot returned on replay; excludes operations to prevent recursive growth.                      |
 | `lookupAttempt`                                            | Next admissible lookup attempt; rejects duplicate retry admission and stale workers.                               |
 | `sinkState.name`                                           | Sink routing.                                                                                                      |
 | `sinkState.deliveredNanos`, `revision`                     | Next signed delta and stable external id.                                                                          |
@@ -197,7 +213,9 @@ At capacity, reads and existing-charge updates continue; new keys fail with
 are at most 256 UTF-8 bytes; labels are at most 128; quantities/credits at most
 one million; four sinks; 16 providers; 32 profiles/provider. Overrides can only
 lower charge capacity, groups, days and attempts; registration rejects invalid
-limits, prices and missing worker references. Each charge stays below 8 KiB.
+limits, prices and missing worker references. A charge snapshot stays below 8 KiB.
+With receipts the stored row stays below 280 KiB:
+`32 × (8 KiB + 256-byte key + 128-byte wrapper) + 8 KiB = 276 KiB < 1 MiB`.
 
 Two aggregate mounts use status, axis and run namespaces. Defaults write **three
 projections/charge**; all breakdowns write **eight**. Without run attribution,
@@ -235,8 +253,8 @@ depth is below 12. Two-field keys keep every node <=2 KiB. Conservative bounds:
 
 - One status change: eight replacements, up to `8 × 2 × 12 × 4 = 768`
   split/merge operations; including initialization/helpers, fewer than 3,072
-  reads/queries (<12 MiB), 1,024 writes (<4 MiB), plus one <=8-KiB charge and
-  four small Workpool admissions. **One charge per mutation**.
+  reads/queries (<12 MiB), 1,024 writes (<4 MiB), plus one <=280-KiB charge
+  (at most three row patches, <840 KiB written) and four small Workpool admissions. **One charge per mutation**.
 - An axis page: `4 × (3 seeks + 4 summaries) + 3 final seeks = 31`
   aggregate queries, at most `31 × 2 × 12 × 4 = 2,976` bounded node reads
   (<=5.82 MiB at 2 KiB/node). Helpers remain below 4,096 queries.
@@ -246,14 +264,14 @@ depth is below 12. Two-field keys keep every node <=2 KiB. Conservative bounds:
   Total `(3 × 2076 + 4 × 96) × 2 KiB = 12.92 MiB`, plus <0.5 MiB helpers;
   fewer than 7,000 documents / 256 index queries, no writes.
 - HTTP sink batches <=100 contain no transcript/request payload. They do not
-  mutate 100 charges in a transaction. Acknowledgements update one <=8-KiB row.
+  mutate 100 charges in a transaction. Acknowledgements update one <=280-KiB row.
 
 All fake tests enforce Convex transaction limits. The maximum test constructs
 valid 99,999-entry fixtures for **every projection**, spanning every status,
 five maximum-byte labels and seven days. It admits the last real charge,
-corrects/replaces/settles it at capacity with maximum UTF-8 fields and four
-sinks, reads maximum subject and thread axis pages with continuation and seven
-days, checks all totals, and proves that the next key is denied.
+corrects/replaces/settles it at capacity with maximum UTF-8 fields, a full
+operation ledger and four sinks, reads maximum subject and thread axis pages
+with continuation and seven days, checks all totals, and proves that the next key is denied.
 
 Source references used: Aggregate `src/client/index.ts:866-915`,
 `src/component/btree.ts:120-138,216-225,333-415`; Workpool
@@ -271,7 +289,9 @@ Polar's ingest/dedup contract and the absence of per-request Fal/Daytona costs.
 - Agent 0.7.7's usage hook lacks message/step ids. `usageHandlerFor` therefore
   requires a host identity callback; it cannot safely infer a key from the hook.
 - The examples omit recording keys. Standalone calls require an explicit key
-  because there is no core ToolContext/toolCallId in this PR.
+  because there is no core ToolContext/toolCallId in this PR. Mutations after
+  creation also require their own stable operation keys; fetching the current
+  revision on replay cannot prevent an older correction from being applied again.
 - A delivered correction needs a new external id for its delta; reusing the
   base charge key would make Polar discard it as a duplicate.
 - Settled amounts are final; deltas apply to corrected estimates and their

@@ -97,7 +97,10 @@ async function prepareSinks(ctx: MutationCtx, row: Doc<"charges">, config: Jobs)
 
 export const get = query({
   args: { key: v.string() },
-  handler: async (ctx, { key }) => await find(ctx, key),
+  handler: async (ctx, { key }) => {
+    const row = await find(ctx, key);
+    return row && outcome(row);
+  },
 });
 
 export const create = mutation({
@@ -169,6 +172,7 @@ export const create = mutation({
       credits: args.credits,
       sinkState: args.sinks.map((name) => ({ name, revision: 0, attempts: 0, failed: false })),
       revision: 0,
+      operations: [],
     });
     const row = (await ctx.db.get(id))!;
     await updateAggregates(ctx, row);
@@ -182,8 +186,8 @@ async function change(
   patch: Partial<Doc<"charges">>,
   config: Jobs,
 ) {
-  // Only amount/state transitions advance this fence. Sink acknowledgements
-  // and request-id attachment must not invalidate a valid quantity correction.
+  // Only amount/state transitions advance the outcome revision. Attachment and
+  // sink acknowledgements do not change the amount represented by that revision.
   patch = { ...patch, revision: row.revision + 1 };
   const next = { ...row, ...patch };
   await ctx.db.patch(row._id, patch);
@@ -192,24 +196,52 @@ async function change(
   return await prepareSinks(ctx, next, config);
 }
 
+type Outcome = Omit<Doc<"charges">, "operations">;
+function outcome(row: Doc<"charges">): Outcome {
+  const { operations: _operations, ...result } = row;
+  return result;
+}
+
+function replay(row: Doc<"charges">, key: string) {
+  text(key, "OPERATION_KEY", LIMITS.maxKeyBytes);
+  const receipt = row.operations.find((entry) => entry.key === key);
+  if (receipt) return receipt.outcome;
+  // Never evict a receipt: a delayed replay of an evicted key would become a
+  // new correction and could raise an estimate again. At 32 distinct keys the
+  // charge fails closed for new operations, while every old key stays replayable.
+  // Each outcome is <8 KiB (bounded fields/four sinks, no nested ledger):
+  // 32 * (8 KiB + 256-byte key + 128-byte wrapper) + 8 KiB = 276 KiB < 1 MiB.
+  // One charge per transaction adds <280 KiB read and <840 KiB for at most
+  // three row patches to the aggregate budget (<12 MiB read / <4 MiB written).
+  if (row.operations.length >= LIMITS.maxOperations) throw new Error("OPERATION_CAPACITY");
+}
+
+async function remember(ctx: MutationCtx, row: Doc<"charges">, key: string): Promise<Outcome> {
+  const result = outcome(row);
+  await ctx.db.patch(row._id, { operations: [...row.operations, { key, outcome: result }] });
+  return result;
+}
+
 export const update = mutation({
   args: {
     key: v.string(),
     operation: v.union(v.literal("correct"), v.literal("settle")),
-    revision: v.number(),
+    operationKey: v.string(),
     quantity: v.optional(v.number()),
     nanos: v.number(),
     credits: v.optional(v.number()),
     jobs,
   },
-  handler: async (ctx, args): Promise<Doc<"charges">> => {
+  handler: async (ctx, args): Promise<Outcome> => {
     validateJobs(args.jobs);
     integer(args.nanos, LIMITS.maxChargeNanos, "NANOS");
-    integer(args.revision, LIMITS.maxRevision, "REVISION");
     if (args.quantity !== undefined) integer(args.quantity, LIMITS.maxQuantity, "QUANTITY");
     if (args.credits !== undefined) integer(args.credits, LIMITS.maxQuantity, "CREDITS");
     const row = await find(ctx, args.key);
     if (!row) throw new Error("CHARGE_NOT_FOUND");
+    const previous = replay(row, args.operationKey);
+    if (previous) return previous;
+    const save = (next: Doc<"charges">) => remember(ctx, next, args.operationKey);
     // Authoritative results always outrank estimates, including concurrent
     // corrections. Settled amounts are immutable even for another settlement.
     if (
@@ -218,8 +250,9 @@ export const update = mutation({
       row.nanos === args.nanos &&
       row.credits === args.credits
     )
-      return row;
-    if (row.status === "settled") return await stale(ctx, row, args.operation, args.revision);
+      return await save(row);
+    if (row.status === "settled")
+      return await save(await stale(ctx, row, args.operation, row.revision));
     if (args.operation === "correct") {
       if (
         row.status === "unknown" ||
@@ -227,40 +260,48 @@ export const update = mutation({
       ) {
         const expired =
           row.status === "unknown" ? row : await change(ctx, row, { status: "unknown" }, args.jobs);
-        return await stale(ctx, expired, args.operation, args.revision);
+        return await save(await stale(ctx, expired, args.operation, row.revision));
       }
-      if (args.revision !== row.revision)
-        return await stale(ctx, row, args.operation, args.revision);
       if (row.nanos === args.nanos && row.quantity === args.quantity && row.status === "corrected")
-        return row;
+        return await save(row);
     }
-    return await change(
-      ctx,
-      row,
-      {
-        nanos: args.nanos,
-        quantity: args.quantity ?? row.quantity,
-        credits: args.credits ?? row.credits,
-        status: args.operation === "correct" ? "corrected" : "settled",
-        source: args.operation === "correct" ? "estimate" : "settlement",
-      },
-      args.jobs,
+    return await save(
+      await change(
+        ctx,
+        row,
+        {
+          nanos: args.nanos,
+          quantity: args.quantity ?? row.quantity,
+          credits: args.credits ?? row.credits,
+          status: args.operation === "correct" ? "corrected" : "settled",
+          source: args.operation === "correct" ? "estimate" : "settlement",
+        },
+        args.jobs,
+      ),
     );
   },
 });
 
 export const attach = mutation({
-  args: { key: v.string(), requestId: v.string(), lookupMs: v.number(), jobs },
-  handler: async (ctx, args): Promise<Doc<"charges">> => {
+  args: {
+    key: v.string(),
+    operationKey: v.string(),
+    requestId: v.string(),
+    lookupMs: v.number(),
+    jobs,
+  },
+  handler: async (ctx, args): Promise<Outcome> => {
     text(args.requestId, "REQUEST_ID");
     validateJobs(args.jobs);
     integer(args.lookupMs, LIMITS.maxLookupMs, "LOOKUP_WINDOW");
     if (!args.lookupMs) throw new Error("INVALID_LOOKUP_WINDOW");
     const row = await find(ctx, args.key);
     if (!row) throw new Error("CHARGE_NOT_FOUND");
+    const previous = replay(row, args.operationKey);
+    if (previous) return previous;
     if (row.providerRequestId) {
       if (row.providerRequestId !== args.requestId) throw new Error("REQUEST_ID_CONFLICT");
-      return row;
+      return await remember(ctx, row, args.operationKey);
     }
     const until = args.jobs.lookup && !resolved(row) ? Date.now() + args.lookupMs : undefined;
     await ctx.db.patch(row._id, {
@@ -286,12 +327,16 @@ export const attach = mutation({
       // no provider work, and reads the exact recorded id rather than scanning.
       await ctx.scheduler.runAt(until, internal.charges.expire, { id: row._id });
     }
-    return {
-      ...row,
-      providerRequestId: args.requestId,
-      lookupUntil: until,
-      lookupAttempt: until ? 0 : undefined,
-    };
+    return await remember(
+      ctx,
+      {
+        ...row,
+        providerRequestId: args.requestId,
+        lookupUntil: until,
+        lookupAttempt: until ? 0 : undefined,
+      },
+      args.operationKey,
+    );
   },
 });
 
