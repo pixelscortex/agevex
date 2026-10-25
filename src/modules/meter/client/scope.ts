@@ -41,6 +41,79 @@ function binding(
   return { meter, ctx, guard };
 }
 
+/** Build the estimate writer; malformed caller input throws while unpriceable work stays unknown. */
+function estimateWriter(
+  bound: MeterBinding,
+  resolve: (name: string) => string,
+): ScopedMeter["estimate"] {
+  const { meter, ctx, guard } = bound;
+  const { component, breakdowns, sinks, limits } = meter;
+
+  return async (requested, args) => {
+    const attribution = await guard();
+    const name = resolve(requested);
+    const provider = registered(meter, name);
+
+    text(args.key, "KEY", LIMITS.maxKeyBytes);
+    integer(args.quantity, LIMITS.maxQuantity, "QUANTITY");
+    const priced = priceEstimate(provider, args.profile, args.quantity);
+
+    await ctx.runMutation(component.charges.create, {
+      key: args.key,
+      attribution,
+      provider: name,
+      breakdowns,
+      ...(args.profile ? { profile: args.profile } : {}),
+      quantity: args.quantity,
+      status: priced.reason ? "unknown" : "estimate",
+      source: "estimate",
+      ...priced,
+      sinks: sinks.map((s) => s.name),
+      maxThreadCharges: limits.maxThreadCharges,
+      jobs: await jobs(meter),
+    });
+
+    return chargeHandle(bound, args.key, provider);
+  };
+}
+
+/** Build the inline writer; absent or invalid provider evidence still records a charge. */
+function recordWriter(
+  bound: MeterBinding,
+  resolve: (name: string) => string,
+): ScopedMeter["record"] {
+  const { meter, ctx, guard } = bound;
+  const { component, breakdowns, sinks, limits } = meter;
+
+  return async (requested, args) => {
+    const attribution = await guard();
+    const name = resolve(requested);
+    const provider = registered(meter, name);
+
+    text(args.key, "KEY", LIMITS.maxKeyBytes);
+
+    const priced = priceInline(provider, {
+      usage: args.usage,
+      providerMetadata: args.providerMetadata,
+    });
+
+    await ctx.runMutation(component.charges.create, {
+      key: args.key,
+      attribution,
+      provider: name,
+      breakdowns,
+      status: priced.reason ? "unknown" : "settled",
+      source: "inline",
+      ...priced,
+      sinks: sinks.map((s) => s.name),
+      maxThreadCharges: limits.maxThreadCharges,
+      jobs: await jobs(meter),
+    });
+
+    return chargeHandle(bound, args.key, provider);
+  };
+}
+
 /**
  * Host calls (`scope`) run the host `authorize` guard. Core's slot calls
  * (`trusted`) do not: their attribution is server-derived, core authorized
@@ -55,66 +128,8 @@ export function bind(
   resolve: (name: string) => string = (name) => name,
 ): ScopedMeter {
   const bound = binding(meter, ctx, attributed, trusted);
-  const { guard } = bound;
-  const { component, breakdowns, sinks, limits } = meter;
 
-  return {
-    // Malformed keys, names and quantities are caller bugs and still throw;
-    // unpriceable amounts and unregistered names are recorded `unknown`.
-    estimate: async (requested, args) => {
-      const attribution = await guard();
-      const name = resolve(requested);
-      const provider = registered(meter, name);
-
-      text(args.key, "KEY", LIMITS.maxKeyBytes);
-      integer(args.quantity, LIMITS.maxQuantity, "QUANTITY");
-      const priced = priceEstimate(provider, args.profile, args.quantity);
-
-      await ctx.runMutation(component.charges.create, {
-        key: args.key,
-        attribution,
-        provider: name,
-        breakdowns,
-        ...(args.profile ? { profile: args.profile } : {}),
-        quantity: args.quantity,
-        status: priced.reason ? "unknown" : "estimate",
-        source: "estimate",
-        ...priced,
-        sinks: sinks.map((s) => s.name),
-        maxThreadCharges: limits.maxThreadCharges,
-        jobs: await jobs(meter),
-      });
-
-      return chargeHandle(bound, args.key, provider);
-    },
-    record: async (requested, args) => {
-      const attribution = await guard();
-      const name = resolve(requested);
-      const provider = registered(meter, name);
-
-      text(args.key, "KEY", LIMITS.maxKeyBytes);
-
-      const priced = priceInline(provider, {
-        usage: args.usage,
-        providerMetadata: args.providerMetadata,
-      });
-
-      await ctx.runMutation(component.charges.create, {
-        key: args.key,
-        attribution,
-        provider: name,
-        breakdowns,
-        status: priced.reason ? "unknown" : "settled",
-        source: "inline",
-        ...priced,
-        sinks: sinks.map((s) => s.name),
-        maxThreadCharges: limits.maxThreadCharges,
-        jobs: await jobs(meter),
-      });
-
-      return chargeHandle(bound, args.key, provider);
-    },
-  };
+  return { estimate: estimateWriter(bound, resolve), record: recordWriter(bound, resolve) };
 }
 
 /** Bind explicit host attribution; the subject guard remains eager, all other checks lazy. */
