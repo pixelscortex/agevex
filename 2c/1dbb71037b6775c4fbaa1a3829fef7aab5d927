@@ -1,0 +1,51 @@
+docs/site/content/docs/modules/meter.mdx
+  s_505765187cbb17::t_82c792f6e036df 53-55,58-65
+src/meter/README.md
+  s_505765187cbb17::t_127b40a0c15fd8 48-50,62-82,198-201,216-218,256-257,267,272-274,292-294
+src/meter/client.ts
+  s_505765187cbb17::t_44c514802329df 108-109,114,119-120,129,136,141
+src/meter/component/aggregates.ts
+  s_505765187cbb17::t_43d73794f4f5cf 74-76
+src/meter/component/charges.ts
+  s_505765187cbb17::t_11f88c4f362c75 100-103,175,189-190,199-224,229,235,242-244,253-255,263,266,268-280,286-293,300-301,304,330-339
+src/meter/component/schema.ts
+  s_a8294d62ec58d5::t_e8c0e354db94b3 50-73,76-86
+src/meter/limits.ts
+  s_a8294d62ec58d5::t_07035df021150c 8,44-45
+src/meter/types.ts
+  s_505765187cbb17::t_5e5bbea4005740 13,53-57
+tests/meter/bounds.test.ts
+  s_505765187cbb17::t_00ddfe7e3b5519 8,262-281
+tests/meter/breakdowns.test.ts
+  s_505765187cbb17::t_ff9814a1983fa2 71-72,123-124,164-165,176
+tests/meter/meter.test.ts
+  s_a8294d62ec58d5::t_03250e13407178 28-30,44-47,61-72,74-83,102,112,241-242,251-252,284,329,374-375,406,470,478,517,526,565,575,653-654,678
+tests/meter/operation-keys.test-d.ts
+  s_505765187cbb17::t_979e34810623df 1-19
+tests/meter/operation-keys.test.ts
+  s_a8294d62ec58d5::t_b6f9b4645d8cc3 1-98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2c1dbb71037b6775c4fbaa1a3829fef7aab5d927",
+  "prompts": {},
+  "sessions": {
+    "s_505765187cbb17": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17079-2561-75a1-86cf-39a86d526e0d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_a8294d62ec58d5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17071-5e77-7601-be42-7cc047ab762a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
