@@ -1,4 +1,8 @@
-// Host-side module API and helpers; this code is imported by the installing app.
+/**
+ * Pure provider-output validation, exact serialized sizing, and UTF-8 windows.
+ * Workers use document on writes; readers trust the stored shape without copying pages.
+ * These helpers keep payload memory and tool response sizes within shared limits.
+ */
 import { z } from "zod";
 import { LIMITS, bounded, integer, utf8 } from "../shared/limits.js";
 import { ExtractError } from "./backends.js";
@@ -128,6 +132,7 @@ export function document(value: unknown, maxBytes: number): { doc: ExtractedDoc;
 
   return { doc, blob };
 }
+/** Accept only finite nonnegative usage fields before crossing storage or accounting boundaries. */
 export function cleanUsage(usage: ProviderUsage | undefined): ProviderUsage | undefined {
   if (!usage) return undefined;
 

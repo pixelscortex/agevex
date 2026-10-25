@@ -1,7 +1,11 @@
-// Host-side module API and helpers; this code is imported by the installing app.
+/**
+ * Public contracts for extraction backends, host authorization, usage, and registration.
+ * Hosts supply exact attachment checks and internal worker/metadata references.
+ * Types describe storage-backed documents without importing host code into the component.
+ */
 import type { AgentComponent } from "@convex-dev/agent";
-import type { GenericActionCtx, GenericDataModel, FunctionReference } from "convex/server";
 import type { RAG } from "@convex-dev/rag";
+import type { FunctionReference, GenericActionCtx, GenericDataModel } from "convex/server";
 import type { Infer } from "convex/values";
 import type { failure, usage } from "../component/schema.js";
 import type { ExtractLimits } from "../shared/limits.js";
