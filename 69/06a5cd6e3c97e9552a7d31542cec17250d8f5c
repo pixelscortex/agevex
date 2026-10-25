@@ -1,0 +1,23 @@
+example/convex/intentRouting.ts
+  s_d863bd773ba186::t_c2dc7974ef65c4 31-33
+example/scripts/smoke.ts
+  s_d863bd773ba186::t_8d2340229075bf 107-110
+example/src/lib/scenarios.ts
+  s_d863bd773ba186::t_8e099257757813 8-11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6906a5cd6e3c97e9552a7d31542cec17250d8f5c",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
