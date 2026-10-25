@@ -106,8 +106,16 @@ async function outcome(ctx: Pick<QueryCtx, "db">, row: Doc<"charges">): Promise<
  * events of that sink, so a burst shares requests; jobs that find nothing
  * claimed return without contacting the sink. `claim` identifies the rows the
  * job takes, so its Workpool onComplete can count a crash as a failed attempt.
+ * `crashes` counts consecutive deaths before claiming (see deliveryComplete).
+ * onComplete also runs on success, to delete the job's claim marker.
  */
-async function enqueueDrain(ctx: MutationCtx, sink: string, config: Jobs, runAt: number) {
+async function enqueueDrain(
+  ctx: MutationCtx,
+  sink: string,
+  config: Jobs,
+  runAt: number,
+  crashes = 0,
+) {
   if (!config.deliver) return;
   const claim = crypto.randomUUID();
   await pool.enqueueAction(
@@ -118,10 +126,12 @@ async function enqueueDrain(ctx: MutationCtx, sink: string, config: Jobs, runAt:
       retry: false,
       runAt,
       onComplete: internal.charges.deliveryComplete,
-      onCompleteExcludeKinds: ["success"],
-      context: { sink, claim, jobs: config },
+      context: { sink, claim, jobs: config, crashes },
     },
   );
+}
+function backoff(attempts: number) {
+  return Math.min(LIMITS.maxBackoffMs, LIMITS.backoffMs * LIMITS.backoffBase ** attempts);
 }
 
 /** Outbox snapshots are immutable until acknowledged, including on uncertain
@@ -504,7 +514,9 @@ function dueRows(ctx: Pick<QueryCtx, "db">, sink: string) {
 /**
  * Called by the host delivery action. Takes <=100 due outbox rows of one sink
  * (<=2 KiB each: event, <=6 attribution labels of 128 bytes, 256-byte key):
- * <=200 KiB read and written, 100 docs. Never reads charge rows.
+ * <=200 KiB read and written, 100 docs. Never reads charge rows. The claim
+ * marker records that this job took its batch, even after every row is
+ * acknowledged and deleted, so a later crash charges only the job's own rows.
  */
 export const claimDeliveries = mutation({
   args: deliveryJob,
@@ -512,6 +524,11 @@ export const claimDeliveries = mutation({
     validateJobs(args.jobs);
     text(args.sink, "SINK");
     text(args.claim, "CLAIM");
+    const marker = await ctx.db
+      .query("claims")
+      .withIndex("by_claim", (q) => q.eq("claim", args.claim))
+      .unique();
+    if (!marker) await ctx.db.insert("claims", { claim: args.claim });
     const rows = await dueRows(ctx, args.sink);
     for (const row of rows) await ctx.db.patch(row._id, { claim: args.claim });
     return rows.map((row) => ({
@@ -543,11 +560,8 @@ async function failRows(
     const free = result.rateLimited && result.retryAfterMs !== undefined && !row.limited;
     const attempts = row.attempts + (free ? 0 : 1);
     const failed = attempts >= config.maxAttempts;
-    const backoff = Math.min(
-      LIMITS.maxBackoffMs,
-      LIMITS.backoffMs * LIMITS.backoffBase ** attempts,
-    );
-    const dueAt = now + (free ? result.retryAfterMs! : Math.max(result.retryAfterMs ?? 0, backoff));
+    const dueAt =
+      now + (free ? result.retryAfterMs! : Math.max(result.retryAfterMs ?? 0, backoff(attempts)));
     await ctx.db.patch(row._id, {
       attempts,
       failed,
@@ -614,23 +628,38 @@ export const deliveryResult = mutation({
 });
 
 /**
- * Workpool onComplete for delivery jobs (success is excluded at enqueue). A
- * failed or cancelled job counts as one failed attempt for the rows it still
- * holds, exactly like deliveryResult(ok:false). A job that died before
- * claiming holds nothing; then the due rows it would have claimed take the
- * attempt, so a job that can never run still drives them to `failed` instead
- * of leaving them due with no job. <=100 outbox rows, never a charge row.
+ * Workpool onComplete for every delivery job. It deletes the job's claim
+ * marker. A failed or cancelled job that claimed counts as one failed attempt
+ * for the rows still carrying its claim, exactly like deliveryResult(ok:false),
+ * and charges no other row: a job that acknowledged its batch and then died
+ * charges nothing. A job that died before claiming touched nothing, so it is
+ * re-enqueued (no attempt charged) at most maxAttempts-1 consecutive times;
+ * past that its due rows wait for the next event's job or retrySinks.
+ * Reads <=1 marker and <=100 outbox rows, never a charge row.
  */
 export const deliveryComplete = internalMutation({
-  args: vOnCompleteArgs(v.object(deliveryJob)),
+  args: vOnCompleteArgs(v.object({ ...deliveryJob, crashes: v.number() })),
   handler: async (ctx, { context, result }) => {
-    if (result.kind === "success") return null;
-    let rows = await ctx.db
-      .query("deliveries")
+    const marker = await ctx.db
+      .query("claims")
       .withIndex("by_claim", (q) => q.eq("claim", context.claim))
-      .take(LIMITS.sinkBatch);
-    if (!rows.length) rows = await dueRows(ctx, context.sink);
-    await failRows(ctx, rows, { rateLimited: false }, context.jobs);
+      .unique();
+    if (marker) await ctx.db.delete(marker._id);
+    if (result.kind === "success") return null;
+    if (marker) {
+      const rows = await ctx.db
+        .query("deliveries")
+        .withIndex("by_claim", (q) => q.eq("claim", context.claim))
+        .take(LIMITS.sinkBatch);
+      await failRows(ctx, rows, { rateLimited: false }, context.jobs);
+    } else if (context.crashes + 1 < context.jobs.maxAttempts)
+      await enqueueDrain(
+        ctx,
+        context.sink,
+        context.jobs,
+        Date.now() + backoff(context.crashes + 1),
+        context.crashes + 1,
+      );
     return null;
   },
 });

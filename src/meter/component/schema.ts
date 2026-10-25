@@ -128,4 +128,8 @@ export default defineSchema({
     .index("by_key", ["key", "sink"])
     .index("by_due", ["sink", "failed", "claim", "dueAt"])
     .index("by_claim", ["claim"]),
+  /** One marker per delivery job that has claimed its batch; deleted by the
+   * job's onComplete. It distinguishes "claimed, then died" from "died before
+   * claiming" after all claimed rows were acknowledged and deleted. */
+  claims: defineTable({ claim: v.string() }).index("by_claim", ["claim"]),
 });
