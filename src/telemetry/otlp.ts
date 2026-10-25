@@ -15,7 +15,7 @@ export type Span = {
   startTimeUnixNano: string;
   endTimeUnixNano: string;
   attributes: Attribute[];
-  status: { code: 1 | 2 };
+  status: { code: 1 | 2; message?: string };
 };
 export type OtlpPayload = {
   resourceSpans: {

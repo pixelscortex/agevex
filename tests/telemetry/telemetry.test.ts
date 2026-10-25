@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from "vite-plus/test";
 import { createHash } from "node:crypto";
 import { streamText } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
+import type { LanguageModelV4StreamPart, LanguageModelV4Usage } from "@ai-sdk/provider";
 import {
   LIMITS,
   braintrust,
@@ -163,7 +164,28 @@ it("records explicitly enabled content only after sanitization and honors SDK re
   expect(JSON.stringify(optedOut.bodies)).not.toContain("private");
 });
 
-it("sanitizer failures omit raw values without interrupting streamText", async () => {
+it("sanitizers redact agent, model and tool span name components before export", async () => {
+  const { observer, bodies } = capture({
+    sanitize: (value) =>
+      typeof value === "string" ? value.replaceAll("private", "redacted") : value,
+  });
+  await scripted(observer.integration({ ...facts, agent: "private-agent" }), {
+    modelId: "private-model",
+    toolName: "private-tool",
+  });
+  await observer.flush();
+  expect(spansIn(bodies[0]).map((span) => span.name)).toEqual([
+    "invoke_agent redacted-agent",
+    "step 0",
+    "chat redacted-model",
+    "execute_tool redacted-tool",
+    "step 1",
+    "chat redacted-model",
+  ]);
+  expect(JSON.stringify(bodies)).not.toContain("private");
+});
+
+it("throwing sanitizers replace dynamic span names without interrupting streamText", async () => {
   const { observer, integration, bodies } = capture({
     recordInputs: true,
     recordOutputs: true,
@@ -174,9 +196,27 @@ it("sanitizer failures omit raw values without interrupting streamText", async (
   expect(await scripted(integration)).toBe("private model output");
   await expect(observer.flush()).resolves.toBeUndefined();
   expect(JSON.stringify(bodies)).not.toContain("private");
+  expect(spansIn(bodies[0]).map((span) => span.name)).toEqual([
+    "invoke_agent redacted",
+    "step redacted",
+    "chat redacted",
+    "execute_tool redacted",
+    "step redacted",
+    "chat redacted",
+  ]);
 });
 
-it("retries derive identical SHA-256 ids from run and turn despite random SDK call ids", async () => {
+it.each([undefined, null, ""])(
+  "sanitizers returning %s use safe span name placeholders",
+  async (value) => {
+    const { observer, integration, bodies } = capture({ sanitize: () => value });
+    await scripted(integration);
+    await observer.flush();
+    expect(spansIn(bodies[0]).every((span) => span.name.endsWith(" redacted"))).toBe(true);
+  },
+);
+
+it("stable run, turn and call order derive deterministic ids despite random SDK call ids", async () => {
   const first = capture();
   const second = capture();
   await scripted(first.integration);
@@ -198,6 +238,26 @@ it("retries derive identical SHA-256 ids from run and turn despite random SDK ca
   await scripted(other.observer.integration({ ...facts, turnKey: "other" }));
   await other.observer.flush();
   expect(spansIn(other.bodies[0])[0].traceId).not.toBe(root.traceId);
+});
+
+it("integration instances with identical facts allocate unique, deterministic span ids", async () => {
+  const first = capture();
+  const replay = capture();
+  for (const { observer } of [first, replay]) {
+    const integrations = Array.from({ length: 3 }, () => observer.integration(facts));
+    await Promise.all(integrations.map((integration) => scripted(integration)));
+    await observer.flush();
+  }
+  const spans = spansIn(first.bodies[0]);
+  expect(spans).toHaveLength(18);
+  expect(new Set(spans.map((span) => span.spanId)).size).toBe(spans.length);
+  expect(new Set(spans.map((span) => span.traceId)).size).toBe(1);
+  const ancestry = (body: OtlpPayload) =>
+    spansIn(body).map(({ spanId, parentSpanId }) => ({ spanId, parentSpanId }));
+  expect(ancestry(first.bodies[0])).toEqual(ancestry(replay.bodies[0]));
+  for (const root of spans.filter((span) => !span.parentSpanId)) {
+    expect(spans.filter((span) => span.parentSpanId === root.spanId)).toHaveLength(2);
+  }
 });
 
 it("concurrent SDK calls keep separate span ancestry", async () => {
@@ -330,6 +390,81 @@ it("provider errors close the affected call as failed without exporting its raw 
   expect(spansIn(bodies[0])[0].status.code).toBe(2);
   expect(JSON.stringify(bodies)).not.toContain("private");
 });
+
+const failureUsage: LanguageModelV4Usage = {
+  inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+  outputTokens: { total: 1, text: 1, reasoning: 0 },
+};
+it.each(["stop", "length", "content-filter", "other"] as const)(
+  "completed streams with finish reason %s retain OK spans",
+  async (finishReason) => {
+    const { observer, integration, bodies } = capture();
+    await scripted(integration, { finishReason });
+    await observer.flush();
+    expect(spansIn(bodies[0])).toHaveLength(6);
+    expect(spansIn(bodies[0]).every((span) => span.status.code === 1)).toBe(true);
+  },
+);
+it.each([
+  ["provider error chunks", [{ type: "error", error: new Error("private provider error") }]],
+  [
+    "error finish reasons",
+    [
+      {
+        type: "finish",
+        finishReason: { unified: "error", raw: "private failure" },
+        usage: failureUsage,
+      },
+    ],
+  ],
+  ["incomplete streams with partial text", []],
+  [
+    "interrupted finish reasons",
+    [
+      {
+        type: "finish",
+        finishReason: { unified: "interrupted", raw: "private interruption" },
+        usage: failureUsage,
+      },
+    ],
+  ],
+] satisfies [string, LanguageModelV4StreamPart[]][])(
+  "%s mark model, step and agent spans ERROR with a safe reason",
+  async (_, ending) => {
+    const { observer, integration, bodies } = capture();
+    const result = streamText({
+      model: new MockLanguageModelV4({
+        doStream: async () => ({
+          stream: new ReadableStream<LanguageModelV4StreamPart>({
+            start(controller) {
+              for (const part of [
+                { type: "stream-start", warnings: [] },
+                { type: "text-start", id: "text" },
+                { type: "text-delta", id: "text", delta: "private partial output" },
+                ...ending,
+              ] satisfies LanguageModelV4StreamPart[])
+                controller.enqueue(part);
+              controller.close();
+            },
+          }),
+        }),
+      }),
+      prompt: "private prompt",
+      maxRetries: 0,
+      onError: () => {},
+      telemetry: { integrations: [integration] },
+    });
+    await result.consumeStream();
+    await observer.flush();
+    const spans = spansIn(bodies[0]);
+    expect(spans).toHaveLength(3);
+    for (const span of spans) {
+      expect(span.status).toMatchObject({ code: 2, message: expect.any(String) });
+      expect(span.status.message).not.toBe("");
+    }
+    expect(JSON.stringify(bodies)).not.toContain("private");
+  },
+);
 
 it("Langfuse POSTs validated OTLP JSON with v4 ingestion and portable UTF-8 Basic auth", async () => {
   const request = vi.fn(async () => new Response(null, { status: 200 }));
@@ -482,6 +617,7 @@ it("empty buffers send nothing and flushing an active stream marks unfinished sp
   await ready;
   await observer.flush();
   expect(spansIn(bodies[0]).every((span) => span.status.code === 2)).toBe(true);
+  expect(spansIn(bodies[0]).every((span) => !!span.status.message)).toBe(true);
   closeProvider();
   await reading;
   await reader.cancel();

@@ -73,6 +73,28 @@ export function telemetry(options: TelemetryOptions): TurnTelemetry {
   const recordInputs = options.recordInputs === true;
   const recordOutputs = options.recordOutputs === true;
   const write = attributeWriter(options.sanitize);
+  const nameComponent = (input: string, key: string): string => {
+    try {
+      // Names are exported outside the attribute list, so they need their own
+      // privacy boundary. Use the matching attribute key for host redaction rules;
+      // never fall back to raw input when sanitization omits or rejects a name.
+      const bounded = truncate(input, LIMITS.maxNameBytes);
+      const value = options.sanitize ? options.sanitize(bounded, key) : bounded;
+      return typeof value === "string" && value.trim()
+        ? truncate(value, LIMITS.maxNameBytes)
+        : "redacted";
+    } catch {
+      return "redacted";
+    }
+  };
+  // Allocate from the shared turn buffer, not from each integration. The run/turn
+  // seed namespaces traces; call order namespaces their span paths across every
+  // integration, independently of random SDK call ids. Repeating that order in a
+  // fresh buffer gives stable ids, but a retried action may export duplicates:
+  // Langfuse v4 does not guarantee upserts for repeated ids. Core never retries
+  // paid model steps automatically, so duplicates are rare. Hosts requiring
+  // exactly-once export can export from their own durable outbox.
+  let callOrdinal = 0;
   let buffer: BufferedSpan[] = [];
   let sealed = false;
   let flushing: Promise<void> | undefined;
@@ -91,7 +113,6 @@ export function telemetry(options: TelemetryOptions): TurnTelemetry {
         validateString(identity[key], key, LIMITS.maxFactBytes);
       const seed = JSON.stringify([identity.runId, identity.turnKey]);
       const calls = new Map<string, Call>();
-      let callOrdinal = 0;
       const common = {
         "langfuse.session.id": identity.rootThreadId,
         "langfuse.user.id": identity.subject,
@@ -132,11 +153,20 @@ export function telemetry(options: TelemetryOptions): TurnTelemetry {
         buffer.push(span);
         return span;
       };
-      const finish = (span?: BufferedSpan, failed = false) => {
+      const fail = (span: BufferedSpan | undefined, reason?: string) => {
+        if (span && reason) span.status = { code: 2, message: reason };
+      };
+      const finish = (span?: BufferedSpan, reason?: string) => {
         if (!span) return;
         span.endTimeUnixNano ??= now();
-        if (failed) span.status.code = 2;
+        fail(span, reason);
       };
+      const finishFailure = (reason: string) =>
+        reason === "error"
+          ? "Model call failed"
+          : reason === "interrupted"
+            ? "Model call interrupted"
+            : undefined;
       const content = (
         span: BufferedSpan | undefined,
         key: string,
@@ -156,14 +186,20 @@ export function telemetry(options: TelemetryOptions): TurnTelemetry {
             write(span.attributes, key, count);
         }
       };
-      const endCall = (callId: string, failed: boolean) => {
+      const endCall = (callId: string, reason?: string) => {
         const call = calls.get(callId);
         if (!call) return;
-        finish(call.root, failed);
-        finish(call.step, failed);
+        // onEnd is not proof of successful completion: SDK streams can close
+        // with partial output and no model-call-end event. Every open child must
+        // be failed rather than silently promoted to OK by its parent's end.
+        const incomplete =
+          !call.step?.endTimeUnixNano || !call.chat?.endTimeUnixNano || call.tools.size > 0;
+        const failure = reason ?? (incomplete ? "Call incomplete" : undefined);
+        finish(call.root, failure);
+        if (!call.step?.endTimeUnixNano) finish(call.step, failure);
         // A completed model call must not become an error because a later tool failed.
-        if (!call.chat?.endTimeUnixNano) finish(call.chat, failed);
-        for (const tool of call.tools.values()) finish(tool, failed);
+        if (!call.chat?.endTimeUnixNano) finish(call.chat, failure);
+        for (const tool of call.tools.values()) finish(tool, failure);
         calls.delete(callId);
       };
       const safe =
@@ -181,7 +217,7 @@ export function telemetry(options: TelemetryOptions): TurnTelemetry {
           if (event.operationId !== "ai.streamText" && event.operationId !== "ai.generateText")
             return;
           const root = add(
-            `invoke_agent ${identity.agent}`,
+            `invoke_agent ${nameComponent(identity.agent, "gen_ai.agent.name")}`,
             `call:${callOrdinal++}`,
             "invoke_agent",
             "agent",
@@ -213,7 +249,7 @@ export function telemetry(options: TelemetryOptions): TurnTelemetry {
           call.modelAttempt = 0;
           call.toolOrdinal = 0;
           call.step = add(
-            `step ${event.stepNumber}`,
+            `step ${nameComponent(String(event.stepNumber), "gen_ai.step.number")}`,
             `${call.root.path}/step:${event.stepNumber}`,
             "agent_step",
             "span",
@@ -224,7 +260,7 @@ export function telemetry(options: TelemetryOptions): TurnTelemetry {
           const call = calls.get(event.callId);
           if (!call?.step) return;
           call.chat = add(
-            `chat ${event.modelId}`,
+            `chat ${nameComponent(event.modelId, "gen_ai.request.model")}`,
             `${call.step.path}/chat:${call.modelAttempt++}`,
             "chat",
             "generation",
@@ -248,9 +284,16 @@ export function telemetry(options: TelemetryOptions): TurnTelemetry {
           );
         }),
         onLanguageModelCallEnd: safe((event) => {
-          const chat = calls.get(event.callId)?.chat;
+          const call = calls.get(event.callId);
+          const chat = call?.chat;
           if (!chat) return;
-          finish(chat);
+          // SDK 7 language-model-events.ts:42-73 supplies the finish reason even
+          // for failures delivered as normal completion callbacks. Do not rely
+          // on onError, which is absent for several streamed provider failures.
+          const failure = finishFailure(event.finishReason);
+          finish(chat, failure);
+          fail(call?.step, failure);
+          fail(call?.root, failure);
           usage(chat, event.usage);
           write(chat.attributes, "gen_ai.response.model", event.modelId);
           write(chat.attributes, "gen_ai.response.id", event.responseId);
@@ -266,7 +309,7 @@ export function telemetry(options: TelemetryOptions): TurnTelemetry {
           const call = calls.get(event.callId);
           if (!call?.step) return;
           const tool = add(
-            `execute_tool ${event.toolCall.toolName}`,
+            `execute_tool ${nameComponent(event.toolCall.toolName, "gen_ai.tool.name")}`,
             `${call.step.path}/tool:${call.toolOrdinal++}`,
             "execute_tool",
             "tool",
@@ -287,7 +330,10 @@ export function telemetry(options: TelemetryOptions): TurnTelemetry {
           const call = calls.get(event.callId);
           const tool = call?.tools.get(event.toolCall.toolCallId);
           if (!tool) return;
-          finish(tool, event.toolOutput.type !== "tool-result");
+          finish(
+            tool,
+            event.toolOutput.type !== "tool-result" ? "Tool execution failed" : undefined,
+          );
           if (event.toolOutput.type === "tool-result")
             content(
               tool,
@@ -298,8 +344,18 @@ export function telemetry(options: TelemetryOptions): TurnTelemetry {
           call?.tools.delete(event.toolCall.toolCallId);
         }),
         onStepEnd: safe((event) => {
-          const step = calls.get(event.callId)?.step;
-          finish(step);
+          const call = calls.get(event.callId);
+          const step = call?.step;
+          // stream-text.ts:3099-3152 reports error chunks through step completion
+          // and retains partial output without a terminal chunk. Only an actual
+          // model-call-end confirms completion; an explicit 'other' finish reason
+          // is valid when that callback did arrive.
+          const failure =
+            finishFailure(event.finishReason) ??
+            (!call?.chat?.endTimeUnixNano ? "Model stream incomplete" : call.chat.status.message);
+          if (!call?.chat?.endTimeUnixNano) finish(call?.chat, failure);
+          finish(step, failure);
+          fail(call?.root, failure);
           usage(step, event.usage);
         }),
         onEnd: safe((event) => {
@@ -312,9 +368,12 @@ export function telemetry(options: TelemetryOptions): TurnTelemetry {
               event.text,
               recordOutputs && event.recordOutputs !== false,
             );
-          endCall(event.callId, false);
+          endCall(
+            event.callId,
+            "finishReason" in event ? finishFailure(event.finishReason) : undefined,
+          );
         }),
-        onAbort: safe((event) => endCall(event.callId, true)),
+        onAbort: safe((event) => endCall(event.callId, "Call aborted")),
         onError: safe((event) => {
           // AI SDK types this as unknown but stream-text.ts:2000,3283 supplies
           // { callId, error }. Never record the arbitrary error (it can contain input).
@@ -324,7 +383,7 @@ export function telemetry(options: TelemetryOptions): TurnTelemetry {
             "callId" in event &&
             typeof event.callId === "string"
           )
-            endCall(event.callId, true);
+            endCall(event.callId, "Call failed");
         }),
       };
       return integration;
@@ -363,7 +422,9 @@ export function telemetry(options: TelemetryOptions): TurnTelemetry {
                 startTimeUnixNano: span.startTimeUnixNano,
                 endTimeUnixNano: span.endTimeUnixNano ?? now(),
                 attributes: span.attributes,
-                status: span.endTimeUnixNano ? span.status : { code: 2 },
+                status: span.endTimeUnixNano
+                  ? span.status
+                  : { code: 2, message: "Span incomplete at flush" },
               };
             }),
           );

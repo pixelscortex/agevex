@@ -1,6 +1,10 @@
 import { stepCountIs, streamText, tool, type Telemetry } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
-import type { LanguageModelV4StreamPart, LanguageModelV4Usage } from "@ai-sdk/provider";
+import type {
+  LanguageModelV4FinishReason,
+  LanguageModelV4StreamPart,
+  LanguageModelV4Usage,
+} from "@ai-sdk/provider";
 import { z } from "zod";
 import type { Facts } from "../../src/telemetry/index.js";
 
@@ -36,18 +40,21 @@ export async function scripted(
     toolFails?: boolean;
     recordInputs?: boolean;
     recordOutputs?: boolean;
+    modelId?: string;
+    toolName?: string;
+    finishReason?: LanguageModelV4FinishReason["unified"];
   } = {},
 ) {
   const model = new MockLanguageModelV4({
     provider: "scripted",
-    modelId: "scripted-model",
+    modelId: options.modelId ?? "scripted-model",
     doStream: [
       response([
         { type: "stream-start", warnings: [] },
         {
           type: "tool-call",
           toolCallId: "random-tool-id",
-          toolName: "lookup",
+          toolName: options.toolName ?? "lookup",
           input: JSON.stringify({ query: options.input ?? "private tool input" }),
         },
         { type: "finish", finishReason: { unified: "tool-calls", raw: "tool_calls" }, usage },
@@ -57,7 +64,11 @@ export async function scripted(
         { type: "text-start", id: "text" },
         { type: "text-delta", id: "text", delta: options.output ?? "private model output" },
         { type: "text-end", id: "text" },
-        { type: "finish", finishReason: { unified: "stop", raw: "stop" }, usage },
+        {
+          type: "finish",
+          finishReason: { unified: options.finishReason ?? "stop", raw: "stop" },
+          usage,
+        },
       ]),
     ],
   });
@@ -68,7 +79,7 @@ export async function scripted(
     maxRetries: 0,
     stopWhen: stepCountIs(2),
     tools: {
-      lookup: tool({
+      [options.toolName ?? "lookup"]: tool({
         inputSchema: z.object({ query: z.string() }),
         execute: () => {
           if (options.toolFails) throw new Error("private tool error");
