@@ -1,6 +1,13 @@
 // Test-only module mounted inside Workflow's real schema by agevex/test. It is
-// never exported from the production component. Replaying a clone avoids firing
-// an old nested-workflow completion callback into the live loop a second time.
+// never exported from the production component.
+//
+// `turns` reads every recorded workflow with its journal steps; `clone` copies one
+// workflow's journal and replays it through Workflow's real engine (replaying a
+// clone avoids firing an old nested-workflow completion callback into the live
+// loop a second time); `result` reads the replay outcome. `expect-journal.ts`
+// drives these to prove the step order is unchanged. The fault-injection and
+// counting helpers below read Workflow's own tables.
+
 import { internalMutationGeneric, internalQueryGeneric, type FunctionHandle } from "convex/server";
 import { v } from "convex/values";
 
@@ -19,6 +26,8 @@ type Entry = {
   stepNumber: number;
   step: Record<string, unknown>;
 };
+
+/** Every workflow (oldest first) with its journal steps in step order. */
 export const turns = internalQueryGeneric({
   args: {},
   handler: async (ctx) => {
@@ -37,6 +46,11 @@ export const turns = internalQueryGeneric({
       }));
   },
 });
+
+/**
+ * Clone one workflow's journal into a fresh workflow and start its replay.
+ * The in-progress step becomes a recorded sentinel failure (`REPLAY_BOUNDARY`).
+ */
 export const clone = internalMutationGeneric({
   args: { workflowId: v.id("workflows") },
   returns: v.string(),
@@ -73,6 +87,8 @@ export const clone = internalMutationGeneric({
     return id;
   },
 });
+
+/** The run result of a (cloned) workflow, or null while it has none. */
 export const result = internalQueryGeneric({
   args: { workflowId: v.id("workflows") },
   handler: async (ctx, { workflowId }) => (await ctx.db.get(workflowId))?.runResult ?? null,
