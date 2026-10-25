@@ -1,57 +1,229 @@
 ---
 title: Sandbox
 icon: Terminal
-description: A planned provider-neutral sandbox engine with Daytona first.
-status: Planned
+description: Scope-bound provider sandboxes with Daytona, bounded tools, background jobs, and Agent file exports.
+status: Available
 ---
 
-`sdk/sandbox` defines tools, binding, bounds, background work and exports once
-against a provider interface. Daytona is the first adapter, over
-`@daytona/convex`. E2B, Tenki and Boat may follow; they are not implemented here.
+`agevex/sandbox` binds a provider sandbox to trusted thread, run, or subject
+facts. Five tools, durable background polling, bounded exports, and host-triggered
+TTL cleanup use a separately mounted Convex component.
 
-## Provider and setup shape
+## Setup
 
-The following is the draft contract, including interface shorthand and scope
-alternatives; it is not executable setup code.
+Mount alongside Agent and agevex; declare the Daytona key in the app environment.
 
-```ts title="Planned sandbox API"
-interface SandboxProvider {
-  id: string
-  create(ctx, opts): Promise<{ sandboxId: string }>        // must return before cold start completes
-  resume(ctx, sandboxId): Promise<void>                    // from stopped / archived
-  stop(ctx, sandboxId): Promise<void>
-  delete(ctx, sandboxId): Promise<void>
-  exec(ctx, sandboxId, cmd, { timeoutS, signal }): Promise<{ exitCode; stdout; stderr }>
-  startBackground(ctx, sandboxId, cmd): Promise<{ jobId: string }>
-  poll(ctx, jobId): Promise<{ state: "running" | "done" | "failed"; exitCode?; logTail? }>
-  readFile / writeFile / listFiles / upload / download
-}
+```ts title="convex/convex.config.ts"
+import { defineApp } from "convex/server";
+import { v } from "convex/values";
+import agent from "@convex-dev/agent/convex.config";
+import agevex from "agevex/convex.config";
+import sandbox from "agevex/sandbox/convex.config";
+import daytona from "@daytona/convex/convex.config";
 
-const sandbox = defineSandbox({
-  provider: daytona(components.daytona, { autoStopInterval: 15, autoArchiveInterval: 10 }),
-  scope: "thread" | "run" | "subject",       // which work shares one sandbox
-  limits: { commandTimeoutS: 180, outputChars: 6_000, fileReadChars: 160_000, writeChars: 160_000 },
-})
-sandbox.tools()   // sandbox_exec, sandbox_read_file, sandbox_write_file, sandbox_list, sandbox_run_background
-await sandbox.export(ctx, { threadId, path })   // → { storageId, bytes, sha256 }
+const app = defineApp({ env: { DAYTONA_API_KEY: v.string() } });
+app.use(agent);
+app.use(agevex);
+app.use(sandbox);
+app.use(daytona, { env: { DAYTONA_API_KEY: app.env.DAYTONA_API_KEY } });
+export default app;
 ```
 
-## Lifecycle and bounds
+Register host internal functions. `hostSandboxPolicy` below is host-owned.
 
-The tool context’s `threadId`, `runId` or `subject` selects the sandbox. The
-model never supplies a sandbox ID. Persist the ID before cold start finishes;
-resume stopped, archived or errored sandboxes. Never auto-delete: host cleanup
-uses a scheduled TTL job.
+```ts title="convex/sandboxes.ts"
+import { defineSandbox, daytona, type PollArgs, type SettleArgs } from "agevex/sandbox";
+import type { RegisteredAction, RegisteredMutation } from "convex/server";
+import { components, internal } from "./_generated/api";
+import { hostSandboxPolicy } from "./sandboxPolicy";
 
-Synchronous commands run for at most 180 seconds, with a 540-second action
-budget. Output is tail-truncated; default reads and writes are bounded to
-160,000 characters and command output to 6,000 characters.
+export const sandbox = defineSandbox({
+  component: components.sandbox,
+  provider: daytona(components.daytona, { autoStopInterval: 0 }),
+  scope: "thread",
+  agent: components.agent,
+  authorize: hostSandboxPolicy,
+  refs: {
+    poll: () => internal.sandboxes.poll,
+    settle: () => internal.sandboxes.settle,
+    cleanup: () => internal.sandboxes.cleanup,
+  },
+});
+const functions = sandbox.internalFunctions();
+export const poll: RegisteredAction<"internal", PollArgs, null> = functions.poll;
+export const settle: RegisteredMutation<"internal", SettleArgs, null> = functions.settle;
+export const cleanup: RegisteredAction<"internal", Record<string, never>, null> = functions.cleanup;
+export const tools = sandbox.tools(); // Add these to the host Agent's tools.
+```
 
-`sandbox_run_background` stores the provider job ID and waits through
-`awaitEvent`. A poller or callback sends completion; no action stays open and
-unknown outcomes are not blindly repeated. Lifecycle usage goes to the host
-usage hook.
+`authorize(ctx, request)` must recheck current host policy and return `{ subject }`.
+Operations are `use`, `export`, `stop`, `delete`, `poll`, and `cleanup`; scheduled
+calls have no end-user identity. Supplied subjects must match the policy result.
+Expose host endpoints calling these helpers, never raw component references.
+Pure reads require trusted `ToolContext` in AI SDK 7's `context` or a host-bound
+`sandbox.tools(tc)` factory. Effects use core's `defineOnceTool` receipt binding.
 
-Command allowlists do not provide isolation. Isolation and network policy come
-from the provider’s sandbox configuration. Files use the Agent component’s
-storage; no separate SDK files component is planned.
+## API
+
+### Registration and scope
+
+| Function | Signature and behavior |
+| --- | --- |
+| `defineSandbox` | `defineSandbox(options: SandboxOptions)` — validates registration and returns the helpers below. |
+| `daytona` | `daytona(component, opts = {}): SandboxProvider` — wraps `@daytona/convex`; accepts its client options plus `snapshot`, `target`, `autoStopInterval`, and `autoArchiveInterval`. |
+| `sandboxNodeExport` | `sandboxNodeExport(options: SandboxOptions)` — registers an internal export action in a host `"use node"` file. |
+| `sandbox.tools` | `tools(context?: ToolContext)` — returns the five tools below. |
+| `sandbox.scopeKey` | `scopeKey(facts: SandboxFacts): Promise<string>` — hashes scope, subject, and selected scope identity. |
+| `sandbox.prepare` | `prepare(tc: ToolContext)` — authorizes, reserves, saves the sandbox ID, and resumes; returns `{ sandboxId, scopeKey, claim }`. |
+| `sandbox.readFile` | `readFile(tc: ToolContext, input: { path: string })` — returns `{ content }`, the bounded text tail. |
+| `sandbox.list` | `list(tc: ToolContext, input: { path: string })` — returns `{ entries: FileEntry[] }`. |
+| `sandbox.internalFunctions` | `internalFunctions()` — returns internal `poll({ jobId })` action, `settle(args: SettleArgs)` mutation, and `cleanup({})` action. |
+| `sandbox.job` | `job(ctx: SandboxContext, input: PollArgs)` — authorized bounded snapshot or `null`, including unknown outcomes. |
+| `sandbox.export` | `export(ctx: SandboxContext, input: SandboxExportArgs): Promise<SandboxExportResult>` — exports an existing binding's file through native Agent `storeFile`. |
+| `sandbox.stop` | `stop(tc: ToolContext): Promise<void>` — stops the VM, preserving identity and files for next use. |
+| `sandbox.delete` | `delete(tc: ToolContext): Promise<void>` — explicitly requests deletion; active jobs protect the filesystem. |
+| `sandbox.cleanup` | `cleanup(ctx: SandboxContext)` — authorizes and schedules a finite TTL sweep; requires `refs`. |
+
+`SandboxFacts` contains trusted `subject`, `threadId`, and `runId`.
+`scope: "thread" | "run" | "subject"` chooses sharing; every key includes the
+subject. Models never supply sandbox IDs. `sandbox.limits` contains resolved bounds.
+Optional `usage.record(ctx, event)` receives best-effort, estimate-only metadata;
+observer failures do not change effects.
+
+### Five tools
+
+| Tool input | Result |
+| --- | --- |
+| `sandbox_exec({ command })` | `{ status: "done", exitCode, stdout, stderr, truncated }` or `{ status: "unknown" }`; stdout/stderr share a tail allowance, preferring stderr. |
+| `sandbox_read_file({ path })` | `{ content }` — bounded text tail, outside the receipts ledger. |
+| `sandbox_write_file({ path, content })` | `{ status: "done" }` or `{ status: "unknown" }`. |
+| `sandbox_list({ path })` | `{ entries }` — bounded `{ name, isDir, size? }` entries, outside the ledger. |
+| `sandbox_run_background({ command })` | `{ status: "running" \| "unknown", jobId }` — requires `refs`; does not hold an action open until completion. |
+
+### Provider contract
+
+Implement `SandboxProvider` to supply another adapter. Here `ctx` is
+`SandboxContext`, IDs/paths/commands are strings, `job` is `BackgroundJob`,
+and `location` is `BackgroundLocation` (sandbox ID and private directory).
+Each method returns a Promise of the listed result.
+
+| Method signature | Result / contract |
+| --- | --- |
+| `create(ctx, { scopeKey })` | `{ sandboxId }` before waiting for readiness. |
+| `resume(ctx, sandboxId)` | `void`; ready is a no-op; stopped, archived, and recoverable error states preserve files. |
+| `stop(ctx, sandboxId)`, `delete(ctx, sandboxId)` | `void`; VM lifecycle. |
+| `exec(ctx, sandboxId, cmd, { timeoutS, signal })` | `{ exitCode, stdout, stderr }`; no command retries. |
+| `startBackground(ctx, sandboxId, cmd, job?)` | `BackgroundJob`; honor supplied persisted identity/location even if launch throws; no launch retries. |
+| `poll(ctx, jobId, location)` | `JobOutcome`: `state: "running" \| "done" \| "failed" \| "unknown"`, optional `exitCode`, `logTail`, `code`. |
+| `cancelBackground(ctx, jobId, location)` | `void`; bounded original-group cleanup, verifying ownership before fallback signaling. |
+| `readFile(ctx, sandboxId, path, { maxBytes })` | `string`; enforce byte bound before returning across Convex. |
+| `writeFile(ctx, sandboxId, path, content: string)` | `void`. |
+| `listFiles(ctx, sandboxId, path, { limit })` | `FileEntry[]`; enforce count before returning across Convex. |
+| `upload(ctx, sandboxId, path, content: Uint8Array)` | `void`; Daytona accepts at most 512 KiB per call. |
+| `download(ctx, sandboxId, path, { maxBytes, offset?, totalSizeLimit? })` | `Uint8Array`; bounded window, short window means EOF; reject total-size overflow and keep bytes out of component args/rows. |
+
+Daytona uses bounded synchronous execs and a Python supervisor rather than its
+provider background poll chain. Snapshots must contain `python3`.
+Auto-stop defaults to 15 minutes, auto-archive to 10; both accept 0–525,600 minutes.
+Use `autoStopInterval: 0` for jobs that must outlive the idle interval.
+Provider auto-delete is disabled with `autoDeleteInterval: -1`.
+
+### Background completion
+
+The provider job ID, sandbox ID, and private directory commit before launch.
+Daytona detaches a process group; its supervisor stays outside the group and
+retains the unreaped leader through SIGTERM and SIGKILL before publishing completion.
+Group identity and exit status publish by atomic rename. Polling reads actual
+bounded log tails at the source, backs off, and ends at completion or deadline.
+
+Cancellation atomically publishes a control file. If the supervisor does not
+acknowledge it, fallback signaling requires every current group member's
+`AGEVEX_JOB` marker in `/proc`; unverified ownership stays unknown without signaling.
+Deadline expiry attempts a bounded group kill and records `unknown` with
+`SANDBOX_JOB_DEADLINE`. Status failures keep polling until that deadline;
+uncertain cancellation retains the deadline path. Watchdogs cover interrupted
+launch/poll actions. Lost launch responses stay unknown and never replay paid work.
+
+Optional `onComplete(ctx, event)` runs in the settlement mutation, atomically
+with terminal state. Its `SandboxJobEvent` contains
+`{ type: "sandbox.job.completed", jobId, providerJobId?, scopeKey, subject,
+threadId, runId, state: "done" | "failed" | "unknown", exitCode?, logTail?, code? }`.
+Use transactional writes, including a host event or `workflow.sendEvent`, rather
+than external effects. Callback failures retry only until the deadline, then
+leave a readable unknown snapshot via `sandbox.job(ctx, { jobId })`.
+Revoked authority records unknown without provider access or the host callback.
+
+### File exports
+
+`sandbox.export(ctx, { threadId, path })` returns
+`{ fileId, storageId, bytes, sha256 }`. It requires `agent`, never creates a
+missing binding, and retains files on read failure. Run scope additionally
+requires `resolveThread(ctx, threadId): Promise<SandboxFacts>` from host-owned
+state; subject and thread must match authorization.
+
+Default-runtime exports have an **8 MiB hard maximum**. For larger files,
+register this action and pass its reference as `nodeExport` to `defineSandbox`:
+
+```ts title="convex/sandboxExports.ts"
+"use node";
+import { sandboxNodeExport } from "agevex/sandbox";
+import { sandboxOptions } from "./sandboxOptions";
+
+export const exportFile = sandboxNodeExport(sandboxOptions);
+```
+
+Here `sandboxOptions` is host-owned shared `SandboxOptions` configuration;
+set `nodeExport: internal.sandboxExports.exportFile` on the default registration.
+Oversized exports route to the Node action, repeating authorization and trusted
+scope resolution. `exportBytesNode` defaults to a **64 MiB hard maximum**.
+Both bounds can be lowered. Without registration, overflow throws
+`SANDBOX_EXPORT_TOO_LARGE` naming `sandboxNodeExport()`.
+
+Exports hash incrementally in windows of at most 512 KiB, then store one Blob.
+Daytona stages temporary windows for its non-recording file API; bytes never
+enter execution rows, component arguments, or receipts. Interrupted transfers
+create no storage object. Conservative whole-file allocations are 4× the limit:
+32 MiB in the default 64 MiB runtime or 256 MiB in the 512 MiB Node runtime,
+plus bounded transport windows and runtime overhead.
+
+## Limits
+
+Exported `LIMITS` and `HARD_LIMITS` define these `limits` overrides.
+All require positive safe integers; `pollMinMs <= pollMaxMs`.
+
+| Option | Default | Hard maximum |
+| --- | --- | --- |
+| `commandTimeoutS` | 180 s | 180 s |
+| `outputChars` | 6,000 | 12,000 |
+| `fileReadChars` | 160,000 | 160,000 |
+| `writeChars` | 160,000 | 160,000 |
+| `listEntries` | 100 | 100 |
+| `exportBytes` | 8 MiB | 8 MiB |
+| `exportBytesNode` | 64 MiB | 64 MiB |
+| `ttl` | 86,400,000 ms (24 h) | 31,536,000,000 ms (365 days) |
+| `pollMinMs` | 1,000 ms | 120,000 ms |
+| `pollMaxMs` | 30,000 ms | 120,000 ms |
+| `jobTimeoutMs` | 3,600,000 ms (1 h) | 86,400,000 ms (24 h) |
+| `jobsPerSandbox` | 16 active | 64 active |
+| `cleanupBatch` | 32 | 64 |
+
+Fixed `LIMITS` include a 540,000 ms shared action budget, 10,000 ms cancellation
+budget, 10 s background exec timeout, 1 s control-file acknowledgement wait,
+0.1 s SIGTERM grace, 512 KiB export windows, 16,000-character commands,
+4,096-character paths, and 256-character identities.
+
+## Guarantees
+
+- Provider identity persists before cold-start readiness; lost create responses retain unknown reservations without duplicate creates.
+- Uncertain commands and background launches are not replayed; effects reuse core receipts, while file text stays outside receipts.
+- Reads, writes, listings, output, and exports enforce bounds; interrupted exports store nothing and successful exports retain exact bytes and SHA-256.
+- Background completion terminates descendants still in the original process group before reporting done; the leader identity remains reserved through both signals.
+- Poll failures and callback failures retain a finite deadline path; successful callbacks and terminal state commit together.
+- Host authorization gates tools, exports, lifecycle, and scheduled work; revoked background authority stops provider polling.
+- TTL cleanup runs only on demand, protects active jobs, drains bounded batches, and never retries uncertain deletes.
+
+## Known limits
+
+- The provider VM supplies isolation and network policy. On completion and deadline, cleanup terminates processes still in the job's original process group. A process deliberately detaching with `setsid` or daemonizing is outside this guarantee; stop or delete the sandbox for full containment, via `sandbox.stop` or TTL cleanup. Ownership markers are conservative verification, not protection against hostile code inside the VM.
+- Mounting arms no recurring cleanup timer. The host calls `sandbox.cleanup(ctx)` to schedule a finite sweep; active jobs protect files and action leases may delay idle cleanup by up to nine minutes. Deleted bindings remain tombstones; uncertain deletes and lost creates require operator reconciliation.
+- Automatic core sandbox-slot and event-wait wiring remains a separate integration step. The host owns completion delivery and policy; no authoritative Daytona cost is available.
