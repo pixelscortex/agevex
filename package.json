@@ -45,7 +45,34 @@
     "./meter/_generated/component.js": {
       "types": "./dist/meter/component/_generated/component.d.ts"
     },
-    "./meter/test": "./src/meter/test.ts"
+    "./meter/test": "./src/meter/test.ts",
+    "./extract": {
+      "types": "./dist/extract/index.d.ts",
+      "default": "./dist/extract/index.js"
+    },
+    "./extract/convex.config": {
+      "types": "./dist/extract/component/convex.config.d.ts",
+      "default": "./dist/extract/component/convex.config.js"
+    },
+    "./extract/_generated/component.js": {
+      "types": "./dist/extract/component/_generated/component.d.ts"
+    },
+    "./sandbox": {
+      "types": "./dist/sandbox/index.d.ts",
+      "default": "./dist/sandbox/index.js"
+    },
+    "./sandbox/convex.config": {
+      "types": "./dist/sandbox/component/convex.config.d.ts",
+      "default": "./dist/sandbox/component/convex.config.js"
+    },
+    "./sandbox/test": "./src/sandbox/test.ts",
+    "./sandbox/_generated/component.js": {
+      "types": "./dist/sandbox/component/_generated/component.d.ts"
+    },
+    "./telemetry": {
+      "types": "./dist/telemetry/index.d.ts",
+      "default": "./dist/telemetry/index.js"
+    }
   },
   "scripts": {
     "build": "tsc --project tsconfig.json",
@@ -58,13 +85,20 @@
     "lint:convex:check": "bun run scripts/check-convex-lint.ts",
     "check": "vp check . && bun run lint:convex:check",
     "test": "vp test --run",
-    "test:live": "vp test --run --config vite.live.config.ts && bun run test:meter:live",
-    "test:meter:live": "vp test --run --config tests/meter/live.config.ts"
+    "test:live": "vp test --run --config vite.live.config.ts && bun run test:meter:live && bun run test:live:extract && vp test --run --config tests/sandbox/vite.live.config.ts && bun run test:live:telemetry",
+    "test:meter:live": "vp test --run --config tests/meter/live.config.ts",
+    "test:live:extract": "vp test --run --config tests/extract/vite.live.config.ts",
+    "test:tools": "bun run build && vp test --run tests/tools",
+    "registry:build": "bun run --cwd docs/site registry:build",
+    "test:live:telemetry": "vp test --run --config tests/telemetry/vite.live.config.ts --reporter verbose"
   },
   "dependencies": {
     "@convex-dev/aggregate": "^0.3.4",
+    "@convex-dev/rag": "0.7.8",
     "@convex-dev/workflow": "0.4.10",
-    "@convex-dev/workpool": "0.4.14"
+    "@convex-dev/workpool": "0.4.14",
+    "@daytona/convex": "2.1.0",
+    "@noble/hashes": "2.4.0"
   },
   "devDependencies": {
     "@ai-sdk/openai": "4.0.102",

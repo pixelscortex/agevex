@@ -1,0 +1,60 @@
+---
+title: Goals
+description: Set and read one explicit goal for a user run.
+status: Available
+---
+
+```sh
+bunx shadcn add http://localhost:3000/r/goals.json
+```
+
+Start the docs site first, or replace the origin. The item requires the host's
+existing `agevex` package, installs `ai`, `convex` and `zod`, and copies three
+files into `convex/agevexTools/` without changing your schema.
+
+Use a TypeScript host with `"tsx": true` in `components.json` before installing.
+shadcn's JavaScript mode strips the types required by the schema snippet.
+
+```ts title="convex/schema.ts"
+import { defineSchema } from "convex/server";
+import { goalTables } from "./agevexTools/goalsSchema.js";
+
+export default defineSchema({ ...goalTables }); // merge your existing tables
+```
+
+```ts title="In your agevex Agent registration"
+import { createGoalTools } from "./agevexTools/goals.js";
+import { internal } from "./_generated/api.js";
+
+const tools = createGoalTools(internal.agevexTools.goalsState);
+// Include ...tools in the Agent's tools; keep host authorize and
+// authorizeExecution policies on registerAgent.
+```
+
+`goal_set({ goal })` replaces the thread's explicit goal and returns
+`{ goal }`. Text is trimmed and must contain 1–4000 characters.
+`goal_check({})` reads `{ goal: string | null }`; `null` means no goal has been
+set on this thread. The model uses that goal to report its progress; the tool does
+not independently verify success.
+
+`GOAL_LIMITS` fix goal text at 4000 characters. Owner, thread and run come from
+`ToolContext`, which core already bounds (`LIMITS.factBytes`, 128 UTF-8 bytes).
+The host table `agevexGoals` holds **one row per owner and thread**: `subject`,
+`threadId` and `goal`. The goal belongs to the thread, so `goal_check` returns it in every
+later run (for example after a budget resume), and a later `goal_set` replaces
+it. The table grows with threads, not runs. Each operation reads at most two
+indexed rows (a valid row is below 18 KiB) and a set writes one. There are no
+SDK tables or transcript reads.
+
+Rows outlive their threads; the host owns retention. Call the shipped internal
+`cleanup({ subject, threadId? })` mutation from your own deletion or retention
+job. It deletes at most `GOAL_LIMITS.cleanupBatch` (128) rows per call and
+returns `{ deleted, done }`; call again while `done` is false. Nothing
+reschedules itself.
+
+Both tools use core `defineOnceTool`, which supplies trusted `ToolContext`
+facts and the cancellation fence. Ownership and run are never model input;
+unknown input fields are rejected. Each `toolCallId` replays its original
+result, so an old replay cannot overwrite a newer goal. Different input under
+the same key returns `KEY_CONFLICT`; unknown outcomes are not retried. Use new
+call IDs for new checks. Keep the shipped state functions internal.

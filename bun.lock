@@ -5,8 +5,10 @@
     "": {
       "name": "agevex",
       "dependencies": {
+        "@convex-dev/rag": "0.7.8",
         "@convex-dev/workflow": "0.4.10",
         "@convex-dev/workpool": "0.4.14",
+        "@noble/hashes": "2.4.0",
       },
       "devDependencies": {
         "@ai-sdk/openai": "4.0.102",
@@ -25,10 +27,10 @@
         "zod": "4.6.7",
       },
       "peerDependencies": {
-        "@ai-sdk/provider": "^4.0.29",
-        "@ai-sdk/provider-utils": "^5.0.62",
+        "@ai-sdk/provider": "^4.0.34",
+        "@ai-sdk/provider-utils": "^5.0.68",
         "@convex-dev/agent": "^0.7.7",
-        "ai": "^7.0.143",
+        "ai": "^7.0.153",
         "convex": "^1.47.0",
         "convex-helpers": "^0.1.128",
       },
@@ -64,6 +66,8 @@
     "@convex-dev/batch-worker": ["@convex-dev/batch-worker@0.2.2", "", { "peerDependencies": { "convex": "^1.36.1", "react": "^18.3.1 || ^19.0.0" } }, "sha512-3knigElzTVhWw1sN28EYkGBTdrJZ03vMj2PJPuFq3V0Tg41i7tcv/EWDBFQWcUaKzBWWVw693hcJtxCF3CRtEw=="],
 
     "@convex-dev/eslint-plugin": ["@convex-dev/eslint-plugin@5.0.0", "", { "dependencies": { "@typescript-eslint/types": "~8.58.0", "@typescript-eslint/utils": "~8.58.0" }, "peerDependencies": { "convex": "^1.43.0" } }, "sha512-UFhZ7bJBo4mTfa829/mntoAwyC9aKwXe6dxCV7PianSdAfFIbdCwCjWPBmhqn1hNlpqhVU385C/vjL8CXfxA2Q=="],
+
+    "@convex-dev/rag": ["@convex-dev/rag@0.7.8", "", { "dependencies": { "@convex-dev/workpool": "^0.4.4" }, "peerDependencies": { "ai": "^7.0.0", "convex": "^1.46.0", "convex-helpers": "^0.1.127" } }, "sha512-bj/RZfIOrcWE2Ly9vvbB9DDKEK511CUtWqihoA0LPdiILTg8Oa64Yb5ncBllhJnFlRhQKiZQf2XOwu44iUhJQA=="],
 
     "@convex-dev/workflow": ["@convex-dev/workflow@0.4.10", "", { "dependencies": { "async-channel": "^0.2.0" }, "peerDependencies": { "@convex-dev/workpool": "^0.4.4", "convex": "^1.46.0", "convex-helpers": "^0.1.127" } }, "sha512-BHEDZEJUhZQOuqtop4bZRgomoKFA+JNECat+c9/cAuQmCegn7F0xlAiFiCPtYNm2xyUh3Rv+fJuNhnqs4th1cw=="],
 
@@ -158,6 +162,8 @@
     "@keyv/bigmap": ["@keyv/bigmap@1.3.1", "", { "dependencies": { "hashery": "^1.4.0", "hookified": "^1.15.0" }, "peerDependencies": { "keyv": "^5.6.0" } }, "sha512-WbzE9sdmQtKy8vrNPa9BRnwZh5UF4s1KTmSK0KUVLo3eff5BlQNNWDnFOouNpKfPKDnms9xynJjsMYjMaT/aFQ=="],
 
     "@keyv/serialize": ["@keyv/serialize@1.1.1", "", {}, "sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA=="],
+
+    "@noble/hashes": ["@noble/hashes@2.4.0", "", {}, "sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA=="],
 
     "@oxc-project/runtime": ["@oxc-project/runtime@0.154.0", "", {}, "sha512-cBQNGoh659BNgvA8OC/e4BNDtFkv03dJaYdkp2adgOQNtISNAPQ+nB4S8XvWtNk7Xl+0g+7aa+iRGR25Xycd1Q=="],
 

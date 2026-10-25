@@ -5,6 +5,7 @@
     "sandbox",
     "extract",
     "meter",
-    "tools"
+    "tools",
+    "telemetry"
   ]
 }

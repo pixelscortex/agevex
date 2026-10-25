@@ -7,6 +7,159 @@ run budgets and idempotency.
 
 Git-only, private package, **UNLICENSED**.
 
+## Optional sandboxes
+
+`agevex/sandbox` binds a provider sandbox to trusted thread, run or subject
+facts. Models never supply sandbox IDs. Mount `agevex/sandbox/convex.config`
+separately; core does not import it.
+
+```ts
+// convex/convex.config.ts — in addition to Agent and agevex
+import sandbox from "agevex/sandbox/convex.config";
+import daytona from "@daytona/convex/convex.config";
+// Declare DAYTONA_API_KEY in defineApp({ env: { DAYTONA_API_KEY: v.string() } }).
+app.use(sandbox);
+app.use(daytona, { env: { DAYTONA_API_KEY: app.env.DAYTONA_API_KEY } });
+```
+
+```ts
+import { defineSandbox, daytona } from "agevex/sandbox";
+
+const sandbox = defineSandbox({
+  component: components.sandbox,
+  provider: daytona(components.daytona, { autoStopInterval: 0 }),
+  scope: "thread",
+  agent: components.agent, // native Agent storeFile for exports
+  authorize: hostSandboxPolicy,
+  refs: {
+    wake: () => internal.sandboxes.wake, // scheduled mutation: claims, then schedules poll
+    poll: () => internal.sandboxes.poll,
+    settle: () => internal.sandboxes.settle,
+    cleanup: () => internal.sandboxes.cleanup,
+  },
+  onComplete: async (ctx, event) => {
+    // Record a host event or workflow.sendEvent here, in this mutation.
+    await hostJobCompleted(ctx, event);
+  },
+  usage: { record: hostSandboxObservation }, // optional; estimate-only
+});
+export const { wake, poll, settle, cleanup } = sandbox.internalFunctions();
+const tools = sandbox.tools();
+```
+
+`hostSandboxPolicy(ctx, request)` must check current host policy and return
+`{ subject }`. Requests name `use`, `export`, `stop`, `delete`, `poll` or
+`cleanup`; scheduled operations have no end-user identity. A supplied subject
+must match the policy result. Expose host endpoints that call these helpers,
+not raw component references. For inference cycles, annotate exported host
+functions with `RegisteredAction`/`RegisteredMutation` using exported
+`PollArgs`, `PollActionArgs`, `SettleArgs` and `Record<string, never>` cleanup args.
+
+The five tools are `sandbox_exec`, `sandbox_read_file`, `sandbox_write_file`,
+`sandbox_list`, and `sandbox_run_background`. Effects use core's existing
+`defineOnceTool` receipt binding. Pure reads take a trusted `ToolContext` in AI
+SDK 7's `context`, or from `sandbox.tools(tc)` in a host-bound tool factory.
+File contents do not enter core's 64 KiB receipts. Automatic core sandbox-slot
+and event-wait wiring is a separate integration step.
+
+Defaults: commands ≤180 seconds; total action work ≤540 seconds; shared
+stdout/stderr tail ≤6,000 characters; text read/write ≤160,000 characters;
+directory listing ≤100 entries; default-runtime binary export ≤8 MiB (hard maximum); 16 active jobs per
+sandbox; idle TTL 24 hours. Host overrides are validated against hard maxima.
+Daytona snapshots must include `python3` for bounded command output and reads.
+Use `autoStopInterval: 0` when jobs must outlive the idle interval.
+
+`sandbox.export(ctx, { threadId, path })` returns
+`{ fileId, storageId, bytes, sha256 }` through native Agent `storeFile`.
+Run-scoped exports require `resolveThread(ctx, threadId)` returning trusted
+`{ subject, threadId, runId }` from host state. Export never creates a sandbox
+for a missing binding. Read failures retain the existing filesystem.
+Exports read windows of at most 512 KiB and hash incrementally before storing
+one Blob. Daytona stages temporary windows for its file API so file bytes
+never enter execution rows, component arguments or receipts. An interrupted
+transfer creates no storage object.
+
+For exports above 8 MiB, register a host action from a `"use node"` file:
+
+```ts
+// sandboxExports.ts
+"use node";
+import { sandboxNodeExport } from "agevex/sandbox";
+import { sandboxOptions } from "./sandboxOptions";
+export const exportFile = sandboxNodeExport(sandboxOptions);
+```
+
+Pass `nodeExport: internal.sandboxExports.exportFile` to `defineSandbox`.
+Larger files then route to that action, which repeats authorization and trusted
+scope resolution. Its `limits.exportBytesNode` defaults to a hard maximum of
+64 MiB. Without this registration, oversized exports fail with
+`SANDBOX_EXPORT_TOO_LARGE` naming `sandboxNodeExport()`. Both export bounds can
+be lowered. Peak file allocations are conservatively 4× the limit: 32 MiB in
+the default 64 MiB runtime, or 256 MiB in the 512 MiB Node runtime, plus bounded
+transport windows and runtime overhead.
+
+Background completion produces one atomic host callback with
+`{ type: "sandbox.job.completed", jobId, providerJobId?, scopeKey, subject,
+threadId, runId, state: "done" | "failed" | "unknown", exitCode?, logTail?, code? }`.
+The provider job ID, sandbox ID and private job directory are persisted before
+launch. Daytona detaches a process group through bounded synchronous execs;
+the module owns polling and reads actual log tails at the source. The provider's
+disposable VM supplies isolation: on completion and on deadline, every process still in the job's original process group is terminated; a process that deliberately detaches (setsid / daemonizes) is outside this guarantee; for full containment stop or delete the sandbox, which `sandbox.stop` / TTL cleanup do.
+The supervisor retains the unreaped leader through SIGTERM and SIGKILL before
+publishing completion. Cancellation uses an atomic control file; if the supervisor
+does not acknowledge it, fallback signaling requires every current group member's
+`AGEVEX_JOB` marker in `/proc`. Unverified ownership records `unknown` without
+signaling. Group identity and completion files are published by atomic rename. Polls back
+off and stop at completion or a bounded deadline. Expiry attempts a bounded
+group kill and records `unknown` with `SANDBOX_JOB_DEADLINE`. Status failures
+keep polling with backoff until the deadline. An `unknown` result first attempts
+a bounded group kill; uncertain cancellation retains the deadline path. A lost
+launch response stays `unknown`;
+paid work is never replayed. A watchdog handles interrupted launch/poll
+actions. Successful callbacks and terminal state commit together, so callbacks
+must perform transactional writes rather than external effects. Callback
+failures are retried only until the job deadline; then the job becomes `unknown`
+and `sandbox.job(ctx, { jobId })` exposes its bounded reconciliation snapshot.
+The scheduled `wake` is a mutation, so it runs exactly once: it claims the job
+(scheduling the lease backstop) and then schedules the `poll` action; if that
+action dies, the backstop retries it. Only a definite denial from
+`authorize` counts as revoked background authority, which stops polling and
+records `unknown` without calling the provider or the host callback. Exactly
+these shapes are a denial: `new ConvexError("FORBIDDEN")`,
+`new ConvexError({ code: "FORBIDDEN" })`, and an `Error` whose message starts
+with `FORBIDDEN` or `SANDBOX_FORBIDDEN`. Any other error is transient: the job
+is retried with the normal poll backoff. A persistent transient error ends the
+job as `unknown` (`SANDBOX_JOB_DEADLINE`) without a kill and without a callback,
+once the late-attempt limit after the deadline is reached. The marker kill for a
+vanished job directory repeats up to three scan-and-kill passes; marked
+processes left after that report not-killed. A job whose directory vanished is
+`unknown` and is killed through its `AGEVEX_JOB` environment marker (no marked
+process counts as killed).
+
+Provider auto-delete is disabled. `sandbox.stop(tc)` preserves files and
+resumes on next use, including stopped, archived and recoverable error states.
+The host explicitly calls `sandbox.cleanup(ctx)` to schedule a finite TTL
+sweep. Active jobs protect their filesystem; action leases conservatively
+delay idle cleanup by up to nine minutes. A sweep stops and reschedules itself
+when too little action budget remains to finish a delete. Uncertain deletes are
+not retried. A deleted scope simply gets a fresh sandbox on next use. Lost
+creates retain an unknown reservation instead of risking a duplicate resource;
+after finding and deleting the possibly-created sandbox at the provider
+(Daytona label `agevexScope`, equal to `sandbox.scopeKey(facts)`), the host
+calls `sandbox.forget(ctx, facts)` to let the scope create again. A command that
+exceeds its timeout returns exit 124 with `timedOut: true` (a command's own
+exit 124 has `timedOut: false`) and its process group is killed; the timeout
+leaves five seconds of the action budget for that kill. Exporting a deleted
+scope is `SANDBOX_NOT_FOUND`. A watchdog
+claimed after the deadline kills the group and notifies the host once with
+`unknown` / `SANDBOX_JOB_DEADLINE`; only if two such attempts (counted on the job) both die unsettled
+does the next wake end the job as `unknown` without a callback.
+
+`agevex/test` exports `fakeSandboxProvider`; `agevex/sandbox/test` registers the
+optional component with convex-test. `bun run test` is offline. The sandbox
+live suite is included in `bun run test:live`, gated by `DAYTONA_API_KEY`, and
+always deletes its sandbox in `finally`.
+
 ## Setup
 
 ```ts
@@ -398,6 +551,30 @@ reads, fail-closed budget gates (unpriceable charges record `unknown`),
 request-id lookups, batched Polar/webhook/custom sinks and host-driven
 retention (`prune`). Core wiring is separate. See the [meter API, limits and delivery semantics](src/meter/README.md).
 
+## Registry tools
+
+Copy headless tools into your host with shadcn. Start the docs site in
+`docs/site`, then install from its origin:
+
+```sh
+bunx shadcn add http://localhost:3000/r/todo.json
+```
+
+Items: [todo](docs/site/content/docs/tools/todo.mdx) (100 items, 32 KiB/list),
+[goals](docs/site/content/docs/tools/goals.mdx) (one 4000-character goal/thread),
+[ask-user](docs/site/content/docs/tools/ask-user.mdx) (a deferred tool: the owner
+answers with core `answer`, 2000-character question) and
+[continue-budget](docs/site/content/docs/tools/continue-budget.mdx) (native
+approval plus `resumeAfterBudgetStop`: single-use host-recorded consent, raise budget, cancel,
+fresh send, atomically in one host mutation). Todo, goals and continue-budget ship
+host table snippets to merge into your schema; ask-user adds no tables. Core `ToolContext` supplies ownership and the once-tool
+ledger. Rows outlive threads: use each state module's bounded `cleanup`. Keep state functions internal. Budget consent does not change a budget.
+
+`bun run registry:build` rebuilds `/r/*.json`; `bun run test:tools` builds the
+package and runs the offline suite, including a CLI install smoke test that
+clearly skips if shadcn needs network. The provisional `@agevex` namespace
+requires a host registry URL configuration.
+
 ## Development
 
 ```sh
@@ -445,3 +622,147 @@ only hashed call ids and exact message references.
 A fresh send reopens a cancelled thread, preserving the existing cancellation
 contract. Failed cancellation cleanup blocks reopening with a typed `CANCELLED`
 receipt until a subsequent cancel successfully settles the recorded work.
+
+## Optional file extraction
+
+Mount `agevex/extract/convex.config` alongside the native Agent component. It
+works standalone, or under agevex via `registerAgent({ extract: extract.slot() })`
+with `authorize: authorizeAttached(() => runtime)`; see the
+extract docs page.
+
+```ts
+// convex/files.ts
+import { defineExtract, directText, firecrawlParse, visionOcr } from "agevex/extract";
+import { components, internal } from "./_generated/api.js";
+
+const extract = defineExtract(components.agevexExtract, {
+  agent: components.agent,
+  worker: internal.files.execute,
+  storageMetadata: internal.files.storageMetadata,
+  authorize: authorizeFileInThread,
+  backends: [
+    directText(),
+    firecrawlParse({ apiKey: () => process.env.FIRECRAWL_API_KEY! }),
+    visionOcr({ model: visionModel }),
+  ],
+});
+export const { execute, storageMetadata } = extract.internalFunctions();
+// Inside an authorized host action:
+// const job = await extract.run(ctx, { threadId, fileId });
+// const fileTools = extract.tools({ ctx, threadId });
+```
+
+The host must verify both access to `threadId` and the exact `fileId` attachment,
+including background `execute` calls with no user session. Keep an exact attachment
+reference; never scan messages. `fromUrl` returns a native Agent file that the host
+must attach before extraction. No public Convex endpoints are generated; host
+wrappers call the authorized helpers.
+
+Artifacts reuse `(fileId, backend, version, optionsHash)`; Agent dedupes by hash, so
+threads sharing bytes share one. Retryable failures (`PROVIDER_UNAVAILABLE`,
+`OBJECT_UNAVAILABLE`, `CHECKSUM_FAILED`) run again as the next attempt only on an
+explicit `run`, at most three attempts in total. Final failures and `unknown`
+outcomes never rerun, and a queued job never expires before it starts. `release`
+removes one namespace's index only; the admin `purge({ fileId })` tombstones the
+shared extraction, deletes payloads and every namespace's RAG entries (returns `{ more }`: loop; late output is fenced, usage survives). A paid result is published even if the file was detached mid-run.
+Change a backend version or supply a different SHA-256 `optionsHash` to request new work.
+
+Text cursors are UTF-8 byte offsets. `readText` and `readPages` return at most
+1 MiB text; pages also cap at 100. Resume pages with their `next` object. File
+tools return at most 64 KiB and references; full JSON stays in storage. Byte
+ceilings fit the default 64 MiB runtime (document 12 MiB, image 6 MiB, text 4 MiB,
+payload 6 MiB); the opt-in `"use node"` actions from `extractNodeExport` (registered
+as `options.node`) raise them to 50 MB / 10 MB / 8 MiB / 32 MiB. See the docs page.
+
+RAG is off by default. Pass `rag: { component, embedding, embeddingDimension,
+chunk?: { maxBytes } }` and mount `@convex-dev/rag` separately to enable
+`index`, `search`, and `search_files` (the agevex slot offers it only with
+`autoIndex: true`, which indexes each attached file into its thread). Use a
+dedicated mount/namespace for these
+bounded chunks. The host authorizes namespaces; tools use `threadId` as the
+namespace and recheck each result's attachment. Index text caps at 1 MiB;
+chunks are 1–8 KiB. Embedding models must be instantiated AI SDK v3/v4 models.
+Index calls for one (artifact, namespace) admit one embedding action; concurrent calls return
+`pending`, and completed calls reuse the recorded entry. Caller keys are scoped
+to the artifact. Explicit retries delete the exact prior native entry first.
+
+`bun run test:live:extract` loads keys from the main checkout's `.env.local` and
+makes two Firecrawl requests plus one `openrouter/free` OCR request. Explicit
+empty key environment values skip those paid probes. See the extract docs page
+for bounds and limits.
+
+## Telemetry
+
+`agevex/telemetry` is an optional, action-scoped AI SDK 7 callback integration;
+no component mount, tables, Node APIs or new dependencies are required. Create
+one buffer per turn and consume the stream before flushing in `finally`:
+
+```ts
+import { telemetry, langfuse, braintrust } from "agevex/telemetry";
+
+const trace = telemetry({
+  exporters: [
+    langfuse({ baseUrl: "https://cloud.langfuse.com", publicKey, secretKey }),
+    // braintrust({ apiKey, projectId }),
+  ],
+});
+try {
+  const result = streamText({
+    model,
+    prompt,
+    maxRetries: 0,
+    telemetry: {
+      integrations: [
+        trace.integration({
+          subject,
+          rootThreadId,
+          threadId,
+          runId,
+          agent: "Main",
+          turnKey,
+        }),
+      ],
+    },
+  });
+  await result.consumeStream();
+} finally {
+  await trace.flush(); // optional AbortSignal; one attempt, at most 3 s for exports
+}
+```
+
+Agent 0.7.7 forwards the same `telemetry` option in its `streamText` arguments.
+For managed turns, pass `telemetry: telemetry.slot({ exporters: [langfuse({
+baseUrl: "https://cloud.langfuse.com", publicKey, secretKey })] })` to
+`registerAgent`. Core supplies facts and flushes each turn's isolated buffer;
+export failures and cancellation discard it without failing the turn.
+Per-call integrations replace AI SDK global integrations. AI SDK 7 has no
+`tracer` option.
+
+Prompts, instructions, model output and tool arguments/results are omitted by
+default. Opt in with `recordInputs: true` / `recordOutputs: true`; an optional
+`sanitize(value, attributeName)` transforms bounded attribute values and dynamic
+span name components before buffering (`undefined` omits an attribute; missing
+or rejected name components become `redacted`). SDK recording flags
+can further disable recording. Raw error diagnostics are never recorded.
+User/session/run/agent facts are included on every span; sanitize them when needed.
+
+`LIMITS` from this subpath fixes the buffer at 128 spans, 16 KiB of encoded
+attributes per span and 4 KiB per value, with truncation markers. Reuse stable
+`runId`, `turnKey` and call order for stable, deterministic SHA-256 trace/span ids
+across integrations. A retried action may export a duplicate: Langfuse v4 does
+not guarantee deduplication by id. Core never retries paid model steps
+automatically, so duplicates are rare. Hosts needing exactly-once export can
+export from their own durable outbox.
+`flush` seals and drains its buffer once, including unfinished spans as errors;
+provider failures, interrupted finish reasons and streams without model completion
+mark affected model, step and agent spans as errors with safe reasons. Export
+failures/timeouts are ignored and never retried. All configured exporters run
+concurrently with cancellation and a three-second deadline. Langfuse `baseUrl`
+is the host URL (an optional deployment path is preserved); Braintrust uses
+its US OTel endpoint and a project id.
+
+`bun run test:live` also runs the telemetry ingestion smoke test. It skips
+clearly unless all three `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` and
+`LANGFUSE_BASE_URL` entries exist in the main checkout's `.env.local`. This
+smoke test uses synthetic model events and one ingestion POST, with no paid
+model requests.
