@@ -13,7 +13,7 @@ import { setup, api, state } from "./setup.js";
 
 // Mock the component boundary, not the adapter: execute its exact shell/Python
 // commands locally so quoting, detachment and source-side byte bounds are real.
-function harness() {
+function harness(env?: Record<string, string>) {
   const replies: number[] = [];
   const actions = vi.fn(async (ref, args) => {
     if (ref === "read") {
@@ -28,6 +28,7 @@ function harness() {
     expect(args.timeoutSeconds).toBeGreaterThan(0);
     expect(args.autoStart).toBe(false);
     const result = await promisify(exec)(args.command, {
+      env: { ...process.env, ...env },
       timeout: args.timeoutSeconds * 1000,
       maxBuffer: 1024 * 1024,
     });
@@ -50,12 +51,13 @@ function harness() {
   return { ctx, provider, actions, replies };
 }
 
-function adapterSetup(limits = {}) {
-  const h = harness();
+function adapterSetup(limits = {}, env?: Record<string, string>) {
+  const h = harness(env);
   const fake = fakeSandboxProvider();
   fake.provider.startBackground = (_ctx, ...args) => h.provider.startBackground(h.ctx, ...args);
   fake.provider.poll = (_ctx, ...args) => h.provider.poll(h.ctx, ...args);
   fake.provider.cancelBackground = (_ctx, ...args) => h.provider.cancelBackground(h.ctx, ...args);
+  fake.provider.download = (_ctx, ...args) => h.provider.download(h.ctx, ...args);
   return { ...h, ...setup("thread", limits, fake) };
 }
 
@@ -225,5 +227,353 @@ it("Daytona transfers multi-MiB files through bounded file windows without recor
     ).rejects.toThrow("SANDBOX_EXPORT_TOO_LARGE");
   } finally {
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("default exports reject files above 8 MiB with the Node action option before storing bytes", async () => {
+  const s = adapterSetup();
+  const directory = await mkdtemp(join(tmpdir(), "agevex-cap-"));
+  const path = join(directory, "large.bin");
+  try {
+    await writeFile(path, new Uint8Array(8 * 1024 * 1024 + 1));
+    await s.t.action(api.host.invoke, { op: "prepare", input: {} });
+    await expect(s.t.action(api.host.invoke, { op: "export", input: { path } })).rejects.toThrow(
+      "SANDBOX_EXPORT_TOO_LARGE: register sandboxNodeExport() in a use node file via nodeExport",
+    );
+    expect(await s.t.run((ctx) => ctx.db.system.query("_storage").collect())).toEqual([]);
+    expect(s.actions.mock.calls.some(([ref]) => ref === "read")).toBe(false);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("a transient Daytona status failure keeps polling with backoff and kills the original group at its deadline", async () => {
+  vi.useFakeTimers();
+  const s = adapterSetup({ pollMinMs: 10, pollMaxMs: 20, jobTimeoutMs: 50 });
+  const poll = s.fake.provider.poll;
+  let attempts = 0;
+  s.fake.provider.poll = async (...args) => {
+    if (++attempts === 1) throw new Error("transient status failure");
+    return poll(...args);
+  };
+  let directory: string | undefined;
+  try {
+    const result = (await s.t.action(api.host.invoke, {
+      op: "sandbox_run_background",
+      input: { command: "sleep 120 & wait" },
+    })) as { jobId: string };
+    directory = (await s.t.query(s.component.state.getJob, { jobId: result.jobId }))!.directory;
+    await vi.advanceTimersByTimeAsync(10);
+    await s.t.finishInProgressScheduledFunctions();
+    expect(await s.t.query(s.component.state.getJob, { jobId: result.jobId })).toMatchObject({
+      state: "running",
+    });
+    await vi.advanceTimersByTimeAsync(40);
+    await s.t.finishInProgressScheduledFunctions();
+    expect(attempts).toBeGreaterThan(1);
+    expect(await s.t.query(s.component.state.getJob, { jobId: result.jobId })).toMatchObject({
+      state: "unknown",
+      code: "SANDBOX_JOB_DEADLINE",
+    });
+    expect(await readFile(directory + "/cancelled", "utf8")).toBe("deadline");
+    const count = s.actions.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(LIMITS.actionBudgetMs);
+    await s.t.finishInProgressScheduledFunctions();
+    expect(s.actions).toHaveBeenCalledTimes(count);
+    expect(s.fake.calls.background).toHaveLength(0);
+  } finally {
+    vi.useRealTimers();
+    if (directory) {
+      await s.provider.cancelBackground(s.ctx, "cleanup", {
+        sandboxId: "fake-sandbox-1",
+        directory,
+      });
+      await rm(directory, { recursive: true, force: true });
+    }
+  }
+});
+
+it("Daytona completion terminates leftover descendants before reporting the command done", async () => {
+  const { ctx, provider } = harness();
+  const jobId = crypto.randomUUID();
+  const directory = LIMITS.backgroundRoot + "/" + jobId;
+  const job = await provider.startBackground(
+    ctx,
+    "local",
+    "(sleep 1; touch " + directory + "/marker) &",
+    { jobId, directory, sandboxId: "local" },
+  );
+  try {
+    await expect
+      .poll(() => provider.poll(ctx, jobId, job))
+      .toMatchObject({ state: "done", exitCode: 0 });
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    await expect(access(directory + "/marker")).rejects.toThrow();
+  } finally {
+    await provider.cancelBackground(ctx, jobId, job);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("Daytona publishes group identity and exit status atomically while empty and partial writes stay running", async () => {
+  const patchDirectory = await mkdtemp(join(tmpdir(), "agevex-publication-"));
+  // Slow every publication write in the actual adapter Python processes. The
+  // component mock still executes the complete adapter command unchanged.
+  await writeFile(
+    join(patchDirectory, "sitecustomize.py"),
+    `import builtins,time,os
+original=builtins.open
+class SlowFile:
+ def __init__(self,f): self.f=f
+ def __enter__(self): return self
+ def __exit__(self,*args): return self.f.__exit__(*args)
+ def write(self,value):
+  self.f.flush()
+  time.sleep(0.3)
+  half=max(1,len(value)//2)
+  self.f.write(value[:half]); self.f.flush()
+  time.sleep(0.3)
+  self.f.write(value[half:]); self.f.flush()
+def slow_open(path,mode="r",*args,**kwargs):
+ f=original(path,mode,*args,**kwargs)
+ if "w" in mode and ("group.pid" in str(path) or "status.exit" in str(path)): return SlowFile(f)
+ return f
+builtins.open=slow_open
+`,
+  );
+  // The pre-fix wrapper writes status with shell printf. Slow that writer as
+  // well, so its empty/truncated published file is deterministically visible.
+  await writeFile(
+    join(patchDirectory, "sh"),
+    `#!/bin/sh
+exec /bin/sh -c 'printf() { sleep 0.3; command printf "%s" "$2" | head -c 1; sleep 0.3; command printf "%s" "$2" | tail -c +2; }; eval "$1"' sh "$2"
+`,
+    { mode: 0o755 },
+  );
+  const { ctx, provider } = harness({
+    PYTHONPATH: patchDirectory,
+    PATH: `${patchDirectory}:${process.env.PATH}`,
+  });
+  const jobId = crypto.randomUUID();
+  const directory = LIMITS.backgroundRoot + "/" + jobId;
+  let launch: Promise<unknown> | undefined;
+  const job = { jobId, directory, sandboxId: "local" };
+  try {
+    launch = provider.startBackground(ctx, "local", "sleep 0.8; exit 17", job);
+    await expect
+      .poll(async () => {
+        await access(directory);
+        return true;
+      })
+      .toBe(true);
+    let outcome = await provider.poll(ctx, jobId, job);
+    expect(outcome.state).toBe("running");
+    const seen = [outcome.state];
+    const deadline = Date.now() + 6000;
+    while (outcome.state === "running" && Date.now() < deadline) {
+      // Cancellation reads group.pid too: whenever its published name exists,
+      // it must already contain the complete positive process-group identity.
+      for (const name of ["group.pid", "status.exit"]) {
+        const published = await readFile(`${directory}/${name}`, "utf8").catch((error) => {
+          if (error.code !== "ENOENT") throw error;
+          return undefined;
+        });
+        if (published !== undefined) {
+          expect(published).toMatch(/^-?\d+\n$/);
+          if (name === "group.pid") expect(Number(published)).toBeGreaterThan(1);
+          else expect(Number(published)).toBe(17);
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      outcome = await provider.poll(ctx, jobId, job);
+      seen.push(outcome.state);
+      if (outcome.state !== "running")
+        expect(outcome).toMatchObject({ state: "failed", exitCode: 17 });
+    }
+    expect(outcome).toMatchObject({ state: "failed", exitCode: 17 });
+    expect(seen).not.toContain("unknown");
+    await launch;
+  } finally {
+    await launch;
+    await provider.cancelBackground(ctx, jobId, job);
+    await rm(directory, { recursive: true, force: true });
+    await rm(patchDirectory, { recursive: true, force: true });
+  }
+});
+
+it("registered Node exports accept the 64 MiB hard maximum through bounded Daytona windows and reject overflow", async () => {
+  const s = adapterSetup();
+  state.nodeExport = true;
+  const directory = await mkdtemp(join(tmpdir(), "agevex-node-export-"));
+  const path = join(directory, "maximum.bin");
+  const maximum = 64 * 1024 * 1024;
+  const download = s.fake.provider.download;
+  const windows: { maxBytes: number; totalSizeLimit?: number }[] = [];
+  s.fake.provider.download = async (...args) => {
+    windows.push(args[3]);
+    return download(...args);
+  };
+  try {
+    await writeFile(path, new Uint8Array(maximum));
+    await s.t.action(api.host.invoke, { op: "prepare", input: {} });
+    const result = (await s.t.action(api.host.invoke, { op: "export", input: { path } })) as {
+      bytes: number;
+      sha256: string;
+      storageId: string;
+    };
+    expect(result.bytes).toBe(maximum);
+    expect(result.sha256).toBe(
+      Buffer.from(await crypto.subtle.digest("SHA-256", new Uint8Array(maximum))).toString("hex"),
+    );
+    expect(
+      await s.t.run(async (ctx) => (await ctx.storage.get(result.storageId as never))!.size),
+    ).toBe(maximum);
+    expect(windows[0].totalSizeLimit).toBe(8 * 1024 * 1024);
+    expect(
+      windows
+        .slice(1)
+        .every(
+          (window) =>
+            window.totalSizeLimit === maximum && window.maxBytes <= LIMITS.exportChunkBytes,
+        ),
+    ).toBe(true);
+    await writeFile(path, new Uint8Array(maximum + 1));
+    await expect(s.t.action(api.host.invoke, { op: "export", input: { path } })).rejects.toThrow(
+      "SANDBOX_EXPORT_TOO_LARGE: exceeds exportBytesNode",
+    );
+    expect(await s.t.run((ctx) => ctx.db.system.query("_storage").collect())).toHaveLength(1);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 30_000);
+
+it("an uncertain group kill retries safely until the finite deadline without relaunching Daytona work", async () => {
+  vi.useFakeTimers();
+  const s = adapterSetup({ pollMinMs: 10, pollMaxMs: 20, jobTimeoutMs: 50 });
+  const cancel = s.fake.provider.cancelBackground;
+  let kills = 0;
+  s.fake.provider.poll = async () => ({ state: "unknown" });
+  s.fake.provider.cancelBackground = async (...args) => {
+    await cancel(...args);
+    kills++;
+    throw new Error("kill acknowledgement lost");
+  };
+  let directory: string | undefined;
+  try {
+    const result = (await s.t.action(api.host.invoke, {
+      op: "sandbox_run_background",
+      input: { command: "sleep 120 & wait" },
+    })) as { jobId: string };
+    directory = (await s.t.query(s.component.state.getJob, { jobId: result.jobId }))!.directory;
+    await vi.advanceTimersByTimeAsync(10);
+    await s.t.finishInProgressScheduledFunctions();
+    expect(await s.t.query(s.component.state.getJob, { jobId: result.jobId })).toMatchObject({
+      state: "running",
+    });
+    await vi.advanceTimersByTimeAsync(40);
+    await s.t.finishInProgressScheduledFunctions();
+    expect(kills).toBeGreaterThan(1);
+    expect(await s.t.query(s.component.state.getJob, { jobId: result.jobId })).toMatchObject({
+      state: "unknown",
+      code: "SANDBOX_JOB_DEADLINE",
+    });
+    const count = s.actions.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(LIMITS.actionBudgetMs);
+    await s.t.finishInProgressScheduledFunctions();
+    expect(s.actions).toHaveBeenCalledTimes(count);
+    expect(await readFile(directory + "/cancelled", "utf8")).toBe("deadline");
+  } finally {
+    vi.useRealTimers();
+    if (directory) {
+      await s.provider.cancelBackground(s.ctx, "cleanup", {
+        sandboxId: "fake-sandbox-1",
+        directory,
+      });
+      await rm(directory, { recursive: true, force: true });
+    }
+  }
+});
+
+it("a hung cancellation remains bounded after the poll deadline and leaves no scheduler chain", async () => {
+  vi.useFakeTimers();
+  const s = adapterSetup({ pollMinMs: 10, pollMaxMs: 20, jobTimeoutMs: 50 });
+  const cancel = s.fake.provider.cancelBackground;
+  let kills = 0;
+  let acknowledgeKill: () => void;
+  const killed = new Promise<void>((resolve) => {
+    acknowledgeKill = resolve;
+  });
+  s.fake.provider.poll = async () => ({ state: "unknown" });
+  s.fake.provider.cancelBackground = async (...args) => {
+    kills++;
+    await cancel(...args);
+    acknowledgeKill!();
+    return new Promise<never>(() => {});
+  };
+  let directory: string | undefined;
+  try {
+    const result = (await s.t.action(api.host.invoke, {
+      op: "sandbox_run_background",
+      input: { command: "sleep 120 & wait" },
+    })) as { jobId: string };
+    directory = (await s.t.query(s.component.state.getJob, { jobId: result.jobId }))!.directory;
+    await vi.advanceTimersByTimeAsync(10);
+    await killed;
+    await vi.advanceTimersByTimeAsync(LIMITS.backgroundKillBudgetMs);
+    await s.t.finishInProgressScheduledFunctions();
+    expect(kills).toBe(1);
+    expect(await s.t.query(s.component.state.getJob, { jobId: result.jobId })).toMatchObject({
+      state: "unknown",
+      code: "SANDBOX_JOB_DEADLINE",
+    });
+    const count = s.actions.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(LIMITS.actionBudgetMs);
+    await s.t.finishInProgressScheduledFunctions();
+    expect(s.actions).toHaveBeenCalledTimes(count);
+    expect(await readFile(directory + "/cancelled", "utf8")).toBe("deadline");
+  } finally {
+    vi.useRealTimers();
+    if (directory) {
+      await s.provider.cancelBackground(s.ctx, "cleanup", {
+        sandboxId: "fake-sandbox-1",
+        directory,
+      });
+      await rm(directory, { recursive: true, force: true });
+    }
+  }
+});
+
+it("a hung status read cannot outlive the job deadline or prevent the Daytona group kill", async () => {
+  vi.useFakeTimers();
+  const s = adapterSetup({ pollMinMs: 10, pollMaxMs: 20, jobTimeoutMs: 50 });
+  const poll = s.fake.provider.poll;
+  s.fake.provider.poll = async (...args) => {
+    await poll(...args);
+    return new Promise<never>(() => {});
+  };
+  let directory: string | undefined;
+  try {
+    const result = (await s.t.action(api.host.invoke, {
+      op: "sandbox_run_background",
+      input: { command: "sleep 120 & wait" },
+    })) as { jobId: string };
+    directory = (await s.t.query(s.component.state.getJob, { jobId: result.jobId }))!.directory;
+    await vi.advanceTimersByTimeAsync(10);
+    await vi.advanceTimersByTimeAsync(40);
+    await s.t.finishInProgressScheduledFunctions();
+    expect(await s.t.query(s.component.state.getJob, { jobId: result.jobId })).toMatchObject({
+      state: "unknown",
+      code: "SANDBOX_JOB_DEADLINE",
+    });
+    expect(await readFile(directory + "/cancelled", "utf8")).toBe("deadline");
+  } finally {
+    vi.useRealTimers();
+    if (directory) {
+      await s.provider.cancelBackground(s.ctx, "cleanup", {
+        sandboxId: "fake-sandbox-1",
+        directory,
+      });
+      await rm(directory, { recursive: true, force: true });
+    }
   }
 });

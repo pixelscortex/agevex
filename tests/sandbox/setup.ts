@@ -5,6 +5,8 @@ import core from "../../src/test.js";
 import sandbox from "../../src/sandbox/test.js";
 import schema from "./fixture/schema.js";
 import { state, runtime } from "./fixture/host.js";
+import { config } from "./fixture/host.js";
+import { sandboxNodeExport } from "../../src/sandbox/index.js";
 import type * as host from "./fixture/host.js";
 import { fakeSandboxProvider } from "../../src/testing/sandbox.js";
 import type { SandboxLimits } from "../../src/sandbox/limits.js";
@@ -24,6 +26,7 @@ export function setup(
   state.usageFails = false;
   state.usage = [];
   state.resolver = undefined;
+  state.nodeExport = false;
   // Every sandbox scenario, including hard-max admissions and sweeps, runs
   // with convex-test's actual transaction byte/doc/query limits enabled.
   const t = convexTest({
@@ -32,6 +35,10 @@ export function setup(
     modules: {
       ...modules,
       "./fixture/host.ts": async () => ({ ...(await import("./fixture/host.js")), ...runtime() }),
+      "./fixture/node.ts": async () => {
+        const node = await import("./fixture/node.js");
+        return { ...node, exportFile: sandboxNodeExport(config()) };
+      },
     },
   });
   agent.register(t);

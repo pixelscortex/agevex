@@ -5,9 +5,13 @@ export const LIMITS = {
   fileReadChars: 160_000,
   writeChars: 160_000,
   listEntries: 100,
-  exportBytes: 25 * 1024 * 1024,
+  exportBytes: 8 * 1024 * 1024,
+  exportBytesNode: 64 * 1024 * 1024,
   exportChunkBytes: 512 * 1024,
   backgroundExecTimeoutS: 10,
+  backgroundKillGraceS: 0.1,
+  backgroundPublishPollS: 0.01,
+  backgroundKillBudgetMs: 10_000,
   backgroundRoot: "/tmp/agevex/jobs",
   exportRoot: "/tmp/agevex/exports",
   ttl: 24 * 60 * 60 * 1000,
@@ -49,6 +53,7 @@ export type SandboxLimits =
     | "writeChars"
     | "listEntries"
     | "exportBytes"
+    | "exportBytesNode"
     | "ttl"
     | "pollMinMs"
     | "pollMaxMs"
@@ -67,7 +72,8 @@ export const HARD_LIMITS: SandboxLimits = {
   fileReadChars: 160_000,
   writeChars: 160_000,
   listEntries: 100,
-  exportBytes: 100 * 1024 * 1024,
+  exportBytes: LIMITS.exportBytes,
+  exportBytesNode: LIMITS.exportBytesNode,
   ttl: 365 * 24 * 60 * 60 * 1000,
   pollMinMs: 120_000,
   pollMaxMs: 120_000,

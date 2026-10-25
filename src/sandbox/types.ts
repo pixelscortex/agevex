@@ -28,9 +28,12 @@ export type JobOutcome = {
  * Convex boundary. No method may retry a command or background launch.
  * A supplied background identity/location was persisted before launch and
  * must be honored, including when launch throws. cancelBackground kills the
- * entire process group with a bounded operation. download returns a bounded
- * window starting at offset (a short window means EOF), rejects files above
- * totalSizeLimit, and never records file bytes in component args or rows.
+ * entire process group with a bounded operation.
+ * On command exit, leftover descendants must be terminated before publishing
+ * completion: a background job is the main command, not a persistent service.
+ * download returns a bounded window starting at offset (a short window means
+ * EOF), rejects files above totalSizeLimit, and never records file bytes in
+ * component args or rows.
  */
 export interface SandboxProvider {
   id: string;
@@ -102,6 +105,13 @@ export type SandboxUsageEvent = Partial<SandboxFacts> & {
 };
 
 export type PollArgs = { jobId: string };
+export type SandboxExportArgs = { threadId: string; path: string };
+export type SandboxExportResult = {
+  fileId: string;
+  storageId: import("convex/values").GenericId<"_storage">;
+  bytes: number;
+  sha256: string;
+};
 export type SettleArgs = PollArgs & {
   claim: string;
   state: "done" | "failed" | "unknown";
@@ -129,6 +139,8 @@ export type SandboxOptions = {
   ) => Promise<{ subject: string }>;
   refs?: SandboxRefs;
   agent?: AgentComponent;
+  /** Register sandboxNodeExport(options) from a host file beginning with "use node". */
+  nodeExport?: FunctionReference<"action", "internal", SandboxExportArgs, SandboxExportResult>;
   /** Required for run-scoped exports; resolve from host-owned rows, never transcripts. */
   resolveThread?: (ctx: SandboxContext, threadId: string) => Promise<SandboxFacts>;
   /** Runs atomically with the terminal job transition. Throwing rolls both back. */

@@ -371,8 +371,8 @@ it("exports a multi-MiB binary in bounded windows with an exact incremental hash
   expect(await s.t.run((ctx) => ctx.db.system.query("_storage").collect())).toEqual(before);
 });
 
-it("a polling exception settles unknown without retrying paid work", async () => {
-  const s = setup("thread", { pollMinMs: 10 });
+it("persistent polling errors retain deadline enforcement without retrying paid work", async () => {
+  const s = setup("thread", { pollMinMs: 10, pollMaxMs: 20, jobTimeoutMs: 30 });
   s.fake.provider.poll = async () => {
     throw new Error("unavailable");
   };
@@ -381,8 +381,14 @@ it("a polling exception settles unknown without retrying paid work", async () =>
   };
   await advance(s.t, 10);
   expect(await s.t.query(s.component.state.getJob, { jobId: result.jobId })).toMatchObject({
-    state: "unknown",
+    state: "running",
   });
+  await advance(s.t, 20);
+  expect(await s.t.query(s.component.state.getJob, { jobId: result.jobId })).toMatchObject({
+    state: "unknown",
+    code: "SANDBOX_JOB_DEADLINE",
+  });
+  expect(s.fake.calls.cancel).toHaveLength(1);
   expect(s.fake.calls.background).toHaveLength(1);
 });
 
@@ -636,6 +642,16 @@ it("registration rejects invalid and excessive host bounds before provider calls
         limits: { commandTimeoutS: value },
       }),
     ).toThrow("SANDBOX_INVALID");
+  for (const name of ["exportBytes", "exportBytesNode"] as const)
+    expect(() =>
+      defineSandbox({
+        component: s.component,
+        provider: s.fake.provider,
+        scope: "thread",
+        authorize: async () => ({ subject: "owner" }),
+        limits: { [name]: HARD_LIMITS[name] + 1 },
+      }),
+    ).toThrow(`SANDBOX_INVALID_${name}`);
   await expect(
     invoke(s.t, "prepare", {}, { subject: "x".repeat(LIMITS.identityChars + 1) }),
   ).rejects.toThrow("SANDBOX_INVALID");

@@ -12,7 +12,7 @@ const api = anyApi as unknown as ApiFromModules<{ daytona: typeof daytona }>;
 const modules = import.meta.glob(["./fixture/daytona.ts", "./fixture/_generated/*.ts"]);
 
 it.skipIf(!process.env.DAYTONA_API_KEY)(
-  "live Daytona preserves a large background log tail, exports multi-MiB bytes, and always deletes the sandbox",
+  "live Daytona terminates background descendants, preserves the log tail, exports below 8 MiB, and always deletes the sandbox",
   async () => {
     const t = convexTest({ schema, modules, transactionLimits: true });
     daytonaTest.register(t);
@@ -49,6 +49,9 @@ it.skipIf(!process.env.DAYTONA_API_KEY)(
           exitCode: 7,
           logTail: expect.stringContaining("FINAL live error"),
         });
+      expect(
+        await t.action(api.daytona.lifecycle, { op: "descendantCheck", sandboxId }),
+      ).toMatchObject({ exitCode: 0 });
       const exported = (await t.action(api.daytona.lifecycle, { op: "export", sandboxId })) as {
         bytes: number;
         sha256: string;
@@ -59,6 +62,7 @@ it.skipIf(!process.env.DAYTONA_API_KEY)(
         bytes: expected.length,
         sha256: Buffer.from(await crypto.subtle.digest("SHA-256", expected)).toString("hex"),
       });
+      expect(exported.bytes).toBeLessThan(8 * 1024 * 1024);
       expect(
         await t.run(async (ctx) => (await ctx.storage.get(exported.storageId as never))!.size),
       ).toBe(expected.length);
@@ -78,6 +82,7 @@ it.skipIf(!process.env.DAYTONA_API_KEY)(
         credits: 0,
         cost: "not reported by provider",
         backgroundLogBytes: 70000,
+        descendantTerminated: true,
         exportBytes: 3 * 1024 * 1024 + 17,
       }),
     );

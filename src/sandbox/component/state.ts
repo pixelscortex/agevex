@@ -274,12 +274,12 @@ export const claimPoll = mutation({
       return null;
     await cancelWake(ctx, row);
     const claim = crypto.randomUUID();
-    const leaseUntil = Math.min(
-      Date.now() + LIMITS.actionBudgetMs,
-      Math.max(Date.now() + row.pollMinMs, row.deadline),
-    );
+    const leaseUntil =
+      Math.min(Date.now() + LIMITS.actionBudgetMs, row.deadline) + LIMITS.backgroundKillBudgetMs;
     // A hard action timeout still leaves a wake to report an unknown launch
-    // or continue safe status polling. Neither wake ever replays the command.
+    // or continue safe status polling. Include the separate bounded kill
+    // budget so a slow kill cannot overlap a second deadline watchdog. Neither
+    // wake ever replays the command; even an interrupted kill gets a finite wake.
     const wakeId = await ctx.scheduler.runAt(
       leaseUntil,
       row.pollHandle as FunctionHandle<"action">,
@@ -296,7 +296,8 @@ export const again = mutation({
   handler: async (ctx, args) => {
     bounded(args.claim, LIMITS.claimChars, "CLAIM");
     const row = await ctx.db.get(args.jobId);
-    if (!row || row.state !== "running" || row.claim !== args.claim) return null;
+    if (!row || !["starting", "running"].includes(row.state) || row.claim !== args.claim)
+      return null;
     await cancelWake(ctx, row);
     const delayMs = Math.min(row.delayMs * LIMITS.backoffFactor, row.pollMaxMs);
     const wakeId = await ctx.scheduler.runAt(

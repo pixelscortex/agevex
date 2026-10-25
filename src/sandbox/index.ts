@@ -9,7 +9,7 @@ import {
   type GenericMutationCtx,
   type GenericDataModel,
 } from "convex/server";
-import { v, type GenericId } from "convex/values";
+import { v } from "convex/values";
 import { z } from "zod";
 import { defineOnceTool, fingerprint, type ToolContext } from "../client/once.js";
 import { LIMITS, bounded, integer, resolveLimits, tail } from "./limits.js";
@@ -22,6 +22,8 @@ import type {
   SandboxJobEvent,
   PollArgs,
   SettleArgs,
+  SandboxExportArgs,
+  SandboxExportResult,
 } from "./types.js";
 
 export { daytona } from "./daytona.js";
@@ -36,6 +38,19 @@ export type { ComponentApi } from "./component/_generated/component.js";
  * endpoints must call these helpers rather than exposing component references.
  */
 export function defineSandbox(options: SandboxOptions) {
+  return sandboxRuntime(options, false);
+}
+
+/** Export this action from a host "use node" file to opt into the 512 MiB runtime. */
+export function sandboxNodeExport(options: SandboxOptions) {
+  const sandbox = sandboxRuntime(options, true);
+  return internalActionGeneric({
+    args: { threadId: v.string(), path: v.string() },
+    handler: (ctx, args): Promise<SandboxExportResult> => sandbox.export(ctx, args),
+  });
+}
+
+function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
   const limits = resolveLimits(options.limits);
   const { component, provider } = options;
   bounded(provider.id, LIMITS.providerChars, "PROVIDER");
@@ -56,8 +71,12 @@ export function defineSandbox(options: SandboxOptions) {
   }
 
   /** One shared <=540 s budget, leaving 60 s below Convex's action ceiling. */
-  async function within<T>(ctx: SandboxContext, invoke: () => Promise<T>): Promise<T> {
-    const ms = remaining(ctx);
+  async function within<T>(
+    ctx: SandboxContext,
+    invoke: () => Promise<T>,
+    budgetMs?: number,
+  ): Promise<T> {
+    const ms = Math.min(remaining(ctx), budgetMs ?? LIMITS.actionBudgetMs);
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([
@@ -66,6 +85,31 @@ export function defineSandbox(options: SandboxOptions) {
           timer = setTimeout(() => reject(new Error("SANDBOX_ACTION_DEADLINE")), ms);
         }),
       ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** A separate finite kill budget survives an exhausted poll/action deadline. */
+  async function kill(
+    ctx: SandboxContext,
+    jobId: string,
+    location: Parameters<typeof provider.cancelBackground>[2],
+  ) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        provider.cancelBackground(ctx, jobId, location),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error("SANDBOX_KILL_DEADLINE")),
+            LIMITS.backgroundKillBudgetMs,
+          );
+        }),
+      ]);
+      return true;
+    } catch {
+      return false;
     } finally {
       clearTimeout(timer);
     }
@@ -308,15 +352,12 @@ export function defineSandbox(options: SandboxOptions) {
       await observe(tc.ctx, sandboxId, "background", "observed", tc);
       return { status: "running" as const, jobId: admitted.jobId };
     } catch {
+      const cancelled = await kill(tc.ctx, admitted.providerJobId, admitted);
       try {
-        await within(tc.ctx, () =>
-          provider.cancelBackground(tc.ctx, admitted.providerJobId, admitted),
-        );
-      } catch {
-        /* A lost launch stays unknown even if its group cannot be reached. */
-      }
-      try {
-        await tc.ctx.runMutation(options.refs.settle(), { ...admission, state: "unknown" });
+        // An uncertain cancellation keeps the persisted deadline watchdog.
+        // It can kill again, but can never replay the original launch.
+        if (cancelled)
+          await tc.ctx.runMutation(options.refs.settle(), { ...admission, state: "unknown" });
       } catch {
         // The reservation's persisted watchdog retries the atomic callback
         // within its deadline. Its failure cannot replace an uncertain paid
@@ -429,22 +470,23 @@ export function defineSandbox(options: SandboxOptions) {
         const job = await ctx.runMutation(component.state.claimPoll, args);
         if (!job) return null;
         let outcome;
+        let killed: boolean | undefined;
         try {
           if (job.deadline <= Date.now() || job.state === "starting" || !job.providerJobId) {
             // Even an unacknowledged launch has a pre-persisted location.
             // Kill is a bounded best effort; failure remains unknown and
             // never starts a second scheduler chain or retries paid work.
-            try {
-              await within(ctx, () => provider.cancelBackground(ctx, job.providerJobId!, job));
-            } catch {
-              /* Preserve the deadline outcome even if access was lost. */
-            }
+            killed = await kill(ctx, job.providerJobId!, job);
             outcome = {
               state: "unknown" as const,
               ...(job.deadline <= Date.now() ? { code: "SANDBOX_JOB_DEADLINE" as const } : {}),
             };
           } else {
-            outcome = await within(ctx, () => provider.poll(ctx, job.providerJobId!, job));
+            outcome = await within(
+              ctx,
+              () => provider.poll(ctx, job.providerJobId!, job),
+              Math.max(1, job.deadline - Date.now()),
+            );
           }
           if (
             !["running", "done", "failed", "unknown"].includes(outcome.state) ||
@@ -453,7 +495,20 @@ export function defineSandbox(options: SandboxOptions) {
           )
             throw new Error("SANDBOX_INVALID_JOB_OUTCOME");
         } catch {
-          outcome = { state: "unknown" as const };
+          // Status reads are safe to retry. A transient failure must not turn
+          // off the watchdog while its paid process group is still running.
+          outcome = { state: "running" as const };
+        }
+        if (Date.now() >= job.deadline && outcome.state === "running")
+          outcome = { state: "unknown" as const, code: "SANDBOX_JOB_DEADLINE" as const };
+        if (outcome.state === "unknown") {
+          killed ??= await kill(ctx, job.providerJobId!, job);
+          // Before the deadline, retry an uncertain kill with the same bounded
+          // backoff. At the deadline, one bounded final attempt ends the chain
+          // even if the provider never acknowledges cancellation.
+          if (!killed && Date.now() < job.deadline) outcome = { state: "running" as const };
+          else if (Date.now() >= job.deadline)
+            outcome = { ...outcome, code: "SANDBOX_JOB_DEADLINE" as const };
         }
         if (outcome.state === "running")
           await ctx.runMutation(component.state.again, { jobId: job._id, claim: job.claim });
@@ -471,7 +526,13 @@ export function defineSandbox(options: SandboxOptions) {
           try {
             await ctx.runMutation(options.refs.settle(), completion);
           } catch (error) {
-            if (Date.now() < job.deadline) throw error;
+            if (Date.now() < job.deadline) {
+              // The callback transaction rolled back. Release this action's
+              // lease and retry status/settlement with bounded backoff rather
+              // than waiting for the interruption watchdog's full budget.
+              await ctx.runMutation(component.state.again, { jobId: job._id, claim: job.claim });
+              throw error;
+            }
             // A permanently failing host callback cannot keep a scheduler
             // chain alive forever. Its mutation has rolled back; retain an
             // honest unknown outcome, cancel the watchdog and let the host
@@ -586,15 +647,7 @@ export function defineSandbox(options: SandboxOptions) {
       }
     },
     /** Export through native Agent storeFile, with no parallel file registry. */
-    async export(
-      ctx: SandboxContext,
-      input: { threadId: string; path: string },
-    ): Promise<{
-      fileId: string;
-      storageId: GenericId<"_storage">;
-      bytes: number;
-      sha256: string;
-    }> {
+    async export(ctx: SandboxContext, input: SandboxExportArgs): Promise<SandboxExportResult> {
       bounded(input.threadId, LIMITS.identityChars, "THREAD");
       bounded(input.path, LIMITS.pathChars, "PATH");
       if (!options.agent) throw new Error("SANDBOX_AGENT_REQUIRED");
@@ -616,29 +669,41 @@ export function defineSandbox(options: SandboxOptions) {
         toolCallId: "export",
       };
       await prepare(tc);
-      // Small files finish in one buffered read. Larger files arrive in
-      // <=512 KiB windows, hashed incrementally. The hard 100 MiB ceiling
-      // bounds the Blob parts and assembly to <=200 nonempty chunks; only
-      // this action holds bytes. Every component transaction has constant
-      // size metadata, independent of file size. No storage object exists
-      // until EOF, so interruptions and size failures leave nothing behind.
+      // Every component transaction holds constant-size metadata. Only this
+      // action buffers bytes, in <=512 KiB windows; overflow creates no storage.
+      const maximum = nodeExport ? limits.exportBytesNode : limits.exportBytes;
       const hash = sha256.create();
-      const chunks: Uint8Array<ArrayBuffer>[] = [];
+      const chunks: Uint8Array[] = [];
       let bytes = 0;
       for (;;) {
-        const maxBytes = Math.min(LIMITS.exportChunkBytes, limits.exportBytes - bytes + 1);
-        const chunk = await within(ctx, () =>
-          provider.download(ctx, row.sandboxId!, input.path, {
-            maxBytes,
-            offset: bytes,
-            totalSizeLimit: limits.exportBytes,
-          }),
-        );
+        const maxBytes = Math.min(LIMITS.exportChunkBytes, maximum - bytes + 1);
+        let chunk: Uint8Array;
+        try {
+          chunk = await within(ctx, () =>
+            provider.download(ctx, row.sandboxId!, input.path, {
+              maxBytes,
+              offset: bytes,
+              totalSizeLimit: maximum,
+            }),
+          );
+          if (bytes + chunk.byteLength > maximum) throw new Error("SANDBOX_EXPORT_TOO_LARGE");
+        } catch (error) {
+          if (!(error instanceof Error) || error.message !== "SANDBOX_EXPORT_TOO_LARGE")
+            throw error;
+          chunks.length = 0;
+          if (!nodeExport && options.nodeExport)
+            return within(ctx, () => ctx.runAction(options.nodeExport!, input));
+          throw new Error(
+            nodeExport
+              ? "SANDBOX_EXPORT_TOO_LARGE: exceeds exportBytesNode (64 MiB hard maximum)"
+              : "SANDBOX_EXPORT_TOO_LARGE: register sandboxNodeExport() in a use node file via nodeExport",
+          );
+        }
         if (chunk.byteLength > maxBytes) throw new Error("SANDBOX_EXPORT_WINDOW_TOO_LARGE");
         bytes += chunk.byteLength;
-        if (bytes > limits.exportBytes) throw new Error("SANDBOX_EXPORT_TOO_LARGE");
         hash.update(chunk);
-        chunks.push(new Uint8Array(chunk));
+        // Keep the provider-owned window; copying here needlessly duplicates it.
+        chunks.push(chunk);
         if (chunk.byteLength < maxBytes) break;
       }
       remaining(ctx);
@@ -646,15 +711,17 @@ export function defineSandbox(options: SandboxOptions) {
       // Agent storeFile (0.7.7 src/vercel/client/files.ts:58-158) dedupes and
       // stores/registers the Blob once. Let it compute its native hex hash:
       // its supplied-sha256 branch compares hex to Convex's base64 metadata.
-      // Compare with our incremental digest instead. At the hard maximum,
-      // chunks + Blob + Agent's digest buffer cost <=300 MiB, below the
-      // action's 512 MiB memory limit; transaction bytes stay constant.
-      const stored = await storeFile(
-        ctx,
-        options.agent,
-        new Blob(chunks, { type: "application/octet-stream" }),
-        { filename: input.path.split("/").pop() },
-      );
+      // Compare with our incremental digest instead. Count all four possible
+      // whole-file allocations honestly: chunks + Blob + Agent's blob.slice()
+      // + its hashing ArrayBuffer (files.ts:62). Default: 4 * 8 MiB =32 MiB
+      // plus <=512 KiB transport window, leaving ~31 MiB of the 64 MiB runtime.
+      // Node: 4 * 64 MiB =256 MiB plus <=512 KiB window, leaving ~255 MiB of
+      // 512 MiB. The incremental hasher is constant space; no extra file copy.
+      const blob = new Blob(chunks as BlobPart[], { type: "application/octet-stream" });
+      chunks.length = 0;
+      const stored = await storeFile(ctx, options.agent, blob, {
+        filename: input.path.split("/").pop(),
+      });
       if (stored.file.hash !== digest) throw new Error("SANDBOX_EXPORT_HASH_MISMATCH");
       await observe(ctx, row.sandboxId, "export", "observed", trusted);
       return {

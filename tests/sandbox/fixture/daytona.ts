@@ -39,8 +39,13 @@ export const lifecycle = internalActionGeneric({
         return provider.startBackground(
           ctx,
           sandboxId,
-          `python3 -c 'print("x" * 70000); print("FINAL live error")'; exit 7`,
+          `(sleep 1; touch /tmp/agevex-descendant-marker) & python3 -c 'print("x" * 70000); print("FINAL live error")'; exit 7`,
         );
+      case "descendantCheck":
+        return provider.exec(ctx, sandboxId, "sleep 1.1; test ! -e /tmp/agevex-descendant-marker", {
+          timeoutS: 10,
+          signal: new AbortController().signal,
+        });
       case "poll":
         return provider.poll(ctx, args.job!.jobId, args.job!);
       case "export": {

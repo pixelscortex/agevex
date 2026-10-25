@@ -18,6 +18,9 @@ import type {
   SettleArgs,
   SandboxJobEvent,
   SandboxUsageEvent,
+  SandboxOptions,
+  SandboxExportArgs,
+  SandboxExportResult,
 } from "../../../src/sandbox/types.js";
 import { fakeSandboxProvider } from "../../../src/testing/sandbox.js";
 
@@ -42,16 +45,29 @@ export const state = {
   usageFails: false,
   usage: [] as SandboxUsageEvent[],
   resolver: undefined as undefined | { subject: string; threadId: string; runId: string },
+  nodeExport: false,
   instance: undefined as undefined | ReturnType<typeof defineSandbox>,
 };
 
-export function runtime() {
-  const sandbox = defineSandbox({
+export function config(): SandboxOptions {
+  return {
     component: components.sandbox,
     provider: state.fake.provider,
     scope: state.scope,
     limits: state.limits,
     agent: components.agent,
+    ...(state.nodeExport
+      ? {
+          nodeExport: makeFunctionReference<"action", SandboxExportArgs, SandboxExportResult>(
+            "node:exportFile",
+          ) as unknown as FunctionReference<
+            "action",
+            "internal",
+            SandboxExportArgs,
+            SandboxExportResult
+          >,
+        }
+      : {}),
     refs: {
       poll: () => ref<"action", PollArgs>("poll"),
       settle: () => ref<"mutation", SettleArgs>("settle"),
@@ -73,7 +89,11 @@ export function runtime() {
         state.usage.push(event);
       },
     },
-  });
+  };
+}
+
+export function runtime() {
+  const sandbox = defineSandbox(config());
   state.instance = sandbox;
   return sandbox.internalFunctions();
 }

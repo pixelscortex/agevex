@@ -63,7 +63,7 @@ and event-wait wiring is a separate integration step.
 
 Defaults: commands ≤180 seconds; total action work ≤540 seconds; shared
 stdout/stderr tail ≤6,000 characters; text read/write ≤160,000 characters;
-directory listing ≤100 entries; binary export ≤25 MiB (hard maximum 100 MiB); 16 active jobs per
+directory listing ≤100 entries; default-runtime binary export ≤8 MiB (hard maximum); 16 active jobs per
 sandbox; idle TTL 24 hours. Host overrides are validated against hard maxima.
 Daytona snapshots must include `python3` for bounded command output and reads.
 Use `autoStopInterval: 0` when jobs must outlive the idle interval.
@@ -78,14 +78,39 @@ one Blob. Daytona stages temporary windows for its file API so file bytes
 never enter execution rows, component arguments or receipts. An interrupted
 transfer creates no storage object.
 
+For exports above 8 MiB, register a host action from a `"use node"` file:
+
+```ts
+// sandboxExports.ts
+"use node";
+import { sandboxNodeExport } from "agevex/sandbox";
+import { sandboxOptions } from "./sandboxOptions";
+export const exportFile = sandboxNodeExport(sandboxOptions);
+```
+
+Pass `nodeExport: internal.sandboxExports.exportFile` to `defineSandbox`.
+Larger files then route to that action, which repeats authorization and trusted
+scope resolution. Its `limits.exportBytesNode` defaults to a hard maximum of
+64 MiB. Without this registration, oversized exports fail with
+`SANDBOX_EXPORT_TOO_LARGE` naming `sandboxNodeExport()`. Both export bounds can
+be lowered. Peak file allocations are conservatively 4× the limit: 32 MiB in
+the default 64 MiB runtime, or 256 MiB in the 512 MiB Node runtime, plus bounded
+transport windows and runtime overhead.
+
 Background completion produces one atomic host callback with
 `{ type: "sandbox.job.completed", jobId, providerJobId?, scopeKey, subject,
 threadId, runId, state: "done" | "failed" | "unknown", exitCode?, logTail?, code? }`.
 The provider job ID, sandbox ID and private job directory are persisted before
 launch. Daytona detaches a process group through bounded synchronous execs;
-the module owns polling and reads actual log tails at the source. Polls back
+the module owns polling and reads actual log tails at the source. A background
+job is its main command: when it exits, leftover descendants receive SIGTERM
+then SIGKILL after a short grace period before completion is published.
+Group identity and completion files are published by atomic rename. Polls back
 off and stop at completion or a bounded deadline. Expiry attempts a bounded
-group kill and records `unknown` with `SANDBOX_JOB_DEADLINE`. A lost launch response or poll failure becomes `unknown`;
+group kill and records `unknown` with `SANDBOX_JOB_DEADLINE`. Status failures
+keep polling with backoff until the deadline. An `unknown` result first attempts
+a bounded group kill; uncertain cancellation retains the deadline path. A lost
+launch response stays `unknown`;
 paid work is never replayed. A watchdog handles interrupted launch/poll
 actions. Successful callbacks and terminal state commit together, so callbacks
 must perform transactional writes rather than external effects. Callback

@@ -177,15 +177,36 @@ export function daytona(
       bounded(jobId, LIMITS.identityChars, "JOB_ID");
       bounded(directory, LIMITS.pathChars, "JOB_DIRECTORY");
       if (job && job.sandboxId !== sandboxId) throw new Error("SANDBOX_JOB_MISMATCH");
-      // A new session gives the shell and all descendants a killable process
-      // group. nohup survives the short exec's teardown; all descriptors are
-      // detached. A nested shell preserves the exit file even for `exit 7`.
-      // mkdir(exist_ok=False) refuses accidental replay of the same identity.
-      const script = `sh -c ${quote(cmd)} > ${quote(`${directory}/output.log`)} 2>&1; status=$?; printf '%s' "$status" > ${quote(`${directory}/status.exit`)}`;
+      // The supervisor is outside the command process group, so it survives
+      // group cleanup. A background job is the command: after its shell exits,
+      // leftover descendants receive SIGTERM then SIGKILL BEFORE completion is
+      // published. nohup and detached descriptors survive the launching exec.
+      // Same-directory rename publishes each entire identity/result at once;
+      // pollers never see a newly opened empty file or a truncated exit code.
+      const supervisor = `import os,subprocess,signal,time
+d=${JSON.stringify(directory)}
+def publish(name,value):
+ with open(d+'/'+name+'.tmp','w') as f: f.write(str(value)+'\\n')
+ os.replace(d+'/'+name+'.tmp',d+'/'+name)
+with open(d+'/output.log','wb') as log:
+ p=subprocess.Popen(${JSON.stringify(cmd)},shell=True,stdout=log,stderr=log,start_new_session=True)
+ publish('group.pid',p.pid)
+ code=p.wait()
+ try: os.killpg(p.pid,signal.SIGTERM)
+ except ProcessLookupError: pass
+ time.sleep(${LIMITS.backgroundKillGraceS})
+ try: os.killpg(p.pid,signal.SIGKILL)
+ except ProcessLookupError: pass
+publish('status.exit',code)`;
       await python(
         ctx,
         sandboxId,
-        `import os,subprocess\nd=${JSON.stringify(directory)}\nos.makedirs(d,mode=0o700,exist_ok=False)\np=subprocess.Popen(['nohup','sh','-c',${JSON.stringify(script)}],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)\nwith open(d+'/group.pid','w') as f: f.write(str(p.pid))`,
+        `import os,subprocess,time
+d=${JSON.stringify(directory)}
+os.makedirs(d,mode=0o700,exist_ok=False)
+p=subprocess.Popen(['nohup','python3','-c',${JSON.stringify(supervisor)}],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
+while not os.path.exists(d+'/group.pid') and p.poll() is None: time.sleep(${LIMITS.backgroundPublishPollS})
+assert os.path.exists(d+'/group.pid'),'background launch failed'`,
         LIMITS.backgroundExecTimeoutS,
       );
       return { jobId, sandboxId, directory };
@@ -199,7 +220,20 @@ export function daytona(
         await python(
           ctx,
           sandboxId,
-          `import os,json,subprocess\nd=${JSON.stringify(directory)}\nif os.path.exists(d+'/cancelled') or not os.path.exists(d+'/group.pid'):\n print(json.dumps({'state':'unknown'}))\nelif not os.path.exists(d+'/status.exit'):\n print(json.dumps({'state':'running'}))\nelse:\n with open(d+'/status.exit') as f: code=int(f.read(${LIMITS.identityChars}))\n log=subprocess.check_output(['tail','-c',str(${HARD_LIMITS.outputChars * LIMITS.utf8BytesPerChar}),d+'/output.log']).decode('utf-8',errors='replace')[-${HARD_LIMITS.outputChars}:]\n print(json.dumps({'state':'done' if code==0 else 'failed','exitCode':code,'logTail':log}))`,
+          `import os,json,subprocess
+d=${JSON.stringify(directory)}
+code=None
+try:
+ with open(d+'/status.exit') as f: raw=f.read(${LIMITS.identityChars})
+ if raw.endswith('\\n'): code=int(raw)
+except (FileNotFoundError,ValueError): pass
+if os.path.exists(d+'/cancelled'):
+ print(json.dumps({'state':'unknown'}))
+elif code is None or not os.path.exists(d+'/group.pid'):
+ print(json.dumps({'state':'running'}))
+else:
+ log=subprocess.check_output(['tail','-c',str(${HARD_LIMITS.outputChars * LIMITS.utf8BytesPerChar}),d+'/output.log']).decode('utf-8',errors='replace')[-${HARD_LIMITS.outputChars}:]
+ print(json.dumps({'state':'done' if code==0 else 'failed','exitCode':code,'logTail':log}))`,
           LIMITS.backgroundExecTimeoutS,
         ),
       );
@@ -211,7 +245,7 @@ export function daytona(
       await python(
         ctx,
         sandboxId,
-        `import os,signal\nd=${JSON.stringify(directory)}\nif not os.path.exists(d+'/status.exit') and os.path.exists(d+'/group.pid'):\n with open(d+'/group.pid') as f: pid=int(f.read(${LIMITS.identityChars}))\n assert pid>1\n try: os.killpg(pid,signal.SIGKILL)\n except ProcessLookupError: pass\n with open(d+'/cancelled','w') as f: f.write('deadline')`,
+        `import os,signal\nd=${JSON.stringify(directory)}\nif not os.path.exists(d+'/status.exit'):\n assert os.path.exists(d+'/group.pid'),'group identity unavailable'\n with open(d+'/group.pid') as f: pid=int(f.read(${LIMITS.identityChars}))\n assert pid>1\n try: os.killpg(pid,signal.SIGKILL)\n except ProcessLookupError: pass\n with open(d+'/cancelled','w') as f: f.write('deadline')`,
         LIMITS.backgroundExecTimeoutS,
       );
     },
@@ -243,8 +277,8 @@ export function daytona(
     async download(ctx, sandboxId, path, { maxBytes, offset = 0, totalSizeLimit = maxBytes }) {
       bounded(path, LIMITS.pathChars, "PATH");
       integer(maxBytes, LIMITS.exportChunkBytes, "EXPORT_WINDOW");
-      integer(totalSizeLimit, HARD_LIMITS.exportBytes, "EXPORT_SIZE");
-      integer(offset, HARD_LIMITS.exportBytes, "EXPORT_OFFSET", 0);
+      integer(totalSizeLimit, HARD_LIMITS.exportBytesNode, "EXPORT_SIZE");
+      integer(offset, HARD_LIMITS.exportBytesNode, "EXPORT_OFFSET", 0);
       // process.run records stdout in executions (process.ts:99-105), so
       // base64 stdout would leak file bytes into component mutation args and
       // rows. Stage one <=512 KiB window, return only its path, then use the
