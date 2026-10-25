@@ -1,0 +1,21 @@
+docs/site/content/docs/modules/meta.json
+  s_9e31c8d6bd3884::t_0c906fed273d9f 8-9
+docs/site/content/docs/modules/telemetry.mdx
+  s_9e31c8d6bd3884::t_293a5e723328e8 1-145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f3630ceee60d7e67fd2dd6ad90634093a1e5e052",
+  "prompts": {},
+  "sessions": {
+    "s_9e31c8d6bd3884": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1708a-0d8c-7f90-94cc-c38ba44fb359",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
