@@ -2,8 +2,8 @@
 
 Mount `agevex/meter/convex.config` independently of core. Import
 `defineMeter`, `inline`, `polarSink`, `webhookSink`, `usageHandlerFor`, and
-`observeProviderOutcome` from `agevex/meter`. No runtime or ToolContext wiring
-is included; core never imports this module.
+`observeProviderOutcome` from `agevex/meter`. Wire the core usage and budget
+slots explicitly; core never imports this module.
 
 ```ts
 // convex/billing.ts
@@ -30,6 +30,30 @@ credentials remain in host code. A lookup provider requires its lookup worker;
 sinks require the delivery worker. Custom sinks accept `{ deliver(batch) }`,
 optionally `name`; keep unnamed sinks in stable array order across deployments.
 Built-in sinks and custom sinks may be named explicitly.
+
+## Wire it into agevex
+
+```ts
+const runtime = registerAgent(components.agevex, {
+  agents: [main],
+  authorize,
+  refs,
+  usage: meter.usageSlot(),
+  budget: meter.budgetSlot(),
+});
+```
+
+`usageSlot(): UsageSlot` passes core attribution and hashed keys unchanged to
+the meter. Managed tools get `tc.meter`; core records each saved model step
+once and adds no charges on replay. Register the model's provider name in
+`providers`. Do not also install `usageHandlerFor` on these managed agents.
+
+`budgetSlot(policy?: MeterOptions["budgets"]): BudgetSlot` checks the run
+before each slice, using the configured policy unless overridden. Estimates
+count; unknown costs and authorization/read/policy errors fail closed with
+`BUDGET_EXCEEDED`. The gate is a snapshot, not a spend reservation.
+
+## Standalone recording
 
 ```ts
 const scoped = meter.scope(ctx, {
@@ -129,7 +153,8 @@ Background workers are internal, and charges are addressed by stored keys.
 
 ## Saved Agent steps
 
-Agent **0.7.7** invokes `usageHandler` once after saving each model step, but
+For standalone calls outside the core usage slot, Agent **0.7.7** invokes
+`usageHandler` once after saving each model step, but
 does not pass a message id or step ordinal. Supply the identity from the host's
 generation context; no transcript scan or random fallback is used:
 
@@ -288,8 +313,8 @@ Polar's ingest/dedup contract and the absence of per-request Fal/Daytona costs.
   bounded while separate model/provider projections support thread axes.
 - Agent 0.7.7's usage hook lacks message/step ids. `usageHandlerFor` therefore
   requires a host identity callback; it cannot safely infer a key from the hook.
-- The examples omit recording keys. Standalone calls require an explicit key
-  because there is no core ToolContext/toolCallId in this PR. Mutations after
+- The examples omit recording keys. Standalone calls require an explicit key;
+  core's usage slot supplies hashed ToolContext keys. Mutations after
   creation also require their own stable operation keys; fetching the current
   revision on replay cannot prevent an older correction from being applied again.
 - A delivered correction needs a new external id for its delta; reusing the

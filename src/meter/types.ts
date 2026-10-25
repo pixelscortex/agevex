@@ -50,7 +50,7 @@ export type MeterOptions = {
 
 export type ChargeHandle = {
   key: string;
-  /** Stable keys are required today; agent tools will default to tc.toolCallId once core wiring lands. */
+  /** Standalone calls supply stable keys; the usage slot passes core's hashed operation keys. */
   attach(args: { requestId: string; key: string }): Promise<Charge>;
   /** Reuse a stable operation key on replay; keys are shared across all three methods. */
   correct(args: { quantity: number; key: string }): Promise<Charge>;

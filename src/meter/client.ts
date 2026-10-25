@@ -16,6 +16,7 @@ import type {
 import { openRouterCost } from "./helpers.js";
 import { SinkDeliveryError } from "./sinks.js";
 import { requireBreakdown, resolveBreakdowns } from "./breakdowns.js";
+import type { BudgetSlot, UsageSlot } from "../client/slots.js";
 
 export function inline(
   decode: NonNullable<Provider["inline"]> = ({ providerMetadata }) => {
@@ -194,8 +195,53 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
     };
   }
 
+  async function check(
+    ctx: ReadCtx,
+    args: { subject: string; runId?: string },
+    budgetPolicy = options.budgets,
+  ) {
+    await authorize(ctx, args);
+    const policy = await budgetPolicy?.(args);
+    // Budget caps can cover many charges; allow the mount's exact maximum,
+    // rather than reusing the smaller per-charge dollar conversion ceiling.
+    if (policy && (!Number.isFinite(policy.maxUsd) || policy.maxUsd < 0))
+      throw new Error("INVALID_BUDGET");
+    const maxNanos = policy
+      ? integer(
+          Math.round(policy.maxUsd * LIMITS.nanosPerUsd),
+          LIMITS.maxCharges * LIMITS.maxChargeNanos,
+          "BUDGET",
+        )
+      : undefined;
+    const cost = await ctx.runQuery(component.reads.cost, args);
+    return {
+      allowed: cost.unknown === 0 && (maxNanos === undefined || cost.totalNanos < maxNanos),
+      ...cost,
+      maxNanos: maxNanos ?? null,
+    };
+  }
+
   return {
     scope,
+    /** Bind core's server-derived attribution to the existing component API.
+     * Core already hashes charge AND lifecycle operation keys. Passing them
+     * through unchanged keeps saved model steps and tool replays on the same
+     * idempotent charge/operation receipts; another usage handler would bill
+     * the same saved step a second time under a different identity. */
+    usageSlot(): UsageSlot {
+      return { scope };
+    },
+    /** Use the same run-scoped aggregate check as the standalone API. A slot
+     * policy overrides only the cap, leaving recording and read policy intact.
+     * Fail closed: estimates count, unknown costs deny even without a cap, and
+     * authorization/read/policy errors propagate to core, which ends the slice
+     * with BUDGET_EXCEEDED rather than admitting potentially unbounded spend.
+     * This remains a snapshot check, not a reservation for concurrent work. */
+    budgetSlot(policy: MeterOptions["budgets"] = options.budgets): BudgetSlot {
+      return {
+        check: async (ctx, args) => ({ allowed: (await check(ctx, args, policy)).allowed }),
+      };
+    },
     threadCost: async (
       ctx: ReadCtx,
       args: { threadId: string; cursors?: Partial<Record<"agent" | "model" | "provider", string>> },
@@ -232,27 +278,7 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
         maxDays: limits.maxDays,
       });
     },
-    check: async (ctx: ReadCtx, args: { subject: string; runId?: string }) => {
-      await authorize(ctx, args);
-      const policy = await options.budgets?.(args);
-      // Budget caps can cover many charges; allow the mount's exact maximum,
-      // rather than reusing the smaller per-charge dollar conversion ceiling.
-      if (policy && (!Number.isFinite(policy.maxUsd) || policy.maxUsd < 0))
-        throw new Error("INVALID_BUDGET");
-      const maxNanos = policy
-        ? integer(
-            Math.round(policy.maxUsd * LIMITS.nanosPerUsd),
-            LIMITS.maxCharges * LIMITS.maxChargeNanos,
-            "BUDGET",
-          )
-        : undefined;
-      const cost = await ctx.runQuery(component.reads.cost, args);
-      return {
-        allowed: cost.unknown === 0 && (maxNanos === undefined || cost.totalNanos < maxNanos),
-        ...cost,
-        maxNanos: maxNanos ?? null,
-      };
-    },
+    check: (ctx: ReadCtx, args: { subject: string; runId?: string }) => check(ctx, args),
     retrySinks: async (ctx: WriteCtx, args: { key: string; subject: string }) => {
       await authorize(ctx, { subject: args.subject });
       const row = await ctx.runQuery(component.charges.get, { key: args.key });

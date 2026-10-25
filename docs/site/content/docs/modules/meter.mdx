@@ -1,7 +1,7 @@
 ---
 title: Meter
 icon: Coins
-description: Standalone cost recording, aggregate reads, budget gates and durable billing sinks.
+description: Cost recording, core usage and budget slots, aggregate reads and durable billing sinks.
 status: Available
 ---
 
@@ -45,6 +45,35 @@ export const { meterLookup, meterDeliver } = meter.internalFunctions();
 Lookup providers require `workers.lookup`; sinks require `workers.deliver`.
 Authorize public wrappers with the host's ownership policy; optional
 `authorize(ctx, scope)` runs before every client read/write.
+
+## Wire it into agevex
+
+Pass the adapters to the core registration alongside your agents, authorization
+and runtime references:
+
+```ts title="convex/agents.ts"
+import { registerAgent } from "agevex";
+import { meter } from "./billing";
+
+const runtime = registerAgent(components.agevex, {
+  agents: [main], authorize, refs,
+  usage: meter.usageSlot(),
+  budget: meter.budgetSlot(),
+});
+```
+
+Managed tools receive `tc.meter` with subject, root/thread, run and agent
+attribution plus stable hashed keys. Core records one charge per saved model
+step, including model attribution, and adds none on replay. Register the model's
+provider name in `providers`; for OpenRouter enable `usage: { include: true }`.
+Use `usageHandlerFor` only for standalone Agent calls outside this registration
+to avoid charging the same step twice.
+
+`budgetSlot()` uses the configured `budgets` policy; `budgetSlot(scope =>
+({ maxUsd: 2 }))` overrides the cap for this registration. It checks before
+each slice, counts estimates and fails closed on unknown costs or check errors.
+A denied slice ends with `BUDGET_EXCEEDED`. This gate reserves no future spend.
+Read the result with `meter.threadCost(ctx, { threadId })` using the root thread id.
 
 ### Provider kinds
 
@@ -102,13 +131,16 @@ deadline that survives exhausted retries or a crashed worker.
 ## API
 
 Signatures use the types exported from `agevex/meter`; `ComponentApi` is the
-meter component type and `UsageHandler` comes from `@convex-dev/agent`.
+meter component type, slot types come from `agevex`, and `UsageHandler` comes
+from `@convex-dev/agent`.
 
 | Function / signature | Purpose |
 | --- | --- |
 | `defineMeter(component: ComponentApi, options: MeterOptions): Meter` | Register providers, projections, budgets, guards and workers. |
 | `inline(decode?: NonNullable<Provider["inline"]>): Provider` | Create an inline cost provider. |
 | `meter.scope(ctx: WriteCtx, attribution: Attribution): ScopedMeter` | Bind required subject and optional root/thread/run/agent/model attribution. |
+| `meter.usageSlot(): UsageSlot` | Adapt core usage and managed tool calls to the attributed, idempotent meter. |
+| `meter.budgetSlot(policy?: MeterOptions["budgets"]): BudgetSlot` | Gate core slices with the configured or overridden budget policy. |
 | `scoped.estimate(provider: string, args: { key: string; profile?: string; quantity: number }): Promise<ChargeHandle>` | Create or replay an estimate. |
 | `scoped.record(provider: string, args: { key: string; usage?: unknown; providerMetadata?: unknown }): Promise<ChargeHandle>` | Decode inline evidence and record settled or unknown cost. |
 | `charge.attach(args: { requestId: string; key: string }): Promise<Charge>` | Save request identity and start a configured lookup. |
@@ -211,8 +243,9 @@ fractional places), not a string or dollars. For example, 290,000,000 nanos emit
 
 ### Saved Agent steps
 
-Agent 0.7.7 calls its usage handler after each saved model step without providing
-message/step identity. Supply it from the host's generation context:
+For standalone Agent calls outside the core usage slot, Agent 0.7.7 calls its
+usage handler after each saved model step without providing message/step
+identity. Supply it from the host's generation context:
 
 ```ts title="Host usage-handler factory"
 import { usageHandlerFor } from "agevex/meter";
@@ -275,7 +308,7 @@ From exported `LIMITS`; only `maxCharges`, `maxGroups`, `maxDays` and
 
 ## Known limits
 
-- No core runtime, `ToolContext`, automatic `tc.meter` wiring, gateway pricing integration or embedding middleware is included. Standalone keys and host attribution are required.
+- Standalone calls require keys and host attribution. Gateway pricing integration and embedding middleware are not included.
 - Root/child relationships are supplied by the host; Meter does not discover them from Agent messages.
 - Fal has no per-request cost endpoint. Profiles are assumptions; Firecrawl credits need an explicit plan rate.
 - Breakdown opt-ins have no backfill. Budget gates reserve no future spend, and HTTP delivery requires recipient deduplication.
