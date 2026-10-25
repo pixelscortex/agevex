@@ -112,6 +112,8 @@ export const LIMITS = {
   notesPending: HOST_LIMITS.notesPending.default,
   noteLength: 4_000,
   firstPromptOrder: 1,
+  taskRepairs: 1,
+  taskPromptLength: 16_000,
   hookErrorLength: 1_000,
   agents: 64,
   sideAgents: 8,

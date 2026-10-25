@@ -45,3 +45,5 @@ export type {
   MeterBackend,
   MeterChargeBackend,
 } from "./slots.js";
+export { defineTask, runTask } from "./tasks.js";
+export type { Task, TaskOptions, TaskOutcome } from "./tasks.js";
