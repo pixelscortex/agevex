@@ -126,9 +126,16 @@ Provider auto-delete is disabled. `sandbox.stop(tc)` preserves files and
 resumes on next use, including stopped, archived and recoverable error states.
 The host explicitly calls `sandbox.cleanup(ctx)` to schedule a finite TTL
 sweep. Active jobs protect their filesystem; action leases conservatively
-delay idle cleanup by up to nine minutes. Uncertain deletes are not retried;
-deleted bindings remain tombstones. Lost creates retain an unknown reservation
-for operator reconciliation instead of risking a duplicate resource.
+delay idle cleanup by up to nine minutes. A sweep stops and reschedules itself
+when too little action budget remains to finish a delete. Uncertain deletes are
+not retried. A deleted scope simply gets a fresh sandbox on next use. Lost
+creates retain an unknown reservation instead of risking a duplicate resource;
+after finding and deleting the possibly-created sandbox at the provider
+(Daytona label `agevexScope`, equal to `sandbox.scopeKey(facts)`), the host
+calls `sandbox.forget(ctx, facts)` to let the scope create again. A command that
+exceeds its timeout returns exit 124 and its process group is killed. A job
+whose watchdog was already leased past the deadline and never settled ends as
+`unknown` (`SANDBOX_JOB_DEADLINE`) without another attempt or callback.
 
 `agevex/test` exports `fakeSandboxProvider`; `agevex/sandbox/test` registers the
 optional component with convex-test. `bun run test` is offline. The sandbox

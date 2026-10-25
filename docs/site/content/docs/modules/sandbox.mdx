@@ -53,7 +53,7 @@ export const tools = sandbox.tools(); // Add these to the host Agent's tools.
 ```
 
 `authorize(ctx, request)` must recheck current host policy and return `{ subject }`.
-Operations are `use`, `export`, `stop`, `delete`, `poll`, and `cleanup`; scheduled
+Operations are `use`, `export`, `stop`, `delete`, `poll`, `cleanup`, and `forget`; scheduled
 calls have no end-user identity. Supplied subjects must match the policy result.
 Expose host endpoints calling these helpers, never raw component references.
 Pure reads require trusted `ToolContext` in AI SDK 7's `context` or a host-bound
@@ -98,6 +98,7 @@ claim with `origin: "note"`, `from: "sandbox"`; the log is cut to its last 3,000
 | `sandbox.export` | `export(ctx: SandboxContext, input: SandboxExportArgs): Promise<SandboxExportResult>` — exports an existing binding's file through native Agent `storeFile`. |
 | `sandbox.stop` | `stop(tc: ToolContext): Promise<void>` — stops the VM, preserving identity and files for next use. |
 | `sandbox.delete` | `delete(tc: ToolContext): Promise<void>` — explicitly requests deletion; active jobs protect the filesystem. |
+| `sandbox.forget` | `forget(ctx: SandboxContext, facts: SandboxFacts): Promise<boolean>` — clears a lost create (`unknown`, no provider ID) so the scope can create again; never clears a known sandbox. First find and delete the possibly-created sandbox at the provider: Daytona labels it `agevexScope` and sets `userKey` to `sandbox.scopeKey(facts)`. |
 | `sandbox.cleanup` | `cleanup(ctx: SandboxContext)` — authorizes and schedules a finite TTL sweep; requires `refs`. |
 
 `SandboxFacts` contains trusted `subject`, `threadId`, and `runId`.
@@ -128,7 +129,7 @@ Each method returns a Promise of the listed result.
 | `create(ctx, { scopeKey })` | `{ sandboxId }` before waiting for readiness. |
 | `resume(ctx, sandboxId)` | `void`; ready is a no-op; stopped, archived, and recoverable error states preserve files. |
 | `stop(ctx, sandboxId)`, `delete(ctx, sandboxId)` | `void`; VM lifecycle. |
-| `exec(ctx, sandboxId, cmd, { timeoutS, signal })` | `{ exitCode, stdout, stderr }`; no command retries. |
+| `exec(ctx, sandboxId, cmd, { timeoutS, signal })` | `{ exitCode, stdout, stderr }`; no command retries. On timeout, kill the command's process group and return exit 124, not an error. |
 | `startBackground(ctx, sandboxId, cmd, job?)` | `BackgroundJob`; honor supplied persisted identity/location even if launch throws; no launch retries. |
 | `poll(ctx, jobId, location)` | `JobOutcome`: `state: "running" \| "done" \| "failed" \| "unknown"`, optional `exitCode`, `logTail`, `code`. |
 | `cancelBackground(ctx, jobId, location)` | `void`; bounded original-group cleanup, verifying ownership before fallback signaling. |
@@ -150,7 +151,7 @@ Optional `onComplete(ctx, event)` commits atomically with terminal state and rec
 threadId, runId, state: "done" | "failed" | "unknown", exitCode?, logTail?, code? }`.
 Use transactional writes in the callback. Status and callback failures retry until
 the deadline, then leave an unknown snapshot readable through `sandbox.job(ctx, { jobId })`.
-Deadline expiry records `SANDBOX_JOB_DEADLINE`; revoked authority records unknown without provider access or a callback.
+Deadline expiry records `SANDBOX_JOB_DEADLINE`; a watchdog that finds its post-deadline attempt unsettled ends the job as `unknown` directly, without another attempt or callback; revoked authority records unknown without provider access or a callback.
 Completion and deadline cleanup terminate descendants in the original process group;
 processes that detach with `setsid` or daemonize require stopping or deleting the sandbox.
 
@@ -231,5 +232,5 @@ budget, 10 s background exec timeout, 1 s control-file acknowledgement wait,
 ## Known limits
 
 - The provider VM supplies isolation and network policy.
-- Mounting arms no recurring cleanup timer. The host calls `sandbox.cleanup(ctx)` to schedule a finite sweep; active jobs protect files and action leases may delay idle cleanup by up to nine minutes. Deleted bindings remain tombstones; uncertain deletes and lost creates require operator reconciliation.
+- Mounting arms no recurring cleanup timer. The host calls `sandbox.cleanup(ctx)` to schedule a finite sweep; active jobs protect files and action leases may delay idle cleanup by up to nine minutes. A sweep that cannot fit another delete in its action budget defers that row and reschedules. A deleted scope gets a fresh sandbox on next use; uncertain deletes and lost creates require operator reconciliation (see `sandbox.forget`).
 - Completion reaches the model as a passive note at the next turn, not by waking an idle thread. The host owns policy; no authoritative Daytona cost is available.
