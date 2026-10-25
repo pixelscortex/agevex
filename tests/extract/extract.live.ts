@@ -55,7 +55,7 @@ it.skipIf(!process.env.FIRECRAWL_API_KEY)(
     const original = globalThis.fetch;
 
     globalThis.fetch = (async (url, init) => {
-      if (String(url).startsWith("https://api.firecrawl.dev/")) {
+      if (String(url as string).startsWith("https://api.firecrawl.dev/")) {
         if (++firecrawlCalls > LIVE_LIMITS.calls) throw new Error("LIVE_FIRECRAWL_CAP");
       }
 

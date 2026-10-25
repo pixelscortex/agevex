@@ -1,14 +1,19 @@
 {
   "name": "sdk-docs",
+  "version": "0.0.0",
   "private": true,
   "type": "module",
   "sideEffects": false,
   "scripts": {
-    "dev": "bun --bun vite dev --host 127.0.0.1",
-    "build": "bun run registry:build && bun --bun vite build",
-    "start": "bun --bun vite preview --host 127.0.0.1 --port 3000",
-    "typecheck": "tsc --noEmit",
-    "registry:build": "bun run scripts/build-registry.ts"
+    "dev": "vp dev --host 127.0.0.1",
+    "build": "bun run registry:build && vp build",
+    "start": "vp preview --host 127.0.0.1 --port 3000",
+    "typecheck": "bun run scripts/typecheck.ts",
+    "registry:build": "bun run scripts/build-registry.ts",
+    "fmt": "bun run --cwd ../.. fmt",
+    "fmt:check": "bun run --cwd ../.. fmt:check",
+    "lint": "bun run --cwd ../.. lint",
+    "check": "bun run fmt:check && bun run lint && bun run typecheck"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
@@ -27,17 +32,20 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
+    "@tanstack/router-generator": "^1.167.46",
+    "@types/bun": "latest",
     "@types/mdx": "^2.0.14",
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "nitro": "3.0.260903-beta",
+    "shadcn": "^4.22.1",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
-    "vite": "^8.3.5",
-    "shadcn": "^4.22.1",
-    "@types/bun": "latest"
+    "vite-plus": "1.2.0"
   },
-  "version": "0.0.0"
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0"
+  }
 }

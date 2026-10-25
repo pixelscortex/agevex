@@ -1,24 +1,13 @@
 {
-  "include": [
-    "**/*.ts",
-    "**/*.tsx"
-  ],
+  "include": ["**/*.ts", "**/*.tsx"],
   "compilerOptions": {
     "strict": true,
     "esModuleInterop": true,
     "jsx": "react-jsx",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "lib": [
-      "DOM",
-      "DOM.Iterable",
-      "ES2022"
-    ],
-    "types": [
-      "vite/client",
-      "bun",
-      "node"
-    ],
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "types": ["vite/client", "bun", "node"],
     "isolatedModules": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
@@ -26,18 +15,10 @@
     "allowJs": true,
     "forceConsistentCasingInFileNames": true,
     "paths": {
-      "@/*": [
-        "./src/*"
-      ],
-      "@/site.config": [
-        "./site.config.ts"
-      ]
+      "@/*": ["./src/*"],
+      "@/site.config": ["./site.config.ts"]
     },
     "noEmit": true
   },
-  "exclude": [
-    "node_modules",
-    ".output",
-    ".nitro"
-  ]
+  "exclude": ["node_modules", ".output", ".nitro"]
 }

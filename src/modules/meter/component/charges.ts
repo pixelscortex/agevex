@@ -84,7 +84,7 @@ async function stale(ctx: MutationCtx, row: Doc<"charges">, operation: string, r
 
   const lastStale = { operation, revision };
 
-  await ctx.db.patch(row._id, { lastStale });
+  await ctx.db.patch("charges", row._id, { lastStale });
 
   return { ...row, lastStale };
 }
@@ -189,7 +189,7 @@ async function prepareSinks(ctx: MutationCtx, row: Doc<"charges">, config: Jobs,
   const terminal = isTerminal(next);
 
   if (changed || due.length || terminal !== row.terminal)
-    await ctx.db.patch(row._id, { sinkState, terminal });
+    await ctx.db.patch("charges", row._id, { sinkState, terminal });
 
   for (const sink of due)
     await enqueueDrain(ctx, sink, config, Date.now() + LIMITS.deliveryWindowMs);
@@ -314,7 +314,7 @@ export const create = mutation({
       operations: [],
     });
 
-    const row = (await ctx.db.get(id))!;
+    const row = (await ctx.db.get("charges", id))!;
 
     await updateAggregates(ctx, row);
     await prepareSinks(ctx, row, args.jobs);
@@ -334,7 +334,7 @@ async function change(
   patch = { ...patch, revision: row.revision + 1 };
   const next = { ...row, ...patch };
 
-  await ctx.db.patch(row._id, patch);
+  await ctx.db.patch("charges", row._id, patch);
 
   if (row.nanos !== next.nanos || row.status !== next.status || row.source !== next.source)
     await updateAggregates(ctx, next, row);
@@ -361,7 +361,9 @@ function replay(row: Doc<"charges">, key: string) {
 async function remember(ctx: MutationCtx, row: Doc<"charges">, key: string): Promise<Outcome> {
   const result = await outcome(ctx, row);
 
-  await ctx.db.patch(row._id, { operations: [...row.operations, { key, outcome: result }] });
+  await ctx.db.patch("charges", row._id, {
+    operations: [...row.operations, { key, outcome: result }],
+  });
 
   return result;
 }
@@ -475,7 +477,7 @@ export const attach = mutation({
 
     const until = args.jobs.lookup && !resolved(row) ? Date.now() + args.lookupMs : undefined;
 
-    await ctx.db.patch(row._id, {
+    await ctx.db.patch("charges", row._id, {
       providerRequestId: args.requestId,
       lookupUntil: until,
       lookupAttempt: until ? 0 : undefined,
@@ -517,7 +519,7 @@ export const attach = mutation({
 export const expire = internalMutation({
   args: { id: v.id("charges") },
   handler: async (ctx, { id }) => {
-    const row = await ctx.db.get(id);
+    const row = await ctx.db.get("charges", id);
 
     if (row?.lookupUntil && Date.now() >= row.lookupUntil && !resolved(row))
       await change(ctx, row, { status: "unknown" }, { maxAttempts: LIMITS.maxAttempts });
@@ -569,7 +571,7 @@ export const lookupResult = mutation({
       await change(ctx, row, { status: "unknown" }, args.jobs);
     } else if (args.attempt + 1 < args.jobs.maxAttempts && args.jobs.lookup) {
       // Duplicate callbacks cannot admit another retry chain.
-      await ctx.db.patch(row._id, { lookupAttempt: args.attempt + 1 });
+      await ctx.db.patch("charges", row._id, { lookupAttempt: args.attempt + 1 });
 
       const delay = Math.min(
         LIMITS.maxBackoffMs,
@@ -585,7 +587,7 @@ export const lookupResult = mutation({
         { retry: false, runAt: Math.min(Date.now() + delay, args.until) },
       );
     } else {
-      await ctx.db.patch(row._id, { lookupAttempt: args.attempt + 1 });
+      await ctx.db.patch("charges", row._id, { lookupAttempt: args.attempt + 1 });
     }
 
     return null;
@@ -625,7 +627,7 @@ export const claimDeliveries = mutation({
 
     const rows = await dueRows(ctx, args.sink);
 
-    for (const row of rows) await ctx.db.patch(row._id, { claim: args.claim });
+    for (const row of rows) await ctx.db.patch("deliveries", row._id, { claim: args.claim });
 
     return rows.map((row) => ({
       ...row.event,
@@ -661,7 +663,7 @@ async function failRows(
     const dueAt =
       now + (free ? result.retryAfterMs! : Math.max(result.retryAfterMs ?? 0, backoff(attempts)));
 
-    await ctx.db.patch(row._id, {
+    await ctx.db.patch("deliveries", row._id, {
       attempts,
       failed,
       limited: result.rateLimited,
@@ -677,7 +679,7 @@ async function failRows(
 
 /** Acknowledge one delivered event: the only delivery path that patches a charge. */
 async function acknowledge(ctx: MutationCtx, row: Delivery, config: Jobs) {
-  await ctx.db.delete(row._id);
+  await ctx.db.delete("deliveries", row._id);
   const charge = await find(ctx, row.key);
   const sink = charge?.sinkState.find((entry) => entry.name === row.sink);
 
@@ -759,7 +761,7 @@ export const deliveryComplete = internalMutation({
       .withIndex("by_claim", (q) => q.eq("claim", context.claim))
       .unique();
 
-    if (marker) await ctx.db.delete(marker._id);
+    if (marker) await ctx.db.delete("claims", marker._id);
 
     if (result.kind === "success") return null;
 
@@ -808,7 +810,7 @@ export const retrySinks = mutation({
       // An in-flight job keeps its claim; resetting it would resend the batch.
       if (!delivery || delivery.claim !== undefined) continue;
 
-      await ctx.db.patch(delivery._id, {
+      await ctx.db.patch("deliveries", delivery._id, {
         attempts: 0,
         failed: false,
         limited: false,
@@ -879,7 +881,7 @@ export const prune = mutation({
       docs += nodes + 1;
       bytes += cost;
       await deleteAggregates(ctx, row);
-      await ctx.db.delete(row._id);
+      await ctx.db.delete("charges", row._id);
       deleted++;
     }
   },

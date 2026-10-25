@@ -10,9 +10,21 @@ turn.
 
 ```ts title="Receipt union"
 type Receipt =
-  | { status: "accepted"; position: number; threadId: string; assignmentId: string; receiptId: string }
-  | { status: "duplicate"; position?: number; threadId: string; assignmentId: string; receiptId: string }
-  | { status: "rejected"; code: RejectionCode }
+  | {
+      status: "accepted";
+      position: number;
+      threadId: string;
+      assignmentId: string;
+      receiptId: string;
+    }
+  | {
+      status: "duplicate";
+      position?: number;
+      threadId: string;
+      assignmentId: string;
+      receiptId: string;
+    }
+  | { status: "rejected"; code: RejectionCode };
 ```
 
 `position` is the zero-based inbox place at acceptance, including a reserved

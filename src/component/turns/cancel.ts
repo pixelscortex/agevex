@@ -38,6 +38,8 @@ export async function cancelRoot(
     root,
     ...(
       await Promise.all(
+        // Promise.all accepts null placeholders for children without assignments.
+        // eslint-disable-next-line typescript/await-thenable
         children.map((run) =>
           run.childAssignmentId ? ctx.db.get("assignments", run.childAssignmentId) : null,
         ),

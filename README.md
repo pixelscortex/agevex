@@ -16,6 +16,14 @@ Telemetry is a client library; tools expose host factories and installable regis
 sources. Each module README maps its files. Package subpaths stay `agevex/<name>`,
 with `/convex.config`, `/test` and `/_generated/component.js` for components.
 
+## Development commands
+
+Use Bun for all commands. `bun run check` checks formatting, lint, library/test
+types, the Convex lint gate and docs types. `bun run fmt` applies Oxfmt;
+`bun run fmt:check` and `bun run lint` are the individual gates.
+`bun run test` runs the offline suite with two workers and no build.
+`bun run test:live` uses the opt-in provider keys in the main checkout.
+
 ## Optional sandboxes
 
 `agevex/sandbox` binds a provider sandbox to trusted thread, run or subject

@@ -51,7 +51,9 @@ it.skipIf(!apiKey)(
       fetch: async (url, init) => {
         if (++requests > 1) throw new Error("LIVE_REQUEST_CAP");
 
-        const body = JSON.parse(String(init?.body)) as { usage?: { include?: boolean } };
+        const body = JSON.parse(String(init?.body as string | undefined)) as {
+          usage?: { include?: boolean };
+        };
 
         expect(body.usage?.include).toBe(true);
 

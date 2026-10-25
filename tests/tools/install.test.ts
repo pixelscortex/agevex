@@ -206,7 +206,7 @@ const typecheck = async (dir: string) => {
       timeout: SMOKE_LIMITS.processMs,
     });
   } catch (error) {
-    throw new Error(`${(error as { stdout?: string }).stdout ?? error}`);
+    throw new Error(String((error as { stdout?: string }).stdout ?? error));
   }
 };
 

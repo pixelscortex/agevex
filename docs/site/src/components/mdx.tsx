@@ -1,1 +1,1 @@
-export { default } from 'fumadocs-ui/mdx';
+export { default } from "fumadocs-ui/mdx";

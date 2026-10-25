@@ -55,6 +55,8 @@ export default defineSchema({
   })
     .index("by_identity", ["fileId", "backend", "version", "optionsHash"])
     // Host-only purge walks every extraction of one native file.
+    // Releases traverse artifacts in creation order; the identity index sorts by backend.
+    // eslint-disable-next-line @convex-dev/no-duplicate-indexes
     .index("by_file", ["fileId"]),
   /**
    * One row per (artifact, namespace). Agent dedupes uploads by hash, so several

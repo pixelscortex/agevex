@@ -222,12 +222,12 @@ another's.
 The independent indexing lease defaults to 10 minutes; lower it through
 `limits.indexLeaseMs`.
 
-| Index state / trigger | Outcome |
-| --- | --- |
-| Lease expires | Records `unknown`, retaining the exact entry id; the one-shot check neither reschedules nor starts paid work. |
-| Explicit `index()` on failed, unknown or expired work | Claims a new lease, awaits exact-id deletion of the old entry, then creates a replacement. |
-| Changed key in the same namespace | Replaces that namespace's old entry. |
-| `release()` | Fences the record, deletes its entry, then drops the record; a crash in between is finished by a repeated `release` or the next `index`. |
+| Index state / trigger                                 | Outcome                                                                                                                                  |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Lease expires                                         | Records `unknown`, retaining the exact entry id; the one-shot check neither reschedules nor starts paid work.                            |
+| Explicit `index()` on failed, unknown or expired work | Claims a new lease, awaits exact-id deletion of the old entry, then creates a replacement.                                               |
+| Changed key in the same namespace                     | Replaces that namespace's old entry.                                                                                                     |
+| `release()`                                           | Fences the record, deletes its entry, then drops the record; a crash in between is finished by a repeated `release` or the next `index`. |
 
 Claim and lease checks fence entry
 creation, chunk writes and promotion, including late writers. A paid embedding is
@@ -246,36 +246,36 @@ attempts rather than writing core receipts. `indexes`, used only with RAG, holds
 row per `(artifact, namespace)`. Native Agent owns files, host storage owns JSON payloads, the
 nested Workflow owns its journal, and native RAG owns chunks/vectors.
 
-| Artifact fields | Purpose |
-| --- | --- |
-| `_id`, `_creationTime` | Convex identity and creation metadata |
-| `fileId`, `backend`, `version`, `optionsHash` | Exact extraction identity |
-| `status`, `attempt`, `claim`, `leaseUntil` | Admission, dispatch, completion and expiry fences. `leaseUntil` is the queue deadline while `pending` and the running lease from `start` |
-| `summary` | `kind`, `textBytes`, `pages`, `preview`, optional `language` |
-| `payloadStorageId` | Exact host-storage JSON reference and cleanup |
-| `failure` | Optional closed failure code |
-| `usage` | Optional numeric `inputTokens`, `outputTokens`, `credits` |
-| `callbacks` | Distinct completion callback handles of every admitter, fired once by the owning dispatch and cleared |
+| Artifact fields                               | Purpose                                                                                                                                  |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `_id`, `_creationTime`                        | Convex identity and creation metadata                                                                                                    |
+| `fileId`, `backend`, `version`, `optionsHash` | Exact extraction identity                                                                                                                |
+| `status`, `attempt`, `claim`, `leaseUntil`    | Admission, dispatch, completion and expiry fences. `leaseUntil` is the queue deadline while `pending` and the running lease from `start` |
+| `summary`                                     | `kind`, `textBytes`, `pages`, `preview`, optional `language`                                                                             |
+| `payloadStorageId`                            | Exact host-storage JSON reference and cleanup                                                                                            |
+| `failure`                                     | Optional closed failure code                                                                                                             |
+| `usage`                                       | Optional numeric `inputTokens`, `outputTokens`, `credits`                                                                                |
+| `callbacks`                                   | Distinct completion callback handles of every admitter, fired once by the owning dispatch and cleared                                    |
 
-| Index fields (`indexes`) | Purpose |
-| --- | --- |
-| `artifactId`, `namespace` | The shared extraction and the indexing target |
-| `key` | Target reuse |
+| Index fields (`indexes`)        | Purpose                                                                                                  |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `artifactId`, `namespace`       | The shared extraction and the indexing target                                                            |
+| `key`                           | Target reuse                                                                                             |
 | `status`, `claim`, `leaseUntil` | `cleaning \| running \| unknown \| failed \| ready \| released`: lifecycle, stale-writer fence and lease |
-| `entryId` | Exact native entry cleanup and search filtering |
+| `entryId`                       | Exact native entry cleanup and search filtering                                                          |
 
 No provider bodies, request content, ownership copies or vectors enter either table.
 
-| Closed failure code | `retryable` |
-| --- | --- |
-| `UNSUPPORTED_TYPE` | false |
-| `UNREADABLE` | false |
-| `EMPTY` | false |
-| `INVALID_OUTPUT` | false |
-| `TOO_LARGE` | false |
-| `PROVIDER_UNAVAILABLE` | true |
-| `OBJECT_UNAVAILABLE` | true |
-| `CHECKSUM_FAILED` | true |
+| Closed failure code    | `retryable` |
+| ---------------------- | ----------- |
+| `UNSUPPORTED_TYPE`     | false       |
+| `UNREADABLE`           | false       |
+| `EMPTY`                | false       |
+| `INVALID_OUTPUT`       | false       |
+| `TOO_LARGE`            | false       |
+| `PROVIDER_UNAVAILABLE` | true        |
+| `OBJECT_UNAVAILABLE`   | true        |
+| `CHECKSUM_FAILED`      | true        |
 
 Admission follows `reuse | wait | run(attempt + 1)`. A `failed` artifact with a
 retryable code is run again as the next attempt by an explicit `run`, at most
@@ -336,29 +336,29 @@ above the default read ceiling are windowed by the Node `read` (both repeat
 authorization). Without it, an oversized file is recorded as `TOO_LARGE` before
 any provider is called.
 
-| Limit | Default | Hard maximum / constraint |
-| --- | --- | --- |
-| `maxBytes.document` | 12 MiB (Node 50,000,000) | same |
-| `maxBytes.image` | 6 MiB (Node 10,000,000) | same |
-| `maxBytes.text` | 4 MiB (Node 8 MiB) | same |
-| `payloadBytes` | 6 MiB (Node 32 MiB) | same, serialized JSON |
-| `readBytes` / `pages` | 1 MiB / 100 | Both ceilings per page window |
-| `totalPages` | — | 10,000 per payload |
-| `toolBytes` | 64 KiB | Text per tool/search response |
-| `summaryBytes` | — | 1,024-byte preview |
-| `identifierBytes` / `hashBytes` | — | 256 bytes / 64 lowercase SHA-256 hex characters |
-| `urlBytes` / `queryBytes` | — | 4,096 bytes each |
-| `backends` | Host-supplied | 1–32, unique ids |
-| `leaseMs` / `queueMs` | 600,000 ms / 600,000 ms | Running lease (from `start`) / queue deadline before re-dispatch |
-| `maxAttempts` | 3 | Hard bound on explicit retryable-failure retries |
-| `callbacksPerArtifact` / `callbackBytes` | 4 / 512 bytes | Distinct completion callbacks stored per artifact / handle size |
-| `indexLeaseMs` | 600,000 ms | 600,000 ms; minimum 1 ms |
-| `providerMs` / `outputTokens` | 300,000 ms / 4,096 | Backend signal deadline / OCR output cap |
-| `searchResults` | 10 | 10; minimum 1 |
-| `indexBytes` / `indexChunks` | — | 1 MiB text / 1,024 chunks |
-| `chunkBytes` / `minChunkBytes` | 8,192 bytes | Configured chunk size 1,024–8,192 bytes |
-| `ragBatch` | 100 chunks | 100 per native write batch |
-| `embeddingDimension` | Host-required | 4,096; supported: 128, 256, 512, 768, 1024, 1408, 1536, 2048, 3072, 4096 |
+| Limit                                    | Default                  | Hard maximum / constraint                                                |
+| ---------------------------------------- | ------------------------ | ------------------------------------------------------------------------ |
+| `maxBytes.document`                      | 12 MiB (Node 50,000,000) | same                                                                     |
+| `maxBytes.image`                         | 6 MiB (Node 10,000,000)  | same                                                                     |
+| `maxBytes.text`                          | 4 MiB (Node 8 MiB)       | same                                                                     |
+| `payloadBytes`                           | 6 MiB (Node 32 MiB)      | same, serialized JSON                                                    |
+| `readBytes` / `pages`                    | 1 MiB / 100              | Both ceilings per page window                                            |
+| `totalPages`                             | —                        | 10,000 per payload                                                       |
+| `toolBytes`                              | 64 KiB                   | Text per tool/search response                                            |
+| `summaryBytes`                           | —                        | 1,024-byte preview                                                       |
+| `identifierBytes` / `hashBytes`          | —                        | 256 bytes / 64 lowercase SHA-256 hex characters                          |
+| `urlBytes` / `queryBytes`                | —                        | 4,096 bytes each                                                         |
+| `backends`                               | Host-supplied            | 1–32, unique ids                                                         |
+| `leaseMs` / `queueMs`                    | 600,000 ms / 600,000 ms  | Running lease (from `start`) / queue deadline before re-dispatch         |
+| `maxAttempts`                            | 3                        | Hard bound on explicit retryable-failure retries                         |
+| `callbacksPerArtifact` / `callbackBytes` | 4 / 512 bytes            | Distinct completion callbacks stored per artifact / handle size          |
+| `indexLeaseMs`                           | 600,000 ms               | 600,000 ms; minimum 1 ms                                                 |
+| `providerMs` / `outputTokens`            | 300,000 ms / 4,096       | Backend signal deadline / OCR output cap                                 |
+| `searchResults`                          | 10                       | 10; minimum 1                                                            |
+| `indexBytes` / `indexChunks`             | —                        | 1 MiB text / 1,024 chunks                                                |
+| `chunkBytes` / `minChunkBytes`           | 8,192 bytes              | Configured chunk size 1,024–8,192 bytes                                  |
+| `ragBatch`                               | 100 chunks               | 100 per native write batch                                               |
+| `embeddingDimension`                     | Host-required            | 4,096; supported: 128, 256, 512, 768, 1024, 1408, 1536, 2048, 3072, 4096 |
 
 ## Guarantees
 

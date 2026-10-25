@@ -52,7 +52,7 @@ export const reserve = mutation({
       const claim = crypto.randomUUID();
       const leaseUntil = now + LIMITS.actionBudgetMs;
 
-      await ctx.db.patch(row._id, {
+      await ctx.db.patch("sandboxes", row._id, {
         provider: args.provider,
         sandboxId: undefined,
         state: "creating",
@@ -74,7 +74,7 @@ export const reserve = mutation({
 
       if (!row.sandboxId) {
         if (row.leaseUntil <= now && row.state === "creating")
-          await ctx.db.patch(row._id, { state: "unknown" });
+          await ctx.db.patch("sandboxes", row._id, { state: "unknown" });
 
         return {
           status:
@@ -86,7 +86,7 @@ export const reserve = mutation({
 
       const leaseUntil = now + LIMITS.actionBudgetMs;
 
-      await ctx.db.patch(row._id, {
+      await ctx.db.patch("sandboxes", row._id, {
         lastUsedAt: now,
         leaseUntil,
         ttl: args.ttl,
@@ -132,7 +132,7 @@ export const forget = mutation({
     if (row.state !== "unknown" && !(row.state === "creating" && row.leaseUntil <= Date.now()))
       return false;
 
-    await ctx.db.delete(row._id);
+    await ctx.db.delete("sandboxes", row._id);
 
     return true;
   },
@@ -167,7 +167,7 @@ export const save = mutation({
 
     if (row.sandboxId && args.sandboxId && row.sandboxId !== args.sandboxId) return false;
 
-    await ctx.db.patch(row._id, {
+    await ctx.db.patch("sandboxes", row._id, {
       state: args.state,
       ...(args.sandboxId ? { sandboxId: args.sandboxId } : {}),
       ...(args.state === "deleted" || (args.state === "unknown" && row.state === "deleting")
@@ -229,7 +229,7 @@ export const claimDelete = mutation({
       // reservation for reconciliation, but remove it from the sweep index;
       // a full batch of unknown creates must not schedule itself forever.
       if (row.leaseUntil <= Date.now())
-        await ctx.db.patch(row._id, { state: "unknown", cleanupAt: undefined });
+        await ctx.db.patch("sandboxes", row._id, { state: "unknown", cleanupAt: undefined });
 
       return null;
     }
@@ -237,14 +237,14 @@ export const claimDelete = mutation({
     if (await hasJobs(ctx, args.scopeKey)) {
       // A live job protects its filesystem. Removing its idle deadline keeps
       // cleanup finite; job settlement rearms it in the same transaction.
-      await ctx.db.patch(row._id, { cleanupAt: undefined });
+      await ctx.db.patch("sandboxes", row._id, { cleanupAt: undefined });
 
       return null;
     }
 
     const claim = crypto.randomUUID();
 
-    await ctx.db.patch(row._id, { claim, state: "deleting", cleanupAt: undefined });
+    await ctx.db.patch("sandboxes", row._id, { claim, state: "deleting", cleanupAt: undefined });
 
     return { sandboxId: row.sandboxId, claim };
   },
@@ -324,9 +324,9 @@ export const reserveJob = mutation({
       { jobId },
     );
 
-    await ctx.db.patch(jobId, { wakeId });
+    await ctx.db.patch("jobs", jobId, { wakeId });
     // No TTL deletion can race the still-unacknowledged provider launch.
-    await ctx.db.patch(row._id, { cleanupAt: undefined });
+    await ctx.db.patch("sandboxes", row._id, { cleanupAt: undefined });
 
     return {
       jobId,
@@ -343,7 +343,7 @@ export const attachJob = mutation({
   handler: async (ctx, args) => {
     bounded(args.claim, LIMITS.claimChars, "CLAIM");
     bounded(args.providerJobId, LIMITS.identityChars, "JOB_ID");
-    const row = await ctx.db.get(args.jobId);
+    const row = await ctx.db.get("jobs", args.jobId);
 
     if (!row || row.state !== "starting" || row.claim !== args.claim) return false;
 
@@ -355,7 +355,7 @@ export const attachJob = mutation({
       { jobId: row._id },
     );
 
-    await ctx.db.patch(row._id, {
+    await ctx.db.patch("jobs", row._id, {
       providerJobId: args.providerJobId,
       state: "running",
       leaseUntil: 0,
@@ -368,7 +368,7 @@ export const attachJob = mutation({
 
 export const getJob = query({
   args: { jobId: v.id("jobs") },
-  handler: (ctx, args) => ctx.db.get(args.jobId),
+  handler: (ctx, args) => ctx.db.get("jobs", args.jobId),
 });
 
 /** Terminal transition shared by settlement and the watchdog's direct finish. */
@@ -384,7 +384,7 @@ async function terminate(
 ) {
   await cancelWake(ctx, row);
   checkSize({ ...row, ...result }, LIMITS.jobRowBytes);
-  await ctx.db.patch(row._id, { ...result, wakeId: undefined });
+  await ctx.db.patch("jobs", row._id, { ...result, wakeId: undefined });
   const owner = await sandbox(ctx, row.scopeKey);
 
   if (
@@ -393,7 +393,7 @@ async function terminate(
     owner.state !== "deleting" &&
     !(await hasJobs(ctx, row.scopeKey))
   )
-    await ctx.db.patch(owner._id, {
+    await ctx.db.patch("sandboxes", owner._id, {
       cleanupAt: Math.max(owner.lastUsedAt + owner.ttl, owner.leaseUntil),
     });
 
@@ -413,7 +413,7 @@ async function terminate(
 export const claimPoll = mutation({
   args: { jobId: v.id("jobs") },
   handler: async (ctx, args) => {
-    const row = await ctx.db.get(args.jobId);
+    const row = await ctx.db.get("jobs", args.jobId);
     const now = Date.now();
 
     if (!row || !["starting", "running"].includes(row.state) || row.leaseUntil > now) return null;
@@ -450,7 +450,7 @@ export const claimPoll = mutation({
       { jobId: row._id },
     );
 
-    await ctx.db.patch(row._id, {
+    await ctx.db.patch("jobs", row._id, {
       claim,
       leaseUntil,
       wakeId,
@@ -466,7 +466,7 @@ export const again = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     bounded(args.claim, LIMITS.claimChars, "CLAIM");
-    const row = await ctx.db.get(args.jobId);
+    const row = await ctx.db.get("jobs", args.jobId);
 
     if (!row || !["starting", "running"].includes(row.state) || row.claim !== args.claim)
       return null;
@@ -480,7 +480,7 @@ export const again = mutation({
       { jobId: row._id },
     );
 
-    await ctx.db.patch(row._id, { delayMs, leaseUntil: 0, wakeId });
+    await ctx.db.patch("jobs", row._id, { delayMs, leaseUntil: 0, wakeId });
 
     return null;
   },
@@ -498,7 +498,7 @@ export const finishJob = mutation({
   },
   handler: async (ctx, args) => {
     bounded(args.claim, LIMITS.claimChars, "CLAIM");
-    const row = await ctx.db.get(args.jobId);
+    const row = await ctx.db.get("jobs", args.jobId);
 
     if (!row || !["starting", "running"].includes(row.state) || row.claim !== args.claim)
       return null;

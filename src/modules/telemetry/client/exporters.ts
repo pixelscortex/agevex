@@ -13,7 +13,7 @@ export type Exporter = {
  * Prior art: agents/src/runtime/trace_export.ts:82-125 (3 s abort, no retries).
  */
 export async function bestEffort(
-  work: (signal: AbortSignal) => PromiseLike<unknown> | unknown,
+  work: (signal: AbortSignal) => unknown,
   signal?: AbortSignal,
   ownDeadline = true,
 ): Promise<void> {

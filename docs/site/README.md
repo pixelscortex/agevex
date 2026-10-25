@@ -2,7 +2,7 @@
 
 Local TanStack Start + Fumadocs site (React 19, Vite and Tailwind v4). This is an
 independent Bun package: it is not part of the root library’s build, published
-files, lint or test globs.
+files or test globs. Root formatting, lint and type checks include the site.
 
 ```sh
 cd docs/site
@@ -15,7 +15,7 @@ The root URL redirects to `/docs`. Stop with Ctrl-C.
 
 ```sh
 bun run build        # registry build, then TanStack Start/Nitro Bun build
-bun run typecheck    # site TypeScript (run dev or build first to generate routes)
+bun run typecheck    # generate route types, then check site TypeScript
 bun run start        # serve the production build locally
 bun run registry:build
 ```
@@ -80,3 +80,16 @@ bun run typecheck
 bun run check
 bunx vp test --run
 ```
+
+Tooling uses Vite+ with the root Oxfmt and Oxlint configs. Run `bun run check`
+from either package; docs route types are generated directly before TypeScript,
+so checking needs no preceding dev server or build. The root check also checks
+the library and test types and proves Convex rules reject invalid fixtures in
+every component directory. `example/` is absent on this branch.
+
+Type-aware linting is enabled. Test spies intentionally pass method references
+to matchers, and assertion arrays intentionally use JavaScript's default lexical
+sort, so those two type-aware style rules are disabled only for tests. Convex JS
+plugins use their AST fallback because Oxlint does not expose ESLint parser
+services. Public return-validator checking remains a review requirement: the
+installed Convex plugin has no rule for it.
