@@ -24,7 +24,8 @@ import {
 import { LIMITS, limitsValidator } from "./limits.js";
 import { approvalKey, callKey, keyString, saveResponses } from "./approvals.js";
 import { modelOverrides, validModelOverrides } from "./models.js";
-import { sealGroups, settleIdleParent, settlementBlocked } from "./subagents.js";
+import { sealGroups } from "./subagents/groups.js";
+import { settleIdleParent, settlementBlocked } from "./subagents/settlement.js";
 import {
   recordMessages,
   recordRefs,
