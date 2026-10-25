@@ -621,7 +621,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 runId: args.runId,
               });
               if (!settlement) throw new Error("FORBIDDEN");
-              if (settlement.hasInbox) return { status: "deferred" as const, runId: args.runId };
+              if (settlement.blocked) return { status: "deferred" as const, runId: args.runId };
               let errorCode: RunErrorCode = args.errorCode;
               let childResultMessageId: string | null = null;
               if (!errorCode) {
@@ -957,7 +957,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 snapshot.cancellationEpoch !== claimed.cancellationEpoch
               )
                 return null;
-              if (child && (delegated || asked || snapshot.queuedMessages > 0)) {
+              if (child && asked) {
                 await fencedCtx.runMutation(component.queue.finish, {
                   assignmentId: args.assignmentId,
                   turnToken: args.turnToken,
@@ -1043,10 +1043,12 @@ export function registerAgent(component: ComponentApi, config: Registration) {
               errorCode: childError,
             });
             if (settlement?.status === "deferred") {
+              // This turn ended; descendants/inbox own a later continuation.
+              // Its final output, verified afresh, will become the run result.
               await ctx.runMutation(component.queue.finish, {
                 assignmentId: args.assignmentId,
                 turnToken: args.turnToken,
-                errorCode,
+                errorCode: null,
               });
               return null;
             }

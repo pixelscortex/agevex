@@ -46,6 +46,7 @@ export const denialCode = v.union(
   v.literal("CHILD_FINISHED"),
   v.literal("MESSAGE_LIMIT"),
   v.literal("ASK_PENDING"),
+  v.literal("ASK_WITH_CHILDREN"),
   v.literal("QUEUE_LIMIT"),
 );
 export const runStatus = v.union(
@@ -211,6 +212,9 @@ export default defineSchema({
     assignmentId: v.id("assignments"),
     messageId: v.string(),
     sequence: v.number(),
+    // Deferred joins append later than their native save. Claim compares this
+    // recorded save order, never queue insertion order, to retain newer answers.
+    messageSequence: v.optional(v.number()),
     runId: v.id("runs"),
     kind: v.union(
       v.literal("user"),
@@ -221,12 +225,10 @@ export default defineSchema({
     ),
   }).index("by_assignment_sequence", ["assignmentId", "sequence"]),
   // A run outlives an individual turn: results and subsequent delegations spend
-  // the same budget. pendingResults retains v1 accounting; readiness now uses
-  // the bounded immediate-parent/group indexes on subagentRuns.
+  // the same launch/hop budget. Results are ready independently of siblings.
   runs: defineTable({
     launches: v.number(),
     hops: v.number(),
-    pendingResults: v.number(),
     cancelled: v.boolean(),
   }),
   receipts: defineTable({
@@ -260,6 +262,9 @@ export default defineSchema({
     group: v.optional(v.string()),
     wait: v.optional(v.union(v.literal("each"), v.literal("all"))),
     groupReleased: v.optional(v.boolean()),
+    // Only a sealed, fully delivered cohort enters the ready-group index.
+    // Read by releaseGroups; historical incomplete cohorts cannot hide it.
+    groupReady: v.optional(v.boolean()),
     // The launching slice seals its cohorts before results may release them.
     // Read by admission (closed membership), release, and the indexed seal.
     groupSealed: v.optional(v.boolean()),
@@ -269,6 +274,8 @@ export default defineSchema({
     messagesReceived: v.optional(v.number()),
     childAssignmentId: v.optional(v.id("assignments")),
     childThreadId: v.optional(v.string()),
+    // Recorded with native final saves, cleared on every new turn claim, and
+    // read by settlement verification: only the last turn may supply a result.
     childResultMessageId: v.optional(v.string()),
     agent: v.string(),
     rootAgent: v.string(),
@@ -295,13 +302,13 @@ export default defineSchema({
     .index("by_run", ["runId"])
     .index("by_root_sequence", ["rootAssignmentId", "sequence"])
     .index("by_root_status", ["rootAssignmentId", "status"])
-    .index("by_parent_pending", ["actorAssignmentId", "parentRunId", "deliveryStatus"])
-    .index("by_each_pending", [
+    .index("by_parent_delivery", ["actorAssignmentId", "deliveryStatus"])
+    .index("by_ready_group", [
       "actorAssignmentId",
+      "rootCancellationEpoch",
+      "groupReady",
+      "groupReleased",
       "parentRunId",
-      "wait",
-      "deliveryStatus",
-      "status",
     ])
     .index("by_membership", ["actorAssignmentId", "parentRunId", "groupSealed"])
     .index("by_group", ["actorAssignmentId", "parentRunId", "group"])

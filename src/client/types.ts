@@ -165,6 +165,7 @@ export type DelegationDenialCode =
   | "CHILD_FINISHED"
   | "MESSAGE_LIMIT"
   | "ASK_PENDING"
+  | "ASK_WITH_CHILDREN"
   | "QUEUE_LIMIT";
 
 /**

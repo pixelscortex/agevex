@@ -22,7 +22,7 @@ import {
 } from "./schema.js";
 import { LIMITS, limitsValidator } from "./limits.js";
 import { approvalKey, callKey, keyString, saveResponses } from "./approvals.js";
-import { sealGroups } from "./subagents.js";
+import { sealGroups, settlementBlocked } from "./subagents.js";
 
 async function existing(
   ctx: Pick<QueryCtx, "db">,
@@ -126,56 +126,6 @@ async function needsRecovery(ctx: MutationCtx, row: Doc<"assignments">) {
     .first());
 }
 
-/** Select ready rows independently of a blocked result at the inbox head.
- * One indexed read takes <=100 id-only inbox rows. Per distinct budget, read
- * one <=1 KiB run and probe four status-specific index ranges with first():
- * <=100*(1+4) metadata reads, <=1,700 KiB, plus <=100 KiB inbox metadata.
- * These existence probes include settled children awaiting delivery, but skip
- * asking children and all-group members. Never load 50 launch rows per inbox
- * item: 100 independent budgets would otherwise exceed the byte ceiling.
- */
-async function readyInbox(ctx: MutationCtx, row: Doc<"assignments">) {
-  const inbox = await ctx.db
-    .query("inbox")
-    .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
-    .take((row.limits ?? LIMITS).queueLength);
-  const budgets = new Map<string, boolean>();
-  const pending = new Map<string, boolean>();
-  const ready: Doc<"inbox">[] = [];
-  for (const item of inbox) {
-    if (!budgets.has(item.runId))
-      budgets.set(item.runId, !!(await ctx.db.get("runs", item.runId))?.cancelled);
-    if (budgets.get(item.runId)) continue;
-    if (item.kind === "result") {
-      if (!pending.has(item.runId)) {
-        let blocked = false;
-        for (const status of ["queued", "running", "completed", "failed"] as const) {
-          if (
-            await ctx.db
-              .query("subagentRuns")
-              .withIndex("by_each_pending", (q) =>
-                q
-                  .eq("actorAssignmentId", row._id)
-                  .eq("parentRunId", item.runId)
-                  .eq("wait", "each")
-                  .eq("deliveryStatus", "pending")
-                  .eq("status", status),
-              )
-              .first()
-          ) {
-            blocked = true;
-            break;
-          }
-        }
-        pending.set(item.runId, blocked);
-      }
-      if (pending.get(item.runId)) continue;
-    }
-    ready.push(item);
-  }
-  return ready;
-}
-
 async function isAsking(ctx: MutationCtx, row: Doc<"assignments">) {
   if (!row.childRunId) return false;
   const child = await ctx.db
@@ -195,9 +145,8 @@ async function isAsking(ctx: MutationCtx, row: Doc<"assignments">) {
  */
 export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = true) {
   if (row.cancelled || row.turnStatus === "recovery_required") return;
-  // Descendant results remain durable while this child awaits its parent.
-  // Only messageChild clears asking, atomically with posting the answer. Do
-  // not reserve/consume those results or keep a perpetual recovery chain alive.
+  // Questions pause this child until an answer commits. Admission forbids
+  // live descendants, so no descendant-result holding or bypass is necessary.
   if (await isAsking(ctx, row)) {
     await disarmRecovery(ctx, row);
     return;
@@ -211,7 +160,10 @@ export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = tru
   // disarmRecovery and accumulate unconsumed events across loop rotation.
   const hasWork = await needsRecovery(ctx, row);
   if (row.turnStatus === "idle" && !row.approvalBlocked) {
-    const [next] = await readyInbox(ctx, row);
+    const next = await ctx.db
+      .query("inbox")
+      .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
+      .first();
     if (next) {
       await ctx.db.patch("assignments", row._id, {
         turnStatus: "queued",
@@ -308,7 +260,6 @@ export const accept = mutation({
     const runId = await ctx.db.insert("runs", {
       launches: 0,
       hops: 0,
-      pendingResults: 0,
       cancelled: false,
     });
     await ctx.db.insert("inbox", {
@@ -402,26 +353,42 @@ export const claim = mutation({
       const head = await ctx.db.get("inbox", row.inboxId);
       if (head) await ctx.db.delete("inbox", head._id);
       if (head?.kind === "result" || head?.kind === "note" || head?.kind === "parent") {
-        // Selection is bounded as in readyInbox, plus <=100 delete reads and
-        // writes (<2 MiB total). Include an answer and held descendant results
-        // in one continuation, but leave blocked each rows for their own wake.
-        const following = await readyInbox(ctx, row);
-        let count = 0;
-        for (const item of following) {
-          if (item.kind === "user" || item.kind === "steer") break;
-          if (
-            item.runId !== head.runId ||
-            (item.kind !== "result" && item.kind !== "note" && item.kind !== "parent")
-          )
-            continue;
+        // Consume the consecutive head only. Freeing capacity can publish an
+        // already-ready join, so drain that same FIFO before choosing its native
+        // anchor. Otherwise an older deferred join could hide a consumed answer
+        // on the very next turn. Never cross another run/user turn.
+        // <=100 backlog + reserved answer +50 joins + reserved head =152 rows.
+        // The ready-group index is scoped to this budget: <=50 members TOTAL
+        // across its cohorts. <=100 run metadata reads (400 KiB), <=152
+        // inbox deletes/assignment patches and fixed per-iteration probes stay
+        // <8 MiB, <2,000 reads/<600 writes even at all host maxima.
+        // @convex-dev/agent/src/component/messages.ts:298-322 anchors native
+        // context at the prompt's recorded order, rather than our inbox order.
+        let newest = head.messageSequence ?? head.sequence;
+        const bound = (row.limits ?? LIMITS).queueLength + (row.limits ?? LIMITS).runLaunches + 1;
+        for (let count = 0; count < bound; count++) {
+          await ctx.runMutation(api.subagents.releaseGroups, {
+            assignmentId: row._id,
+            parentRunId: head.runId,
+          });
+          const item = await ctx.db
+            .query("inbox")
+            .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
+            .first();
+          if (!item || item.runId !== head.runId || item.kind === "user" || item.kind === "steer")
+            break;
           await ctx.db.delete("inbox", item._id);
-          if (item.sequence > head.sequence) row.promptMessageId = item.messageId;
-          count++;
+          const order = item.messageSequence ?? item.sequence;
+          if (order > newest) {
+            newest = order;
+            row.promptMessageId = item.messageId;
+          }
+          const current = (await ctx.db.get("assignments", row._id))!;
+          await ctx.db.patch("assignments", row._id, {
+            queuedMessages: current.queuedMessages - 1,
+          });
         }
-        await ctx.db.patch("assignments", row._id, {
-          queuedMessages: row.queuedMessages - count,
-          promptMessageId: row.promptMessageId,
-        });
+        await ctx.db.patch("assignments", row._id, { promptMessageId: row.promptMessageId });
       }
     }
     await ctx.db.patch("assignments", row._id, {
@@ -487,6 +454,7 @@ export const claim = mutation({
     }
     if (first)
       await ctx.db.patch("subagentRuns", run._id, {
+        childResultMessageId: undefined,
         status: "running",
         startedAt: run.startedAt ?? Date.now(),
         events: [
@@ -527,6 +495,7 @@ export const finish = mutation({
       return null;
     await disarmSlice(ctx, row);
     await sealGroups(ctx, row);
+    if (args.errorCode && (await deferChildFailure(ctx, row))) return null;
     if (args.errorCode) {
       await failChild(ctx, row, args.errorCode);
       await ctx.db.patch("assignments", row._id, {
@@ -555,6 +524,25 @@ async function disarmSlice(ctx: MutationCtx, row: Doc<"assignments">) {
   await ctx.db.patch("assignments", row._id, { watchdogId: undefined, activeSlice: undefined });
 }
 
+/** A failed turn also obeys the run fence. A later descendant delivery may
+ * continue the run, but this failed paid generation is never retried. Clear its
+ * token so any late native writes lose ownership before waking queued work.
+ */
+async function deferChildFailure(ctx: MutationCtx, row: Doc<"assignments">) {
+  if (!row.childRunId || !(await settlementBlocked(ctx, row))) return false;
+  await disarmSlice(ctx, row);
+  await sealGroups(ctx, row);
+  await ctx.db.patch("assignments", row._id, {
+    turnStatus: "idle",
+    turnToken: undefined,
+    promptMessageId: undefined,
+    continueSlice: false,
+    errorCode: null,
+  });
+  await wake(ctx, (await ctx.db.get("assignments", row._id))!);
+  return true;
+}
+
 /** All terminal child failures share the idempotent settlement/notification path. */
 async function failChild(
   ctx: MutationCtx,
@@ -574,6 +562,7 @@ async function markAmbiguous(ctx: MutationCtx, assignmentId: Id<"assignments">, 
     row.turnToken === turnToken &&
     (row.turnStatus === "queued" || row.turnStatus === "running")
   ) {
+    if (await deferChildFailure(ctx, row)) return null;
     await ctx.db.patch("assignments", row._id, {
       turnStatus: "recovery_required",
       errorCode: "EXECUTION_AMBIGUOUS",
@@ -608,6 +597,7 @@ export const stalled = internalMutation({
       row.turnStatus === "running" &&
       row.activeSlice === (args.sliceId ?? args.turnToken)
     ) {
+      if (await deferChildFailure(ctx, row)) return null;
       await ctx.db.patch("assignments", row._id, {
         turnStatus: "recovery_required",
         errorCode: "EXECUTION_AMBIGUOUS",
@@ -759,6 +749,7 @@ export const write = mutation({
         // stops on the rejected save, and its stale finish cannot overwrite it.
         await disarmSlice(ctx, row);
         await disarmRecovery(ctx, row);
+        if (await deferChildFailure(ctx, row)) return null;
         await failChild(ctx, row, "APPROVAL_LIMIT");
         await ctx.db.patch("assignments", row._id, {
           turnStatus: "recovery_required",
@@ -1109,7 +1100,7 @@ export const cancel = mutation({
       const inbox = await ctx.db
         .query("inbox")
         .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
-        .take((row.limits ?? LIMITS).queueLength + 1);
+        .take((row.limits ?? LIMITS).queueLength + 2);
       for (const item of inbox) {
         await ctx.db.patch("runs", item.runId, { cancelled: true });
         await ctx.db.delete("inbox", item._id);

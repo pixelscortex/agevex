@@ -96,8 +96,8 @@ registration. Shared child Agent objects are supported. Launch/hop budgets and
 cancellation cover every descendant; results return to the immediate parent.
 
 Parents receive `agevex_delegate({ agent, task, group?, wait? })` and
-`agevex_message_child({ runId, text })`. Default `wait: "each"` keeps
-consecutive child results batched as before. With `wait: "all"`, a group
+`agevex_message_child({ runId, text })`. Default `wait: "each"` delivers each
+settled result immediately. With `wait: "all"`, a group
 wakes its parent once after the launching slice ends and every member settles,
 including failures. Membership seals when that slice ends; later launches into
 the group return `GROUP_CLOSED`. Groups belong to one parent assignment and user run.
@@ -110,10 +110,15 @@ even inside a waiting group. The parent answers with `agevex_message_child`.
 Follow-ups reach running or idle children in the same root; finished or foreign
 runs return typed denials. Each child accepts 4 follow-ups by default (maximum
 8); questions and follow-ups spend the originating run's hops. Both use the
-task-length bound. Asking children hold descendant results until the answer
-resumes them; the answer and ready results share one continuation. Ready joins
-and questions can wake a parent past an unrelated blocked result. Asking
-children remain cancellable.
+task-length bound. Asking children remain cancellable; one inbox slot is
+reserved for their answer.
+
+R1: The inbox holds ready work in FIFO order; claims coalesce consecutive head rows.
+R2: `ask_parent` denies `ASK_WITH_CHILDREN` while any descendant is non-terminal.
+R3: Runs settle after the last turn ends, descendants settle, and the inbox empties.
+
+The verified run result is the final text of the last turn before settlement;
+earlier final text while descendants are running does not finish the run.
 
 `runTree({ threadId })` is an owner-authorized, root-only query returning the
 current request's descendants with agent, status, depth, group, parent

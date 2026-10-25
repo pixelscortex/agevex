@@ -45,34 +45,34 @@ export const HOST_LIMITS = {
 /**
  * Cancel budget at ALL host maxima:
  * A = 1 root + 20 descendants = 21 assignments (depth never multiplies A).
- * Every assignment has <=100 queued rows plus its reserved head (or the
- * approval continuation that replaces that head). Use I=21*101=2,121 rows.
+ * Every assignment has <=100 regular queued rows, one reserved answer slot,
+ * and its reserved head (or approval continuation). Use I=21*102=2,142 rows.
  * This deliberately overcounts: many simultaneous child queues belong to
  * DIFFERENT user-run budgets, so a single run's 100 hops is not a valid bound
  * on the whole root's backlog. Depth two allows each parent its own results.
- * Each inbox row costs one run patch and one inbox delete: 2I=4,242 writes.
+ * Each inbox row costs one run patch and one inbox delete: 2I=4,284 writes.
  * Each assignment costs three patches, one current-run patch, two scheduler
  * cancels and one exact-id cleanup job: 7A=147. Add 20 child-run patches and
  * one final root patch. Reserve 64A=1,344 reads AND writes for Workflow's
  * current loop/turn, Workpool, scheduler and callback bookkeeping.
- * Writes <=2I+7A+20+1+64A=5,754 <8,000 <16,000.
- * Reads <=3I+4A+A+2A+2*20+2+64A=7,896 <8,192.
+ * Writes <=2I+7A+20+1+64A=5,796 <8,000 <16,000.
+ * Reads <=3I+4A+A+2A+2*20+2+64A=7,959 <8,192.
  * Bytes: inbox/run reads 3I*1 KiB; assignment patch reads 4A*8 KiB;
  * current runs A*1 KiB; scheduler 2A*4 KiB; child runs 40*4 KiB;
  * ownership/final root 2*8 KiB; SDK allowance 64A*4 KiB:
- * <=12,776 KiB <16 MiB. Native messages (including each nearly
+ * <=12,839 KiB <16 MiB. Native messages (including each nearly
  * 1 MiB placeholder) are NEVER read by cancel; cleanup runs separately.
  * Subagent rows stay <=4 KiB: names/subjects/groups <=200 UTF-16 units,
  * hashed tool-call dedup keys, ids, counters and <=4 small events. Assignments
  * allow <=8 KiB including the 16 recorded fixed-size approval keys.
  *
- * Other proportional paths: claim reads/deletes at most 101 inbox rows;
- * admission/send/attach handle one item. Group admission/release reads <=20
- * metadata rows. Deferred release probes <=20*20 group rows plus <=20
- * candidates. Membership sealing reads/patches <=50 launch rows. Readiness
- * reads <=100 inbox rows and <=100 budgets, with four indexed existence
- * probes per budget (<1.8 MiB); the tree reads <=50 launch rows. Local comments
- * include the combined readiness/seal/release allowances.
+ * Other proportional paths: claim drains <=152 consecutive ready rows,
+ * including <=50 ready joins from its run, and reads no native bodies. Each
+ * join uses an indexed ready representative and <=20 cohort metadata rows;
+ * admission/send/attach handle one item. Membership sealing reads/patches
+ * <=50 launch rows. Descendant/settlement fences use indexed existence probes,
+ * never historical prefixes. The tree reads <=50 launch rows. Local comments
+ * include combined claim/seal/release metadata allowances.
  * Native verification/delivery reads one exact <=1 MiB message, never the
  * launch history. Tasks are <=16,000 UTF-16 units (<=64 KiB UTF-8), with at
  * most one native task save per delegation. Hops/leases are scalar counters;

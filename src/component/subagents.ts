@@ -46,6 +46,52 @@ async function runById(ctx: QueryCtx | MutationCtx, runId: string) {
     .unique();
 }
 
+/** Every non-terminal child retains deliveryStatus=pending; delivery can only
+ * change after settlement. One indexed existence probe therefore covers live
+ * descendants AND the terminal-to-delivery gap. The fence is transitive because
+ * a child obeys the same rule before settling. No history scan is needed.
+ */
+async function hasPendingChildren(ctx: QueryCtx | MutationCtx, parent: Doc<"assignments">) {
+  return !!(await ctx.db
+    .query("subagentRuns")
+    .withIndex("by_parent_delivery", (q) =>
+      q.eq("actorAssignmentId", parent._id).eq("deliveryStatus", "pending"),
+    )
+    .first());
+}
+
+/** A terminal child whose native delivery has not committed is also future
+ * inbox work. Fence that short settlement/delivery interval and unreleased
+ * groups as well as live descendants; otherwise a result could reach a terminal
+ * parent. Three indexed existence probes + one root read, <24 KiB, no history.
+ */
+export async function settlementBlocked(ctx: QueryCtx | MutationCtx, parent: Doc<"assignments">) {
+  if (
+    await ctx.db
+      .query("inbox")
+      .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", parent._id))
+      .first()
+  )
+    return true;
+  if (await hasPendingChildren(ctx, parent)) return true;
+  const root = parent.rootAssignmentId
+    ? await ctx.db.get("assignments", parent.rootAssignmentId)
+    : parent;
+  return (
+    !!root &&
+    !!(await ctx.db
+      .query("subagentRuns")
+      .withIndex("by_unjoined", (q) =>
+        q
+          .eq("actorAssignmentId", parent._id)
+          .eq("rootCancellationEpoch", root.cancellationEpoch)
+          .eq("wait", "all")
+          .eq("groupReleased", false),
+      )
+      .first())
+  );
+}
+
 function appendEvent(
   events: Doc<"subagentRuns">["events"],
   phase: Doc<"subagentRuns">["events"][number]["phase"],
@@ -63,6 +109,10 @@ async function settleRunState(
   childResultMessageId: string | undefined,
 ) {
   if (run.status === "completed" || run.status === "failed") return false;
+  const child = run.childAssignmentId
+    ? await ctx.db.get("assignments", run.childAssignmentId)
+    : null;
+  if (child && (await settlementBlocked(ctx, child))) return false;
   const at = Date.now();
   await ctx.db.patch("subagentRuns", run._id, {
     status,
@@ -197,7 +247,6 @@ export const reserve = mutation({
     await ctx.db.patch("runs", budget._id, {
       launches: budget.launches + 1,
       hops: budget.hops + 1,
-      pendingResults: budget.pendingResults + 1,
     });
     const runId = crypto.randomUUID();
     const now = Date.now();
@@ -308,7 +357,7 @@ export const settlementContext = query({
       subject: v.string(),
       childThreadId: v.string(),
       childResultMessageId: v.union(v.string(), v.null()),
-      hasInbox: v.boolean(),
+      blocked: v.boolean(),
     }),
   ),
   handler: async (ctx, args) => {
@@ -327,7 +376,7 @@ export const settlementContext = query({
       subject: run.subject,
       childThreadId: run.childThreadId,
       childResultMessageId: run.childResultMessageId ?? null,
-      hasInbox: child.queuedMessages > 0,
+      blocked: await settlementBlocked(ctx, child),
     };
   },
 });
@@ -384,10 +433,9 @@ export const settle = mutation({
     const child = await ctx.db.get("assignments", args.assignmentId);
     if (!child || child.childRunId !== args.runId || child.turnToken !== args.turnToken)
       throw new Error("FORBIDDEN");
-    // A follow-up admitted while verification was pending owns the next turn.
-    // The host reads this same queue fact in settlementContext, in this shared
-    // native-verification transaction, before it can declare a final result.
-    if (child.queuedMessages > 0) return null;
+    // Verification and this fence share the host mutation transaction. Only
+    // the last turn before an empty inbox / descendant fence supplies a result.
+    if (await settlementBlocked(ctx, child)) return null;
     // A released or escalated turn cannot report an outcome any more.
     if (child.cancelled || child.turnStatus !== "running") throw new Error("FORBIDDEN");
     const run = await runById(ctx, args.runId);
@@ -475,7 +523,7 @@ export const failDelivery = internalMutation({
     }),
 });
 
-/** A terminal result spends a hop once, then the last delivery wakes the batch. */
+/** Each terminal delivery spends one hop and appends ready work immediately. */
 async function applyDelivery(
   ctx: MutationCtx,
   args: {
@@ -521,7 +569,6 @@ async function applyDelivery(
   const budget = await ctx.db.get("runs", run.parentRunId);
   if (budget)
     await ctx.db.patch("runs", budget._id, {
-      pendingResults: Math.max(0, budget.pendingResults - 1),
       hops: args.deliveryStatus === "accepted" ? budget.hops + 1 : budget.hops,
     });
   if (
@@ -538,9 +585,8 @@ async function applyDelivery(
   )
     throw new Error("RUN_BUDGET");
   if (run.wait === "all") {
-    // <=20 members *4 KiB =80 KiB. Enqueue ONE id-only anchor, <=20
-    // release markers and bounded wake recovery (<1,200 reads/<128 writes;
-    // <4 MiB of metadata including readiness and deferred-release probes).
+    // <=20 members *4 KiB =80 KiB. Mark readiness and enqueue ONE id-only
+    // anchor; <=20 release markers. No historical candidate prefix is read.
     // Native child bodies are verified ONE per delivery transaction (<=1 MiB);
     // this join reads ids only, never 20 potentially 1 MiB native results.
     const members = await ctx.db
@@ -556,8 +602,8 @@ async function applyDelivery(
       await ctx.db.patch("assignments", parent._id, { nextSequence: parent.nextSequence + 1 });
       parent.nextSequence++;
     }
-    if (await releaseGroup(ctx, parent, root, members))
-      await wake(ctx, (await ctx.db.get("assignments", parent._id))!);
+    await markGroupReady(ctx, members, root);
+    await wake(ctx, (await ctx.db.get("assignments", parent._id))!);
   } else if (args.deliveryStatus === "accepted" && args.parentMessageId) {
     if (parent.queuedMessages >= (root.limits ?? LIMITS).queueLength)
       throw new Error("QUEUE_LIMIT");
@@ -580,6 +626,30 @@ async function applyDelivery(
     await wake(ctx, backlogged);
   } else await wake(ctx, parent);
   return null;
+}
+
+/** Readiness belongs to one sealed cohort, never a prefix of historical runs.
+ * One representative is sufficient for indexed discovery; release marks every
+ * member together. Membership is immutable after continueTurn/finish seals it.
+ */
+async function markGroupReady(
+  ctx: MutationCtx,
+  members: Doc<"subagentRuns">[],
+  root: Doc<"assignments">,
+) {
+  if (
+    !members.length ||
+    members.some(
+      (member) =>
+        !member.groupSealed ||
+        member.groupReleased ||
+        member.deliveryStatus === "pending" ||
+        !["completed", "failed"].includes(member.status) ||
+        member.rootCancellationEpoch !== root.cancellationEpoch,
+    )
+  )
+    return;
+  await ctx.db.patch("subagentRuns", members[0]._id, { groupReady: true });
 }
 
 /** Release uses recorded parent-message ids only. Full inboxes defer this
@@ -616,6 +686,7 @@ async function releaseGroup(
   await ctx.db.insert("inbox", {
     assignmentId: parent._id,
     messageId: accepted[accepted.length - 1].resultMessageId!,
+    messageSequence: accepted[accepted.length - 1].resultSequence!,
     sequence: parent.nextSequence,
     kind: "note",
     runId: members[0].parentRunId,
@@ -645,20 +716,31 @@ export async function sealGroups(ctx: MutationCtx, parent: Doc<"assignments">) {
         .eq("groupSealed", false),
     )
     .take((parent.limits ?? LIMITS).runLaunches);
-  for (const member of members)
+  for (const member of members) {
     await ctx.db.patch("subagentRuns", member._id, { groupSealed: true });
+    member.groupSealed = true;
+  }
+  const root = parent.rootAssignmentId
+    ? await ctx.db.get("assignments", parent.rootAssignmentId)
+    : parent;
+  if (!root) return;
+  const groups = new Set(members.map((member) => member.group ?? ""));
+  // Partition the <=50 just-sealed rows in memory; no repeated group queries.
+  for (const group of groups)
+    await markGroupReady(
+      ctx,
+      members.filter((member) => (member.group ?? "") === group),
+      root,
+    );
 }
 
-/** Bounded control recovery for a join whose parent inbox was full.
- * <=20 candidate rows +20 groups*20 members +20 patch reads =440 run reads
- * *4 KiB =1,760 KiB, plus root/parent <=16 KiB and one inbox insert/patch.
- * <=20 run writes +2 queue writes. With wake's <=1,800 KiB readiness probe
- * and fixed metadata, the path stays <4 MiB and <1,100 reads. A completion
- * that also seals <=50 members adds <=400 KiB/100 reads/50 writes: still
- * <4.5 MiB and <1,200 reads. Native payloads are absent from these probes.
+/** Ready-group recovery uses an exact indexed representative, then only that
+ * cohort's <=20 members (<=84 KiB + fixed assignment metadata). Old incomplete
+ * groups never enter this range. Release one cohort per wake; remaining ready
+ * cohorts are serviced by the next claim/finish without a scheduled sweep.
  */
 export const releaseGroups = mutation({
-  args: { assignmentId: v.id("assignments") },
+  args: { assignmentId: v.id("assignments"), parentRunId: v.optional(v.id("runs")) },
   returns: v.boolean(),
   handler: async (ctx, args) => {
     const parent = await ctx.db.get("assignments", args.assignmentId);
@@ -672,33 +754,28 @@ export const releaseGroups = mutation({
       ? await ctx.db.get("assignments", parent.rootAssignmentId)
       : parent;
     if (!root || root.cancelled) return false;
-    const candidates = await ctx.db
+    const candidate = await ctx.db
       .query("subagentRuns")
-      .withIndex("by_unjoined", (q) =>
-        q
+      .withIndex("by_ready_group", (q) => {
+        const ready = q
           .eq("actorAssignmentId", parent._id)
           .eq("rootCancellationEpoch", root.cancellationEpoch)
-          .eq("wait", "all")
-          .eq("groupReleased", false),
+          .eq("groupReady", true)
+          .eq("groupReleased", false);
+        return args.parentRunId ? ready.eq("parentRunId", args.parentRunId) : ready;
+      })
+      .first();
+    if (!candidate) return false;
+    const members = await ctx.db
+      .query("subagentRuns")
+      .withIndex("by_group", (q) =>
+        q
+          .eq("actorAssignmentId", parent._id)
+          .eq("parentRunId", candidate.parentRunId)
+          .eq("group", candidate.group ?? ""),
       )
       .take((root.limits ?? LIMITS).activeChildrenPerRoot);
-    const seen = new Set<string>();
-    for (const candidate of candidates) {
-      const key = candidate.parentRunId + ":" + (candidate.group ?? "");
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const members = await ctx.db
-        .query("subagentRuns")
-        .withIndex("by_group", (q) =>
-          q
-            .eq("actorAssignmentId", parent._id)
-            .eq("parentRunId", candidate.parentRunId)
-            .eq("group", candidate.group ?? ""),
-        )
-        .take((root.limits ?? LIMITS).activeChildrenPerRoot);
-      if (await releaseGroup(ctx, parent, root, members)) return true;
-    }
-    return false;
+    return releaseGroup(ctx, parent, root, members);
   },
 });
 
@@ -787,6 +864,7 @@ async function interaction(
       | "CHILD_FINISHED"
       | "MESSAGE_LIMIT"
       | "ASK_PENDING"
+      | "ASK_WITH_CHILDREN"
       | "RUN_BUDGET"
       | "QUEUE_LIMIT",
   ) => ({ kind: "denied" as const, code });
@@ -811,6 +889,8 @@ async function interaction(
   )
     return denied("FORBIDDEN");
   if (args.op === "ask" && run.status === "asking") return denied("ASK_PENDING");
+  if (args.op === "ask" && (await hasPendingChildren(ctx, actor)))
+    return denied("ASK_WITH_CHILDREN");
   if (run.status !== "running" && !(args.op === "message" && run.status === "asking"))
     return denied("CHILD_FINISHED");
   if (!run.childAssignmentId) return denied("FORBIDDEN");
@@ -833,7 +913,14 @@ async function interaction(
   )
     return denied("MESSAGE_LIMIT");
   const target = args.op === "message" ? child : parent;
-  if (target.queuedMessages >= (root.limits ?? LIMITS).queueLength) return denied("QUEUE_LIMIT");
+  // One extra slot is reserved exclusively for the answer to an open question.
+  // A new question cannot reserve another while that extra slot is occupied.
+  const answering = args.op === "message" && run.status === "asking";
+  if (
+    (!answering && target.queuedMessages >= (root.limits ?? LIMITS).queueLength) ||
+    (args.op === "ask" && child.queuedMessages > (root.limits ?? LIMITS).queueLength)
+  )
+    return denied("QUEUE_LIMIT");
   const budget = await ctx.db.get("runs", run.parentRunId);
   if (!budget || budget.cancelled || budget.hops >= (root.limits ?? LIMITS).runHops)
     return denied("RUN_BUDGET");
@@ -869,8 +956,9 @@ async function post(
   runId: Doc<"runs">["_id"],
   messageId: string,
   kind: "parent" | "note",
+  answering = false,
 ) {
-  if (target.queuedMessages >= (target.limits ?? LIMITS).queueLength)
+  if (target.queuedMessages >= (target.limits ?? LIMITS).queueLength + Number(answering))
     throw new Error("QUEUE_LIMIT");
   await ctx.db.insert("inbox", {
     assignmentId: target._id,
@@ -909,7 +997,7 @@ export const messageChild = mutation({
       messagesReceived: (run.messagesReceived ?? 0) + 1,
     });
     await ctx.db.patch("runs", budget._id, { hops: budget.hops + 1 });
-    await post(ctx, child, budget._id, args.messageId, "parent");
+    await post(ctx, child, budget._id, args.messageId, "parent", run.status === "asking");
     return { status: "accepted" as const, runId: run.runId };
   },
 });
