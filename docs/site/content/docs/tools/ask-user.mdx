@@ -1,6 +1,7 @@
 ---
 title: Ask the user
 description: Pause for a bounded yes/no question using native approvals.
+status: Available
 ---
 
 ```sh
@@ -10,6 +11,9 @@ bunx shadcn add http://localhost:3000/r/ask-user.json
 Start the docs site or replace its origin. This installs
 `convex/agevexTools/askUser.ts` and `ai`, `convex`, `zod`; the host must already
 have `agevex`.
+
+Use a TypeScript host with `"tsx": true` in `components.json` before installing
+so shadcn preserves the tool's types.
 
 ```ts title="In your agevex Agent registration"
 import { createAskUserTool } from "./agevexTools/askUser.js";
@@ -34,10 +38,9 @@ Core authorizes the thread owner, saves the exact native response and wakes
 the waiting turn. Duplicate or foreign responses are rejected. Do not call
 native `approveToolCall` directly: it does not wake core's waiting turn.
 
-This is a **yes/no question**. AI SDK removes approved `reason` text from the
-next model prompt. To deliver a freeform answer, also enqueue it with core
-`send({ threadId, text, requestKey })`; do not recover it by scanning messages.
-The core endpoint's existing reason/message bounds still apply.
+This is a **yes/no question**. Free-text answers are coming through a core
+endpoint. AI SDK removes approved `reason` text from the next model prompt,
+so response notes are not free-text answers.
 
 No item table or host schema snippet is needed. Native approval parts store
 the question and decision; core owns pending references and once-tool receipts.

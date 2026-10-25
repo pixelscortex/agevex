@@ -28,6 +28,6 @@
       "target": "~/convex/agevexTools/todoState.ts"
     }
   ],
-  "docs": "Merge todoTables from the installed schema snippet into convex/schema.ts. Pass internal.agevexTools.todoState to createTodoTools and register on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. No schema is overwritten. See /docs/tools/todo.",
+  "docs": "Use a TypeScript host with tsx: true in components.json before installing. Merge todoTables from the installed schema snippet into convex/schema.ts. Pass internal.agevexTools.todoState to createTodoTools and register on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. No schema is overwritten. See /docs/tools/todo.",
   "type": "registry:lib"
 }

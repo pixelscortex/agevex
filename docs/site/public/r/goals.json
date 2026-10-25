@@ -28,6 +28,6 @@
       "target": "~/convex/agevexTools/goalsState.ts"
     }
   ],
-  "docs": "Merge goalTables from the installed schema snippet into convex/schema.ts. Pass internal.agevexTools.goalsState to createGoalTools and register on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. No schema is overwritten. See /docs/tools/goals.",
+  "docs": "Use a TypeScript host with tsx: true in components.json before installing. Merge goalTables from the installed schema snippet into convex/schema.ts. Pass internal.agevexTools.goalsState to createGoalTools and register on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. No schema is overwritten. See /docs/tools/goals.",
   "type": "registry:lib"
 }

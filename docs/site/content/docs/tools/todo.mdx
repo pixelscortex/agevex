@@ -1,6 +1,7 @@
 ---
 title: Todo
 description: A bounded, durable todo list owned by a thread.
+status: Available
 ---
 
 ```sh
@@ -11,6 +12,9 @@ Start the docs site first, or replace the origin with your registry host.
 The item copies three files into `convex/agevexTools/`; it does not overwrite
 your schema. It requires the host's existing `agevex` installation and installs
 `ai`, `convex` and `zod`.
+
+Use a TypeScript host with `"tsx": true` in `components.json` before installing.
+shadcn's JavaScript mode strips the types required by the schema snippet.
 
 ```ts title="convex/schema.ts"
 import { defineSchema } from "convex/server";

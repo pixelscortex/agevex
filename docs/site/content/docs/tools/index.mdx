@@ -1,6 +1,7 @@
 ---
 title: Registry tools
 description: Copy bounded tools and their host-owned state into your app.
+status: Available
 ---
 
 Install only the source you need. The host owns its copied code, authorization
@@ -22,3 +23,5 @@ with the shadcn CLI. `bun run test:tools` runs the deterministic tools suite.
 The CLI installation smoke test denies network access and clearly skips when
 shadcn requires its remote catalogue; a separate test still type-checks all
 payloads together in an independent host.
+To exercise real CLI installs when network is available, run
+`AGEVEX_TOOLS_INSTALL_NETWORK=1 bun run test:tools`.

@@ -1,31 +1,37 @@
 ---
 title: Tools
 icon: Wrench
-description: Planned optional AI SDK tools distributed as editable source.
-status: Planned
+description: Bounded AI SDK tools copied into your Convex host.
+status: Available
 ---
 
-`sdk/tools` and the registry provide plain AI SDK tools. Registry installation
-copies source into the host project, where the host owns and edits it. A few
-core tools are planned for zero-setup package imports as well.
+Tools are editable source from the [registry](/docs/registry). Install only
+what you need into an existing agevex host; no extra Convex component is mounted.
+Set `"tsx": true` in the host's `components.json` before installing.
 
-| Tools | State and limits |
+| Item | Contract and state |
 | --- | --- |
-| `todo_read` / `todo_write` | Small table or thread metadata; at most 100 items. |
-| `goal_set` / `goal_check` | Small table or thread metadata; an explicit goal to report against. |
-| `ask_user` | No separate state; bounded questions through native tool approval. |
-| `continue_budget` | No separate state; native approval for continuing after a budget pause. |
-| `read_file` / `search_files` | Agent files and extraction artifacts; bounded text and references. |
-| Sandbox tools | Supplied by `sdk/sandbox`. |
+| [Todo](/docs/tools/todo) | `todo_read` / `todo_write`: replace or read up to 100 items and 32 KiB per list. Host table `agevexTodos`, scoped by owner and thread. |
+| [Goals](/docs/tools/goals) | `goal_set` / `goal_check`: set or read one goal, up to 4000 characters. Host table `agevexGoals`, scoped by owner, thread and run. |
+| [Ask the user](/docs/tools/ask-user) | `ask_user`: a yes/no question up to 2000 characters using native approval. No item table. Free-text answers are coming through a core endpoint. |
+| [Continue budget](/docs/tools/continue-budget) | `continue_budget`: native approval with a reason up to 2000 characters. No item table; consent does not change budget policy. |
 
-The planned tools use Agent-component storage where possible. Each tool must
-document its state and limits; hosts can ignore any of them. Goals/todos as a
-framework remain deferred: this list describes small individual tools.
+Start the docs site from `docs/site` with `bun run dev`, or replace the origin:
 
-The SDK supplies trusted context facts, not tool permissions. The host checks
-ownership and policy inside its tools. Approvals use native
-`tool-approval-request` / `tool-approval-response` message parts, with no new
-approvals table.
+```sh title="Terminal"
+bunx shadcn add http://localhost:3000/r/todo.json
+bunx shadcn add http://localhost:3000/r/goals.json
+bunx shadcn add http://localhost:3000/r/ask-user.json
+bunx shadcn add http://localhost:3000/r/continue-budget.json
+```
 
-See the [registry guide](/docs/registry) for a working, intentionally in-memory
-`todo-tool` example. The example is not the planned durable tool implementation.
+Merge the todo and goal table snippets into your existing host schema. Each
+item's guide shows its factory and registration. All tools use core
+`defineOnceTool` for trusted `ToolContext` facts, cancellation fences and
+idempotent results. Ownership is never model input; the host keeps its
+`authorize` and `authorizeExecution` policies and owns state retention.
+
+Answer approvals through core
+`respond({ threadId, approvalId, approved, reason? })` so the waiting turn
+wakes. Native approval parts and core receipts hold approval state; saving
+a native response directly does not wake core.

@@ -2,7 +2,7 @@
   "$schema": "https://ui.shadcn.com/schema/registry-item.json",
   "name": "ask-user",
   "title": "Ask the user",
-  "description": "ask_user requests native Agent approval for one nonblank yes/no question up to 2000 characters. No item tables; native approval parts and core receipts hold state. Answer through core respond; use core send for freeform answers.",
+  "description": "ask_user requests native Agent approval for one nonblank yes/no question up to 2000 characters. No item tables; native approval parts and core receipts hold state. Answer through core respond; free-text answers are coming through a core endpoint.",
   "dependencies": [
     "ai@^7.0.153",
     "zod@^4.6.7",
@@ -16,6 +16,6 @@
       "target": "~/convex/agevexTools/askUser.ts"
     }
   ],
-  "docs": "Register createAskUserTool() on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. Responses must use core respond, never native approveToolCall directly. See /docs/tools/ask-user.",
+  "docs": "Use a TypeScript host with tsx: true in components.json before installing. Register createAskUserTool() on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. Responses must use core respond, never native approveToolCall directly. See /docs/tools/ask-user.",
   "type": "registry:lib"
 }

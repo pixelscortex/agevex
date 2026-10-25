@@ -13,7 +13,7 @@
         "zod@^4.6.7",
         "convex@^1.47.0"
       ],
-      "docs": "Merge todoTables from the installed schema snippet into convex/schema.ts. Pass internal.agevexTools.todoState to createTodoTools and register on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. No schema is overwritten. See /docs/tools/todo.",
+      "docs": "Use a TypeScript host with tsx: true in components.json before installing. Merge todoTables from the installed schema snippet into convex/schema.ts. Pass internal.agevexTools.todoState to createTodoTools and register on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. No schema is overwritten. See /docs/tools/todo.",
       "files": [
         {
           "path": "registry/todo/todo.ts",
@@ -42,7 +42,7 @@
         "zod@^4.6.7",
         "convex@^1.47.0"
       ],
-      "docs": "Merge goalTables from the installed schema snippet into convex/schema.ts. Pass internal.agevexTools.goalsState to createGoalTools and register on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. No schema is overwritten. See /docs/tools/goals.",
+      "docs": "Use a TypeScript host with tsx: true in components.json before installing. Merge goalTables from the installed schema snippet into convex/schema.ts. Pass internal.agevexTools.goalsState to createGoalTools and register on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. No schema is overwritten. See /docs/tools/goals.",
       "files": [
         {
           "path": "registry/goals/goals.ts",
@@ -65,13 +65,13 @@
       "name": "ask-user",
       "type": "registry:lib",
       "title": "Ask the user",
-      "description": "ask_user requests native Agent approval for one nonblank yes/no question up to 2000 characters. No item tables; native approval parts and core receipts hold state. Answer through core respond; use core send for freeform answers.",
+      "description": "ask_user requests native Agent approval for one nonblank yes/no question up to 2000 characters. No item tables; native approval parts and core receipts hold state. Answer through core respond; free-text answers are coming through a core endpoint.",
       "dependencies": [
         "ai@^7.0.153",
         "zod@^4.6.7",
         "convex@^1.47.0"
       ],
-      "docs": "Register createAskUserTool() on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. Responses must use core respond, never native approveToolCall directly. See /docs/tools/ask-user.",
+      "docs": "Use a TypeScript host with tsx: true in components.json before installing. Register createAskUserTool() on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. Responses must use core respond, never native approveToolCall directly. See /docs/tools/ask-user.",
       "files": [
         {
           "path": "registry/ask-user/askUser.ts",
@@ -90,7 +90,7 @@
         "zod@^4.6.7",
         "convex@^1.47.0"
       ],
-      "docs": "Register createContinueBudgetTool() on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. Responses must use core respond, never native approveToolCall directly. See /docs/tools/continue-budget.",
+      "docs": "Use a TypeScript host with tsx: true in components.json before installing. Register createContinueBudgetTool() on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. Responses must use core respond, never native approveToolCall directly. See /docs/tools/continue-budget.",
       "files": [
         {
           "path": "registry/continue-budget/continueBudget.ts",

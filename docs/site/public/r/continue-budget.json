@@ -16,6 +16,6 @@
       "target": "~/convex/agevexTools/continueBudget.ts"
     }
   ],
-  "docs": "Register createContinueBudgetTool() on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. Responses must use core respond, never native approveToolCall directly. See /docs/tools/continue-budget.",
+  "docs": "Use a TypeScript host with tsx: true in components.json before installing. Register createContinueBudgetTool() on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. Responses must use core respond, never native approveToolCall directly. See /docs/tools/continue-budget.",
   "type": "registry:lib"
 }
