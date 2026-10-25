@@ -1,0 +1,27 @@
+src/meter/client.ts
+  s_d863bd773ba186::t_039fd16ef1133f 354-357
+src/meter/component/charges.ts
+  s_d863bd773ba186::t_67f278954c888f 681-682,684-687
+src/meter/limits.ts
+  s_d863bd773ba186::t_758d377ed4efe6 55-57,77,80,118
+tests/meter/bounds.test.ts
+  s_d863bd773ba186::t_95645a88ce9136 211,351
+tests/meter/retention.test.ts
+  s_d863bd773ba186::t_c8de717e7946e4 18-19,89-106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "06a648499ed99465ea49427afb8771b770227547",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
