@@ -1,0 +1,43 @@
+src/modules/meter/client/configuration.ts
+  s_27938b605a4a40::t_b2c9cc1ed236db 1-106
+src/modules/meter/client/handles.ts
+  s_27938b605a4a40::t_35f51b17b94d90 1-72
+src/modules/meter/client/maintenance.ts
+  s_27938b605a4a40::t_b2c9cc1ed236db 1-43
+src/modules/meter/client/client.ts
+  s_27938b605a4a40::t_8d817938767422 2-5,7-14,16,18,20,23-28
+src/modules/meter/client/helpers.ts
+  s_27938b605a4a40::t_f2d9691121a22c 1-6,27,34
+src/modules/meter/client/index.ts
+  s_27938b605a4a40::t_13caeb55aba6f3 1-6
+src/modules/meter/client/pricing.ts
+  s_27938b605a4a40::t_102620943840c6 1-106
+src/modules/meter/client/reads.ts
+  s_27938b605a4a40::t_03416149f203e9 1-93
+src/modules/meter/client/scope.ts
+  s_27938b605a4a40::t_a74d093bca1784 1-125
+src/modules/meter/client/sinks.ts
+  s_27938b605a4a40::t_3b10a55a987773 1-6,80,100,186
+src/modules/meter/client/slots.ts
+  s_27938b605a4a40::t_c5c9b47d983fbc 1-91
+src/modules/meter/client/types.ts
+  s_27938b605a4a40::t_cd5ce3c243980a 1-6
+src/modules/meter/client/workers.ts
+  s_27938b605a4a40::t_55177a51e050a0 1-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3c51b5ec6ba620d8d4858ddcdc586e684e080c7e",
+  "prompts": {},
+  "sessions": {
+    "s_27938b605a4a40": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17570-86e1-78b2-9bc4-f311c9e82600",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
