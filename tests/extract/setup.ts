@@ -16,10 +16,12 @@ import { storeFile, mockModel } from "@convex-dev/agent";
 import type { AgentComponent } from "@convex-dev/agent";
 import {
   defineExtract,
+  extractNodeExport,
   type ComponentApi,
   type ExtractBackend,
   type ExtractOptions,
   type WorkerArgs,
+  type NodeReadArgs,
 } from "../../src/extract/index.js";
 import schema from "../../src/extract/component/schema.js";
 import type { ActionCtx } from "../../src/extract/types.js";
@@ -37,8 +39,17 @@ export const storageMetadata = makeFunctionReference<
   { storageId: string },
   { size: number } | null
 >("host:storageMetadata") as unknown as ExtractOptions["storageMetadata"];
+const nodeWorker = makeFunctionReference<"action", WorkerArgs, null>(
+  "host:nodeExecute",
+) as unknown as NonNullable<ExtractOptions["node"]>["execute"];
+const nodeRead = makeFunctionReference<"action", NodeReadArgs, unknown>(
+  "host:nodeRead",
+) as unknown as NonNullable<ExtractOptions["node"]>["read"];
 export function setup(
   input: {
+    /** Register the opt-in Node worker/reader (extractNodeExport) as options.node. */
+    node?: boolean;
+    autoIndex?: boolean;
     backends?: ExtractBackend[];
     limits?: ExtractOptions["limits"];
     rag?: ExtractOptions["rag"];
@@ -68,7 +79,7 @@ export function setup(
       );
     },
   };
-  const extract = defineExtract(component, {
+  const options: ExtractOptions = {
     agent: agentComponent,
     worker,
     storageMetadata,
@@ -90,7 +101,11 @@ export function setup(
       },
     },
     rag: input.rag,
-  });
+    ...(input.autoIndex ? { autoIndex: true } : {}),
+    ...(input.node ? { node: { execute: nodeWorker, read: nodeRead } } : {}),
+  };
+  const extract = defineExtract(component, options);
+  const nodeExports = input.node ? extractNodeExport(component, options) : undefined;
   const t = convexTest({
     schema: defineSchema({}),
     transactionLimits: true,
@@ -98,6 +113,7 @@ export function setup(
       ...hostModules,
       "./fixture/host.ts": async () => ({
         ...extract.internalFunctions(),
+        ...(nodeExports ? { nodeExecute: nodeExports.execute, nodeRead: nodeExports.read } : {}),
         onComplete: internalMutationGeneric({
           args: { artifactId: v.string() },
           returns: v.null(),

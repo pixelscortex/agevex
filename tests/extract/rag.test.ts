@@ -3,7 +3,7 @@ import { it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { MockEmbeddingModelV4 } from "ai/test";
 import { APICallError } from "@ai-sdk/provider";
 import { componentsGeneric, createFunctionHandle } from "convex/server";
-import { LIMITS, type ExtractOptions } from "../../src/extract/index.js";
+import { LIMITS, authorizeAttached, type ExtractOptions } from "../../src/extract/index.js";
 import { setup, component } from "./setup.js";
 const ragComponent = componentsGeneric().rag as unknown as NonNullable<
   ExtractOptions["rag"]
@@ -14,6 +14,9 @@ afterEach(() => {
   vi.clearAllTimers();
   vi.useRealTimers();
 });
+/** The index record of the default test namespace; claim is the stale-writer fence token. */
+const indexRow = (h: ReturnType<typeof setup>, artifactId: string, namespace = scope.namespace) =>
+  h.t.query(component.indexing.lookup, { artifactId, namespace });
 async function registerRag(h: ReturnType<typeof setup>) {
   // The package's source-only /test export has a non-type import incompatible
   // with verbatimModuleSyntax. Load its runtime harness dynamically so its own
@@ -139,9 +142,9 @@ it("repeated failed and concurrent indexing keeps one pending entry then succeed
     }
     previousId = entryId;
   }
-  expect(await h.t.query(component.artifacts.get, { artifactId: job.artifactId })).toMatchObject({
-    indexEntryId: previousId,
-    indexStatus: "failed",
+  expect(await indexRow(h, job.artifactId)).toMatchObject({
+    entryId: previousId,
+    status: "failed",
   });
   fail = false;
   let release!: () => void;
@@ -155,9 +158,9 @@ it("repeated failed and concurrent indexing keeps one pending entry then succeed
   await started;
   const inFlight = await pending();
   expect(inFlight.page).toHaveLength(1);
-  expect(await h.t.query(component.artifacts.get, { artifactId: job.artifactId })).toMatchObject({
-    indexEntryId: inFlight.page[0]!.entryId,
-    indexStatus: "running",
+  expect(await indexRow(h, job.artifactId)).toMatchObject({
+    entryId: inFlight.page[0]!.entryId,
+    status: "running",
   });
   const callsBefore = embedding.doEmbedCalls.length;
   const concurrent = await Promise.all(
@@ -170,9 +173,9 @@ it("repeated failed and concurrent indexing keeps one pending entry then succeed
   const ready = await indexing;
   expect(ready.status).toBe("ready");
   expect((await pending()).page).toHaveLength(0);
-  expect(await h.t.query(component.artifacts.get, { artifactId: job.artifactId })).toMatchObject({
-    indexEntryId: ready.entryId,
-    indexStatus: "ready",
+  expect(await indexRow(h, job.artifactId)).toMatchObject({
+    entryId: ready.entryId,
+    status: "ready",
   });
   const callsAfter = embedding.doEmbedCalls.length;
   expect(await h.action((ctx) => h.extract.index(ctx, args))).toMatchObject({
@@ -228,11 +231,17 @@ it.each(["release", "ownership"] as const)(
     await expect(indexing).rejects.toThrow(
       change === "release" ? "EXTRACT_INDEX_FENCED" : "FORBIDDEN",
     );
-    const row = await h.t.query(component.artifacts.get, { artifactId: job.artifactId });
-    expect(row?.indexStatus).toBe("failed");
-    expect(
-      (await h.t.query(ragComponent.entries.get, { entryId: row!.indexEntryId! }))?.status,
-    ).toBe("pending");
+    const row = await indexRow(h, job.artifactId);
+    if (change === "release") {
+      // Released: the fenced record is dropped and its native entry deleted by
+      // exact id, so the late embedding leaves nothing behind.
+      expect(row).toBeNull();
+    } else {
+      expect(row?.status).toBe("failed");
+      expect((await h.t.query(ragComponent.entries.get, { entryId: row!.entryId! }))?.status).toBe(
+        "pending",
+      );
+    }
     expect(embedding.doEmbedCalls).toHaveLength(1);
   },
 );
@@ -272,9 +281,8 @@ async function recoveryHarness(indexLeaseMs: number = LIMITS.indexLeaseMs) {
   const job = await h.action((ctx) => h.extract.run(ctx, { ...scope, fileId }));
   await h.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100));
   const args = { ...scope, artifactId: job.artifactId, key: "recover-file" };
-  const get = () => h.t.query(component.artifacts.get, { artifactId: job.artifactId });
-  const index = (key = args.key, namespace = args.namespace) =>
-    h.action((ctx) => h.extract.index(ctx, { ...args, key, namespace }));
+  const get = () => indexRow(h, job.artifactId);
+  const index = (key = args.key) => h.action((ctx) => h.extract.index(ctx, { ...args, key }));
   const expire = async () => {
     await vi.advanceTimersByTimeAsync(indexLeaseMs);
     await h.t.finishInProgressScheduledFunctions();
@@ -312,15 +320,15 @@ it("recovers a crash during cleaning after lease expiry and cleans the exact rec
   // Simulate process death immediately after durable admission: no catch runs.
   await h.t.mutation(component.indexing.admit, {
     artifactId: h.args.artifactId,
-    namespace: "abandoned",
+    namespace: h.args.namespace,
     key: "abandoned",
   });
   const calls = h.embedding.doEmbedCalls.length;
-  expect(await h.index("different", "different")).toMatchObject({ status: "pending" });
+  expect(await h.index("different")).toMatchObject({ status: "pending" });
   await h.expire();
-  expect(await h.get()).toMatchObject({ indexStatus: "unknown", indexEntryId: original.entryId });
+  expect(await h.get()).toMatchObject({ status: "unknown", entryId: original.entryId });
   expect(h.embedding.doEmbedCalls).toHaveLength(calls);
-  const recovered = await h.index("different", "different");
+  const recovered = await h.index("different");
   expect(recovered.status).toBe("ready");
   expect(await h.t.query(ragComponent.entries.get, { entryId: original.entryId! })).toBeNull();
   await h.expectOnlyEntry(recovered.entryId!);
@@ -331,12 +339,12 @@ it("recovers a crash during embedding after lease expiry with one replacement en
   const abandoned = h.index();
   await h.started;
   const dead = await h.get();
-  expect(dead?.indexStatus).toBe("running");
+  expect(dead?.status).toBe("running");
   await h.expire();
-  expect(await h.get()).toMatchObject({ indexStatus: "unknown", indexEntryId: dead!.indexEntryId });
-  const recovered = await h.index("different", "different");
+  expect(await h.get()).toMatchObject({ status: "unknown", entryId: dead!.entryId });
+  const recovered = await h.index("different");
   expect(recovered.status).toBe("ready");
-  expect(await h.t.query(ragComponent.entries.get, { entryId: dead!.indexEntryId! })).toBeNull();
+  expect(await h.t.query(ragComponent.entries.get, { entryId: dead!.entryId! })).toBeNull();
   h.release();
   await expect(abandoned).rejects.toThrow("EXTRACT_INDEX_FENCED");
   await h.expectOnlyEntry(recovered.entryId!);
@@ -352,7 +360,7 @@ it("rejects stale chunk writes and promotion after explicit recovery claims an e
   vi.setSystemTime(Date.now() + LIMITS.indexLeaseMs);
   const recovered = await h.index("replacement");
   expect(recovered.status).toBe("ready");
-  const fence = { artifactId: h.args.artifactId, claim: dead!.indexClaim! };
+  const fence = { indexId: dead!.indexId, claim: dead!.claim };
   const handles = await h.action(async () => ({
     insert: await createFunctionHandle(ragComponent.chunks.insert),
     promote: await createFunctionHandle(ragComponent.entries.promoteToReady),
@@ -376,7 +384,7 @@ it("rejects stale chunk writes and promotion after explicit recovery claims an e
   ).toBe(false);
   h.release();
   await expect(abandoned).rejects.toThrow("EXTRACT_INDEX_FENCED");
-  expect(await h.get()).toMatchObject({ indexStatus: "ready", indexEntryId: recovered.entryId });
+  expect(await h.get()).toMatchObject({ status: "ready", entryId: recovered.entryId });
   await h.expectOnlyEntry(recovered.entryId!);
 });
 it("expiry alone records unknown, retains the entry and never starts embedding or another timer", async () => {
@@ -386,17 +394,15 @@ it("expiry alone records unknown, retains the entry and never starts embedding o
   await h.started;
   const dead = await h.get();
   await h.expire();
-  expect(await h.get()).toMatchObject({ indexStatus: "unknown", indexEntryId: dead!.indexEntryId });
+  expect(await h.get()).toMatchObject({ status: "unknown", entryId: dead!.entryId });
   expect(h.embedding.doEmbedCalls).toHaveLength(1);
   // Draining several lease windows must terminate without any scheduled retry.
   await h.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(LIMITS.indexLeaseMs));
   expect(h.embedding.doEmbedCalls).toHaveLength(1);
-  expect(
-    await h.t.query(ragComponent.entries.get, { entryId: dead!.indexEntryId! }),
-  ).not.toBeNull();
+  expect(await h.t.query(ragComponent.entries.get, { entryId: dead!.entryId! })).not.toBeNull();
   h.release();
   await expect(abandoned).rejects.toThrow("EXTRACT_INDEX_FENCED");
-  expect(await h.get()).toMatchObject({ indexStatus: "unknown" });
+  expect(await h.get()).toMatchObject({ status: "unknown" });
 });
 it("validates indexing lease overrides against a positive integer hard maximum at registration", () => {
   for (const indexLeaseMs of [NaN, Infinity, -1, 0, 1.5, LIMITS.indexLeaseMs + 1])
@@ -412,7 +418,7 @@ it.each(["chunks", "promotion"] as const)(
     await h.started;
     const dead = await h.get();
     vi.setSystemTime(Date.now() + LIMITS.indexLeaseMs);
-    const fence = { artifactId: h.args.artifactId, claim: dead!.indexClaim! };
+    const fence = { indexId: dead!.indexId, claim: dead!.claim };
     const handles = await h.action(async () => ({
       insert: await createFunctionHandle(ragComponent.chunks.insert),
       promote: await createFunctionHandle(ragComponent.entries.promoteToReady),
@@ -434,16 +440,16 @@ it.each(["chunks", "promotion"] as const)(
         : await h.t.mutation(component.indexing.complete, { ...fence, promote: handles.promote });
     expect(accepted).toBe(false);
     expect(await h.get()).toMatchObject({
-      indexStatus: "unknown",
-      indexEntryId: dead!.indexEntryId,
+      status: "unknown",
+      entryId: dead!.entryId,
     });
-    expect(
-      (await h.t.query(ragComponent.entries.get, { entryId: dead!.indexEntryId! }))?.status,
-    ).toBe("pending");
+    expect((await h.t.query(ragComponent.entries.get, { entryId: dead!.entryId! }))?.status).toBe(
+      "pending",
+    );
     expect(
       (
         await h.t.query(ragComponent.chunks.list, {
-          entryId: dead!.indexEntryId!,
+          entryId: dead!.entryId!,
           order: "asc",
           paginationOpts: { cursor: null, numItems: 1 },
         })
@@ -453,3 +459,197 @@ it.each(["chunks", "promotion"] as const)(
     await expect(abandoned).rejects.toThrow("EXTRACT_INDEX_FENCED");
   },
 );
+
+const dimension = LIMITS.embeddingDimensions[0];
+const vectors = () =>
+  new MockEmbeddingModelV4({
+    maxEmbeddingsPerCall: LIMITS.ragBatch,
+    doEmbed: async ({ values }) => ({
+      embeddings: values.map(() => Array.from({ length: dimension }, () => 1)),
+      usage: { tokens: values.length },
+      warnings: [],
+    }),
+  });
+/** Several threads, each with its own attached files, over one shared extraction store. */
+async function threads(extra: Partial<Parameters<typeof setup>[0]> = {}) {
+  const attached = new Map<string, Set<string>>();
+  const h = setup({
+    rag: { component: ragComponent, embedding: vectors(), embeddingDimension: dimension },
+    authorize: async (_ctx, scope) => {
+      if (!attached.has(scope.threadId)) throw new Error("FORBIDDEN");
+      if (scope.fileId && !attached.get(scope.threadId)!.has(scope.fileId))
+        throw new Error("FORBIDDEN");
+    },
+    ...extra,
+  });
+  await registerRag(h);
+  const attach = (threadId: string, fileId: string) =>
+    attached.set(threadId, (attached.get(threadId) ?? new Set()).add(fileId));
+  const drain = () => h.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100));
+  const ready = async (status: "pending" | "ready") =>
+    (
+      await h.t.query(ragComponent.entries.list, {
+        status,
+        paginationOpts: { cursor: null, numItems: 10 },
+      })
+    ).page;
+  return { ...h, attached, attach, drain, ready };
+}
+it("indexing completes after paying when the policy needs the thread owner on every check", async () => {
+  // A policy like authorizeAttached refuses any file check without a subject.
+  // The re-check after the paid embedding used to omit it and discarded the index.
+  const h = setup({
+    rag: { component: ragComponent, embedding: vectors(), embeddingDimension: dimension },
+    authorize: authorizeAttached(() => ({
+      fileAttached: async (_ctx, args) =>
+        args.subject === "alice" &&
+        args.threadId === "owner" &&
+        h.state.attachments.get(args.fileId) === args.threadId,
+    })),
+  });
+  await registerRag(h);
+  const fileId = await h.upload();
+  const owner = { threadId: "owner", subject: "alice" };
+  const job = await h.action((ctx) => h.extract.run(ctx, { ...owner, fileId }));
+  await h.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100));
+  expect(await h.action((ctx) => h.extract.get(ctx, { ...owner, fileId }))).toMatchObject({
+    status: "ready",
+  });
+  const indexed = await h.action((ctx) =>
+    h.extract.index(ctx, { ...owner, artifactId: job.artifactId, namespace: "owner", key: "k" }),
+  );
+  expect(indexed).toMatchObject({ status: "ready", created: true });
+  expect(
+    (await h.action((ctx) => h.extract.search(ctx, { ...owner, namespace: "owner", query: "x" })))
+      .references,
+  ).toContainEqual({ fileId, artifactId: job.artifactId });
+  // The policy confines a thread to its own namespace: it cannot release another's.
+  await expect(
+    h.action((ctx) =>
+      h.extract.release(ctx, { ...owner, artifactId: job.artifactId, namespace: "other" }),
+    ),
+  ).rejects.toThrow("FORBIDDEN");
+});
+it("threads sharing one extraction keep separate indexes: re-indexing or releasing one never touches the other", async () => {
+  const h = await threads();
+  const fileId = await h.upload("shared by two threads");
+  h.attach("a", fileId);
+  h.attach("b", fileId);
+  const job = await h.action((ctx) => h.extract.run(ctx, { threadId: "a", fileId }));
+  await h.drain();
+  const twin = await h.action((ctx) => h.extract.run(ctx, { threadId: "b", fileId }));
+  expect(twin).toEqual({ artifactId: job.artifactId, action: "reuse" });
+  const index = (threadId: string, key: string) =>
+    h.action((ctx) =>
+      h.extract.index(ctx, { threadId, artifactId: job.artifactId, namespace: threadId, key }),
+    );
+  const search = (threadId: string) =>
+    h.action((ctx) => h.extract.search(ctx, { threadId, namespace: threadId, query: "shared" }));
+  const a = await index("a", "k");
+  const b = await index("b", "k");
+  expect(a.entryId).not.toBe(b.entryId);
+  expect((await h.ready("ready")).map((entry) => entry.entryId).sort()).toEqual(
+    [a.entryId, b.entryId].sort(),
+  );
+  // Thread b replaces its own entry; a's entry survives untouched.
+  const b2 = await index("b", "k2");
+  expect(b2.entryId).not.toBe(b.entryId);
+  expect(await h.t.query(ragComponent.entries.get, { entryId: b.entryId! })).toBeNull();
+  expect((await h.ready("ready")).map((entry) => entry.entryId).sort()).toEqual(
+    [a.entryId, b2.entryId].sort(),
+  );
+  expect((await search("a")).references).toHaveLength(1);
+  // Releasing b removes only b's index; the extraction and a's index remain.
+  await h.action((ctx) =>
+    h.extract.release(ctx, { threadId: "b", artifactId: job.artifactId, namespace: "b" }),
+  );
+  expect(await h.t.query(ragComponent.entries.get, { entryId: b2.entryId! })).toBeNull();
+  expect((await h.ready("ready")).map((entry) => entry.entryId)).toEqual([a.entryId]);
+  expect((await search("b")).references).toEqual([]);
+  expect((await search("a")).references).toHaveLength(1);
+  expect(await h.action((ctx) => h.extract.get(ctx, { threadId: "a", fileId }))).toMatchObject({
+    status: "ready",
+  });
+  expect(
+    await h.action((ctx) =>
+      h.extract.readText(ctx, { threadId: "b", artifactId: job.artifactId, maxBytes: 6 }),
+    ),
+  ).toMatchObject({ text: "shared" });
+  // Only the admin purge tombstones the shared extraction, for every thread.
+  await h.action((ctx) => h.extract.purge(ctx, { fileId }));
+  await expect(
+    h.action((ctx) => h.extract.readText(ctx, { threadId: "a", artifactId: job.artifactId })),
+  ).rejects.toThrow("EXTRACT_NOT_READY");
+  expect((await search("a")).references).toEqual([]);
+});
+it("search skips a hit whose file is no longer attached instead of failing", async () => {
+  const h = await threads();
+  const kept = await h.upload("kept document");
+  const dropped = await h.upload("dropped document");
+  h.attach("a", kept);
+  h.attach("a", dropped);
+  for (const fileId of [kept, dropped]) {
+    const job = await h.action((ctx) => h.extract.run(ctx, { threadId: "a", fileId }));
+    await h.drain();
+    await h.action((ctx) =>
+      h.extract.index(ctx, {
+        threadId: "a",
+        artifactId: job.artifactId,
+        namespace: "a",
+        key: "k",
+      }),
+    );
+  }
+  h.attached.get("a")!.delete(dropped);
+  const found = await h.action((ctx) =>
+    h.extract.search(ctx, { threadId: "a", namespace: "a", query: "document" }),
+  );
+  expect(found.references.map((reference) => reference.fileId)).toEqual([kept]);
+  expect(found.text).toContain("kept document");
+  expect(found.text).not.toContain("dropped");
+});
+it("index rejects an over-ceiling text from the stored summary before loading the payload", async () => {
+  const h = await threads();
+  const fileId = await h.upload("seed");
+  h.attach("a", fileId);
+  h.state.result = { ok: true, doc: { kind: "text", text: "x".repeat(LIMITS.indexBytes + 1) } };
+  const job = await h.action((ctx) => h.extract.run(ctx, { threadId: "a", fileId }));
+  await h.drain();
+  const load = vi.spyOn(Blob.prototype, "text");
+  await expect(
+    h.action((ctx) =>
+      h.extract.index(ctx, {
+        threadId: "a",
+        artifactId: job.artifactId,
+        namespace: "a",
+        key: "k",
+      }),
+    ),
+  ).rejects.toThrow("TOO_LARGE");
+  expect(load).not.toHaveBeenCalled();
+  load.mockRestore();
+});
+it("index encodes the text once instead of once per chunk", async () => {
+  const h = await threads({
+    rag: {
+      component: ragComponent,
+      embedding: vectors(),
+      embeddingDimension: dimension,
+      chunk: { maxBytes: LIMITS.minChunkBytes },
+    },
+  });
+  const fileId = await h.upload("seed");
+  h.attach("a", fileId);
+  h.state.result = { ok: true, doc: { kind: "text", text: "x".repeat(LIMITS.indexBytes) } };
+  const job = await h.action((ctx) => h.extract.run(ctx, { threadId: "a", fileId }));
+  await h.drain();
+  const encode = vi.spyOn(TextEncoder.prototype, "encode");
+  await h.action((ctx) =>
+    h.extract.index(ctx, { threadId: "a", artifactId: job.artifactId, namespace: "a", key: "k" }),
+  );
+  // 1,024 chunks of 1 KiB: re-encoding the whole text per chunk would be 1,024
+  // encodings of 1 MiB; one encoding of the whole text is enough.
+  const whole = encode.mock.calls.filter(([text]) => (text?.length ?? 0) >= LIMITS.indexBytes / 2);
+  expect(whole.length).toBeLessThanOrEqual(1);
+  encode.mockRestore();
+}, 30_000);

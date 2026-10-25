@@ -52,7 +52,7 @@ it("keeps options hash in artifact identity", async () => {
   await drain(h);
   expect(h.state.calls).toBe(2);
 });
-it("release wins over late completion and keeps paid usage without publishing output", async () => {
+it("purge wins over late completion and keeps paid usage without publishing output", async () => {
   const h = setup();
   const fileId = await h.upload();
   let release!: () => void;
@@ -65,7 +65,7 @@ it("release wins over late completion and keeps paid usage without publishing ou
     await vi.advanceTimersByTimeAsync(100);
   expect(h.state.calls).toBe(1);
   const args = { ...scope, artifactId: job.artifactId };
-  await h.action((ctx) => h.extract.release(ctx, args));
+  await h.action((ctx) => h.extract.purge(ctx, { fileId }));
   release();
   await drain(h);
   expect(await h.action((ctx) => h.extract.get(ctx, args))).toMatchObject({
@@ -92,29 +92,163 @@ it("marks a lost provider outcome unknown and never retries it after lease expir
   await drain(h);
   expect(h.state.calls).toBe(1);
 });
-it.each<ExtractFailure>([
-  "UNSUPPORTED_TYPE",
-  "UNREADABLE",
-  "EMPTY",
-  "INVALID_OUTPUT",
-  "TOO_LARGE",
-  "PROVIDER_UNAVAILABLE",
-  "OBJECT_UNAVAILABLE",
-  "CHECKSUM_FAILED",
-])("returns sanitized %s failures with paid usage and no automatic retry", async (failure) => {
+it.each<ExtractFailure>(["UNSUPPORTED_TYPE", "UNREADABLE", "EMPTY", "INVALID_OUTPUT", "TOO_LARGE"])(
+  "returns sanitized final %s failures with paid usage and never reruns them",
+  async (failure) => {
+    const h = setup();
+    h.state.result = { ok: false, failure, usage: { credits: 1 } };
+    const fileId = await h.upload();
+    const args = await run(h, fileId);
+    expect(await h.action((ctx) => h.extract.get(ctx, args))).toMatchObject({
+      status: "failed",
+      failure: { code: failure },
+      usage: { credits: 1 },
+    });
+    await h.action((ctx) => h.extract.run(ctx, { ...scope, fileId }));
+    await drain(h);
+    expect(h.state.calls).toBe(1);
+    expect(h.state.events).toHaveLength(1);
+  },
+);
+it.each<ExtractFailure>(["PROVIDER_UNAVAILABLE", "OBJECT_UNAVAILABLE", "CHECKSUM_FAILED"])(
+  "admits a retryable %s failure again as the next attempt, bounded by LIMITS.maxAttempts",
+  async (failure) => {
+    const h = setup();
+    h.state.result = { ok: false, failure, usage: { credits: 1 } };
+    const fileId = await h.upload();
+    const args = await run(h, fileId);
+    expect(await h.action((ctx) => h.extract.get(ctx, args))).toMatchObject({
+      status: "failed",
+      attempt: 1,
+      failure: { code: failure, retryable: true },
+    });
+    // Nothing reruns by itself: only an explicit admission starts the next attempt.
+    await drain(h);
+    expect(h.state.calls).toBe(1);
+    for (let attempt = 2; attempt <= LIMITS.maxAttempts; attempt++) {
+      const job = await h.action((ctx) => h.extract.run(ctx, { ...scope, fileId }));
+      expect(job.action).toBe("run");
+      await drain(h);
+      expect(await h.action((ctx) => h.extract.get(ctx, args))).toMatchObject({
+        status: "failed",
+        attempt,
+      });
+    }
+    expect(h.state.calls).toBe(LIMITS.maxAttempts);
+    // The last allowed attempt is final: it is reused, never run again.
+    expect(await h.action((ctx) => h.extract.run(ctx, { ...scope, fileId }))).toMatchObject({
+      action: "reuse",
+    });
+    await drain(h);
+    expect(h.state.calls).toBe(LIMITS.maxAttempts);
+    // Paid usage of every failed attempt accumulates on the row and in the hook.
+    expect(await h.action((ctx) => h.extract.get(ctx, args))).toMatchObject({
+      usage: { credits: LIMITS.maxAttempts },
+    });
+    expect(h.state.events).toHaveLength(LIMITS.maxAttempts);
+  },
+);
+it("a queued job does not expire before it starts and is dispatched again only after its queue deadline", async () => {
   const h = setup();
-  h.state.result = { ok: false, failure, usage: { credits: 1 } };
   const fileId = await h.upload();
-  const args = await run(h, fileId);
-  expect(await h.action((ctx) => h.extract.get(ctx, args))).toMatchObject({
-    status: "failed",
-    failure: { code: failure },
-    usage: { credits: 1 },
-  });
-  await h.action((ctx) => h.extract.run(ctx, { ...scope, fileId }));
+  const first = await h.action((ctx) => h.extract.run(ctx, { ...scope, fileId }));
+  // The job waited in the queue longer than a running lease. It has done no
+  // paid work, so starting it must still succeed (the lease starts at `start`).
+  vi.setSystemTime(Date.now() + LIMITS.leaseMs + 1000);
   await drain(h);
   expect(h.state.calls).toBe(1);
-  expect(h.state.events).toHaveLength(1);
+  expect(
+    await h.action((ctx) => h.extract.get(ctx, { ...scope, artifactId: first.artifactId })),
+  ).toMatchObject({
+    status: "ready",
+  });
+  // A never-started row past its queue deadline is dispatched again (new
+  // claim); the stale dispatch cannot start, so the provider is paid once.
+  const other = await h.upload("second file");
+  const queued = await h.action((ctx) => h.extract.run(ctx, { ...scope, fileId: other }));
+  vi.setSystemTime(Date.now() + LIMITS.queueMs + 1000);
+  const again = await h.action((ctx) => h.extract.run(ctx, { ...scope, fileId: other }));
+  expect(again).toEqual({ artifactId: queued.artifactId, action: "run" });
+  await drain(h);
+  expect(h.state.calls).toBe(2);
+  expect(
+    await h.action((ctx) => h.extract.get(ctx, { ...scope, artifactId: queued.artifactId })),
+  ).toMatchObject({
+    status: "ready",
+  });
+});
+it("a host refusal in the worker is a retryable failure, never an unknown outcome", async () => {
+  const h = setup();
+  const fileId = await h.upload();
+  const job = await h.action((ctx) => h.extract.run(ctx, { ...scope, fileId }));
+  // The file is detached after admission and before the worker authorizes.
+  h.state.attachments.clear();
+  await drain(h);
+  expect(h.state.calls).toBe(0);
+  const row = await h.t.query(component.artifacts.get, { artifactId: job.artifactId });
+  expect(row).toMatchObject({ status: "failed", failure: "OBJECT_UNAVAILABLE" });
+  // Reattached, an explicit admission runs it as attempt 2.
+  h.state.attachments.set(fileId, "owner");
+  expect(await h.action((ctx) => h.extract.run(ctx, { ...scope, fileId }))).toMatchObject({
+    action: "run",
+  });
+  await drain(h);
+  expect(h.state.calls).toBe(1);
+  expect(
+    await h.action((ctx) => h.extract.get(ctx, { ...scope, artifactId: job.artifactId })),
+  ).toMatchObject({
+    status: "ready",
+    attempt: 2,
+  });
+});
+it("hashes stored files in streamed chunks rather than one whole-file digest", async () => {
+  const h = setup();
+  const content = "streamed checksum ".repeat(1000);
+  const fileId = await h.upload(content);
+  const digest = vi.spyOn(crypto.subtle, "digest");
+  const args = await run(h, fileId);
+  expect(await h.action((ctx) => h.extract.get(ctx, args))).toMatchObject({ status: "ready" });
+  // Small option objects (and the test harness's own blob store) still use the
+  // one-shot digest; the stored file's bytes must never be handed to it, which
+  // would cost another full-size copy next to the Blob.
+  const sizes = digest.mock.calls.map(([, data]) => (data as ArrayBufferView).byteLength);
+  expect(sizes).not.toContain(content.length);
+  digest.mockRestore();
+});
+it("files above the default ceiling need the Node worker and larger payloads read through the Node reader", async () => {
+  const size = LIMITS.maxBytes.document + 1;
+  const without = setup();
+  const big = await without.upload("x".repeat(size), "application/pdf");
+  const refused = await run(without, big);
+  expect(await without.action((ctx) => without.extract.get(ctx, refused))).toMatchObject({
+    status: "failed",
+    failure: { code: "TOO_LARGE" },
+  });
+  expect(without.state.calls).toBe(0);
+  // Raising limits past the default maxima is only allowed with the Node actions.
+  expect(() => setup({ limits: { maxBytes: { document: size } } })).toThrow(
+    "INVALID_EXTRACT_ARGUMENT",
+  );
+  const h = setup({ node: true, limits: { maxBytes: { document: size } } });
+  const fileId = await h.upload("x".repeat(size), "application/pdf");
+  h.state.result = {
+    ok: true,
+    doc: { kind: "document", text: "y".repeat(LIMITS.payloadBytes + 1) },
+  };
+  const args = await run(h, fileId);
+  expect(h.state.calls).toBe(1);
+  expect(await h.action((ctx) => h.extract.get(ctx, args))).toMatchObject({ status: "ready" });
+  // The payload exceeds the default runtime's read ceiling: the default API
+  // delegates to the Node reader, which returns the same bounded window.
+  const window = await h.action((ctx) => h.extract.readText(ctx, { ...args, maxBytes: 5 }));
+  expect(window).toEqual({ text: "yyyyy", cursor: 5, done: false });
+}, 60_000);
+it("fromUrl maps a malformed URL to INVALID_EXTRACT_ARGUMENT", async () => {
+  const h = setup();
+  for (const url of ["not a url", "http://", "https://[::1"])
+    await expect(h.action((ctx) => h.extract.fromUrl(ctx, { ...scope, url }))).rejects.toThrow(
+      "INVALID_EXTRACT_ARGUMENT",
+    );
 });
 it("stores maximum-size payload JSON outside a small artifact row under transaction limits", async () => {
   const h = setup();
@@ -394,7 +528,11 @@ it("rechecks the exact attachment after paid work before publishing output", asy
   await drain(h);
   // Direct component read is the host's test inspection, not a public bypass.
   const row = await h.t.query(component.artifacts.get, { artifactId: job.artifactId });
-  expect(row).toMatchObject({ status: "unknown", usage: { credits: 1 } });
+  expect(row).toMatchObject({
+    status: "failed",
+    failure: "OBJECT_UNAVAILABLE",
+    usage: { credits: 1 },
+  });
   expect(row?.payloadStorageId).toBeUndefined();
 });
 it.each([
