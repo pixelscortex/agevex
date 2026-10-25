@@ -780,6 +780,8 @@ async function releaseGroup(
     assignmentId: parent._id,
     messageId: accepted[accepted.length - 1].resultMessageId!,
     messageSequence: accepted[accepted.length - 1].resultSequence!,
+    earliestMessageId: accepted[0].resultMessageId!,
+    earliestMessageSequence: accepted[0].resultSequence!,
     sequence: parent.nextSequence,
     kind: "note",
     runId: members[0].parentRunId,

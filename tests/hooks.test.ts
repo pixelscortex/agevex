@@ -1499,3 +1499,89 @@ it("cancel discards a staged hook continuation and its notes before a fresh send
   expect(prompt).not.toContain("cancelled continuation");
   expect(prompt).not.toContain("cancelled advice");
 });
+
+it.each([true, false])(
+  "beforeTurn notes on an approved=%s continuation wait for a safe claim and arrive once",
+  async (approved) => {
+    fixture.approval = true;
+    fixture.steps.Main = (n) =>
+      n === 0 ? call("echo", { text: "approval effect" }) : text("complete");
+    let turns = 0;
+    fixture.hooks.beforeTurn = () =>
+      ++turns === 2 ? { note: "approval continuation advice" } : undefined;
+    const t = setup({ notesPending: 1 }, true);
+    const receipt = await open(t);
+    await drain(t);
+    const execution = await t.query(components.agevex.queue.execution, {
+      assignmentId: receipt.assignmentId,
+    });
+    const [request] = await t.query(components.agent.messages.getMessagesByIds, {
+      messageIds: [execution!.approvals!.requests[0].messageId],
+    });
+    const content = request!.message!.content;
+    const part = Array.isArray(content)
+      ? content.find((part) => part.type === "tool-approval-request")
+      : undefined;
+    if (part?.type !== "tool-approval-request") throw new Error("APPROVAL_MISSING");
+    await owner(t).mutation(api.agents.respond, {
+      threadId: receipt.threadId,
+      approvalId: part.approvalId,
+      approved,
+    });
+    await drain(t);
+    expect(calls()).toHaveLength(2);
+    expect(JSON.stringify(calls()[1].args.prompt)).not.toContain("approval continuation advice");
+    expect(
+      (await messages(t, receipt.threadId)).page.filter((message) => message.origin === "note"),
+    ).toHaveLength(0);
+    expect(
+      await t.query(components.agevex.queue.execution, { assignmentId: receipt.assignmentId }),
+    ).toMatchObject({ notesPending: 1 });
+    await expect(
+      owner(t).mutation(api.agents.note, {
+        threadId: receipt.threadId,
+        text: "over capacity",
+        from: "critic",
+      }),
+    ).rejects.toMatchObject({ data: { code: "NOTES_PENDING_LIMIT" } });
+    await send(t, receipt.threadId, "ordinary request after approval");
+    await drain(t);
+    expect(calls()).toHaveLength(3);
+    expect(await status(t, receipt.threadId)).toMatchObject({
+      turnStatus: "idle",
+      errorCode: null,
+    });
+    expect(
+      JSON.stringify(calls()[2].args.prompt).match(/approval continuation advice/g),
+    ).toHaveLength(1);
+    const native = (
+      await t.run((ctx) =>
+        listMessages(ctx, components.agent, {
+          threadId: receipt.threadId,
+          paginationOpts: { cursor: null, numItems: 100 },
+        }),
+      )
+    ).page.sort((a, b) => a.order - b.order || a.stepOrder - b.stepOrder);
+    const unresolved = new Set<string>();
+    for (const doc of native) {
+      const message = doc.message;
+      if (message?.role === "user") expect(unresolved.size).toBe(0);
+      if (!Array.isArray(message?.content)) continue;
+      for (const part of message.content) {
+        if (part.type === "tool-call") unresolved.add(part.toolCallId);
+        if (part.type === "tool-result") unresolved.delete(part.toolCallId);
+      }
+    }
+    expect(unresolved.size).toBe(0);
+    expect(
+      (await messages(t, receipt.threadId)).page.filter((message) => message.origin === "note"),
+    ).toMatchObject([{ text: '<note from="Main">approval continuation advice</note>' }]);
+    await send(t, receipt.threadId, "another ordinary request");
+    await drain(t);
+    expect(calls()).toHaveLength(4);
+    expect(
+      (await messages(t, receipt.threadId)).page.filter((message) => message.origin === "note"),
+    ).toHaveLength(1);
+    expect(fixture.effects).toEqual(approved ? ["approval effect"] : []);
+  },
+);

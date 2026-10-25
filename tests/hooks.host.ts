@@ -31,6 +31,7 @@ export const fixture = {
   sides: [] as SideAgent[],
   calls: [] as { agent: string; args: Args }[],
   effects: [] as string[],
+  approval: false,
   authorizeExecution: undefined as Registration["authorizeExecution"] | undefined,
   contextHandler: undefined as ContextHandler | undefined,
   steps: {} as Record<
@@ -81,7 +82,7 @@ export const main = new Agent(components.agent, {
   contextHandler: (ctx, context) => fixture.contextHandler?.(ctx, context) ?? context.allMessages,
   subagents: [builder],
   tools: {
-    echo: tool(echo),
+    echo: tool({ ...echo, needsApproval: () => fixture.approval }),
     native: createTool({
       ...echo,
       execute: async (ctx, input) => {
@@ -105,6 +106,7 @@ export function reset() {
   fixture.sides = [];
   fixture.calls = [];
   fixture.effects = [];
+  fixture.approval = false;
   fixture.authorizeExecution = undefined;
   fixture.contextHandler = undefined;
   fixture.steps = {};

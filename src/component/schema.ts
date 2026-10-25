@@ -287,6 +287,10 @@ export default defineSchema({
     noteEpoch: v.optional(v.number()),
     from: v.optional(v.string()),
     messageSequence: v.optional(v.number()),
+    // A joined group generates from its newest result, but notes precede its
+    // earliest native member. Optional for previously queued/replayed work.
+    earliestMessageId: v.optional(v.string()),
+    earliestMessageSequence: v.optional(v.number()),
     runId: v.id("runs"),
     kind: v.union(
       v.literal("user"),

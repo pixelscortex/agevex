@@ -2618,3 +2618,35 @@ it.each([1, HOST_LIMITS.messagesPerChild.max])(
     expect((await tree(t, root.threadId)).every((run) => run.status === "completed")).toBe(true);
   },
 );
+
+it("pending notes precede every claimed wait-all group member while generation keeps the newest anchor", async () => {
+  const t = setup(maxima);
+  const root = await manualRoot(t);
+  const first = await launch(t, root, "Reviewer", { group: "noted group", wait: "all" });
+  const second = await launch(t, root, "Reviewer", { group: "noted group", wait: "all" });
+  await t.mutation(components.agevex.hooks.addNote, {
+    assignmentId: root.assignmentId,
+    text: "before all group members",
+    from: "critic",
+  });
+  // Deliver in reverse launch order: placement follows native arrival order.
+  await complete(t, second, "earlier group result");
+  await complete(t, first, "later group result");
+  await t.mutation(components.agevex.queue.finish, {
+    assignmentId: root.assignmentId,
+    turnToken: root.turnToken,
+    errorCode: null,
+  });
+  await drain(t);
+  expect(calls("Main")).toHaveLength(1);
+  const prompt = JSON.stringify(calls("Main")[0].args.prompt);
+  expect(prompt.match(/before all group members/g)).toHaveLength(1);
+  expect(prompt.indexOf("before all group members")).toBeLessThan(
+    prompt.indexOf("earlier group result"),
+  );
+  expect(prompt.indexOf("earlier group result")).toBeLessThan(prompt.indexOf("later group result"));
+  expect(
+    (await t.query(components.agevex.queue.execution, { assignmentId: root.assignmentId }))
+      ?.queuedMessages,
+  ).toBe(0);
+});

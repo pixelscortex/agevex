@@ -5,6 +5,7 @@ import { mutation, query, internalMutation, type MutationCtx } from "./_generate
 import type { Doc } from "./_generated/dataModel.js";
 import { LIMITS } from "./limits.js";
 import { validModelOverrides } from "./models.js";
+import { api } from "./_generated/api.js";
 
 export const messageRef = v.object({
   id: v.string(),
@@ -499,9 +500,14 @@ export async function settleRouting(ctx: MutationCtx, row: Doc<"assignments">) {
   await ctx.db.patch("assignments", row._id, { routingAgentIndex: undefined });
 }
 
-/** The sole in-turn exception: beforeTurn runs before its first generation,
- * so there are no new tool calls to split. queue.write supplies the epoch fence.
- * External posts made by a hook still use addNote and wait for the next claim.
+/** Decided approvals still need native results from continuation generation. */
+export function awaitingApprovalResults(row: Doc<"assignments">) {
+  return !!row.approvals?.resolved.length;
+}
+
+/** Before-turn notes can enter history immediately only when prior approvals
+ * have committed their results. Otherwise share the pending-note admission cap
+ * and defer delivery to a safe claim. queue.write supplies the epoch fence.
  */
 export const beforeTurnNote = mutation({
   args: {
@@ -524,6 +530,14 @@ export const beforeTurnNote = mutation({
       args.from.length > LIMITS.requestKeyLength
     )
       throw new Error("INVALID_NOTE");
+    if (awaitingApprovalResults(row)) {
+      await ctx.runMutation(api.hooks.addNote, {
+        assignmentId: row._id,
+        text: args.text,
+        from: args.from,
+      });
+      return;
+    }
     const message = await saveNote(
       ctx,
       row,

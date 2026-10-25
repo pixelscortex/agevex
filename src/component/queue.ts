@@ -31,6 +31,7 @@ import {
   settleRouting,
   claimNotes,
   noteHandles,
+  awaitingApprovalResults,
 } from "./hooks.js";
 
 async function existing(
@@ -436,7 +437,7 @@ export const claim = mutation({
     if (first && row.inboxId) {
       const head = await ctx.db.get("inbox", row.inboxId);
       if (head) {
-        noteAnchor = head.messageId;
+        noteAnchor = head.earliestMessageId ?? head.messageId;
         await ctx.db.delete("inbox", head._id);
       }
       if (head?.kind === "result" || head?.kind === "note" || head?.kind === "parent") {
@@ -452,6 +453,7 @@ export const claim = mutation({
         // @convex-dev/agent/src/component/messages.ts:298-322 anchors native
         // context at the prompt's recorded order, rather than our inbox order.
         let newest = head.messageSequence ?? head.sequence;
+        let earliest = head.earliestMessageSequence ?? newest;
         const bound = (row.limits ?? LIMITS).queueLength + (row.limits ?? LIMITS).runLaunches + 1;
         for (let count = 0; count < bound; count++) {
           await ctx.runMutation(api.subagents.releaseGroups, {
@@ -468,6 +470,11 @@ export const claim = mutation({
             break;
           await ctx.db.delete("inbox", item._id);
           const order = item.messageSequence ?? item.sequence;
+          const noteOrder = item.earliestMessageSequence ?? order;
+          if (noteOrder < earliest) {
+            earliest = noteOrder;
+            noteAnchor = item.earliestMessageId ?? item.messageId;
+          }
           if (order > newest) {
             newest = order;
             row.promptMessageId = item.messageId;
@@ -487,11 +494,10 @@ export const claim = mutation({
     // result saves retire these recorded approvals, while answer removes its
     // deferred call atomically with the result. Never scan native history or
     // drain notes at ordinary tool-step slices.
-    const awaitingApprovalResults = !!row.approvals?.resolved.length;
     if (
       (first || row.hookContinue) &&
       (row.notesPending || row.hookContinue) &&
-      !awaitingApprovalResults
+      !awaitingApprovalResults(row)
     ) {
       if (!notes) throw new Error("NOTE_HANDLES_REQUIRED");
       const continuation =
