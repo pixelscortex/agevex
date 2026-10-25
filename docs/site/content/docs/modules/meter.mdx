@@ -1,87 +1,295 @@
 ---
 title: Meter
 icon: Coins
-description: Planned usage, cost, budgets and billing sinks.
-status: Planned
+description: Standalone cost recording, aggregate reads, budget gates and durable billing sinks.
+status: Available
 ---
 
-`sdk/meter` records what any call cost, answers what a thread, run or user
-cost, gates the next slice of work, and forwards settled charges to whatever
-bills the customer. It knows nothing about plans or prices beyond what the host
-tells it.
+Meter records provider costs independently of core, attributes them to subjects,
+runs and threads, and delivers corrected or settled amounts to billing sinks.
+Unknown costs remain visible and deny budget admission.
 
-## One lifecycle for every provider
+## Setup
 
-Providers report cost inline (OpenRouter), later by request id (Fal), in
-credits (Firecrawl, Daytona) or never. Every charge follows one path, and
-"not known yet" is never counted as zero:
+Mount the component, then register providers and any internal host workers.
 
-```text
-estimate ──▶ settled     provider reported the real cost
-   │    └──▶ corrected   quantity or tier fixed by the host
-   └──────▶ unknown      lookup window expired; stays visible
+```ts title="convex/convex.config.ts"
+import { defineApp } from "convex/server";
+import meter from "agevex/meter/convex.config";
+
+const app = defineApp();
+app.use(meter, { name: "meter" });
+export default app;
 ```
 
-## Profiles
+```ts title="convex/billing.ts"
+import { defineMeter, inline, polarSink } from "agevex/meter";
+import { components, internal } from "./_generated/api";
 
-Assumptions are written down once, per provider:
-
-```ts title="Planned meter config"
-const meter = defineMeter(components.meter, {
+export const meter = defineMeter(components.meter, {
   providers: {
-    openrouter: inline(),                                  // cost arrives with the response
-    fal: {
-      profiles: { "image:high": { unit: "image", usd: 1.0 } },
-      lookup: (ctx, requestId) => falCost(requestId),      // optional: real cost later
-      lookupFor: "1h",                                     // then the charge becomes unknown
-    },
+    openrouter: inline(),
+    fal: { profiles: { image: { unit: "image", usd: 0.04 } } },
     firecrawl: { credits: { usdPerCredit: 0.001 } },
   },
-  sinks: [polarSink({ meter: "ai_usage" })],               // optional
-  budgets: (scope) => ({ maxUsd: 5 }),                     // optional
-})
+  breakdowns: ["thread.model", "thread.provider"],
+  sinks: [polarSink({
+    meter: "ai_usage",
+    accessToken: process.env.POLAR_ACCESS_TOKEN!,
+  })],
+  workers: {
+    lookup: internal.billing.meterLookup,
+    deliver: internal.billing.meterDeliver,
+  },
+  budgets: () => ({ maxUsd: 5 }),
+});
+export const { meterLookup, meterDeliver } = meter.internalFunctions();
 ```
 
-## Recording
+Lookup providers require `workers.lookup`; sinks require `workers.deliver`.
+These internal host actions keep callbacks and credentials in host code.
+Authorize public wrappers with the host's ownership policy; optional
+`authorize(ctx, scope)` runs before every client read/write.
 
-Model calls are metered by core, once per saved step. Inside a tool,
-`tc.meter` is already attributed to the thread, run, agent and subject:
+### Provider kinds
 
-```ts title="Planned tool usage"
-const charge = await tc.meter.estimate("fal", { profile: "image:high", quantity: 6 })
-const res = await fal.run(...)
-await charge.attach({ requestId: res.requestId, key: `${tc.toolCallId}:attach` })
-await charge.correct({ quantity: 5, key: `${tc.toolCallId}:correct` })
-await charge.settle({ usd: 4.87, key: `${tc.toolCallId}:settle` })
+Providers are host-named `Provider` objects; capabilities can be combined.
+
+| Configuration | Evidence and behavior |
+| --- | --- |
+| `inline(decode?)` | Defaults to `providerMetadata.openrouter.usage.cost`. Custom decoders return `{ usd }`, `{ credits }` or `undefined`; valid zero settles, absent evidence records unknown. |
+| `profiles: { [name]: { unit, usd } }` | Host assumptions for per-unit estimates and quantity corrections. |
+| `credits: { usdPerCredit }` | Explicit conversion rate required for credit evidence; credits are not dollars. |
+| `lookup: async (ctx, requestId) => Cost \| undefined` | Read-only billing evidence after attachment; never repeat a paid operation. `lookupFor` accepts milliseconds, `"1h"` or `"1d"`. |
+| No cost evidence | A record remains unknown; an unpriced estimate contributes an unknown to reads. |
+
+### Charge lifecycle and keys
+
+Inside a host action, supply attribution and stable keys explicitly:
+
+```ts title="Recording a charge in a host action"
+import { meter } from "./billing";
+
+// ctx is the action context; ids and model come from the host operation.
+const scoped = meter.scope(ctx, {
+  subject, rootThreadId, threadId, runId, agent: "Builder", model,
+});
+const charge = await scoped.estimate("fal", {
+  key: toolCallId, profile: "image", quantity: 6,
+});
+await charge.attach({ requestId, key: `${toolCallId}:attach` });
+await charge.correct({ quantity: 5, key: `${toolCallId}:correct` });
+await charge.settle({ usd: 0.19, key: `${toolCallId}:settle` });
+const current = await charge.get();
 ```
 
-Standalone `correct`, `attach` and `settle` require stable operation keys.
-Replaying a key returns its original outcome without changing the charge. Each
-charge retains up to `LIMITS.maxOperations` (32) receipts; new keys then fail with
-`OPERATION_CAPACITY`, while existing keys remain replayable. Receipts are never
-evicted, so delayed corrections cannot become new writes. Once core wiring
-lands, keys inside agent tools will default to `tc.toolCallId`; use distinct
-explicit suffixes for multiple operations in a single tool call.
+An estimate can become `corrected` (still `source: "estimate"`) or `settled`.
+A lookup deadline makes unresolved estimates unknown, retaining the last amount
+in `unknownNanos`. Corrections cannot revive unknowns; authoritative settlement
+or real lookup evidence already in flight can resolve them. Settlement is final:
+later amount changes are ignored.
 
-Outside tools, `meter.scope(ctx, { subject, threadId? })` returns the same
-object. Without a configured meter, `tc.meter` is a no-op.
+Creation keys are unique within the mount; `:delta:` is reserved.
+Reusing a creation key preserves the charge; conflicting provider or attribution
+throws `KEY_CONFLICT`. Every `attach`, `correct` and `settle` requires an operation
+`key`, shared across the three methods for that charge. Reuse it for retries;
+use a new key for each distinct operation. Valid replays return the original
+saved snapshot without changing totals, jobs or sinks, even if arguments differ;
+`get()` returns current state. There is no revision input.
 
-## Asking
+Receipts are never evicted. After 32 distinct operation keys, new keys fail with
+`OPERATION_CAPACITY`; old keys remain replayable. State-rejected operations save
+a receipt; validation errors and request-id conflicts consume none.
+Reattaching the same request id starts no duplicate lookup; changing it throws
+`REQUEST_ID_CONFLICT`. Lookup retries use exponential backoff and a separate
+deadline that survives exhausted retries or a crashed worker.
 
-```ts title="Planned reads"
-await meter.threadCost(ctx, { threadId })   // root + children
-// → { usd: { settled, estimated }, unknown, byAgent, byModel, byProvider }
-await meter.breakdown(ctx, { subject, from, to, by: "day" | "agent" | "model" | "provider" })
-await meter.check(ctx, { subject, runId })  // budget gate, counts estimates
+## API
+
+Signatures use the types exported from `agevex/meter`; `ComponentApi` is the
+meter component type and `UsageHandler` comes from `@convex-dev/agent`.
+
+| Function / signature | Purpose |
+| --- | --- |
+| `defineMeter(component: ComponentApi, options: MeterOptions): Meter` | Register providers, projections, budgets, guards and workers. |
+| `inline(decode?: NonNullable<Provider["inline"]>): Provider` | Create an inline cost provider. |
+| `meter.scope(ctx: WriteCtx, attribution: Attribution): ScopedMeter` | Bind required subject and optional root/thread/run/agent/model attribution. |
+| `scoped.estimate(provider: string, args: { key: string; profile?: string; quantity: number }): Promise<ChargeHandle>` | Create or replay an estimate. |
+| `scoped.record(provider: string, args: { key: string; usage?: unknown; providerMetadata?: unknown }): Promise<ChargeHandle>` | Decode inline evidence and record settled or unknown cost. |
+| `charge.attach(args: { requestId: string; key: string }): Promise<Charge>` | Save request identity and start a configured lookup. |
+| `charge.correct(args: { quantity: number; key: string }): Promise<Charge>` | Reprice using the charge's registered profile; requires that profile. |
+| `charge.settle(args: Cost & { key: string }): Promise<Charge>` | Supply authoritative USD or credits. |
+| `charge.get(): Promise<Charge \| null>` | Read current state by the handle's exact key. |
+| `meter.threadCost(ctx: ReadCtx, args: { threadId: string; cursors?: Partial<Record<"agent" \| "model" \| "provider", string>> }): Promise<ThreadCost>` | Read root totals and independent axis pages. |
+| `meter.subjectCost(ctx: ReadCtx, args: { subject: string; runId?: string })` | Read subject lifetime or run totals. |
+| `meter.breakdown(ctx: ReadCtx, args: { subject: string; from: number; to: number; by: "day" \| "agent" \| "model" \| "provider"; cursor?: string })` | Read bounded aggregate pages. |
+| `meter.check(ctx: ReadCtx, args: { subject: string; runId?: string })` | Return totals, `allowed` and `maxNanos` (null without a budget). |
+| `meter.retrySinks(ctx: WriteCtx, args: { key: string; subject: string }): Promise<null>` | Resume pending deliveries after checking the stored subject. |
+| `meter.internalFunctions()` | Return internal `meterLookup` and `meterDeliver` actions for host export. |
+| `openRouterCost(providerMetadata: unknown): number \| undefined` | Extract finite nonnegative OpenRouter USD evidence, including zero. |
+| `usageHandlerFor(meter: Meter, options: { provider?: string; identity: (args: Parameters<UsageHandler>[1]) => Pick<Attribution, "subject" \| "rootThreadId" \| "runId"> & { messageId: string; step: number } }): UsageHandler` | Record saved Agent steps using host identity. |
+| `observeProviderOutcome<T>(options: { invoke: () => Promise<T>; onSuccess: (result: T) => void \| Promise<void>; onFailure?: (error: unknown) => void \| Promise<void>; onObservationError?: (error: unknown) => void \| Promise<void> }): Promise<T>` | Observe evidence while preserving the provider result or original error. |
+| `polarSink(options: { meter: string; accessToken: string; server?: "production" \| "sandbox"; name?: string; fetch?: typeof fetch }): Sink` | Deliver Polar ingest events; production is the default. |
+| `webhookSink(options: { url: string; name?: string; headers?: Record<string, string>; fetch?: typeof fetch }): Sink` | POST `{ events }` to an HTTP(S) endpoint. |
+| `new SinkDeliveryError(retryAfterMs?: number)` | Signal a sink failure with an optional retry delay. |
+| `new BreakdownDisabledError(breakdown: Breakdown)` | Identify a required projection with `code: "BREAKDOWN_DISABLED"`. |
+
+### Reads and budget gates
+
+Totals and page entries expose integer `totalNanos`, `estimatedNanos`,
+`settledNanos`, `unknown`, `unknownNanos`, plus `usd: { estimated, settled }`.
+One dollar is 1,000,000,000 nanos. `totalNanos` sums estimates and settlements;
+unknown amounts are retained separately.
+
+`threadCost` takes the root thread id and includes children attributed with that
+`rootThreadId`. It always returns `byAgent`; `byModel` and `byProvider` are
+optional fields enabled by `thread.model` and `thread.provider`. Each axis is
+`{ page, cursor }`, with at most `limits.maxGroups` entries. Pass returned
+non-null cursors independently in `cursors: { agent, model, provider }`; omitting
+an axis cursor restarts it. Missing agent/model labels use `""`.
+
+`breakdown` uses UTC-midnight millisecond endpoints: `from` inclusive, `to`
+exclusive. Day pages cover at most `limits.maxDays` days and use string UTC-day
+ordinals as keys. Other axes use exclusive continuation cursors and up to
+`limits.maxGroups` entries; a known group with no charges in the range can have
+zero totals. These reads query aggregates, never scan charges.
+
+`check` includes estimates and denies any unknown, even without a budget.
+With a budget it permits only `totalNanos < maxNanos`. Supplying `runId` checks
+that subject's run; omitting it checks the subject's lifetime total. The gate is
+a snapshot, not an atomic reservation for future work.
+
+### Projections and write cost
+
+`breakdowns` defaults to `[]`. Always-on projections provide thread totals and
+agent pages, subject totals and UTC-day reads, plus run totals when `runId`
+exists. Each optional breakdown adds one projection per new charge:
+
+| Projection | Enable with |
+| --- | --- |
+| Thread model pages | `"thread.model"` |
+| Thread provider pages | `"thread.provider"` |
+| Subject agent/date pages | `"subject.agent"` |
+| Subject model/date pages | `"subject.model"` |
+| Subject provider/date pages | `"subject.provider"` |
+
+A disabled subject axis, or a cursor for a disabled thread model/provider axis,
+throws `BreakdownDisabledError` with `code: "BREAKDOWN_DISABLED"` and
+`breakdown` naming the option to enable. Disabled thread fields are omitted
+when no cursor is requested. Enabling later does not backfill; each charge
+freezes its original projection membership for future updates and workers.
+
+| Configuration | Projections with / without run | Approximate insert writes with / without run | Approximate replacement writes with / without run |
+| --- | --- | --- | --- |
+| Default `breakdowns: []` | 3 / 2 | 36 / 24 | 72 / 48 |
+| All five enabled | 8 / 7 | 96 / 84 | 192 / 168 |
+
+These are aggregate document writes, excluding the charge row and optional
+Workpool admissions: roughly 12 per insert or 24 per replacement per projection.
+State movement is part of replacement, not an extra projection. Conservative
+split/merge bounds are 48 per insert and 96 per replacement per projection.
+Replays and stale operations do no aggregate writes; a new stale diagnostic may
+patch the charge row. Each mutation handles one charge.
+
+### Sinks
+
+Custom sinks implement `{ name?: string, deliver(batch: SinkEvent[]): Promise<void> }`.
+Keep unnamed sinks in stable array order; give multiple built-in sinks unique
+names. Corrected estimates and settled charges enter a durable outbox; recording
+does not wait for HTTP delivery. Workers catch failures, honor `Retry-After`
+and stop after `limits.maxAttempts`. Pending uncertain/failed events remain on
+the charge for explicit `retrySinks` recovery.
+
+The first external id is the charge key. Later events use `key:delta:revision`
+and signed `nanos` deltas, with `totalNanos` holding the new absolute amount.
+An in-flight event's id and amount remain frozen until acknowledgement; a later
+delta catches up. Recipients must durably deduplicate external ids across retries.
+Built-in sinks split batches at 100; the worker sends one charge event at a time.
+Webhooks receive `{ events }` with these same ids and deltas.
+
+Polar uses REST event ingestion with the subject as `external_customer_id`.
+Configure its meter to **sum numeric `metadata.nanos`, including negative deltas**.
+Metadata also includes `total_nanos`, `provider` and `_cost` with currency
+`"usd"`; `_cost.amount` is an exact JSON decimal number in cents (at most seven
+fractional places), not a string or dollars. For example, 290,000,000 nanos emits
+`29` cents. This adapter does not manage subscriptions or webhooks.
+
+### Saved Agent steps
+
+Agent 0.7.7 calls its usage handler after each saved model step without providing
+message/step identity. Supply it from the host's generation context:
+
+```ts title="Host usage-handler factory"
+import { usageHandlerFor } from "agevex/meter";
+import { meter } from "./billing";
+
+export function savedStepUsage(identity: {
+  subject: string;
+  rootThreadId: string;
+  runId: string;
+  messageId: string;
+  step: number;
+}) {
+  return usageHandlerFor(meter, {
+    provider: "openrouter",
+    identity: () => identity,
+  });
+}
 ```
 
-## Built on
+Pass the returned handler as the Agent's `usageHandler`. For multistep generation,
+the identity callback must return the corresponding stable step ordinal each time.
+The charge key is the JSON tuple `[threadId, messageId, step]`; replaying the same
+identity records once. The hook supplies thread, agent name and model; provider
+defaults to the hook's provider unless overridden. Set OpenRouter
+`usage: { include: true }`. Missing thread identity throws `USAGE_THREAD_REQUIRED`;
+embeddings without a thread need an explicit scoped record. No transcript scan
+or random identity fallback is used.
 
-- Totals live in `@convex-dev/aggregate`, so cost reads never scan.
-- One owned `charges` table holds status, attribution and provider request ids.
-- Lookups and sink delivery run on Workpool with retries. A failing sink never
-  blocks agent work.
-- `polarSink` ingests settled charges as Polar meter events. The Polar
-  component still owns subscriptions and webhooks.
-- Calls routed through the Convex AI Gateway reuse `@convex-dev/ai-budget`
-  pricing.
+## Limits
+
+From exported `LIMITS`; only `maxCharges`, `maxGroups`, `maxDays` and
+`maxAttempts` accept positive integer overrides, and only downward.
+
+| Limit | Default | Hard maximum |
+| --- | --- | --- |
+| `maxCharges` per mount | 100,000 | 100,000 |
+| `maxGroups` per axis page | 4 | 4 |
+| `maxDays` per day page | 7 | 7 |
+| `maxAttempts` per lookup/delivery sequence | 8 | 8 |
+| `maxOperations` receipts per charge | 32 | 32 |
+| `maxChargeNanos` | 10,000,000,000 ($10) | Same |
+| `maxKeyBytes` (creation/operation keys) | 256 UTF-8 bytes | 256 |
+| `maxStringBytes` (labels/request ids) | 128 UTF-8 bytes | 128 |
+| `maxQuantity` (quantity/credits/step ordinal) | 1,000,000 | 1,000,000 |
+| `maxProviders` | 16 | 16 |
+| `maxProfiles` per provider | 32 | 32 |
+| `maxSinks` | 4 | 4 |
+| Lookup window (`lookupMs` / `maxLookupMs`) | 3,600,000 ms (1h) | 86,400,000 ms (1d) |
+| Backoff (`backoffMs` / `maxBackoffMs`) | 1,000 ms base, multiplier 2 | 60,000 ms exponential delay |
+| `maxParallelism` (Workpool) | 4 | 4 |
+| `sinkBatch` | 100 events | 100 |
+| `maxResponseBytes` (Polar acknowledgement) | 16,384 bytes | 16,384 |
+| `requestTimeoutMs` (built-in HTTP sinks) | 30,000 ms | 30,000 |
+| `maxTimestamp` (breakdown endpoints) | 8,640,000,000,000,000 ms ceiling | Same |
+
+## Guarantees
+
+- Creation replays contribute once; operation replays preserve their original outcomes and cannot overwrite newer corrections.
+- Settlement survives concurrent/replayed corrections; expired unknowns reject corrections while accepting late real evidence once.
+- Unknown costs deny admission; budgets include estimates and isolate subjects and runs.
+- Default charges write only always-on projections; opt-ins add exactly their selected projections and remain frozen per charge.
+- Root/child thread axes and UTC breakdowns return bounded continuation pages without charge scans.
+- Sink failures cannot roll back recording; recovery reuses uncertain event ids, and corrections preserve immutable in-flight delivery snapshots.
+- Polar serializes signed nanos as exact decimal cents; both built-in adapters bound HTTP batches to 100 events.
+- Saved-step identities deduplicate usage hooks; billing observation failures preserve provider results and original errors.
+- Maximum-capacity fixtures exercise all projections, full receipts, four sinks, updates and maximum reads within Convex transaction bounds; the next new key is rejected.
+
+## Known limits
+
+- No core runtime, `ToolContext`, automatic `tc.meter` wiring, gateway pricing integration or embedding middleware is included. Standalone keys and host attribution are required.
+- Root/child relationships are supplied by the host; Meter does not discover them from Agent messages.
+- Fal and Daytona have no per-request cost endpoint. Profiles are assumptions; Firecrawl credits need an explicit plan rate.
+- Breakdown opt-ins have no backfill. Budget gates reserve no future spend, and HTTP delivery requires recipient deduplication.
+- Capacity management and retention are external. At `METER_CAPACITY`, existing-charge updates and reads continue, but new keys fail. Receipts have a lifetime cap and cannot be evicted.
+- There are no browser-facing host endpoints; ownership checks remain the host's responsibility.
