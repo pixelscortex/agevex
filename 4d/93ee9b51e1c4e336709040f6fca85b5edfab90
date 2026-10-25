@@ -1,0 +1,79 @@
+README.md
+  s_d863bd773ba186::t_8139a356486f72 10-162
+docs/site/content/docs/modules/sandbox.mdx
+  s_d863bd773ba186::t_dadb5140a7bbe6 4-5,8-76,79-225,227,229-232,234,236-238
+package.json
+  s_d863bd773ba186::t_972fc716d54fb2 52-64,77,84-86
+src/sandbox/component/_generated/api.ts
+  s_d863bd773ba186::t_0d9ca561cf9609 1-5
+src/sandbox/component/_generated/component.ts
+  s_d863bd773ba186::t_246cd6cf9e31fe 1-13
+src/sandbox/component/_generated/dataModel.ts
+  s_d863bd773ba186::t_51d86aa9345fba 1-7
+src/sandbox/component/_generated/server.ts
+  s_d863bd773ba186::t_7e93da8b55e107 1-8
+src/sandbox/component/convex.config.ts
+  s_d863bd773ba186::t_d14b57b67fe8de 1-3
+src/sandbox/component/schema.ts
+  s_d863bd773ba186::t_104a530f1f43b8 1-64
+src/sandbox/component/state.ts
+  s_d863bd773ba186::t_8fbe848d031079 1-438
+src/sandbox/daytona.ts
+  s_d863bd773ba186::t_d40b96a7d6bbfb 1-397
+src/sandbox/index.ts
+  s_d863bd773ba186::t_65047598d52c28 1-927
+src/sandbox/limits.ts
+  s_d863bd773ba186::t_421a1a85a0ed11 1-145
+src/sandbox/test.ts
+  s_d863bd773ba186::t_a0a228745a0bd5 1-16
+src/sandbox/types.ts
+  s_d863bd773ba186::t_2bc94ea61444e9 1-163
+src/testing/sandbox.ts
+  s_d863bd773ba186::t_c9f06dcedf06b0 1-133
+src/testing/test.ts
+  s_d863bd773ba186::t_7c0d0cfa919e77 1-5
+tests/sandbox/daytona.live.ts
+  s_d863bd773ba186::t_834ccd33212854 1-112
+tests/sandbox/daytona.test.ts
+  s_d863bd773ba186::t_eef36b243f9e40 1-893
+tests/sandbox/fixture/_generated/api.ts
+  s_d863bd773ba186::t_b3d72d020161e8 1-3
+tests/sandbox/fixture/daytona.ts
+  s_d863bd773ba186::t_8d4a618bfc5f23 1-142
+tests/sandbox/fixture/host.ts
+  s_d863bd773ba186::t_95d350f673ef91 1-207
+tests/sandbox/fixture/node.ts
+  s_d863bd773ba186::t_0004807738461f 1-6
+tests/sandbox/fixture/schema.ts
+  s_d863bd773ba186::t_0409f84cd91110 1-3
+tests/sandbox/fixture/seed.ts
+  s_d863bd773ba186::t_6f2f20f8b8581e 1-24
+tests/sandbox/sandbox.test.ts
+  s_d863bd773ba186::t_c10ee4debf3214 1-1058
+tests/sandbox/setup.ts
+  s_d863bd773ba186::t_939d2602afc086 1-59
+tests/sandbox/slot.host.ts
+  s_d863bd773ba186::t_7141faf505fbd4 1-180
+tests/sandbox/slot.test.ts
+  s_d863bd773ba186::t_b0f41ae57059ee 1-248
+tests/sandbox/slot/_generated/api.ts
+  s_d863bd773ba186::t_18455cc2349567 1-3
+tests/sandbox/vite.live.config.ts
+  s_d863bd773ba186::t_cfd0214a3a1b8b 1-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4d93ee9b51e1c4e336709040f6fca85b5edfab90",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
