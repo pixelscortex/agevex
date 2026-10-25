@@ -1,0 +1,54 @@
+tests/live/runtime.live.ts
+  s_8b85cd277aaf9b::t_6fa1e692d5ccc3 78-95
+  s_8b85cd277aaf9b::t_cc5d0c18a80013 96-103
+src/component/limits.ts
+  s_8b85cd277aaf9b::t_9ba93f79d9e12e 86-91
+tests/live/convex/agents.ts
+  s_8b85cd277aaf9b::t_54fe49fa25b564 200-216
+tests/hooks.test.ts
+  s_8b85cd277aaf9b::t_9ba93f79d9e12e 7,116,122,125-128,133-135,147-150,158-160,166-168,289-296,305,316,322,335-336,361-369,377-379,387-389,395,408-409,857-879
+  s_8b85cd277aaf9b::t_8937815e110e83 95-115,117-121,123-124,129-132,136-146,151-157,161-165,169-172
+  s_8b85cd277aaf9b::t_3373db10d303cb 370-376,380-386,390-394,396-399,401-407
+  s_8b85cd277aaf9b::t_fadaadbaa2df7d 400
+  s_8b85cd277aaf9b::t_b2c15da57634ba 880
+tests/hooks.host.ts
+  s_8b85cd277aaf9b::t_8937815e110e83 12,35,81,109
+src/client/hooks.ts
+  s_8b85cd277aaf9b::t_cfa67b773b8ee1 25-26
+src/client/runtime.ts
+  s_8b85cd277aaf9b::t_7d27d5ea905666 19,1067-1072,1090,1287-1288,1290-1306,1308,1343,1423-1425
+src/client/types.ts
+  s_8b85cd277aaf9b::t_50afded597b8bf 9
+src/component/README.md
+  s_8b85cd277aaf9b::t_f90e19974e7925 12-19
+src/component/cancellation.ts
+  s_8b85cd277aaf9b::t_cfa2f8dcf4892a 30,63,89-109
+src/component/hooks.ts
+  s_8b85cd277aaf9b::t_b67896c81ce0b4 68-74,77-84,86-91,94-118,120-121,123,127-145,180,201,209,283-284,306,310-314,330
+src/component/queue.ts
+  s_8b85cd277aaf9b::t_a5034233cbea7e 333,392,476-481,542,586,1369-1370,1475,1488-1502
+src/component/schema.ts
+  s_8b85cd277aaf9b::t_ae4ede77688358 197-201,284-286
+src/component/subagents.ts
+  s_8b85cd277aaf9b::t_45760fa3565829 393
+src/testing/bridge.ts
+  s_8b85cd277aaf9b::t_28f7eb577a5f36 95
+tests/review-regressions.test.ts
+  s_8b85cd277aaf9b::t_36724e99b3dfff 646-650,659-660
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a81c69d8da758b0f4b455dc1fbf49130a4500e46",
+  "prompts": {},
+  "sessions": {
+    "s_8b85cd277aaf9b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a170d8-a6bf-7cf2-bb93-086a1053988c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
