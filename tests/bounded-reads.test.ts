@@ -979,3 +979,102 @@ it("endCursor [] over 151 messages respects the row cap and supports reactive sp
   await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
   await drain(t);
 });
+
+it("provider continuation consumes its decision atomically and permits a second approval", async () => {
+  const t = setup(undefined, undefined, true);
+  const turn = await request(t, 1, true);
+  await owner(t).mutation(api.agents.respond, {
+    threadId: turn.threadId,
+    approvalId: "approval-0",
+    approved: true,
+  });
+  const queued = (await execution(t, turn.assignmentId))!;
+  await t.mutation(components.agevex.queue.claim, {
+    assignmentId: turn.assignmentId,
+    turnToken: queued.turnToken!,
+  });
+  const args = {
+    assignmentId: turn.assignmentId,
+    executionId: queued.turnToken!,
+    cancellationEpoch: queued.cancellationEpoch,
+    ...(await nativeHandles(t)),
+    args: {
+      threadId: turn.threadId,
+      promptMessageId: queued.promptMessageId,
+      failPendingSteps: false,
+      messages: [
+        {
+          message: {
+            role: "assistant",
+            content: [
+              {
+                type: "tool-call",
+                toolCallId: "next-call",
+                toolName: "echo",
+                input: {},
+                providerExecuted: true,
+              },
+              {
+                type: "tool-approval-request",
+                approvalId: "next-approval",
+                toolCallId: "next-call",
+              },
+            ],
+          },
+        },
+      ],
+    },
+  };
+  await t.mutation(components.agevex.queue.write, args);
+  const next = (await execution(t, turn.assignmentId))!;
+  expect(next.errorCode).toBeNull();
+  expect(next.approvals?.requests).toHaveLength(1);
+  await owner(t).mutation(api.agents.respond, {
+    threadId: turn.threadId,
+    approvalId: "next-approval",
+    approved: false,
+  });
+  await owner(t).mutation(api.agents.cancel, { threadId: turn.threadId });
+  await drain(t);
+  const native = JSON.stringify((await nativePage(t, turn.threadId)).page);
+  expect(native).not.toContain('"toolCallId":"call-0","toolName":"echo","output"');
+  const results = (await nativePage(t, turn.threadId)).page.flatMap((doc) =>
+    doc.message?.role === "tool"
+      ? doc.message.content.filter((part) => part.type === "tool-result")
+      : [],
+  );
+  expect(results).toMatchObject([{ toolCallId: "next-call" }]);
+});
+
+it("cancel after a consumed provider approval appends no result or decision", async () => {
+  const t = setup(undefined, undefined, true);
+  const turn = await request(t, 1, true);
+  await owner(t).mutation(api.agents.respond, {
+    threadId: turn.threadId,
+    approvalId: "approval-0",
+    approved: false,
+  });
+  const queued = (await execution(t, turn.assignmentId))!;
+  await t.mutation(components.agevex.queue.claim, {
+    assignmentId: turn.assignmentId,
+    turnToken: queued.turnToken!,
+  });
+  await t.mutation(components.agevex.queue.write, {
+    assignmentId: turn.assignmentId,
+    executionId: queued.turnToken!,
+    cancellationEpoch: queued.cancellationEpoch,
+    ...(await nativeHandles(t)),
+    args: {
+      threadId: turn.threadId,
+      promptMessageId: queued.promptMessageId,
+      failPendingSteps: false,
+      messages: [
+        { message: { role: "assistant", content: [{ type: "text", text: "provider finished" }] } },
+      ],
+    },
+  });
+  const before = (await nativePage(t, turn.threadId)).page;
+  await owner(t).mutation(api.agents.cancel, { threadId: turn.threadId });
+  await drain(t);
+  expect((await nativePage(t, turn.threadId)).page).toEqual(before);
+});

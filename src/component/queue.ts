@@ -834,8 +834,11 @@ export const write = mutation({
       // its id (vercel/client/saveInputMessages.ts). Record only coordination
       // metadata in the SAME transaction as the native placeholder creation.
       const messages = (result as { messages: MessageDoc[] }).messages;
-      // Only committed native tool results retire calls. Claiming a continuation
-      // does not: cancel can still win while the approved tool is awaiting I/O.
+      // Claiming a continuation never consumes a decision: cancel can still
+      // win while the tool/provider awaits I/O. Retire only with its native save.
+      // Agent 0.7.7 src/vercel/client/prepareApprovalContext.ts:23-30 treats a
+      // subsequent assistant response as consumption of provider-owned decisions,
+      // even without a tool-result. Pending placeholders are not responses.
       if (row.approvals) {
         const resulted = new Set<string>();
         for (const message of messages) {
@@ -843,10 +846,18 @@ export const write = mutation({
           for (const part of message.message.content)
             if (part.type === "tool-result") resulted.add(await approvalKey(part.toolCallId));
         }
+        const providerConsumed = messages.some(
+          (message) =>
+            message.message?.role === "assistant" &&
+            message.status === "success" &&
+            Array.isArray(message.message.content),
+        );
         const remaining = row.approvals.requests
           .map((request, index) => ({ request, resolved: row.approvals!.resolved.includes(index) }))
           .filter(
-            ({ request }) => !request.toolCallKey || !resulted.has(keyString(request.toolCallKey)),
+            ({ request }) =>
+              !(providerConsumed && request.providerExecuted && request.state === "running") &&
+              (!request.toolCallKey || !resulted.has(keyString(request.toolCallKey))),
           );
         row.approvals = remaining.length
           ? {
