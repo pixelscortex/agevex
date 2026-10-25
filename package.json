@@ -54,15 +54,17 @@
   "scripts": {
     "build": "tsc --project tsconfig.json",
     "typecheck": "tsc --noEmit --project tsconfig.json",
-    "typecheck:tests": "tsc --noEmit --project tests/tsconfig.json",
+    "typecheck:tests": "bun run build && tsc --noEmit --project tests/tsconfig.json",
     "codegen": "convex codegen --component-dir ./src/component",
     "fmt": "vp fmt . --ignore-path .prettierignore",
     "fmt:check": "vp fmt . --check --ignore-path .prettierignore",
     "lint": "vp lint . --deny-warnings",
     "lint:convex:check": "bun run scripts/check-convex-lint.ts",
     "check": "vp check . && bun run lint:convex:check",
-    "test": "vp test --run",
+    "test": "bun run build && vp test --run",
     "test:live": "vp test --run --config vite.live.config.ts && vp test --run --config tests/sandbox/vite.live.config.ts && bun run test:live:telemetry",
+    "test:tools": "bun run build && vp test --run tests/tools",
+    "registry:build": "bun run --cwd docs/site registry:build",
     "test:live:telemetry": "vp test --run --config tests/telemetry/vite.live.config.ts --reporter verbose"
   },
   "dependencies": {

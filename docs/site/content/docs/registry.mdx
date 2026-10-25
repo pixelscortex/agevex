@@ -1,53 +1,61 @@
 ---
 title: Registry
 icon: Package
-description: Copy an example tool into your app with shadcn.
-status: In progress
+description: Install bounded tools as editable, host-owned TypeScript.
+status: Available
 ---
 
-The local registry endpoint serves one working example. The SDK’s production
-tools and community catalogue are **Planned**.
+The registry ships four [tools](/docs/tools): `todo`, `goals`, `ask-user` and
+`continue-budget`. shadcn copies their source into `convex/agevexTools/` and
+installs `ai`, `convex` and `zod`. The host must already have `agevex` and a
+TypeScript `components.json` with `"tsx": true` so shadcn preserves types.
 
-## Install the example
+## Install
 
-Start this docs site locally, then replace `<site-url>` with its origin
-(`http://localhost:3000` for the default dev server):
+Start this site with `bun run dev` from `docs/site`, then install the items
+you need. Replace the origin when using a deployed registry:
 
 ```sh title="Terminal"
-bunx shadcn add <site-url>/r/todo-tool.json
+bunx shadcn add http://localhost:3000/r/todo.json
+bunx shadcn add http://localhost:3000/r/goals.json
+bunx shadcn add http://localhost:3000/r/ask-user.json
+bunx shadcn add http://localhost:3000/r/continue-budget.json
 ```
 
-`shadcn add` copies `lib/tools/todo-tool.ts` into your project and installs its
-`ai` and `zod` dependencies. It is source you can read and change, not a remote
-service. Inspect the [registry item](/r/todo-tool.json) before installing it.
+Todo, goals and continue-budget include host table snippets. Merge `todoTables`, `goalTables` and `consentTables`
+into your existing `convex/schema.ts`; installation does not overwrite it.
+`ask-user` needs no item tables. Follow each item's registration and
+authorization notes before use.
 
-## What todo-tool does
+`@agevex` is a provisional namespace. Configure it in the host's
+`components.json` before using namespaced install commands:
 
-`createTodoTools()` returns `todo_read` and `todo_write`. Read returns the list;
-write replaces it. Each list holds at most 100 items, with bounded IDs and text.
-Each factory call owns a separate in-memory list.
+```json title="components.json (registries entry)"
+{
+  "registries": {
+    "@agevex": "http://localhost:3000/r/{name}.json"
+  }
+}
+```
 
-**Demonstration only.** State disappears on restart and is not shared across
-server instances. Do not share a tools instance between users. The file includes
-a TODO to use Agent-component storage, scoped to the trusted thread and owner,
-as specified in §8. Add host authorization before real use.
+Then `bunx shadcn add @agevex/todo` resolves to the same source. Community
+registries can use the same shadcn item format.
 
-## Community registries
+## Rebuild and verify
 
-The planned distribution follows the shadcn registry format. First-party and
-community registries can use the same item format, so hosts copy only what they
-need and keep ownership of their code. A namespace is a placeholder until a
-host configures a registry URL; no hosted namespace is registered today.
-
-## Rebuild locally
-
-From `docs/site`:
+From the repository root:
 
 ```sh title="Terminal"
 bun run registry:build
+bun run test:tools
+AGEVEX_TOOLS_INSTALL_NETWORK=1 bun run test:tools
 ```
 
-This synchronizes the provisional namespace from `site.config.ts` into
-`registry.json`, then runs `bunx shadcn build`. Output is committed under
-`public/r/` and served at `/r/todo-tool.json`. The production build also rebuilds
-it. Change the provisional name only in `site.config.ts`, then rebuild.
+The build synchronizes registry identity from `site.config.ts`, runs
+`bunx shadcn build` and writes output committed under `docs/site/public/r/`.
+The docs production build also regenerates these files.
+
+Tests type-check all payloads and merged schemas in an independent host.
+CLI smoke tests run offline by default and skip clearly if shadcn needs an
+uncached dependency or remote catalogue. The opt-in command exercises real
+installs with network access and type-checks the installed source and schemas.

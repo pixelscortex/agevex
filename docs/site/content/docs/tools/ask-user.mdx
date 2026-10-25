@@ -1,0 +1,45 @@
+---
+title: Ask the user
+description: Pause for a bounded question and resume with the user's free-text answer.
+status: Available
+---
+
+```sh
+bunx shadcn add http://localhost:3000/r/ask-user.json
+```
+
+Start the docs site or replace its origin. This installs
+`convex/agevexTools/askUser.ts` and `ai`, `convex`, `zod`; the host must already
+have `agevex`.
+
+Use a TypeScript host with `"tsx": true` in `components.json` before installing
+so shadcn preserves the tool's types.
+
+```ts title="In your agevex Agent registration"
+import { createAskUserTool } from "./agevexTools/askUser.js";
+
+const tools = { ask_user: createAskUserTool() };
+// Include ...tools in your Agent's tools and keep host authorization policies.
+```
+
+`ask_user({ question })` is a **deferred tool**: it has no `execute`, so core
+records the call as pending and the turn waits. `ASK_USER_LIMITS` cap one
+nonblank, trimmed question at 2000 characters; blank, oversized or extra fields
+(including ownership) become an ordinary tool error and never pause the thread.
+
+Show the pending question from the thread's `messages` (the tool call's
+`input.question`), then answer through core:
+
+```ts
+await answer({ threadId, toolCallId, text: "Use the green option" });
+```
+
+Core authorizes the thread owner, saves `text` as the native tool result and
+resumes once every pending call on the thread is answered. The model sees the
+text verbatim. The text is nonempty and at most 16,000 UTF-16 units. Repeating
+the same answer replays the original result; different text is a typed
+`KEY_CONFLICT`; foreign, unrecorded or cancelled calls are rejected. Deferred
+calls share core's 16-call pause bound with approvals.
+
+No item table or host schema snippet is needed, and the item adds no model
+calls, paid effects or retries. The host's UI and authorization stay host-owned.
