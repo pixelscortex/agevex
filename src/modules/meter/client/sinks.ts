@@ -1,4 +1,9 @@
-// Host-side module API and helpers; this code is imported by the installing app.
+/**
+ * Host HTTP sink adapters for Polar cost events and generic webhooks.
+ * Delivery workers provide bounded immutable batches with stable external ids.
+ * Adapters enforce response and request bounds and surface retry hints; the
+ * component outbox owns durable attempt state and recipients deduplicate ids.
+ */
 import type { Sink, SinkEvent } from "./types.js";
 import { LIMITS, integer, text } from "../shared/limits.js";
 
@@ -72,6 +77,7 @@ async function readJson(response: Response): Promise<unknown> {
   return JSON.parse(new TextDecoder().decode(bytes));
 }
 
+/** Translate failed HTTP delivery into bounded retry hints without retaining response bodies. */
 async function checkResponse(response: Response) {
   if (response.ok) return;
 
@@ -91,6 +97,7 @@ async function checkResponse(response: Response) {
   );
 }
 
+/** Reject conflicting duplicate ids and chunk each invocation to the sink request ceiling. */
 function batches(batch: SinkEvent[]) {
   // Deduplication here is a convenience, not a durable ledger. The recipient
   // MUST deduplicate externalId across retries and uncertain HTTP outcomes.
@@ -176,6 +183,7 @@ export function polarSink(options: {
   };
 }
 
+/** Build a webhook adapter for delivery workers; the recipient must deduplicate external ids. */
 export function webhookSink(options: {
   url: string;
   name?: string;
