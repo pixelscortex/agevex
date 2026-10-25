@@ -399,6 +399,11 @@ export const abandon = internalMutation({
     // clearing the list; a stale dispatch takes none and clears nothing.
     await ctx.db.patch("artifacts", row._id, {
       ...(row.status === "running" ? { status: "unknown" as const } : {}),
+      // The owner ended without `start` (still queued): end its queue deadline
+      // now. Otherwise a caller admitted after this point would see a live
+      // `pending` row, get `wait`, store a callback and never be served; with the
+      // deadline over, the next admission re-dispatches and fires its callback.
+      ...(row.status === "pending" ? { leaseUntil: Date.now() } : {}),
       callbacks: undefined,
     });
     return { owned: true, callbacks: row.callbacks ?? [] };

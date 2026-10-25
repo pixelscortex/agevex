@@ -235,6 +235,50 @@ it("a run caller superseded by a re-dispatch and a wait caller each get exactly 
   await drain(h);
   expect([...h.state.completions].sort()).toEqual(["ready", "waiter:ready"]);
 });
+it("a failing callback does not cancel the other callers' callbacks or the row's final state", async () => {
+  const h = setup();
+  const fileId = await h.upload();
+  const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    const first = await h.action((ctx) =>
+      h.extract.run(ctx, { ...scope, fileId, onComplete: reference("onCompleteFails") }),
+    );
+    await h.action((ctx) =>
+      h.extract.run(ctx, { ...scope, fileId, onComplete: reference("onCompleteWaiter") }),
+    );
+    await drain(h);
+    // The second callback still fired exactly once, and the row and its list are final.
+    expect(h.state.completions).toEqual(["waiter:ready"]);
+    const row = await h.t.query(component.artifacts.get, { artifactId: first.artifactId });
+    expect(row).toMatchObject({ status: "ready" });
+    expect(row?.callbacks).toBeUndefined();
+    // Only a count is logged.
+    expect(errors).toHaveBeenCalledWith(expect.stringContaining("1 of 2 completion callbacks"));
+    expect(JSON.stringify(errors.mock.calls)).not.toContain("HOST_CALLBACK_FAILED");
+  } finally {
+    errors.mockRestore();
+  }
+});
+it("a caller admitted after an owner that ended without starting re-dispatches instead of waiting forever", async () => {
+  const h = setup();
+  const fileId = await h.upload();
+  h.state.brokenWorker = true;
+  const owner = await h.action((ctx) => h.extract.run(ctx, { ...scope, fileId }));
+  await drain(h);
+  // The workflow ended without `start`: the row is still queued, its deadline over.
+  expect(h.state.calls).toBe(0);
+  expect(await h.t.query(component.artifacts.get, { artifactId: owner.artifactId })).toMatchObject({
+    status: "pending",
+  });
+  h.state.brokenWorker = false;
+  const later = await h.action((ctx) =>
+    h.extract.run(ctx, { ...scope, fileId, onComplete: callback }),
+  );
+  expect(later).toMatchObject({ artifactId: owner.artifactId, action: "run", callback: "stored" });
+  await drain(h);
+  expect(h.state.calls).toBe(1);
+  expect(h.state.completions).toEqual(["ready"]);
+});
 it("a fifth distinct callback is dropped and the admission says so", async () => {
   const h = setup();
   const fileId = await h.upload();

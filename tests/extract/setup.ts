@@ -39,6 +39,9 @@ export const storageMetadata = makeFunctionReference<
   { storageId: string },
   { size: number } | null
 >("host:storageMetadata") as unknown as ExtractOptions["storageMetadata"];
+const missingWorker = makeFunctionReference<"action", WorkerArgs, null>(
+  "host:missing",
+) as unknown as FunctionReference<"action", "internal", WorkerArgs, null>;
 const nodeWorker = makeFunctionReference<"action", WorkerArgs, null>(
   "host:nodeExecute",
 ) as unknown as NonNullable<ExtractOptions["node"]>["execute"];
@@ -64,6 +67,8 @@ export function setup(
     thrown: false,
     usageFails: false,
     attachments: new Map<string, string>(),
+    /** Point the worker at a function that does not exist: the workflow ends without `start`. */
+    brokenWorker: false,
     events: [] as unknown[],
   };
   const backend: ExtractBackend = {
@@ -81,7 +86,9 @@ export function setup(
   };
   const options: ExtractOptions = {
     agent: agentComponent,
-    worker,
+    get worker() {
+      return state.brokenWorker ? missingWorker : worker;
+    },
     storageMetadata,
     backends: input.backends ?? [backend],
     limits: input.limits,
@@ -121,6 +128,14 @@ export function setup(
             const row = await ctx.runQuery(component.artifacts.get, args);
             state.completions.push(row?.status ?? "missing");
             return null;
+          },
+        }),
+        // A callback that always throws (a failing host callback).
+        onCompleteFails: internalMutationGeneric({
+          args: { artifactId: v.string() },
+          returns: v.null(),
+          handler: async () => {
+            throw new Error("HOST_CALLBACK_FAILED");
           },
         }),
         // A second, distinct caller callback (its handle differs from onComplete's).

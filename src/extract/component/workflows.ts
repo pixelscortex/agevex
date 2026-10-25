@@ -67,10 +67,23 @@ export const done = internalMutation({
     // not fire a second callback for an outcome it did not produce.
     // Every stored handle (the callers of run, wait and re-admits alike) is
     // called exactly once: `abandon` returned and cleared them atomically.
-    for (const onComplete of callbacks)
-      await ctx.runMutation(onComplete as FunctionHandle<"mutation">, {
-        artifactId: fence.artifactId,
-      });
+    // Each handle runs in its own nested mutation, whose writes roll back by
+    // themselves when it throws. Catching here keeps one caller's failing
+    // callback from cancelling the other callers', the `abandon` clear, the
+    // status patch above and the workflow cleanup below.
+    let failed = 0;
+    for (const onComplete of callbacks) {
+      try {
+        await ctx.runMutation(onComplete as FunctionHandle<"mutation">, {
+          artifactId: fence.artifactId,
+        });
+      } catch {
+        failed++;
+      }
+    }
+    // Count only: handles and errors can carry host data.
+    if (failed)
+      console.error(`extract: ${failed} of ${callbacks.length} completion callbacks failed`);
     await manager.cleanup(ctx, args.workflowId as import("@convex-dev/workflow").WorkflowId);
     return null;
   },
