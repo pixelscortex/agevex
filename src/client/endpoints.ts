@@ -18,7 +18,7 @@ import {
   type GenericQueryCtx,
   type PaginationResult,
 } from "convex/server";
-import { ConvexError, v, type Validator } from "convex/values";
+import { ConvexError, getConvexSize, v, type Validator } from "convex/values";
 import { fingerprint } from "./once.js";
 import { LIMITS, resolveLimits } from "../component/limits.js";
 import type { ComponentApi } from "../component/_generated/component.js";
@@ -88,6 +88,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
     if (managedAgents.has(managed.name)) return;
     managedAgents.set(managed.name, managed);
     for (const child of managed.subagents) include(child);
+    for (const side of managed.sideAgents ?? []) include(side.agent);
   }
   for (const root of config.agents) include(root);
 
@@ -174,7 +175,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
         if (duplicate) return duplicate;
         const runTurn = await createFunctionHandle(config.refs.runTurn());
         const threadId = await createThread(ctx, native.component, { userId: subject });
-        const { messageId } = await saveMessage(ctx, native.component, {
+        const { messageId, message } = await saveMessage(ctx, native.component, {
           threadId,
           prompt: args.prompt,
           userId: subject,
@@ -186,6 +187,13 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           requestKey: args.requestKey,
           fingerprint: hash,
           promptMessageId: messageId,
+          trackContext: !!native.sideAgents?.length,
+          savedMessage: {
+            id: messageId,
+            order: message.order,
+            stepOrder: message.stepOrder,
+            bytes: getConvexSize(message),
+          },
           runTurn,
           limits,
           models: args.models,
@@ -227,7 +235,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           subject: row.subject,
         });
         if (refusal) return refusal;
-        const { messageId } = await saveMessage(ctx, row.native.component, {
+        const { messageId, message } = await saveMessage(ctx, row.native.component, {
           threadId: args.threadId,
           prompt: args.text,
           userId: row.subject,
@@ -239,6 +247,13 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           requestKey: args.requestKey,
           fingerprint: hash,
           promptMessageId: messageId,
+          trackContext: !!row.native.sideAgents?.length,
+          savedMessage: {
+            id: messageId,
+            order: message.order,
+            stepOrder: message.stepOrder,
+            bytes: getConvexSize(message),
+          },
           runTurn: await createFunctionHandle(config.refs.runTurn()),
           limits,
           models: args.models,

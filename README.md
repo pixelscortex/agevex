@@ -103,6 +103,56 @@ Failures are sanitized and never automatically replayed. Ambiguous execution
 sets `recovery_required`; the watchdog covers each active slice, excluding
 queue and between-slice time.
 
+## Hooks, notes and side agents
+
+Hooks belong to an `Agent`: `beforeTurn`, `afterTurn`, `beforeTool`,
+`afterTool`, and `beforeDelegate`. They receive trusted execution context and
+return one `HookResult`: `note`, `block`, `input`, `output`, `continue`, or
+`model`. They run inside the existing action; no Workflow steps are added.
+
+```ts
+const critic = new Agent(components.agent, {
+  name: "Critic",
+  languageModel,
+  instructions: "Review the delta. Return a short note, or NONE.",
+});
+const main = new Agent(components.agent, {
+  name: "Main",
+  languageModel,
+  hooks: {
+    beforeTurn: (_hc, { prompt }) =>
+      prompt.trim() ? undefined : { block: "A prompt is required." },
+    afterTool: (_hc, { output }) => ({ output: redact(output) }),
+  },
+  sideAgents: [{ agent: critic, every: { turns: 3 }, sees: "delta" }],
+});
+```
+
+`beforeTurn` can choose an allowlisted model only when `isRunStart` is true;
+that choice persists for the agent's run. `afterTurn.continue` requests another
+bounded turn (default 3 per run, hard maximum 8). A throwing hook fails the turn
+with `HOOK_FAILED`; private details stay outside the transcript. Tool execution
+hooks include native and `defineOnceTool` effects. The SDK's delegate, message
+and ask protocols are excluded; delegation uses `beforeDelegate`. Provider-owned
+executions and deferred host answers retain their native protocols: neither has
+a local tool execution function to intercept inside the action.
+
+Inside an authorized host mutation, call
+`runtime.note(ctx, { threadId, text, from })`. It authorizes operation `note`
+and returns false at capacity. Notes are escaped user-role `<note from="…">`
+messages, capped at 4,000 characters and 8 per turn (hard maximum 24). They
+enter context between slices, or on the next requested turn when idle. They
+never start a turn or schedule work.
+
+Side cadence uses completed turns or `{ minutes: N }` since the last review,
+checked after a turn without a cron. Deltas use exact recorded native ids and
+orders: at most 24 recent messages and 48 KiB of text, with tool output stripped.
+Skipped reviews retain their delta. Side runs use the child lane and root run
+attribution, with a separate cap of 2 per run (hard maximum 8). Their replies
+become passive notes; empty replies and `NONE` add nothing. Side runs never
+hold a parent's settlement fence, never fail their parent, and cancel with the
+root. Their threads use the same authorized `messages` reader as other children.
+
 ## Delegation
 
 Agents may delegate two edges deep: Main → Builder → Reviewer. Set

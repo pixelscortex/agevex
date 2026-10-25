@@ -14,6 +14,7 @@ import type { FunctionReference } from "convex/server";
 import { wake } from "./queue.js";
 import { denialCode, runErrorCode, subagentRun, vPaginationResult } from "./schema.js";
 import { LIMITS } from "./limits.js";
+import { messageRef, recordRefs } from "./hooks.js";
 import { approvalKey } from "./approvals.js";
 
 const reservation = v.union(
@@ -37,6 +38,7 @@ const deliveryContextFields = {
   status: v.union(v.literal("completed"), v.literal("failed")),
   errorCode: runErrorCode,
   rootAvailable: v.boolean(),
+  side: v.optional(v.boolean()),
 } as const;
 
 async function runById(ctx: QueryCtx | MutationCtx, runId: string) {
@@ -51,11 +53,22 @@ async function runById(ctx: QueryCtx | MutationCtx, runId: string) {
  * descendants AND the terminal-to-delivery gap. The fence is transitive because
  * a child obeys the same rule before settling. No history scan is needed.
  */
-async function hasPendingChildren(ctx: QueryCtx | MutationCtx, parent: Doc<"assignments">) {
+async function hasPendingChildren(
+  ctx: QueryCtx | MutationCtx,
+  parent: Doc<"assignments">,
+  includeSide = false,
+) {
+  const ordinary = !!(await ctx.db
+    .query("subagentRuns")
+    .withIndex("by_parent_delivery", (q) =>
+      q.eq("actorAssignmentId", parent._id).eq("side", undefined).eq("deliveryStatus", "pending"),
+    )
+    .first());
+  if (ordinary || !includeSide) return ordinary;
   return !!(await ctx.db
     .query("subagentRuns")
     .withIndex("by_parent_delivery", (q) =>
-      q.eq("actorAssignmentId", parent._id).eq("deliveryStatus", "pending"),
+      q.eq("actorAssignmentId", parent._id).eq("side", true).eq("deliveryStatus", "pending"),
     )
     .first());
 }
@@ -63,13 +76,17 @@ async function hasPendingChildren(ctx: QueryCtx | MutationCtx, parent: Doc<"assi
 /** A terminal child whose native delivery has not committed is also future
  * inbox work. Fence that short settlement/delivery interval and unreleased
  * groups as well as live descendants; otherwise a result could reach a terminal
- * parent. Three indexed existence probes + one root read, <24 KiB, no history.
+ * parent. Three indexed existence probes (<=3 KiB inbox + 2*4 KiB runs)
+ * + one <=32 KiB root
+ * read stay below 48 KiB; no history is read.
  */
 export async function settlementBlocked(ctx: QueryCtx | MutationCtx, parent: Doc<"assignments">) {
   if (
     await ctx.db
       .query("inbox")
-      .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", parent._id))
+      .withIndex("by_assignment_ready", (q) =>
+        q.eq("assignmentId", parent._id).eq("passive", undefined),
+      )
       .first()
   )
     return true;
@@ -128,8 +145,14 @@ async function settleRunState(
       historyRuns: (root.historyRuns ?? 0) + 1,
     });
   }
-  const parent = await ctx.db.get("assignments", run.actorAssignmentId);
-  if (parent) await settleIdleParent(ctx, parent);
+  // Side reviews never hold their watched parent behind R3, so their
+  // settlement cannot clear an R3 blocker either. Only ordinary descendants
+  // propagate this re-check; otherwise a best-effort review could finalize
+  // an idle watched run before its own verified outcome is ready.
+  if (!run.side) {
+    const parent = await ctx.db.get("assignments", run.actorAssignmentId);
+    if (parent) await settleIdleParent(ctx, parent);
+  }
   return true;
 }
 
@@ -138,8 +161,10 @@ async function settleRunState(
  * only the host-verified outcome recorded by settle; a native save alone is
  * not proof that the last turn reported a valid result. The same notification
  * path propagates the terminal outcome to the next ancestor without paid work.
- * Depth <=2 bounds propagation to fixed-size run/assignment reads and three
- * indexed fence probes per level (<128 KiB metadata); no native bodies here.
+ * Depth <=2 bounds propagation to at most 2 * (6*32 KiB assignment reads +
+ * 2*4 KiB run reads + 11 KiB indexed fence probes) <512 KiB metadata,
+ * including patch reads and the watched thread's context references. No native
+ * bodies are read here; side settlement never enters this ancestor path.
  */
 export async function settleIdleParent(ctx: MutationCtx, parent: Doc<"assignments">) {
   if (parent.cancelled || parent.turnStatus !== "idle" || !parent.childRunId) return false;
@@ -215,6 +240,7 @@ export const reserve = mutation({
     payloadFingerprint: v.string(),
     coordinateHandle: v.string(),
     runTurn: v.string(),
+    side: v.optional(v.boolean()),
     group: v.optional(v.string()),
     wait: v.optional(v.union(v.literal("each"), v.literal("all"))),
   },
@@ -238,6 +264,8 @@ export const reserve = mutation({
     const depth = parent ? (parent.depth ?? 1) + 1 : 1;
     if (depth > (root.limits?.maxDepth ?? LIMITS.maxDepth))
       return { kind: "denied" as const, code: "DEPTH_LIMIT" as const };
+    if (args.side && (args.group !== undefined || args.wait !== undefined))
+      return { kind: "denied" as const, code: "GROUP_CONFLICT" as const };
     if ((args.group?.length ?? 0) > LIMITS.groupLength)
       return { kind: "denied" as const, code: "TASK_LIMIT" as const };
     const dedupKey = `${row._id}:${args.turnToken}:${await approvalKey(args.toolCallId)}`;
@@ -258,15 +286,18 @@ export const reserve = mutation({
     if (
       !budget ||
       budget.cancelled ||
-      budget.launches >= (row.limits ?? LIMITS).runLaunches ||
-      budget.hops >= (row.limits ?? LIMITS).runHops
+      (args.side
+        ? (budget.sideRuns ?? 0) >= (row.limits?.sideRunsPerRun ?? LIMITS.sideRunsPerRun)
+        : budget.launches >= (row.limits ?? LIMITS).runLaunches ||
+          budget.hops >= (row.limits ?? LIMITS).runHops)
     )
       return { kind: "denied" as const, code: "RUN_BUDGET" as const };
     const wait = args.wait ?? "each";
     const group = args.group ?? (wait === "all" ? "" : undefined);
     if (group !== undefined) {
       // A named group is a closed cohort, capped INCLUDING settled members.
-      // <=20 small rows (<=4 KiB each) + admission metadata <128 KiB; no native
+      // <=20 small rows (<=4 KiB each) + two <=32 KiB assignments and fixed
+      // admission metadata <160 KiB; no native
       // result bodies are read. Index scope excludes every other parent/run.
       const members = await ctx.db
         .query("subagentRuns")
@@ -281,15 +312,19 @@ export const reserve = mutation({
       if (wait === "all" && members.length >= (root.limits ?? LIMITS).activeChildrenPerRoot)
         return { kind: "denied" as const, code: "GROUP_LIMIT" as const };
     }
-    await ctx.db.patch("runs", budget._id, {
-      launches: budget.launches + 1,
-      hops: budget.hops + 1,
-    });
+    await ctx.db.patch(
+      "runs",
+      budget._id,
+      args.side
+        ? { sideRuns: (budget.sideRuns ?? 0) + 1 }
+        : { launches: budget.launches + 1, hops: budget.hops + 1 },
+    );
     const runId = crypto.randomUUID();
     const now = Date.now();
     const sequence = (root.nextRunSequence ?? 0) + 1;
     await ctx.db.insert("subagentRuns", {
       runId,
+      side: args.side || undefined,
       rootCancellationEpoch: root.cancellationEpoch,
       depth,
       group,
@@ -329,7 +364,13 @@ export const reserve = mutation({
  * child action, leaving scheduler capacity available for those children.
  */
 export const attach = mutation({
-  args: { runId: v.string(), childThreadId: v.string(), promptMessageId: v.string() },
+  args: {
+    runId: v.string(),
+    childThreadId: v.string(),
+    promptMessageId: v.string(),
+    savedMessage: v.optional(messageRef),
+    trackContext: v.optional(v.boolean()),
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
     const run = await runById(ctx, args.runId);
@@ -339,6 +380,7 @@ export const attach = mutation({
     if (!root || root.cancelled || root.cancellationEpoch !== run.rootCancellationEpoch)
       throw new Error("ROOT_UNAVAILABLE");
     const childId = await ctx.db.insert("assignments", {
+      contextMessages: args.trackContext ? [] : undefined,
       subject: run.subject,
       agent: run.agent,
       threadId: args.childThreadId,
@@ -366,6 +408,8 @@ export const attach = mutation({
       childAssignmentId: childId,
       childThreadId: args.childThreadId,
     });
+    if (args.savedMessage)
+      await recordRefs(ctx, (await ctx.db.get("assignments", childId))!, [args.savedMessage]);
     await wake(ctx, (await ctx.db.get("assignments", childId))!);
     return null;
   },
@@ -436,6 +480,7 @@ async function terminalContext(ctx: QueryCtx, run: Doc<"subagentRuns">) {
   if (!root || !parent) return null;
   return {
     runId: run.runId,
+    side: run.side,
     agent: run.agent,
     rootAgent: run.rootAgent,
     parentAgent: parent.agent,
@@ -592,7 +637,8 @@ async function applyDelivery(
     blocked: "delivery_blocked",
   } as const;
   if (args.deliveryStatus === "accepted") {
-    if (!args.parentMessageId || !root || !parent) throw new Error("INVALID_DELIVERY");
+    if ((!args.parentMessageId && !run.side) || !root || !parent)
+      throw new Error("INVALID_DELIVERY");
     if (
       root.cancelled ||
       parent.cancelled ||
@@ -611,6 +657,7 @@ async function applyDelivery(
       : {}),
     events: appendEvent(run.events, phase[args.deliveryStatus], at, args.errorCode),
   });
+  if (run.side) return null;
   const budget = await ctx.db.get("runs", run.parentRunId);
   if (budget)
     await ctx.db.patch("runs", budget._id, {
@@ -936,7 +983,7 @@ async function interaction(
   )
     return denied("FORBIDDEN");
   if (args.op === "ask" && run.status === "asking") return denied("ASK_PENDING");
-  if (args.op === "ask" && (await hasPendingChildren(ctx, actor)))
+  if (args.op === "ask" && (await hasPendingChildren(ctx, actor, true)))
     return denied("ASK_WITH_CHILDREN");
   if (run.status !== "running" && !(args.op === "message" && run.status === "asking"))
     return denied("CHILD_FINISHED");
@@ -1085,7 +1132,8 @@ export const questionContext = query({
 
 /** The current root request's tree. Only small coordination fields cross the
  * query boundary; no transcript bodies or execution capabilities are exposed.
- * <=50 launch rows *4 KiB + root metadata <256 KiB, <64 document reads.
+ * <=58 model/side launch rows *4 KiB + <=32 KiB root metadata <288 KiB,
+ * <64 document reads.
  */
 export const runTree = query({
   args: { threadId: v.string(), subject: v.string() },
@@ -1101,7 +1149,10 @@ export const runTree = query({
       .withIndex("by_root_run", (q) =>
         q.eq("rootAssignmentId", root._id).eq("parentRunId", root.runId!),
       )
-      .take((root.limits ?? LIMITS).runLaunches);
+      .take(
+        (root.limits ?? LIMITS).runLaunches +
+          (root.limits?.sideRunsPerRun ?? LIMITS.sideRunsPerRun),
+      );
     return rows.map((run) => ({
       runId: run.runId,
       parentAssignmentId: run.actorAssignmentId,

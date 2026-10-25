@@ -9,7 +9,45 @@ import type { Infer } from "convex/values";
 import type { AgentComponent, MessageDoc } from "@convex-dev/agent";
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import type { LanguageModel, ToolSet } from "ai";
+import type { ToolContext } from "./once.js";
 import type { activity, receipt, runErrorCode } from "../component/schema.js";
+
+export type HookContext = Omit<ToolContext, "toolCallId">;
+export type HookResult = void | {
+  note?: string;
+  block?: string;
+  input?: unknown;
+  output?: unknown;
+  continue?: string;
+  model?: string;
+};
+export type AgentHooks = {
+  beforeTurn?: (
+    hc: HookContext,
+    event: { prompt: string; isRunStart: boolean },
+  ) => HookResult | Promise<HookResult>;
+  afterTurn?: (
+    hc: HookContext,
+    event: { turn: number; text: string },
+  ) => HookResult | Promise<HookResult>;
+  beforeTool?: (
+    hc: HookContext,
+    event: { tool: string; input: unknown },
+  ) => HookResult | Promise<HookResult>;
+  afterTool?: (
+    hc: HookContext,
+    event: { tool: string; input: unknown; output: unknown },
+  ) => HookResult | Promise<HookResult>;
+  beforeDelegate?: (
+    hc: HookContext,
+    event: { agent: string; task: string },
+  ) => HookResult | Promise<HookResult>;
+};
+export type SideAgent = {
+  agent: ManagedAgent;
+  every: { turns: number; minutes?: never } | { minutes: number; turns?: never };
+  sees: "delta";
+};
 
 export type Receipt = Infer<typeof receipt>;
 export type Activity = Infer<typeof activity>;
@@ -42,7 +80,15 @@ export type TurnOrigin = "user" | "subagent_result";
 export type AuthorizationScope =
   | { operation: "open"; agent: string }
   | {
-      operation: "send" | "respond" | "answer" | "cancel" | "messages" | "streams" | "activity";
+      operation:
+        | "note"
+        | "send"
+        | "respond"
+        | "answer"
+        | "cancel"
+        | "messages"
+        | "streams"
+        | "activity";
       agent: string;
       threadId: string;
     }
@@ -153,6 +199,7 @@ export type DelegationResult =
   | { status: "queued"; runId: string; agent: string }
   | { status: "denied"; code: DelegationDenialCode };
 export type DelegationDenialCode =
+  | "HOOK_BLOCKED"
   | "ACTIVE_LIMIT"
   | "TASK_LIMIT"
   | "FORBIDDEN"
@@ -183,6 +230,7 @@ export type DelegationDenialCode =
 export type CoordinateArgs =
   | {
       op: "launch";
+      side?: boolean;
       assignmentId: string;
       turnToken: string;
       toolCallId: string;
@@ -217,6 +265,8 @@ export type CoordinateResult =
 // are invariant (notably stop conditions). No native result is widened publicly.
 export type ManagedAgent = {
   name: string;
+  hooks?: AgentHooks;
+  sideAgents?: readonly SideAgent[];
   subagents: readonly ManagedAgent[];
   component: AgentComponent;
   /**

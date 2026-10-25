@@ -539,6 +539,7 @@ it("cancel commits a full approval-blocked backlog with maximum limits, children
     const child = await t.run(async (ctx) => {
       const reserved = await ctx.runMutation(components.agevex.subagents.reserve, {
         ...root,
+        side: i < HOST_LIMITS.sideRunsPerRun.max,
         toolCallId: "large-child-" + i,
         agent: "Researcher",
         payloadFingerprint: "large-child-" + i,
@@ -572,6 +573,11 @@ it("cancel commits a full approval-blocked backlog with maximum limits, children
     ).not.toBeNull();
     turns.push(child);
   }
+  for (const turn of turns)
+    await t.mutation(
+      componentsGeneric().agevex.agevexTest.fillHookMetadata as FunctionReference<"mutation">,
+      { assignmentId: turn.assignmentId },
+    );
   // Round 4 adaptation: size coverage now uses recorded placeholders across
   // affected assignments; transcript-wide native pending rows are not ours.
   const messageIds: string[] = [];
@@ -619,9 +625,11 @@ it("cancel commits a full approval-blocked backlog with maximum limits, children
       assignmentId: turn.assignmentId,
     });
     expect(paused?.approvals?.requests).toHaveLength(LIMITS.approvalsPerPause);
-    // The max-size model snapshot is included in the documented 8 KiB
+    // The max-size model snapshot and F1 metadata fit the documented 32 KiB
     // assignment allowance, together with all sixteen pause references.
-    expect(new TextEncoder().encode(JSON.stringify(paused)).length).toBeLessThan(8 << 10);
+    expect(new TextEncoder().encode(JSON.stringify(paused)).length).toBeLessThan(
+      LIMITS.assignmentBytes,
+    );
   }
   const alice = t.withIdentity({ subject: "alice" });
   for (let i = 1; i < HOST_LIMITS.queueLength.max; i++) {
@@ -692,7 +700,9 @@ it("cancel commits a full approval-blocked backlog with maximum limits, children
     subagents: { active: 0, history: HOST_LIMITS.activeChildrenPerRoot.max },
   });
   expect(state.calls).toHaveLength(0);
-}, 30_000);
+  // Fixture construction includes 21 maximal metadata envelopes and native
+  // placeholders; the transaction budgets above remain enforced independently.
+}, 60_000);
 
 it("cancel cleanup preserves a fresh generation after native deletion reuses order 6", async () => {
   const t = setup();

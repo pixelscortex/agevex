@@ -6,6 +6,10 @@ export {
   registerAgent,
 } from "./runtime.js";
 export type {
+  HookContext,
+  HookResult,
+  AgentHooks,
+  SideAgent,
   Activity,
   Receipt,
   Registration,
@@ -25,4 +29,5 @@ export type {
 export { LIMITS, PLATFORM } from "../component/limits.js";
 export type { Limits } from "../component/limits.js";
 export { defineOnceTool } from "./once.js";
-export type { ToolContext } from "./once.js";
+export type { NoteArgs } from "./hooks.js";
+export type { ToolContext, ScopedMeter, MeterCharge } from "./once.js";

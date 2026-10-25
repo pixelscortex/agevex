@@ -24,6 +24,7 @@ import { LIMITS, limitsValidator } from "./limits.js";
 import { approvalKey, callKey, keyString, saveResponses } from "./approvals.js";
 import { modelOverrides, validModelOverrides } from "./models.js";
 import { sealGroups, settleIdleParent, settlementBlocked } from "./subagents.js";
+import { recordMessages, recordRefs, messageRef } from "./hooks.js";
 
 async function existing(
   ctx: Pick<QueryCtx, "db">,
@@ -144,7 +145,7 @@ async function needsRecovery(ctx: MutationCtx, row: Doc<"assignments">) {
     return false;
   return !!(await ctx.db
     .query("inbox")
-    .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
+    .withIndex("by_assignment_ready", (q) => q.eq("assignmentId", row._id).eq("passive", undefined))
     .first());
 }
 
@@ -203,7 +204,9 @@ export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = tru
   if (row.turnStatus === "idle" && !row.approvalBlocked) {
     const next = await ctx.db
       .query("inbox")
-      .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
+      .withIndex("by_assignment_ready", (q) =>
+        q.eq("assignmentId", row._id).eq("passive", undefined),
+      )
       .first();
     if (next) {
       await ctx.db.patch("assignments", row._id, {
@@ -263,6 +266,8 @@ export const accept = mutation({
     requestKey: v.string(),
     fingerprint: v.string(),
     promptMessageId: v.string(),
+    savedMessage: v.optional(messageRef),
+    trackContext: v.optional(v.boolean()),
     runTurn: v.string(),
     limits: v.optional(limitsValidator),
     models: v.optional(modelOverrides),
@@ -294,6 +299,10 @@ export const accept = mutation({
       row = (await ctx.db.get("assignments", id))!;
     }
     if (row.subject !== args.subject || row.agent !== args.agent) throw new Error("FORBIDDEN");
+    if (args.trackContext && !row.contextMessages) {
+      await ctx.db.patch("assignments", row._id, { contextMessages: [] });
+      row = { ...row, contextMessages: [] };
+    }
     if (row.turnStatus === "recovery_required") throw new Error("RECOVERY_REQUIRED");
     if (row.queuedMessages >= (row.limits ?? LIMITS).queueLength) throw new Error("QUEUE_LIMIT");
     if (row.cancelled) {
@@ -323,6 +332,7 @@ export const accept = mutation({
       queuedMessages: row.queuedMessages + 1,
       nextSequence: row.nextSequence + 1,
     });
+    if (args.savedMessage) await recordRefs(ctx, row, [args.savedMessage]);
     await armPurge(ctx);
     // Acceptance and the host's native prompt save share one transaction: no
     // external effect can outlive an abandoned claim, so request receipts enter
@@ -369,6 +379,8 @@ export const claim = mutation({
     assignmentId: v.id("assignments"),
     turnToken: v.string(),
     sliceId: v.optional(v.string()),
+    agentIndex: v.optional(v.number()),
+    routeModel: v.optional(v.boolean()),
   },
   returns: v.union(
     v.null(),
@@ -377,6 +389,9 @@ export const claim = mutation({
       promptMessageId: v.string(),
       runId: v.string(),
       modelId: v.optional(v.string()),
+      isTurnStart: v.boolean(),
+      isRunStart: v.boolean(),
+      turn: v.number(),
       cancellationEpoch: v.number(),
       turnOrigin: vTurnOrigin,
       subagent: v.union(
@@ -395,7 +410,7 @@ export const claim = mutation({
       ),
     }),
   ),
-  handler: async (ctx, { assignmentId, turnToken, sliceId }) => {
+  handler: async (ctx, { assignmentId, turnToken, sliceId, agentIndex, routeModel }) => {
     const row = await ctx.db.get("assignments", assignmentId);
     if (!row || row.cancelled || row.approvalBlocked || row.turnToken !== turnToken) return null;
     // An open question is a valid pause, never corrupt execution state. This
@@ -431,7 +446,9 @@ export const claim = mutation({
           });
           const item = await ctx.db
             .query("inbox")
-            .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
+            .withIndex("by_assignment_ready", (q) =>
+              q.eq("assignmentId", row._id).eq("passive", undefined),
+            )
             .first();
           if (!item || item.runId !== head.runId || item.kind === "user" || item.kind === "steer")
             break;
@@ -452,6 +469,8 @@ export const claim = mutation({
     await ctx.db.patch("assignments", row._id, {
       turnStatus: "running",
       continueSlice: false,
+      hookContinue: false,
+      ...(first || row.hookContinue ? { notesTaken: 0, hookError: undefined } : {}),
       approvals: row.approvals
         ? {
             ...row.approvals,
@@ -480,6 +499,25 @@ export const claim = mutation({
     row.activeSlice = activeSlice;
     const budget = row.runId ? await ctx.db.get("runs", row.runId) : null;
     const modelId = budget?.models?.[row.agent];
+    if (
+      agentIndex !== undefined &&
+      (!Number.isSafeInteger(agentIndex) || agentIndex < 0 || agentIndex >= LIMITS.agents)
+    )
+      throw new Error("INVALID_AGENT_INDEX");
+    const bit = 1n << BigInt(agentIndex ?? 0);
+    const isRunStart = !!budget && ((budget.startedAgents ?? 0n) & bit) === 0n;
+    if (budget && isRunStart)
+      await ctx.db.patch("runs", budget._id, {
+        startedAgents: BigInt.asIntN(LIMITS.agents, (budget.startedAgents ?? 0n) | bit),
+        ...(routeModel
+          ? { routingAgents: BigInt.asIntN(LIMITS.agents, (budget.routingAgents ?? 0n) | bit) }
+          : {}),
+      });
+    const hooks = {
+      isTurnStart: first || !!row.hookContinue,
+      isRunStart,
+      turn: row.completedTurns ?? 0,
+    };
     const runId = row.childRunId;
     if (!runId) {
       return {
@@ -490,6 +528,7 @@ export const claim = mutation({
         promptMessageId: row.promptMessageId!,
         runId: row.runId!,
         modelId,
+        ...hooks,
         cancellationEpoch: row.cancellationEpoch,
         turnOrigin: row.turnOrigin ?? "user",
         subagent: null,
@@ -532,6 +571,7 @@ export const claim = mutation({
       promptMessageId: row.promptMessageId!,
       runId: row.runId!,
       modelId,
+      ...hooks,
       cancellationEpoch: row.cancellationEpoch,
       turnOrigin: row.turnOrigin ?? "user",
       subagent: {
@@ -774,7 +814,8 @@ export const write = mutation({
     // A child can settle immediately before cancel, while its source action
     // still owns the turn token. It no longer occupies an active slot, so
     // cancel need not visit its assignment. The root epoch still fences every
-    // late native/tool write: two exact metadata reads (<16 KiB), no traversal.
+    // late native/tool write: two <=32 KiB assignment reads plus one <=4 KiB
+    // child-run reference (<72 KiB), no traversal.
     const root = row?.rootAssignmentId
       ? await ctx.db.get("assignments", row.rootAssignmentId)
       : null;
@@ -864,6 +905,7 @@ export const write = mutation({
       // its id (vercel/client/saveInputMessages.ts). Record only coordination
       // metadata in the SAME transaction as the native placeholder creation.
       const messages = (result as { messages: MessageDoc[] }).messages;
+      await recordMessages(ctx, row, messages);
       // Claiming a continuation never consumes a decision: cancel can still
       // win while the tool/provider awaits I/O. Retire only with its native save.
       // Agent 0.7.7 src/vercel/client/prepareApprovalContext.ts:23-30 treats a
@@ -1016,7 +1058,9 @@ export const write = mutation({
         // The response continuation must precede unrelated queued sends.
         const head = await ctx.db
           .query("inbox")
-          .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
+          .withIndex("by_assignment_ready", (q) =>
+            q.eq("assignmentId", row._id).eq("passive", undefined),
+          )
           .first();
         const inboxId = await ctx.db.insert("inbox", {
           assignmentId: row._id,

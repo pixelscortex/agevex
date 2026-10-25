@@ -7,7 +7,7 @@ import {
   type FunctionReference,
 } from "convex/server";
 import { v } from "convex/values";
-import { LIMITS } from "../component/limits.js";
+import { HOST_LIMITS, LIMITS } from "../component/limits.js";
 const args = { lane: v.string(), module: v.string(), name: v.string(), args: v.any() };
 export const read = internalQueryGeneric({
   args,
@@ -66,4 +66,33 @@ export const childResultMessageId = internalQueryGeneric({
         .withIndex("by_run", (q) => q.eq("runId", runId))
         .unique()
     )?.childResultMessageId ?? null,
+});
+
+/** Populate the F1 coordination envelope for the all-maxima cancellation
+ * fixture. Bodies remain in Agent; cancellation must only touch this metadata. */
+export const fillHookMetadata = internalMutationGeneric({
+  args: { assignmentId: v.id("assignments") },
+  returns: v.null(),
+  handler: async (ctx, { assignmentId }) => {
+    await ctx.db.patch("assignments", assignmentId, {
+      contextSequence: LIMITS.contextMessages,
+      contextMessages: Array.from({ length: LIMITS.contextMessages }, (_, order) => ({
+        id: crypto.randomUUID(),
+        order,
+        stepOrder: 0,
+        bytes: 1 << 20,
+        sequence: order,
+      })),
+      reviewed: Array.from({ length: LIMITS.sideAgents }, (_, turn) => ({
+        agent: "\uFFFF".repeat(LIMITS.requestKeyLength - 1) + turn,
+        turn,
+        at: Date.now(),
+        boundary: turn,
+      })),
+      hookError: "\uFFFF".repeat(LIMITS.hookErrorLength),
+      completedTurns: LIMITS.turnsPerLoop,
+      notesTaken: HOST_LIMITS.notesPerTurn.max,
+    });
+    return null;
+  },
 });

@@ -15,13 +15,15 @@ const api = anyApi as unknown as ApiFromModules<{ agents: typeof agents }>;
 const modules = import.meta.glob(["./convex/**/*.ts", "./convex/**/*.js"]);
 
 it.skipIf(!process.env.OPENROUTER_API_KEY)(
-  "live plain turn, repeated delegation and Main → Builder → Reviewer depth-two round trip",
+  "live plain turn, repeated delegation, depth-two round trip and passive critic side review",
   async () => {
     const scenarios = [];
     try {
-      for (const scenario of ["plain", "delegation", "depth"] as const) {
+      for (const scenario of ["plain", "delegation", "depth", "critic"] as const) {
         const delegation = scenario === "delegation";
         const depth = scenario === "depth";
+        const critic = scenario === "critic";
+        live.criticCalls = 0;
         const before = { input: live.inputTokens, output: live.outputTokens };
         const t = convexTest(schema, modules);
         agent.register(t);
@@ -35,7 +37,7 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
         live.childCalls = 0;
         const receipt = await owner
           .mutation(api.agents.open, {
-            agent: "Main",
+            agent: critic ? "Watched" : "Main",
             prompt: depth
               ? "Do a depth-two task: delegate one short task to Builder, which delegates to Reviewer, then answer after Builder completes."
               : delegation
@@ -57,6 +59,7 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
                 history: status.subagents.history,
                 rootCalls: live.rootCalls,
                 queued: status.queuedMessages,
+                errorCode: status.errorCode,
               };
             },
             { timeout: 180_000, interval: 200 },
@@ -64,10 +67,23 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
           .toEqual({
             status: "idle",
             active: 0,
-            history: delegation || depth ? 2 : 0,
+            history: delegation || depth ? 2 : critic ? 1 : 0,
             rootCalls: depth ? 2 : delegation ? 3 : 1,
-            queued: 0,
+            queued: critic ? 1 : 0,
+            errorCode: null,
           });
+        if (critic) {
+          expect(live.criticCalls).toBe(1);
+          const transcript = await owner.query(api.agents.messages, {
+            threadId: receipt.threadId,
+            paginationOpts: { cursor: null, numItems: 20 },
+          });
+          expect(
+            transcript.page.some(
+              (message) => message.role === "user" && message.text.includes('<note from="Critic">'),
+            ),
+          ).toBe(true);
+        }
         if (delegation) {
           const runs = await owner.query(api.agents.delegations, {
             threadId: receipt.threadId,
@@ -121,6 +137,7 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
         requestedModel: modelId,
         routedModels: [...live.models],
         requests: live.requests,
+        responses: live.responses,
         inputTokens: live.inputTokens,
         outputTokens: live.outputTokens,
         usd: live.costReported ? live.usd : null,

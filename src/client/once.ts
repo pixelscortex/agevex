@@ -4,6 +4,24 @@ import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import type { Value } from "convex/values";
 import type { ComponentApi } from "../component/_generated/component.js";
 
+/** The core context always exposes a meter. Until the optional meter component
+ * is configured, its scoped API is a no-op (spec §6.3); callers need no branch
+ * and hooks receive the same facts as tools. This stores no billing state. */
+export type MeterCharge = {
+  attach(input: { requestId: string }): Promise<void>;
+  correct(input: Record<string, unknown>): Promise<void>;
+  settle(input: { usd?: number; credits?: number }): Promise<void>;
+};
+export type ScopedMeter = {
+  estimate(provider: string, input: Record<string, unknown>): Promise<MeterCharge>;
+};
+const noCharge: MeterCharge = {
+  attach: () => Promise.resolve(),
+  correct: () => Promise.resolve(),
+  settle: () => Promise.resolve(),
+};
+export const noopMeter: ScopedMeter = { estimate: () => Promise.resolve(noCharge) };
+
 export type ToolContext = {
   ctx: GenericActionCtx<GenericDataModel>;
   subject: string;
@@ -11,6 +29,7 @@ export type ToolContext = {
   runId: string;
   toolCallId: string;
   signal: AbortSignal;
+  meter: ScopedMeter;
 };
 const ONCE = Symbol("agevex.once");
 type OnceConfig<Input, Output> = {

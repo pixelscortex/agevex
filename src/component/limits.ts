@@ -22,6 +22,9 @@ export const PLATFORM = {
 
 /** Host defaults and hard ceilings are paired so raising policy cannot unbound a transaction. */
 export const HOST_LIMITS = {
+  continuesPerRun: { default: 3, max: 8 },
+  sideRunsPerRun: { default: 2, max: 8 },
+  notesPerTurn: { default: 8, max: 24 },
   maxDepth: { default: 2, max: 2 },
   messagesPerChild: { default: 4, max: 8 },
   // Pool admission shares eight scheduled-action slots at both maxima together.
@@ -57,21 +60,25 @@ export const HOST_LIMITS = {
  * current loop/turn, Workpool, scheduler and callback bookkeeping.
  * Writes <=2I+7A+20+1+64A=5,796 <8,000 <16,000.
  * Reads <=3I+4A+A+2A+2*20+2+64A=7,959 <8,192.
- * Bytes: inbox/run reads 3I*1 KiB; assignment patch reads 4A*8 KiB;
+ * Bytes: inbox/run reads 3I*1 KiB; assignment patch reads 4A*32 KiB;
  * current runs A*1 KiB; scheduler 2A*4 KiB; child runs 40*4 KiB;
- * ownership/final root 2*8 KiB; SDK allowance 64A*4 KiB:
- * <=12,839 KiB <16 MiB. Native messages (including each nearly
+ * ownership/final root 2*32 KiB; SDK allowance 64A*4 KiB:
+ * <=14,903 KiB <16 MiB. Native messages (including each nearly
  * 1 MiB placeholder) are NEVER read by cancel; cleanup runs separately.
  * Subagent rows stay <=4 KiB: names/subjects/groups <=200 UTF-16 units,
  * hashed tool-call dedup keys, ids, counters and <=4 small events. Assignments
- * allow <=8 KiB including the 16 recorded fixed-size approval/deferred-call keys.
+ * allow <=32 KiB: the original <=8 KiB (16 approval/deferred-call keys),
+ * <=4 KiB exact message references, <=8 KiB side-review boundaries, <=4 KiB
+ * private hook error, plus scalar counters. Notes share the existing queue
+ * bound and never multiply I. Run additions are scalar counters plus
+ * two 64-bit start/routing masks, keeping each run within its <=1 KiB envelope.
  *
  * Other proportional paths: claim drains <=152 consecutive ready rows,
  * including <=50 ready joins from its run, and reads no native bodies. Each
  * join uses an indexed ready representative and <=20 cohort metadata rows;
  * admission/send/attach handle one item. Membership sealing reads/patches
  * <=50 launch rows. Descendant/settlement fences use indexed existence probes,
- * never historical prefixes. The tree reads <=50 launch rows. Local comments
+ * never historical prefixes. The tree reads <=50 model launches +8 side launches (232 KiB). Local comments
  * include combined claim/seal/release metadata allowances.
  * Native verification/delivery reads one exact <=1 MiB message, never the
  * launch history. Tasks are <=16,000 UTF-16 units (<=64 KiB UTF-8), with at
@@ -80,6 +87,19 @@ export const HOST_LIMITS = {
  * native transcript sizes.
  */
 export const LIMITS = {
+  continuesPerRun: HOST_LIMITS.continuesPerRun.default,
+  sideRunsPerRun: HOST_LIMITS.sideRunsPerRun.default,
+  notesPerTurn: HOST_LIMITS.notesPerTurn.default,
+  noteLength: 4_000,
+  hookErrorLength: 1_000,
+  agents: 64,
+  sideAgents: 8,
+  cadence: 1_000_000,
+  minuteMs: 60_000,
+  contextMessages: 24,
+  assignmentBytes: 32 << 10,
+  contextBytes: 48 << 10,
+  contextReadBytes: 2 << 20,
   maxDepth: HOST_LIMITS.maxDepth.default,
   messagesPerChild: HOST_LIMITS.messagesPerChild.default,
   groupLength: 200,
@@ -144,6 +164,9 @@ export const LIMITS = {
 export const limitsValidator = v.object({
   // Optional on persisted v1 assignments; resolveLimits always fills both for
   // new registrations. Missing legacy fields use the current safe defaults.
+  continuesPerRun: v.optional(v.number()),
+  sideRunsPerRun: v.optional(v.number()),
+  notesPerTurn: v.optional(v.number()),
   maxDepth: v.optional(v.number()),
   messagesPerChild: v.optional(v.number()),
   rootLane: v.number(),
