@@ -289,8 +289,9 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
   /**
    * Core passes the Agent's stored `message.provider`, the AI SDK provider id
    * (`@openrouter/ai-sdk-provider` 3.1.0 stores "openrouter.chat"). Resolve an
-   * exact registered name first, then an explicit mapping, then the prefix
-   * before the first ".". Anything else stays as given and records unknown.
+   * exact registered name first, then an explicit mapping, then the LONGEST
+   * registered dotted prefix ("google.vertex.chat" -> "google.vertex" before
+   * "google"). Anything else stays as given and records unknown.
    */
   function resolver(mapping: Record<string, string> = {}) {
     for (const [id, name] of Object.entries(mapping)) {
@@ -300,8 +301,12 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
     return (name: string) => {
       if (registered(name)) return name;
       if (Object.prototype.hasOwnProperty.call(mapping, name)) return mapping[name];
-      const prefix = name.split(".")[0];
-      return prefix && registered(prefix) ? prefix : name;
+      const parts = name.split(".");
+      for (let length = parts.length - 1; length > 0; length--) {
+        const prefix = parts.slice(0, length).join(".");
+        if (prefix && registered(prefix)) return prefix;
+      }
+      return name;
     };
   }
 

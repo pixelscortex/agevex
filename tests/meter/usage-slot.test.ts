@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { expect, it } from "vite-plus/test";
-import { LIMITS } from "../../src/meter/index.js";
+import { inline, LIMITS } from "../../src/meter/index.js";
 import { setup, attribution } from "./setup.js";
 
 const facts = {
@@ -80,4 +80,23 @@ it("a model id over the label limit is recorded as a sha256 label instead of dro
     attribution: { model: `sha256:${createHash("sha256").update(model).digest("hex")}` },
   });
   expect(JSON.stringify(charge)).not.toContain(model);
+});
+
+it("prefix resolution picks the longest registered dotted provider prefix", async () => {
+  const { t, meter, component } = setup({
+    providers: {
+      google: inline(() => ({ usd: 0.1 })),
+      "google.vertex": inline(() => ({ usd: 0.2 })),
+    },
+  });
+  await t.action(async (ctx) => {
+    await meter
+      .usageSlot()
+      .scope(ctx, { ...facts, model: "model" })
+      .record("google.vertex.chat", { key: "vertex" });
+  });
+  expect(await t.query(component.charges.get, { key: "vertex" })).toMatchObject({
+    provider: "google.vertex",
+    nanos: 200_000_000,
+  });
 });
