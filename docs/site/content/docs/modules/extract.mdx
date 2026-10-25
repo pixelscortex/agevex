@@ -1,87 +1,264 @@
 ---
 title: Extract
 icon: FileSearch
-description: Planned durable file and web extraction, with optional RAG.
-status: Planned
+description: Durable file extraction with bounded reads, thread-bound tools, and optional RAG.
+status: Available
 ---
 
-`sdk/extract` turns Agent-component files into bounded text artifacts. Fetching
-a URL is a separate step from extracting it. RAG indexing is optional.
+Extract turns native Agent files into text artifacts through a nested Workflow.
+URL acquisition is separate from extraction; RAG is opt-in. This component works
+independently of the core runtime.
 
-## API shape
+## Setup
 
-This is the draft contract; `?` properties and union alternatives describe API
-shapes rather than executable TypeScript.
+```ts title="convex/convex.config.ts"
+import { defineApp } from "convex/server";
+import agent from "@convex-dev/agent/convex.config";
+import extract from "agevex/extract/convex.config";
 
-```ts title="Planned extract API"
-const extract = defineExtract(components.extract, {
-  backends: [directText(), firecrawlParse(), visionOcr({ model })],   // ordered
-  route?: (file) => BackendId | undefined,     // default: first backend whose accepts() matches
-  limits: { maxBytes: { document: 50e6, image: 10e6, text: 8 * 2 ** 20 }, payloadBytes: 32 * 2 ** 20 },
-  usage?: UsageHooks,
-  rag?: { component: components.rag, embedding, chunk?: ChunkOptions },  // optional
-})
-
-// files are Agent-component fileIds (storeFile); web pages are fetched first
-const { fileId } = await extract.fromUrl(ctx, { url })    // Firecrawl fetch → storeFile; fetching ≠ extraction
-
-// extraction
-const job = await extract.run(ctx, { fileId, backend?, onComplete? })  // async, durable
-const artifact = await extract.get(ctx, { fileId })                     // summary + status
-const page = await extract.readText(ctx, { artifactId, cursor, maxBytes })   // bounded
-const pages = await extract.readPages(ctx, { artifactId, from, count })      // ≤ 100
-
-// optional RAG
-await extract.index(ctx, { artifactId, namespace, key })
-const hits = await extract.search(ctx, { namespace, query, limit })
-// agent tool
-extract.tools()   // read_file(fileId, page?) returning bounded text + references
+const app = defineApp();
+app.use(agent);
+app.use(extract); // components.agevexExtract; includes its own Workflow
+export default app;
 ```
 
-## Backends
+```ts title="convex/files.ts"
+import { defineExtract, directText, firecrawlParse, visionOcr } from "agevex/extract";
+import type { WorkerArgs } from "agevex/extract";
+import type { RegisteredAction, RegisteredQuery } from "convex/server";
+import { components, internal } from "./_generated/api.js";
+import { authorizeFileInThread } from "./filePolicy.js";
+import { visionModel } from "./models.js";
 
-```ts title="Planned backend contracts"
+export const extract = defineExtract(components.agevexExtract, {
+  agent: components.agent,
+  worker: internal.files.execute,
+  storageMetadata: internal.files.storageMetadata,
+  authorize: authorizeFileInThread,
+  backends: [
+    directText(),
+    firecrawlParse({ apiKey: () => process.env.FIRECRAWL_API_KEY! }),
+    visionOcr({ model: visionModel }),
+  ],
+});
+
+// Explicit types break generated-reference inference cycles.
+const functions = extract.internalFunctions();
+export const execute: RegisteredAction<"internal", WorkerArgs, null> = functions.execute;
+export const storageMetadata: RegisteredQuery<
+  "internal",
+  { storageId: string },
+  { size: number } | null
+> = functions.storageMetadata;
+```
+
+The host supplies an instantiated AI SDK `visionModel` and
+`authorizeFileInThread(ctx, scope)`. The policy must verify thread access, the
+exact attachment when `fileId` is present, and namespace access when
+`namespace` is present. Background `execute` calls may have no user session;
+keep an exact attachment reference rather than scanning transcripts.
+
+Helpers taking `ctx` run in host actions and require `threadId`. Export your
+own authorized Convex wrappers; no public endpoints are generated.
+`internalFunctions()` supplies the worker and the query reading native
+`_storage` size metadata. Attach files returned by `fromUrl` before extraction.
+
+For RAG, additionally mount the native component and add the following option
+to the registration above. The host supplies an instantiated AI SDK v3/v4
+embedding model matching the configured dimension.
+
+```ts title="Optional RAG mount and registration"
+// convex/convex.config.ts
+import rag from "@convex-dev/rag/convex.config";
+// Before export default app:
+app.use(rag, { name: "extractRag" });
+
+// convex/files.ts: add to defineExtract options
+// rag: {
+//   component: components.extractRag,
+//   embedding: embeddingModel,
+//   embeddingDimension: 1536,
+//   chunk: { maxBytes: 8192 },
+// },
+```
+
+Use a dedicated RAG mount/namespace containing only these bounded chunks.
+The host authorizes namespaces; file search tools use `threadId` as namespace.
+
+## API
+
+Signatures below omit TypeScript types for argument objects; every helper taking
+`ctx` is async and uses a Convex action context.
+
+### Registration and backends
+
+- `defineExtract(component: ComponentApi, options: ExtractOptions)`: required options are `agent`, `backends`, `worker`, `storageMetadata` and `authorize`; optional options are `route`, `limits`, `usage` and `rag`.
+- `directText(): ExtractBackend`: strict local UTF-8 decoding for `text/*` (including Markdown, HTML and CSV), `application/json`, `application/xml`, `application/csv` and `application/javascript`. Empty text fails; malformed UTF-8 is unreadable.
+- `firecrawlParse({ apiKey }: { apiKey: string | (() => string) }): ExtractBackend`: one bounded Firecrawl v2 multipart Parse request for PDF, DOCX, PPTX or XLSX; its URL hook makes one scrape request for Markdown.
+- `visionOcr({ model }: { model: LanguageModel }): ExtractBackend`: image MIME types; one AI SDK transcription request with `maxRetries: 0`. Its version includes provider/model id; truncated output is a paid failure.
+- `extract.internalFunctions()`: returns `{ execute, storageMetadata }` for host exports.
+- `new ExtractError(code: ExtractFailure)`: error carrying a closed failure code in `code`.
+
+Routing uses explicit `backend`, then optional `route(file: FileInfo)`, then
+the first backend whose `accepts` matches. The selected backend must accept the
+file. Built-in ids are `direct-text`, `firecrawl-parse` and `vision-ocr`.
+Optional `usage.record(ctx, event)` receives `threadId`, `backend`, numeric
+`usage`, and optional `artifactId`/`fileId`.
+
+Custom backends implement the exported contract; bump `version` to change identity:
+
+```ts title="Backend contract"
 type ExtractBackend = {
-  id: string                       // stable, part of the artifact identity
-  version: string                  // bump to force re-extraction
-  accepts(file: { mimeType: string; byteSize: number }): boolean
-  run(input: {
-    bytes: () => Promise<Blob>     // lazy, bounded
-    file: FileInfo
-    signal: AbortSignal
-  }): Promise<BackendResult>
-}
+  id: string;
+  version: string;
+  accepts(file: Pick<FileInfo, "mimeType" | "byteSize">): boolean;
+  run(input: BackendInput): Promise<BackendResult>;
+  fromUrl?: (url: string, signal: AbortSignal) => Promise<BackendResult>;
+};
+type BackendInput = { bytes: () => Promise<Blob>; file: FileInfo; signal: AbortSignal };
 type BackendResult =
   | { ok: true; doc: ExtractedDoc; usage?: ProviderUsage }
-  | { ok: false; failure: ExtractFailure; usage?: ProviderUsage }   // paid failures keep usage
-type ExtractedDoc = { kind: "text" | "document" | "image"; text: string; pages?: Page[]; language? }
+  | { ok: false; failure: ExtractFailure; usage?: ProviderUsage };
+type ExtractedDoc = {
+  kind: "text" | "document" | "image";
+  text: string;
+  pages?: { number: number; text: string }[];
+  language?: string;
+};
 ```
 
-Backends are ordered: `directText` accepts text, Markdown, HTML, CSV and JSON;
-`firecrawlParse` handles PDF, DOCX, PPTX and XLSX; `visionOcr` handles images
-with an AI SDK model. Hosts may supply additional backends.
+`FileInfo` contains `fileId`, `mimeType`, `byteSize`, `hash` and optional
+`filename`. Lazy `bytes()` enforces size and SHA-256. Pages must be numbered
+consecutively from 1. Validation strips unknown payload fields.
 
-## Identity, storage and limits
+### Acquisition, extraction and reads
 
-An artifact is unique per `(fileId, backend.id, backend.version, optionsHash)`.
-Re-running returns the existing artifact. Admission yields reuse, wait, or a
-new attempt. Completion checks the matching attempt and a live file claim;
-release wins over a late completion.
+- `extract.fromUrl(ctx, { threadId, url })`: first backend with a URL hook fetches HTTP(S), records reported usage, and stores Markdown with native Agent `storeFile`; returns `{ fileId, usage? }`.
+- `extract.run(ctx, { threadId, fileId, backend?, optionsHash?, onComplete? })`: atomically admits durable extraction; returns `{ artifactId, action: "run" | "wait" | "reuse" }`.
+- `extract.get(ctx, { threadId, fileId, backend?, optionsHash? } | { threadId, artifactId })`: returns an exact identity view or `null`; missing explicit artifact ids throw `OBJECT_UNAVAILABLE`.
+- `extract.readText(ctx, { threadId, artifactId, cursor?, maxBytes? })`: returns `{ text, cursor: number | null, done }`; defaults to cursor 0 and a 1 MiB window.
+- `extract.readPages(ctx, { threadId, artifactId, from?, count?, cursor?, maxBytes? })`: returns `{ pages, next: { from, cursor } | null }`; defaults to page 1, 100 pages, cursor 0 and 1 MiB aggregate text.
+- `extract.release(ctx, { threadId, artifactId })`: marks the identity released, deletes its payload blob if present, and fences late output; returns `null`.
 
-Only the summary lives in the `artifacts` table. JSON payloads live in Convex
-storage; reads return windows of at most 1 MiB or 100 pages. Defaults allow
-50 MB documents, 10 MB images, 8 MiB text and 32 MiB payloads. Huge jobs may
-use a sandbox backend. Agents get references and bounded slices.
+`onComplete` is an internal mutation reference taking `{ artifactId: string }`
+and returning `null | void`; it runs after Workflow completion, including failed
+work, and does not run again on reuse. Views contain `artifactId`, `fileId`,
+`backend`, `version`, `optionsHash`, `status`, `attempt`, optional `summary`,
+`failure: { code, retryable }`, and `usage`. Status is `pending`, `running`,
+`ready`, `failed`, `unknown`, or `released`.
 
-Final failures are `UNSUPPORTED_TYPE`, `UNREADABLE`, `EMPTY`, `INVALID_OUTPUT`
-and `TOO_LARGE`. Retryable failures are `PROVIDER_UNAVAILABLE`,
-`OBJECT_UNAVAILABLE` and `CHECKSUM_FAILED`. Provider bodies are never stored;
-paid failures retain usage evidence.
+Reads require `ready`. Cursors are UTF-8 byte offsets; resume with the returned
+cursor or spread page `next` into the next call. Page numbers are one-based;
+a document without pages is exposed as one page. Large pages resume within the
+page. Mid-character cursors throw `INVALID_EXTRACT_CURSOR`; a window too small
+for the next character throws `EXTRACT_WINDOW_TOO_SMALL`.
 
-The Agent component owns files, the receipts ledger owns attempts, and the RAG
-component owns vectors. Chunking and indexing happen only when `rag` is configured.
+### Optional RAG and tools
 
-Indexing has its own lease (10 minutes by default and maximum; lower it with
-`limits.indexLeaseMs`). Expiry records an unknown outcome and retains the exact
-RAG entry id. An explicit `index()` call cleans that entry before starting again;
-expiry never retries embedding automatically. Late writes and promotion are fenced.
+- `extract.index(ctx, { threadId, artifactId, namespace, key })`: indexes ready artifact text; returns `{ entryId, status: "ready" | "pending", created, replacedEntry: null, usage: { tokens } }`; `entryId` may be absent while waiting.
+- `extract.search(ctx, { threadId, namespace, query, limit? })`: returns `{ text, references: { artifactId, fileId }[], usage }`; defaults to 10 results, no adjacent chunk context, and at most 64 KiB text.
+- `extract.tools({ ctx, threadId })`: returns AI SDK `read_file` and, only with RAG configured, `search_files`.
+- `read_file({ fileId, page?, cursor? })`: reads an existing ready artifact in 64 KiB windows with file/artifact references and `next` arguments; otherwise returns `{ status }` (`missing` when absent). It does not start extraction.
+- `search_files({ query })`: searches the thread namespace with the same text bound and references as `search`.
+
+Index admission serializes work per artifact. Live `cleaning`/`running` work
+returns `pending`; completed matching namespace/key calls return `ready` with
+zero new embedding tokens. Native entry creation and recording its exact id
+commit atomically before embedding. Caller keys are scoped to artifact ids.
+
+The independent indexing lease defaults to 10 minutes; lower it through
+`limits.indexLeaseMs`. Expiry records `unknown` and retains the exact entry id.
+Its one-shot check neither reschedules nor starts paid work. Explicit `index()`
+recovers failed, unknown or expired work by claiming a new lease, awaiting
+exact-id deletion of the old entry, then creating a replacement. A changed
+namespace/key also replaces the old entry. Claim and lease checks fence entry
+creation, chunk writes and promotion, including late writers. Search rechecks
+attachments and returns only current ready indexes of ready artifacts.
+
+### Artifacts and failures
+
+The only Extract-owned table is `artifacts`, indexed by
+`(fileId, backend, version, optionsHash)`. It owns attempts rather than writing
+core receipts. Native Agent owns files, host storage owns JSON payloads, the
+nested Workflow owns its journal, and native RAG owns chunks/vectors.
+
+| Artifact fields | Purpose |
+| --- | --- |
+| `_id`, `_creationTime` | Convex identity and creation metadata |
+| `fileId`, `backend`, `version`, `optionsHash` | Exact extraction identity |
+| `status`, `attempt`, `claim`, `leaseUntil` | Admission, dispatch, completion and expiry fences |
+| `summary` | `kind`, `textBytes`, `pages`, `preview`, optional `language` |
+| `payloadStorageId` | Exact host-storage JSON reference and cleanup |
+| `failure` | Optional closed failure code |
+| `usage` | Optional numeric `inputTokens`, `outputTokens`, `credits` |
+| `indexStatus`, `indexClaim`, `indexLeaseUntil` | Independent indexing lifecycle and fence |
+| `indexEntryId`, `indexNamespace`, `indexKey` | Exact entry cleanup, target reuse and search filtering |
+
+`indexStatus` is optional or `cleaning | running | unknown | failed | ready`.
+No provider bodies, request content, ownership copies or vectors enter this table.
+
+| Closed failure code | `retryable` |
+| --- | --- |
+| `UNSUPPORTED_TYPE` | false |
+| `UNREADABLE` | false |
+| `EMPTY` | false |
+| `INVALID_OUTPUT` | false |
+| `TOO_LARGE` | false |
+| `PROVIDER_UNAVAILABLE` | true |
+| `OBJECT_UNAVAILABLE` | true |
+| `CHECKSUM_FAILED` | true |
+
+`retryable` classifies the cause; it never permits automatic paid replay.
+Ambiguous extraction outcomes become `unknown`, without inventing a failure code.
+Separate argument/state errors include `INVALID_EXTRACT_ARGUMENT`,
+`DUPLICATE_EXTRACT_BACKEND`, `EXTRACT_AUTHORIZE_REQUIRED`,
+`EXTRACT_MODEL_INSTANCE_REQUIRED`, `EXTRACT_NOT_READY`,
+`EXTRACT_RAG_DISABLED`, and `EXTRACT_INDEX_FENCED`.
+
+## Limits
+
+Values come from exported `LIMITS`. Text byte limits use UTF-8; MiB/KiB are
+binary. Only `limits.maxBytes`, `limits.payloadBytes`, and
+`limits.indexLeaseMs` are registration overrides: positive integers no larger
+than their hard maxima.
+
+| Limit | Default | Hard maximum / constraint |
+| --- | --- | --- |
+| `maxBytes.document` | 50,000,000 bytes | 50,000,000 bytes |
+| `maxBytes.image` | 10,000,000 bytes | 10,000,000 bytes |
+| `maxBytes.text` | 8 MiB | 8 MiB |
+| `payloadBytes` | 32 MiB | 32 MiB serialized JSON |
+| `readBytes` / `pages` | 1 MiB / 100 | Both ceilings per page window |
+| `totalPages` | — | 10,000 per payload |
+| `toolBytes` | 64 KiB | Text per tool/search response |
+| `summaryBytes` | — | 1,024-byte preview |
+| `identifierBytes` / `hashBytes` | — | 256 bytes / 64 lowercase SHA-256 hex characters |
+| `urlBytes` / `queryBytes` | — | 4,096 bytes each |
+| `backends` | Host-supplied | 1–32, unique ids |
+| `leaseMs` | 600,000 ms | Fixed extraction lease |
+| `indexLeaseMs` | 600,000 ms | 600,000 ms; minimum 1 ms |
+| `providerMs` / `outputTokens` | 300,000 ms / 4,096 | Backend signal deadline / OCR output cap |
+| `searchResults` | 10 | 10; minimum 1 |
+| `indexBytes` / `indexChunks` | — | 1 MiB text / 1,024 chunks |
+| `chunkBytes` / `minChunkBytes` | 8,192 bytes | Configured chunk size 1,024–8,192 bytes |
+| `ragBatch` | 100 chunks | 100 per native write batch |
+| `embeddingDimension` | Host-required | 4,096; supported: 128, 256, 512, 768, 1024, 1408, 1536, 2048, 3072, 4096 |
+
+## Guarantees
+
+- Concurrent extraction admission and duplicate worker dispatch do not repeat provider work for the same identity; backend version and options hash distinguish identities.
+- Release and lease expiry prevent late payload publication while retaining reported paid usage. Expired extraction outcomes become unknown and are never reclaimed.
+- Exact attachment authorization runs before reads and before/after backend work; post-work ownership loss prevents publication.
+- UTF-8 windows resume without splitting characters; page windows enforce count and aggregate bytes, including a single oversized page.
+- Sanitized JSON stays outside the small artifact row; maximum payload/page and native RAG chunk/vector bounds are exercised under transaction limits.
+- RAG stays disabled unless configured. Failed embedding requests are not automatically retried; concurrent index calls share admission and completed calls reuse the entry.
+- Index recovery deletes the exact old entry before replacement; expired claims cannot insert chunks or promote, even before the scheduled expiry check runs.
+- Completion callbacks observe saved terminal results even if a host usage hook fails; that failure cannot replay provider work.
+
+## Known limits
+
+- Core slot/send integration is separate. Hosts supply action wrappers, authorization, exact attachment records, worker/metadata exports and `tools({ ctx, threadId })` wiring.
+- Failed, released and unknown extraction identities are reused without rerunning. Intentionally change a backend version or supply a different valid SHA-256 `optionsHash` to request new work. The default hash covers resolved extraction ceilings, excluding the indexing lease.
+- Windowed reads still load and parse the bounded full JSON payload in an action. Indexing covers only `doc.text`, up to 1 MiB, even when a larger artifact is readable.
+- A dedicated RAG mount/namespace is required for chunk bounds. Release hides indexed results through artifact checks; it does not delete native RAG entries. Prior-index cleanup happens on explicit replacement/recovery.
+- Built-in Firecrawl transport makes one request per operation. Custom backends must uphold their own provider retry and signal behavior.
