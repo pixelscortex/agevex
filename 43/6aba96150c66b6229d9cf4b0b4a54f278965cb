@@ -1,0 +1,79 @@
+docs/site/registry/ask-user/askUser.ts
+  s_d863bd773ba186::t_0437a2f056f104 1,10-26,29-32
+docs/site/registry/continue-budget/continueBudget.ts
+  s_d863bd773ba186::t_e54820e2185a40 66-72
+  s_d863bd773ba186::t_c61e609a8f76c9 14-19,27,31,35-65,73-87
+  s_a0bdd83c8edfaf::t_dbc83da0419aa6 88
+README.md
+  s_d863bd773ba186::t_f1c143fdeedbac 402-403,405-408
+docs/site/content/docs/modules/tools.mdx
+  s_d863bd773ba186::t_3949ee1279ab14 16-17,29-32,35-38
+docs/site/content/docs/registry.mdx
+  s_d863bd773ba186::t_666b863bd92ffc 27
+docs/site/content/docs/tools/ask-user.mdx
+  s_d863bd773ba186::t_d35bfa98a9408c 3,25-28,30-31,34,37-42,44-45
+docs/site/content/docs/tools/continue-budget.mdx
+  s_d863bd773ba186::t_28eecda6c407f3 3,25-63
+docs/site/content/docs/tools/goals.mdx
+  s_d863bd773ba186::t_d9c7c54d090a4e 40-41
+docs/site/content/docs/tools/index.mdx
+  s_d863bd773ba186::t_7b8b27dfdd77f8 13-14
+docs/site/content/docs/tools/todo.mdx
+  s_d863bd773ba186::t_6b063cf9a2148f 41-43,48
+docs/site/public/r/ask-user.json
+  s_d863bd773ba186::t_3eb71a028a2490 5,14,19
+docs/site/public/r/continue-budget.json
+  s_d863bd773ba186::t_601a3baff032c4 5,14,19
+docs/site/public/r/goals.json
+  s_d863bd773ba186::t_dda42e0029d303 14,26
+docs/site/public/r/registry.json
+  s_d863bd773ba186::t_cb5992f2a29bbb 68,74,87,93
+docs/site/public/r/todo.json
+  s_d863bd773ba186::t_8c6b09e6c31315 14,26
+docs/site/registry.json
+  s_d863bd773ba186::t_b5d1a9dfaca98c 68,74,87,93
+docs/site/registry/goals/goals.ts
+  s_d863bd773ba186::t_176fd92ec2e319 5,7-9,23-24,28,37
+docs/site/registry/goals/goalsState.ts
+  s_d863bd773ba186::t_e3a6966f08c995 8,19-22,39-41,43
+docs/site/registry/todo/todo.ts
+  s_d863bd773ba186::t_bff4db5195c5c5 31-33,48,56-63
+docs/site/registry/todo/todoState.ts
+  s_d863bd773ba186::t_ae32aa82127179 8,23-26,43-45,47
+tests/tools/ask-user.test.ts
+  s_d863bd773ba186::t_d24e16ff3f0b14 4,14-16,18-37,39-51,53-56,58-71,73-95
+tests/tools/continue-budget.test.ts
+  s_d863bd773ba186::t_664c2394357a8c 1-228
+tests/tools/fixture/host.ts
+  s_d863bd773ba186::t_863e043982b202 28-29,76-82,89-90
+tests/tools/setup.ts
+  s_d863bd773ba186::t_371360fea42315 24
+tests/tools/state.test.ts
+  s_d863bd773ba186::t_6db342a890886f 5-6,26-31,146,149-150,173,176-178
+tests/tsconfig.json
+  s_d863bd773ba186::t_b28dc61582340c 13-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "436aba96150c66b6229d9cf4b0b4a54f278965cb",
+  "prompts": {},
+  "sessions": {
+    "s_a0bdd83c8edfaf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17363-aadc-76e3-800d-4962027adce4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
