@@ -43,7 +43,8 @@ completion is a failed run, never a result.
 One open question pauses the child as `asking`, and its verified question wakes
 the parent immediately, even inside a waiting group. The parent answers with
 `agevex_message_child`. Each child accepts 4 follow-ups, 8 at the hard maximum.
-Questions and follow-ups spend the run's hops and use the 4,000-character bound.
+Questions and follow-ups spend the run's hops and use `limits.taskLength`: 4,000
+UTF-16 units by default, 16,000 at the hard maximum.
 
 ## Budgets
 
@@ -57,7 +58,8 @@ admits at most 5 active descendants, 15 at the hard maximum.
 `runTree({ threadId })` is owner-authorized and root-only. It returns the
 current request's descendants with agent, status, depth, group, parent
 assignment, native child thread and timings. `delegations({ threadId,
-paginationOpts })` returns the same runs newest-first, 50 per page. Every run
+paginationOpts })` returns the root thread's delegation history across requests,
+newest-first, at most 50 runs per page. Every run
 carries `side: boolean`, marking a side review as distinct from a child.
 
 ## Per-agent model overrides

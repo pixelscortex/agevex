@@ -52,8 +52,8 @@ most 16,000 UTF-16 units and is staged for the next safe claim.
 ## Notes and origins
 
 `runtime.note(ctx, { threadId, text, from })` authorizes the `note` operation
-and posts a passive note: an escaped user-role `<note from="…">` message of at
-most 4,000 characters. The `notesPending` cap is the single admission limit, 8
+and accepts at most 4,000 UTF-16 units of raw text, then escapes it and wraps it
+in a user-role `<note from="…">` message. The `notesPending` cap is the single admission limit, 8
 by default and 24 at the hard maximum, independent of `queueLength`. At
 capacity, `runtime.note` throws a typed `NOTES_PENDING_LIMIT` error.
 

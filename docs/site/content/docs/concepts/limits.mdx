@@ -76,5 +76,6 @@ only they can be raised, through `registerAgent({ limits })`.
 | `modelIdLength` | 200 | 200 |
 | `modelAllowlist` | 100 | 100 |
 
-Equal default and maximum means a fixed fact, not host policy. `PLATFORM` adds
+Policy rows can be lowered even when their default equals their maximum;
+non-policy rows are fixed. `PLATFORM` adds
 an 8 MiB journal, an 800 KiB step, 10 and 30 minute actions, 8 scheduled slots.

@@ -6,15 +6,15 @@ status: Available
 ---
 
 `registerAgent` accepts five optional slots: `usage`, `budget`, `telemetry`,
-`sandbox` and `extract`. Core imports only the contracts; each module ships its adapter in its own
-subpath (`agevex/meter`, `agevex/telemetry`, `agevex/sandbox`, `agevex/extract`). An omitted slot ignores usage, allows spending, exports
-no telemetry, adds no sandbox tools and passes files as native model parts.
+`sandbox` and `extract`. Core imports only the slot contracts; each optional module adds its own
+adapter. An omitted slot ignores usage, allows spending, exports no telemetry, adds no sandbox tools and passes files as native model parts.
 
 Every managed tool receives a `ToolContext` through the AI SDK `options.context`;
 a native `createTool` also gets the facts on its injected context and
-`defineOnceTool` as its second argument. The facts are `subject`,
-`rootThreadId`, `threadId`, `runId`, `agent`, `toolCallId`, `nativeToolCallId`,
-`signal` and `meter`, each non-empty and at most 128 UTF-8 bytes.
+`defineOnceTool` as its second argument. `subject`, `rootThreadId`,
+`threadId`, `runId`, `agent` and `toolCallId` are non-empty strings of at most
+128 UTF-8 bytes; `nativeToolCallId` preserves the provider id, while `signal`
+and `meter` are objects.
 
 ```ts title="Optional slots"
 const runtime = registerAgent(components.agevex, {
@@ -76,5 +76,6 @@ attachment question for an adapter.
 schema-checked task. `runTask(hc, task, input)` inside a managed hook inherits
 the component, attribution, usage and fence; `runtime.runTask(ctx, task,
 input, { key, attribution })` supplies them explicitly. Outcomes are `{ status:
-"done", value }`, `{ status: "failed", code }` or a typed denial; one repair
+"done", value }`, `{ status: "failed", code }`, `{ status: "running" }`,
+`{ status: "unknown" }` or a typed denial; one repair
 re-ask is allowed, results fit 64 KiB, and an expired lease stays `unknown`.
