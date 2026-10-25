@@ -122,10 +122,17 @@ failures are retried only until the job deadline; then the job becomes `unknown`
 and `sandbox.job(ctx, { jobId })` exposes its bounded reconciliation snapshot.
 The scheduled `wake` is a mutation, so it runs exactly once: it claims the job
 (scheduling the lease backstop) and then schedules the `poll` action; if that
-action dies, the backstop retries it. Only a definite `FORBIDDEN` from
+action dies, the backstop retries it. Only a definite denial from
 `authorize` counts as revoked background authority, which stops polling and
-records `unknown` without calling the provider or the host callback; any other
-authorization error is transient and retried. A job whose directory vanished is
+records `unknown` without calling the provider or the host callback. Exactly
+these shapes are a denial: `new ConvexError("FORBIDDEN")`,
+`new ConvexError({ code: "FORBIDDEN" })`, and an `Error` whose message starts
+with `FORBIDDEN` or `SANDBOX_FORBIDDEN`. Any other error is transient: the job
+is retried with the normal poll backoff. A persistent transient error ends the
+job as `unknown` (`SANDBOX_JOB_DEADLINE`) without a kill and without a callback,
+once the late-attempt limit after the deadline is reached. The marker kill for a
+vanished job directory repeats up to three scan-and-kill passes; marked
+processes left after that report not-killed. A job whose directory vanished is
 `unknown` and is killed through its `AGEVEX_JOB` environment marker (no marked
 process counts as killed).
 

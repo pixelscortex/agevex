@@ -134,7 +134,7 @@ Each method returns a Promise of the listed result.
 | `exec(ctx, sandboxId, cmd, { timeoutS, signal })` | `{ exitCode, stdout, stderr }`; no command retries. On timeout, kill the command's process group and return exit 124 with `timedOut: true`, not an error; the adapter's own limit must be later than `timeoutS` so it can kill first. |
 | `startBackground(ctx, sandboxId, cmd, job?)` | `BackgroundJob`; honor supplied persisted identity/location even if launch throws; no launch retries. |
 | `poll(ctx, jobId, location)` | `JobOutcome`: `state: "running" \| "done" \| "failed" \| "unknown"`, optional `exitCode`, `logTail`, `code`. A vanished job directory is `unknown`, not `failed`: the command may still run. |
-| `cancelBackground(ctx, jobId, location)` | `void`; bounded original-group cleanup, verifying ownership before fallback signaling. With the job directory gone, kill every process carrying the `AGEVEX_JOB` marker; none found counts as killed. |
+| `cancelBackground(ctx, jobId, location)` | `void`; bounded original-group cleanup, verifying ownership before fallback signaling. With the job directory gone, kill every process carrying the `AGEVEX_JOB` marker, repeating up to three scan-and-kill passes (a marked process may fork); none found counts as killed, marked processes left after the last pass are not. |
 | `readFile(ctx, sandboxId, path, { maxBytes })` | `string`; enforce byte bound before returning across Convex. |
 | `writeFile(ctx, sandboxId, path, content: string)` | `void`. |
 | `listFiles(ctx, sandboxId, path, { limit })` | `FileEntry[]`; enforce count before returning across Convex. |
@@ -148,7 +148,7 @@ Provider auto-delete is disabled with `autoDeleteInterval: -1`.
 
 ### Background completion
 
-Only a definite `FORBIDDEN` from `authorize` counts as revoked authority; other errors are retried by the lease backstop. Optional `onComplete(ctx, event)` commits atomically with terminal state and receives
+Only a definite denial from `authorize` counts as revoked authority: `new ConvexError("FORBIDDEN")`, `new ConvexError({ code: "FORBIDDEN" })`, or an `Error` whose message starts with `FORBIDDEN` or `SANDBOX_FORBIDDEN`. Any other error is transient and retried with the normal poll backoff; if it persists past the deadline, the job ends `unknown` without a kill or callback after the late-attempt limit. Optional `onComplete(ctx, event)` commits atomically with terminal state and receives
 `{ type: "sandbox.job.completed", jobId, providerJobId?, scopeKey, subject,
 threadId, runId, state: "done" | "failed" | "unknown", exitCode?, logTail?, code? }`.
 Use transactional writes in the callback. Status and callback failures retry until
