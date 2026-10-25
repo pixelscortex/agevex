@@ -1,0 +1,171 @@
+README.md
+  s_d863bd773ba186::t_8319422f0cde40 10-162,546-569,685-760
+docs/site/README.md
+  s_d863bd773ba186::t_068eccbc0e4fbd 24-25,29,32
+docs/site/content/docs/meta.json
+  s_d863bd773ba186::t_6e81db5c6829f5 13-14
+docs/site/content/docs/modules/meta.json
+  s_d863bd773ba186::t_835c2637165acd 8-9
+docs/site/content/docs/modules/sandbox.mdx
+  s_d863bd773ba186::t_eb28b3aa07ed3f 4-5,8-76,79-225,227,229-232,234,236-238
+docs/site/content/docs/modules/telemetry.mdx
+  s_d863bd773ba186::t_8447c420b83ab9 1-170
+docs/site/content/docs/modules/tools.mdx
+  s_d863bd773ba186::t_1fae39d17f4fd8 4-5,8-10,12,14-17,19,21-26,28-38
+docs/site/content/docs/registry.mdx
+  s_d863bd773ba186::t_aaaa53c262fa5b 4-5,8-11,13,15-16,19-22,25-28,30-31,33-39,41-42,44,46,50-51,54-61
+docs/site/content/docs/tools/ask-user.mdx
+  s_d863bd773ba186::t_67f47f46b3edd7 1-45
+docs/site/content/docs/tools/continue-budget.mdx
+  s_d863bd773ba186::t_0a50c0498db3eb 1-164
+docs/site/content/docs/tools/goals.mdx
+  s_d863bd773ba186::t_1d3c6f58fda8d4 1-60
+docs/site/content/docs/tools/index.mdx
+  s_d863bd773ba186::t_983646b3505b5c 1-27
+docs/site/content/docs/tools/meta.json
+  s_d863bd773ba186::t_c9719922d22f75 1-4
+docs/site/content/docs/tools/todo.mdx
+  s_d863bd773ba186::t_2edcd034f844cd 1-62
+docs/site/public/r/ask-user.json
+  s_d863bd773ba186::t_dcedf4c174bc76 3-5,7-9,13-16,19
+docs/site/public/r/continue-budget.json
+  s_d863bd773ba186::t_d917a70d0ed2a7 1-33
+docs/site/public/r/goals.json
+  s_d863bd773ba186::t_5e34847107b40f 1-33
+docs/site/public/r/registry.json
+  s_d863bd773ba186::t_cd0decad14b93a 7,9-10,12-14,16,19-108
+docs/site/public/r/todo.json
+  s_d863bd773ba186::t_2ec85cabf591b3 1-33
+docs/site/registry.json
+  s_d863bd773ba186::t_6718e704762b5d 7,9-10,12-14,16,19-108
+docs/site/registry/ask-user/askUser.ts
+  s_d863bd773ba186::t_236891887e3940 1-34
+docs/site/registry/continue-budget/continueBudget.ts
+  s_d863bd773ba186::t_195e539bea20a7 1-141
+docs/site/registry/continue-budget/continueBudgetSchema.ts
+  s_d863bd773ba186::t_7d6a8200abf479 1-28
+docs/site/registry/continue-budget/continueBudgetState.ts
+  s_d863bd773ba186::t_4951ea8517e63b 1-122
+docs/site/registry/goals/goals.ts
+  s_d863bd773ba186::t_298fa89197b4d8 1-3,5-13,15-29,31-36,40-44
+docs/site/registry/goals/goalsSchema.ts
+  s_d863bd773ba186::t_1ce2ba65befc3a 1-19
+docs/site/registry/goals/goalsState.ts
+  s_d863bd773ba186::t_34aebed6c7f854 1-85
+docs/site/registry/todo/todo.ts
+  s_d863bd773ba186::t_73fb3b1f6882e3 1-72
+docs/site/registry/todo/todoSchema.ts
+  s_d863bd773ba186::t_ed799737d41b58 1-20
+docs/site/registry/todo/todoState.ts
+  s_d863bd773ba186::t_e3120a3ed1d578 1-88
+package.json
+  s_d863bd773ba186::t_30830b75b153ac 47-62,76-80,86-87
+src/sandbox/component/_generated/api.ts
+  s_d863bd773ba186::t_9089bc53b1d35b 1-5
+src/sandbox/component/_generated/component.ts
+  s_d863bd773ba186::t_f0393d7f0e86ec 1-13
+src/sandbox/component/_generated/dataModel.ts
+  s_d863bd773ba186::t_e99eea7ffb2073 1-7
+src/sandbox/component/_generated/server.ts
+  s_d863bd773ba186::t_c308814cb3e338 1-8
+src/sandbox/component/convex.config.ts
+  s_d863bd773ba186::t_e96f8d0c848fb2 1-3
+src/sandbox/component/schema.ts
+  s_d863bd773ba186::t_4490d3df0f7e5a 1-64
+src/sandbox/component/state.ts
+  s_d863bd773ba186::t_f56ccd40c7d310 1-438
+src/sandbox/daytona.ts
+  s_d863bd773ba186::t_58d5a0eca9a7b4 1-397
+src/sandbox/index.ts
+  s_d863bd773ba186::t_cca0e2ccdb1ea3 1-927
+src/sandbox/limits.ts
+  s_d863bd773ba186::t_83b340c4d39646 1-145
+src/sandbox/test.ts
+  s_d863bd773ba186::t_fe734b76fb0305 1-16
+src/sandbox/types.ts
+  s_d863bd773ba186::t_881236e056ff5b 1-163
+src/telemetry/exporters.ts
+  s_d863bd773ba186::t_3062433792d35d 1-107
+src/telemetry/index.ts
+  s_d863bd773ba186::t_41e60de13f75a9 1-576
+src/telemetry/limits.ts
+  s_d863bd773ba186::t_d6dda820b49524 1-91
+src/telemetry/otlp.ts
+  s_d863bd773ba186::t_4edb50b96d81e6 1-97
+src/testing/sandbox.ts
+  s_d863bd773ba186::t_bf5e85f1eb90a9 1-133
+src/testing/test.ts
+  s_d863bd773ba186::t_0828144d6ada47 1-5
+tests/sandbox/daytona.live.ts
+  s_d863bd773ba186::t_60cfd3c2094882 1-112
+tests/sandbox/daytona.test.ts
+  s_d863bd773ba186::t_fc3ad7aa6bc487 1-893
+tests/sandbox/fixture/_generated/api.ts
+  s_d863bd773ba186::t_126c0b1f75a54f 1-3
+tests/sandbox/fixture/daytona.ts
+  s_d863bd773ba186::t_7db79564e3324d 1-142
+tests/sandbox/fixture/host.ts
+  s_d863bd773ba186::t_d8dbea0f6fddc7 1-207
+tests/sandbox/fixture/node.ts
+  s_d863bd773ba186::t_8fc9230ec64b5e 1-6
+tests/sandbox/fixture/schema.ts
+  s_d863bd773ba186::t_69c4a627f70358 1-3
+tests/sandbox/fixture/seed.ts
+  s_d863bd773ba186::t_21d7b1b8e33046 1-24
+tests/sandbox/sandbox.test.ts
+  s_d863bd773ba186::t_0f18b46529e050 1-1058
+tests/sandbox/setup.ts
+  s_d863bd773ba186::t_38b7d83a249334 1-59
+tests/sandbox/slot.host.ts
+  s_d863bd773ba186::t_8b2d49fc714a55 1-180
+tests/sandbox/slot.test.ts
+  s_d863bd773ba186::t_521fe0f0c88024 1-248
+tests/sandbox/slot/_generated/api.ts
+  s_d863bd773ba186::t_8c7feada723bbc 1-3
+tests/sandbox/vite.live.config.ts
+  s_d863bd773ba186::t_6ee0a4055a0588 1-9
+tests/telemetry/live/otlp.live.ts
+  s_d863bd773ba186::t_c068059b658896 1-68
+tests/telemetry/script.ts
+  s_d863bd773ba186::t_e6c7a1dc8695e0 1-98
+tests/telemetry/slots.test.ts
+  s_d863bd773ba186::t_03971186cefa8d 1-330
+tests/telemetry/telemetry.test.ts
+  s_d863bd773ba186::t_b6e661087b332a 1-685
+tests/telemetry/vite.live.config.ts
+  s_d863bd773ba186::t_8aa487ceb3258d 1-12
+tests/tools/ask-user.test.ts
+  s_d863bd773ba186::t_98e192fba8f7f7 1-99
+tests/tools/continue-budget.test.ts
+  s_d863bd773ba186::t_8f43a1e8a5da9e 1-609
+tests/tools/fixture/_generated/api.js
+  s_d863bd773ba186::t_3f89c2d2e6c84d 1-5
+tests/tools/fixture/host.ts
+  s_d863bd773ba186::t_849a41471717e0 1-225
+tests/tools/fixture/schema.ts
+  s_d863bd773ba186::t_610228e98ef2a6 1-16
+tests/tools/install.test.ts
+  s_d863bd773ba186::t_893942ee695cbc 1-285
+tests/tools/setup.ts
+  s_d863bd773ba186::t_c87b21248a2d7d 1-44
+tests/tools/state.test.ts
+  s_d863bd773ba186::t_d7e4eb353e11c5 1-307
+tests/tsconfig.json
+  s_d863bd773ba186::t_0d889f5a1310b0 13-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2abc627aa066b3eb273e0028514ff7b652d5c22a",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
