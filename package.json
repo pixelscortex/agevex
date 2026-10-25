@@ -33,7 +33,7 @@
     "./_generated/component.js": {
       "types": "./dist/component/_generated/component.d.ts"
     },
-    "./test": "./src/testing/test.ts",
+    "./test": "./src/test.ts",
     "./sandbox": {
       "types": "./dist/sandbox/index.d.ts",
       "default": "./dist/sandbox/index.js"
@@ -45,6 +45,10 @@
     "./sandbox/test": "./src/sandbox/test.ts",
     "./sandbox/_generated/component.js": {
       "types": "./dist/sandbox/component/_generated/component.d.ts"
+    },
+    "./telemetry": {
+      "types": "./dist/telemetry/index.d.ts",
+      "default": "./dist/telemetry/index.js"
     }
   },
   "scripts": {
@@ -58,7 +62,8 @@
     "lint:convex:check": "bun run scripts/check-convex-lint.ts",
     "check": "vp check . && bun run lint:convex:check",
     "test": "vp test --run",
-    "test:live": "vp test --run --config vite.live.config.ts && vp test --run --config tests/sandbox/vite.live.config.ts"
+    "test:live": "vp test --run --config vite.live.config.ts && vp test --run --config tests/sandbox/vite.live.config.ts && bun run test:live:telemetry",
+    "test:live:telemetry": "vp test --run --config tests/telemetry/vite.live.config.ts --reporter verbose"
   },
   "dependencies": {
     "@convex-dev/workflow": "0.4.10",
