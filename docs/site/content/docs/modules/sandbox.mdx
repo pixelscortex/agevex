@@ -5,10 +5,6 @@ description: Scope-bound provider sandboxes with Daytona, bounded tools, backgro
 status: Available
 ---
 
-`agevex/sandbox` binds a provider sandbox to trusted thread, run, or subject
-facts. Five tools, durable background polling, bounded exports, and host-triggered
-TTL cleanup use a separately mounted Convex component.
-
 ## Setup
 
 Mount alongside Agent and agevex; declare the Daytona key in the app environment.
@@ -122,36 +118,29 @@ Each method returns a Promise of the listed result.
 | `upload(ctx, sandboxId, path, content: Uint8Array)` | `void`; Daytona accepts at most 512 KiB per call. |
 | `download(ctx, sandboxId, path, { maxBytes, offset?, totalSizeLimit? })` | `Uint8Array`; bounded window, short window means EOF; reject total-size overflow and keep bytes out of component args/rows. |
 
-Daytona uses bounded synchronous execs and a Python supervisor rather than its
-provider background poll chain. Snapshots must contain `python3`.
+Daytona snapshots must contain `python3`.
 Auto-stop defaults to 15 minutes, auto-archive to 10; both accept 0–525,600 minutes.
 Use `autoStopInterval: 0` for jobs that must outlive the idle interval.
 Provider auto-delete is disabled with `autoDeleteInterval: -1`.
 
 ### Background completion
 
-The provider job ID, sandbox ID, and private directory commit before launch.
-Daytona detaches a process group; its supervisor stays outside the group and
-retains the unreaped leader through SIGTERM and SIGKILL before publishing completion.
-Group identity and exit status publish by atomic rename. Polling reads actual
-bounded log tails at the source, backs off, and ends at completion or deadline.
-
-Cancellation atomically publishes a control file. If the supervisor does not
-acknowledge it, fallback signaling requires every current group member's
-`AGEVEX_JOB` marker in `/proc`; unverified ownership stays unknown without signaling.
-Deadline expiry attempts a bounded group kill and records `unknown` with
-`SANDBOX_JOB_DEADLINE`. Status failures keep polling until that deadline;
-uncertain cancellation retains the deadline path. Watchdogs cover interrupted
-launch/poll actions. Lost launch responses stay unknown and never replay paid work.
-
-Optional `onComplete(ctx, event)` runs in the settlement mutation, atomically
-with terminal state. Its `SandboxJobEvent` contains
+Optional `onComplete(ctx, event)` commits atomically with terminal state and receives
 `{ type: "sandbox.job.completed", jobId, providerJobId?, scopeKey, subject,
 threadId, runId, state: "done" | "failed" | "unknown", exitCode?, logTail?, code? }`.
-Use transactional writes, including a host event or `workflow.sendEvent`, rather
-than external effects. Callback failures retry only until the deadline, then
-leave a readable unknown snapshot via `sandbox.job(ctx, { jobId })`.
-Revoked authority records unknown without provider access or the host callback.
+Use transactional writes in the callback. Status and callback failures retry until
+the deadline, then leave an unknown snapshot readable through `sandbox.job(ctx, { jobId })`.
+Deadline expiry records `SANDBOX_JOB_DEADLINE`; revoked authority records unknown without provider access or a callback.
+Completion and deadline cleanup terminate descendants in the original process group;
+processes that detach with `setsid` or daemonize require stopping or deleting the sandbox.
+
+### Provider notes
+
+Daytona uses bounded execs and a Python supervisor outside the job's process group,
+retaining its leader through SIGTERM/SIGKILL. Identity and exit status publish by
+atomic rename. Cancellation uses a control file; fallback signaling checks every
+group member's `AGEVEX_JOB` marker in `/proc`, leaving unverified ownership unknown.
+These markers do not protect against hostile code inside the VM.
 
 ### File exports
 
@@ -214,16 +203,13 @@ budget, 10 s background exec timeout, 1 s control-file acknowledgement wait,
 
 ## Guarantees
 
-- Provider identity persists before cold-start readiness; lost create responses retain unknown reservations without duplicate creates.
-- Uncertain commands and background launches are not replayed; effects reuse core receipts, while file text stays outside receipts.
-- Reads, writes, listings, output, and exports enforce bounds; interrupted exports store nothing and successful exports retain exact bytes and SHA-256.
-- Background completion terminates descendants still in the original process group before reporting done; the leader identity remains reserved through both signals.
-- Poll failures and callback failures retain a finite deadline path; successful callbacks and terminal state commit together.
-- Host authorization gates tools, exports, lifecycle, and scheduled work; revoked background authority stops provider polling.
-- TTL cleanup runs only on demand, protects active jobs, drains bounded batches, and never retries uncertain deletes.
+- Lost create responses retain unknown [reservations](#registration-and-scope) without duplicate creates.
+- Uncertain [commands and background launches](#five-tools) are not replayed.
+- Interrupted launch/poll actions retain a [deadline watchdog](#background-completion).
+- Successful [exports](#file-exports) retain exact bytes and SHA-256.
 
 ## Known limits
 
-- The provider VM supplies isolation and network policy. On completion and deadline, cleanup terminates processes still in the job's original process group. A process deliberately detaching with `setsid` or daemonizing is outside this guarantee; stop or delete the sandbox for full containment, via `sandbox.stop` or TTL cleanup. Ownership markers are conservative verification, not protection against hostile code inside the VM.
+- The provider VM supplies isolation and network policy.
 - Mounting arms no recurring cleanup timer. The host calls `sandbox.cleanup(ctx)` to schedule a finite sweep; active jobs protect files and action leases may delay idle cleanup by up to nine minutes. Deleted bindings remain tombstones; uncertain deletes and lost creates require operator reconciliation.
 - Automatic core sandbox-slot and event-wait wiring remains a separate integration step. The host owns completion delivery and policy; no authoritative Daytona cost is available.
