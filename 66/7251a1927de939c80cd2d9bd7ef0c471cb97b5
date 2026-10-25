@@ -1,0 +1,19 @@
+docs/site/content/docs/modules/extract.mdx
+  s_47c235535bda2f::t_389f74ba5e515e 27-29,53,73-77,91,170-178,181,254-258,262
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "667251a1927de939c80cd2d9bd7ef0c471cb97b5",
+  "prompts": {},
+  "sessions": {
+    "s_47c235535bda2f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17093-2880-7233-a7d4-c02ce83c3081",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
