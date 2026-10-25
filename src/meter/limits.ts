@@ -18,6 +18,12 @@ export const LIMITS = {
    * staying under 2^53 keeps every integer total exact.
    */
   maxChargeNanos: 90_000_000_000,
+  /**
+   * A known amount above maxChargeNanos is kept (and billed) as `unknown` /
+   * OVER_CAP up to this exact-integer ceiling. Aggregates count at most
+   * maxChargeNanos of it (aggregates.ts), so every sum bound above still holds.
+   */
+  maxBilledNanos: Number.MAX_SAFE_INTEGER,
   maxQuantity: 1_000_000,
   /**
    * Per ROOT THREAD, never per deployment. threadCost range-reads the thread's
@@ -81,9 +87,11 @@ export function text(value: string, name: string, max: number = LIMITS.maxString
   return value;
 }
 
-export function nanos(usd: number) {
+/** `max` is the per-charge cap for prices; callers that keep an over-cap
+ * amount as OVER_CAP pass maxBilledNanos and compare against the cap. */
+export function nanos(usd: number, max: number = LIMITS.maxChargeNanos) {
   if (!Number.isFinite(usd) || usd < 0) throw new Error("INVALID_USD");
-  return integer(Math.round(usd * LIMITS.nanosPerUsd), LIMITS.maxChargeNanos, "NANOS");
+  return integer(Math.round(usd * LIMITS.nanosPerUsd), max, "NANOS");
 }
 
 /** Base events must use the raw charge key, so reserve the delta namespace. */

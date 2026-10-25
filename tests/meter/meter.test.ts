@@ -864,3 +864,74 @@ it("two subjects' charges never write a shared aggregate namespace", async () =>
     );
   }
 });
+
+it("known costs that are unknown only for budgeting (thread overflow, over the $90 cap) are still billed", async () => {
+  const events: SinkEvent[] = [];
+  const { t, meter, component } = setup({
+    limits: { maxThreadCharges: 1 },
+    sinks: [{ name: "ledger", deliver: async (batch) => void events.push(...batch) }],
+  });
+  const cost = (usd: number) => ({ openrouter: { usage: { cost: usd } } });
+  const other = { ...attribution, rootThreadId: "other", threadId: "other" };
+  await t.run(async (ctx) => {
+    await meter
+      .scope(ctx, attribution)
+      .record("openrouter", { key: "first", providerMetadata: cost(0.1) });
+    await meter
+      .scope(ctx, attribution)
+      .record("openrouter", { key: "overflow", providerMetadata: cost(0.2) });
+    await meter
+      .scope(ctx, other)
+      .record("openrouter", { key: "huge", providerMetadata: cost(120) });
+  });
+  await drain(t);
+  expect(await t.query(component.charges.get, { key: "overflow" })).toMatchObject({
+    status: "unknown",
+    reason: "THREAD_CAPACITY",
+  });
+  expect(await t.query(component.charges.get, { key: "huge" })).toMatchObject({
+    status: "unknown",
+    reason: "OVER_CAP",
+    nanos: 120_000_000_000,
+  });
+  expect(Object.fromEntries(events.map((event) => [event.externalId, event.nanos]))).toEqual({
+    first: 100_000_000,
+    overflow: 200_000_000,
+    huge: 120_000_000_000,
+  });
+  expect(await t.run((ctx) => meter.check(ctx, { subject: "owner", runId: "run" }))).toMatchObject({
+    allowed: false,
+    unknown: 2,
+  });
+});
+
+it("corrections and settlements above the $90 cap become unknown OVER_CAP with their amount instead of throwing", async () => {
+  const { t, meter } = setup();
+  const [corrected, settled] = await t.run(async (ctx) => {
+    const scoped = meter.scope(ctx, attribution);
+    const estimate = await scoped.estimate("fal", {
+      key: "correct",
+      profile: "image",
+      quantity: 1,
+    });
+    const settlement = await scoped.estimate("fal", {
+      key: "settle",
+      profile: "image",
+      quantity: 1,
+    });
+    return [
+      await estimate.correct({ quantity: 400, key: "correct-400" }),
+      await settlement.settle({ usd: 95, key: "settle-95" }),
+    ];
+  });
+  expect(corrected).toMatchObject({
+    status: "unknown",
+    reason: "OVER_CAP",
+    nanos: 100_000_000_000,
+  });
+  expect(settled).toMatchObject({ status: "unknown", reason: "OVER_CAP", nanos: 95_000_000_000 });
+  expect(await t.run((ctx) => meter.check(ctx, { subject: "owner", runId: "run" }))).toMatchObject({
+    allowed: false,
+    unknown: 2,
+  });
+});

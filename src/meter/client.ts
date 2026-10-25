@@ -35,14 +35,23 @@ function lookupMs(provider: Provider) {
       ? LIMITS.maxLookupMs
       : (provider.lookupFor ?? LIMITS.lookupMs);
 }
+/** Amounts up to maxBilledNanos are representable; above maxChargeNanos the
+ * mutation or `capped` turns them into `unknown` / OVER_CAP, keeping the amount. */
 function costNanos(provider: Provider, cost: Cost) {
   if ("usd" in cost && "credits" in cost) throw new Error("AMBIGUOUS_COST");
-  if ("usd" in cost) return { nanos: nanos(cost.usd) };
+  if ("usd" in cost) return { nanos: nanos(cost.usd, LIMITS.maxBilledNanos) };
   integer(cost.credits, LIMITS.maxQuantity, "CREDITS");
   if (!provider.credits) throw new Error("CREDIT_RATE_REQUIRED");
-  return { nanos: nanos(cost.credits * provider.credits.usdPerCredit), credits: cost.credits };
+  return {
+    nanos: nanos(cost.credits * provider.credits.usdPerCredit, LIMITS.maxBilledNanos),
+    credits: cost.credits,
+  };
 }
-type Priced = { nanos?: number; credits?: number } | { reason: UnknownReason };
+type Priced = { nanos?: number; credits?: number; reason?: UnknownReason };
+/** Keep a known amount above the per-charge cap: unknown for the gate, still billed. */
+function capped(priced: { nanos: number; credits?: number }): Priced {
+  return priced.nanos > LIMITS.maxChargeNanos ? { ...priced, reason: "OVER_CAP" } : priced;
+}
 /** Above the per-charge cap is OVER_CAP; any other malformed amount is INVALID_COST. */
 function unpriced(error: unknown): { reason: UnknownReason } {
   return {
@@ -70,7 +79,7 @@ function priceInline(
   }
   if (!cost) return { reason: "NO_COST" };
   try {
-    return costNanos(provider, cost);
+    return capped(costNanos(provider, cost));
   } catch (error) {
     return unpriced(error);
   }
@@ -86,7 +95,7 @@ function priceEstimate(
   const price = provider.profiles?.[profile];
   if (!price) return { reason: "PROFILE_NOT_REGISTERED" };
   try {
-    return { nanos: nanos(price.usd * quantity) };
+    return capped({ nanos: nanos(price.usd * quantity, LIMITS.maxBilledNanos) });
   } catch (error) {
     return unpriced(error);
   }
@@ -183,7 +192,7 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
             operation: "correct",
             operationKey,
             quantity,
-            nanos: nanos(price.usd * quantity),
+            nanos: nanos(price.usd * quantity, LIMITS.maxBilledNanos),
             jobs: await jobs(),
           });
         },
@@ -216,7 +225,7 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
           breakdowns,
           ...(args.profile ? { profile: args.profile } : {}),
           quantity: args.quantity,
-          status: "reason" in priced ? "unknown" : "estimate",
+          status: priced.reason ? "unknown" : "estimate",
           source: "estimate",
           ...priced,
           sinks: sinks.map((s) => s.name),
@@ -238,7 +247,7 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
           attribution,
           provider: name,
           breakdowns,
-          status: "reason" in priced ? "unknown" : "settled",
+          status: priced.reason ? "unknown" : "settled",
           source: "inline",
           ...priced,
           sinks: sinks.map((s) => s.name),

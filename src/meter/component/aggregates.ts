@@ -22,6 +22,13 @@ function group(row: Pick<Doc<"charges">, "status" | "nanos" | "source">): Group 
       : "settled";
 }
 
+/** An over-cap amount is `unknown` (it denies the gate whatever its size) and
+ * contributes at most maxChargeNanos, so every exact-sum bound still holds;
+ * the full amount stays on the row for billing. */
+function summand(row: Doc<"charges">) {
+  return Math.min(row.nanos ?? 0, LIMITS.maxChargeNanos);
+}
+
 /** The root thread owns every thread-scoped tree; rootless charges have none. */
 export function rootOf(attribution: Doc<"charges">["attribution"]) {
   return attribution.rootThreadId ?? attribution.threadId;
@@ -119,7 +126,7 @@ export async function updateAggregates(
   const entries = projections(row);
   const previous = old && projections(old);
   for (const [index, entry] of entries.entries()) {
-    const next = { key: entry.key, namespace: entry.namespace, sumValue: row.nanos ?? 0 };
+    const next = { key: entry.key, namespace: entry.namespace, sumValue: summand(row) };
     const before = previous?.[index];
     if (before?.namespace.join("\u0000") !== entry.namespace.join("\u0000")) {
       // Small nodes bound bytes on range reads, but an aggregate insert into a

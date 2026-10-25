@@ -9,7 +9,9 @@ import { LIMITS, integer, text } from "./limits.js";
  * negative delivery deltas. Other JSON fields still use JSON.stringify.
  */
 function polarAmount(nanos: number) {
-  integer(Math.abs(nanos), LIMITS.maxChargeNanos, "NANOS");
+  // Over-cap amounts are billed in full: <=2^53 nanos is 9.0e8 cents, far
+  // inside Polar's 17 significant digits.
+  integer(Math.abs(nanos), LIMITS.maxBilledNanos, "NANOS");
   const value = BigInt(nanos);
   const magnitude = value < 0n ? -value : value;
   const divisor = BigInt(LIMITS.nanosPerCent);

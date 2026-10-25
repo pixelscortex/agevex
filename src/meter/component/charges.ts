@@ -49,6 +49,18 @@ function validateJobs(config: Jobs) {
 function final(row: Doc<"charges">) {
   return row.status === "settled" || row.status === "corrected";
 }
+/**
+ * Billing is separate from budgeting. A known cost (inline, settlement or
+ * lookup) that is `unknown` only because it overflowed its thread or exceeded
+ * the per-charge cap is still delivered to sinks: it is unknown for the gate,
+ * billed because the amount is known. Estimates are billed once corrected.
+ */
+function billable(row: Doc<"charges">) {
+  return (
+    row.nanos !== undefined &&
+    (final(row) || (row.status === "unknown" && row.source !== "estimate"))
+  );
+}
 function resolved(row: Doc<"charges">) {
   return row.source !== "estimate" || row.status === "unknown";
 }
@@ -118,7 +130,7 @@ async function enqueueDrain(ctx: MutationCtx, sink: string, config: Jobs, runAt:
 async function prepareSinks(ctx: MutationCtx, row: Doc<"charges">, config: Jobs, changed = false) {
   const sinkState = row.sinkState.map((sink) => ({ ...sink }));
   const due: string[] = [];
-  if (final(row) && row.nanos !== undefined)
+  if (billable(row) && row.nanos !== undefined)
     for (const sink of sinkState) {
       if (sink.pending || sink.deliveredNanos === row.nanos) continue;
       sink.revision++;
@@ -187,7 +199,12 @@ export const create = mutation({
     if (args.profile) text(args.profile, "PROFILE");
     if (args.quantity !== undefined) integer(args.quantity, LIMITS.maxQuantity, "QUANTITY");
     if (args.credits !== undefined) integer(args.credits, LIMITS.maxQuantity, "CREDITS");
-    if (args.nanos !== undefined) integer(args.nanos, LIMITS.maxChargeNanos, "NANOS");
+    if (args.nanos !== undefined)
+      integer(
+        args.nanos,
+        args.reason === "OVER_CAP" ? LIMITS.maxBilledNanos : LIMITS.maxChargeNanos,
+        "NANOS",
+      );
     integer(args.maxThreadCharges, LIMITS.maxThreadCharges, "THREAD_CHARGES");
     if (!args.maxThreadCharges) throw new Error("INVALID_THREAD_CHARGES");
     if (args.reason && args.status !== "unknown") throw new Error("INVALID_REASON");
@@ -299,7 +316,10 @@ export const update = mutation({
   },
   handler: async (ctx, args): Promise<Outcome> => {
     validateJobs(args.jobs);
-    integer(args.nanos, LIMITS.maxChargeNanos, "NANOS");
+    integer(args.nanos, LIMITS.maxBilledNanos, "NANOS");
+    // Above the per-charge cap the amount is kept but becomes unknown, exactly
+    // as at creation: recording never throws on an unpriceable business amount.
+    const over = args.nanos > LIMITS.maxChargeNanos;
     if (args.quantity !== undefined) integer(args.quantity, LIMITS.maxQuantity, "QUANTITY");
     if (args.credits !== undefined) integer(args.credits, LIMITS.maxQuantity, "CREDITS");
     const row = await find(ctx, args.key);
@@ -338,8 +358,10 @@ export const update = mutation({
           nanos: args.nanos,
           quantity: args.quantity ?? row.quantity,
           credits: args.credits ?? row.credits,
-          status: args.operation === "correct" ? "corrected" : "settled",
+          status: over ? "unknown" : args.operation === "correct" ? "corrected" : "settled",
           source: args.operation === "correct" ? "estimate" : "settlement",
+          // THREAD_CAPACITY routes projections and must never change.
+          ...(over && row.reason !== "THREAD_CAPACITY" ? { reason: "OVER_CAP" as const } : {}),
         },
         args.jobs,
       ),
