@@ -1,0 +1,25 @@
+docs/site/public/r/ask-user.json
+  s_d863bd773ba186::t_de3d16cd3d041a 14
+docs/site/public/r/continue-budget.json
+  s_d863bd773ba186::t_565be2ad516c0e 14,20,26
+docs/site/public/r/goals.json
+  s_d863bd773ba186::t_afb68d65281a7f 14,20,26
+docs/site/public/r/todo.json
+  s_d863bd773ba186::t_10b6b792443b98 14,20,26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c5bc47b13d1f5b06071fdf37f4fbcff4028b4f11",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
