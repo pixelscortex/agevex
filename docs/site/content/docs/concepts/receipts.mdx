@@ -1,0 +1,69 @@
+---
+title: Receipts
+icon: Receipt
+description: Typed send receipts, approvals, deferred answers and safe retries.
+status: Available
+---
+
+`open` and `send` return a receipt immediately. They never wait for a model
+turn.
+
+```ts title="Receipt union"
+type Receipt =
+  | { status: "accepted"; position: number; threadId: string; assignmentId: string; receiptId: string }
+  | { status: "duplicate"; position?: number; threadId: string; assignmentId: string; receiptId: string }
+  | { status: "rejected"; code: RejectionCode }
+```
+
+`position` is the zero-based inbox place at acceptance, including a reserved
+head until a claim consumes it. A duplicate keeps the position of the original
+acceptance.
+
+## Rejection codes
+
+`KEY_CONFLICT`, `QUEUE_FULL`, `CANCELLED`, `INVALID_MESSAGE`,
+`INVALID_REQUEST_KEY`, `UNKNOWN_AGENT`, `INVALID_MODELS`, `ATTACHMENT_LIMIT`,
+`RECOVERY_REQUIRED`.
+
+Invalid input is refused before the prompt is stored. A full queue and a
+recovery-required thread are refused by `send` before the prompt is stored.
+Authorization failures throw instead of returning a receipt. Up to 20
+additional prompts queue while the thread is busy, and an arrival never
+silently enters an ongoing turn.
+
+## Idempotent retries
+
+`requestKey` is scoped to the subject. An identical key with identical input
+replays the stored receipt. The same key with changed input returns
+`KEY_CONFLICT` before any native write. The fingerprint covers the operation,
+the agent or thread, the text, the model map and the file ids.
+
+## Approvals
+
+A pending native tool approval blocks generation and leaves the inbox row
+waiting. Decisions must go through
+`respond({ threadId, approvalId, approved, reason? })`, which returns
+`{ messageId }`. A response saved directly through the Agent component is not
+seen by the runtime. An unknown approval returns `APPROVAL_NOT_FOUND`; a
+second decision returns `APPROVAL_ALREADY_RESOLVED`.
+
+## Deferred tools
+
+A tool declared without `execute` uses Agent's native deferred results. The
+owner answers with `answer({ threadId, toolCallId, text })`, which returns
+`{ messageId }` and resumes the turn once every pending call has an answer. The
+text must be non-empty and at most 16,000 UTF-16 units. Unrecorded, foreign,
+cancelled and already answered calls are refused with `TOOL_CALL_NOT_FOUND`.
+Approvals and deferred calls share one 16-call pause bound.
+
+Both endpoints are idempotent per call: repeating a call replays the stored
+`messageId`, and reusing a call id with a different payload returns
+`KEY_CONFLICT`. `respond` and `answer` authorize against the owning subject,
+for root threads and owned child threads alike.
+
+## Cancellation
+
+`cancel` settles only the open recorded calls, with native execution-denied
+results. A fresh send reopens a cancelled thread and preserves the native
+thread. A failed cancellation cleanup blocks reopening with a `CANCELLED`
+receipt until a later cancel settles the recorded work.

@@ -1,45 +1,80 @@
 ---
 title: Limits
 icon: Gauge
-description: Planned centralized bounds and current runtime limits.
-status: Planned
+description: Every bound exported as LIMITS, with its default and hard maximum.
+status: Available
 ---
 
-All draft limits belong in one exported `LIMITS` object. The export and the new
-run budgets are planned; these values describe the spec rather than today’s API.
+`LIMITS` is the single source of runtime bounds. The policy rows come first;
+only they can be raised, through `registerAgent({ limits })`.
 
-## Planned defaults
+| Limit | Default | Hard max |
+| --- | --- | --- |
+| `attachmentBytes` | 8 MiB | 16 MiB |
+| `continuesPerRun` | 3 | 8 |
+| `sideRunsPerRun` | 2 | 8 |
+| `notesPending` | 8 | 24 |
+| `maxDepth` | 2 | 2 |
+| `messagesPerChild` | 4 | 8 |
+| `rootLane` | 2 | 4 |
+| `childLane` | 4 | 4 |
+| `runLaunches` | 12 | 50 |
+| `runHops` | 24 | 100 |
+| `activeChildrenPerRoot` | 5 | 15 |
+| `taskLength` | 4,000 | 16,000 |
+| `queueLength` | 20 | 100 |
+| `slicesPerTurn` | 16 | 64 |
+| `leaseMs` | 10 minutes | 24 hours |
+| `noteLength` | 4,000 | 4,000 |
+| `firstPromptOrder` | 1 | 1 |
+| `telemetryFlushMs` | 3 seconds | 3 seconds |
+| `filesPerMessage` | 8 | 8 |
+| `factBytes` | 128 | 128 |
+| `fileIdLength` | 200 | 200 |
+| `functionHandleLength` | 1,024 | 1,024 |
+| `sandboxExitCode` | 2,147,483,647 | 2,147,483,647 |
+| `fileMetadataBytes` | 4 KiB | 4 KiB |
+| `taskRepairs` | 1 | 1 |
+| `taskPromptLength` | 16,000 | 16,000 |
+| `hookErrorLength` | 1,000 | 1,000 |
+| `agents` | 64 | 64 |
+| `sideAgents` | 8 | 8 |
+| `cadence` | 1,000,000 | 1,000,000 |
+| `minuteMs` | 60,000 | 60,000 |
+| `contextMessages` | 24 | 24 |
+| `assignmentBytes` | 32 KiB | 32 KiB |
+| `contextBytes` | 48 KiB | 48 KiB |
+| `contextReadBytes` | 2 MiB | 2 MiB |
+| `groupLength` | 200 | 200 |
+| `turnsPerLoop` | 50 | 50 |
+| `workflowVersion` | 1 | 1 |
+| `generationAbortMs` | 90 seconds | 90 seconds |
+| `executionWatchdogMs` | 2 minutes | 2 minutes |
+| `cancelPollMs` | 1 second | 1 second |
+| `outputTokens` | 4,096 | 4,096 |
+| `messageLength` | 16,000 | 16,000 |
+| `requestKeyLength` | 200 | 200 |
+| `runEvents` | 4 | 4 |
+| `maxDelegationPage` | 50 | 50 |
+| `approvalsPerPause` | 16 | 16 |
+| `nativeCallIdLength` | 1,048,576 | 1,048,576 |
+| `nativeEnvelopeBytes` | 4,096 | 4,096 |
+| `streamCursors` | 2 | 2 |
+| `messagePage` | 100 | 100 |
+| `messagePageBytes` | 512 KiB | 512 KiB |
+| `cleanupMessageBytes` | 512 KiB | 512 KiB |
+| `receiptRetentionMs` | 7 days | 7 days |
+| `receiptResultBytes` | 64 KiB | 64 KiB |
+| `reconcileIntervalMs` | 30 seconds | 30 seconds |
+| `reconcileMaxIntervalMs` | 5 minutes | 5 minutes |
+| `purgeBatch` | 50 | 50 |
+| `purgeIntervalMs` | 60 minutes | 60 minutes |
+| `streamThrottleMs` | 0 | 0 |
+| `modelRetries` | 0 | 0 |
+| `modelOverrides` | 8 | 8 |
+| `modelOverridesBytes` | 512 | 512 |
+| `modelIdLength` | 200 | 200 |
+| `modelAllowlist` | 100 | 100 |
 
-| Bound | Value |
-| --- | --- |
-| Delegation depth | 2, host-configurable |
-| Active children per root | 5 |
-| Launches / hops per run | 12 / 24 |
-| Task length | 4,000 characters |
-| Pending queue | 20 messages per thread |
-| Workflow journal / step value | 8 MiB / 800 KiB |
-| Action time | 10 minutes Node / 30 minutes Convex |
-| Context injection | 24 rows / 1,800 tokens |
-| Forked parent snapshot | At most 48 KiB, tool outputs stripped |
-
-Starter Convex plans have eight concurrent scheduled jobs in the spec’s
-reference. Separate root and child lanes are sized so parents can run without
-queueing behind all their children. Parent turns batch child completions.
-
-A run budget covers every turn caused by one user prompt. Reaching the budget
-returns a typed denial instead of starting more work. The host supplies budget
-policy; the SDK supplies enforcement.
-
-## Available today
-
-| Bound | Current value |
-| --- | --- |
-| Delegation depth | 1 |
-| Launches per accepted user prompt | 3 |
-| Active children per root | 5 |
-| Task length | 4,000 characters |
-| Turn watchdog | 120 seconds |
-
-Module-specific limits are documented with [sandbox](/docs/modules/sandbox) and
-[extraction](/docs/modules/extract). Avoid copying these values into host code;
-the planned `LIMITS` export is the source of truth for runtime bounds.
+Equal default and maximum means a fixed fact, not host policy. `PLATFORM` adds
+an 8 MiB journal, an 800 KiB step, 10 and 30 minute actions, 8 scheduled slots.

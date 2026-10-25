@@ -4,6 +4,9 @@
   "pages": [
     "runtime",
     "delegation",
+    "receipts",
+    "hooks",
+    "slots",
     "idempotency",
     "limits"
   ]

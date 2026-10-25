@@ -1,60 +1,80 @@
 ---
 title: Delegation
 icon: Network
-description: Planned child agents, groups, context and run budgets.
-status: Planned
+description: Groups, delivery rules, run trees and per-agent model overrides.
+status: Available
 ---
 
-One `Agent` type represents roots and children. An agent becomes a child by
-appearing in another agent’s `subagents` list.
+One `Agent` type represents roots and children. A child is an agent listed in
+another agent's `subagents`. Registration allows two edges from each root;
+`limits.maxDepth: 1` lowers that, and cycles or deeper graphs fail at
+registration.
 
-```ts title="Planned agent hierarchy"
-const reviewer = new Agent(components.agent, { name: "Reviewer", languageModel, instructions })
-const builder = new Agent(components.agent, {
-  name: "Builder", languageModel, instructions,
-  subagents: [reviewer],                     // depth 2 allowed
-})
-const main = new Agent(components.agent, {
-  name: "Main", languageModel, instructions,
-  subagents: [builder, reviewer],
+Parents reach children through three managed tools: `agevex_delegate` with
+`{ agent, task, group?, wait? }`, `agevex_message_child` with `{ runId, text }`
+and `agevex_ask_parent` with `{ question }`.
+
+## Groups
+
+`wait` defaults to `"each"`: each settled result reaches the parent
+immediately. With `wait: "all"`, the group wakes its parent once, after the
+launching slice ends and every member settles, failures included. Membership
+seals when that slice ends, so a later launch into the same group returns
+`GROUP_CLOSED`. A group holds at most `activeChildrenPerRoot` members: 5 by
+default, 15 at the hard maximum. Names are at most 200 characters, and
+omitting the name selects the unnamed group. Mixing `"each"` and `"all"`
+members in one group returns `GROUP_CONFLICT`.
+
+## Delivery rules
+
+- **R1** The inbox holds ready work in FIFO order. A claim coalesces
+  consecutive head rows and never crosses another run's turn.
+- **R2** `agevex_ask_parent` is denied with `ASK_WITH_CHILDREN` while any
+  descendant of the asking child is still non-terminal.
+- **R3** A run settles only when its last turn ended, no descendant is running
+  and its inbox is empty. Earlier final text does not finish a run while
+  descendants still run.
+
+A delivered result is the child's verified final text. A tool-only or empty
+completion is a failed run, never a result.
+
+## Questions and follow-ups
+
+One open question pauses the child as `asking`, and its verified question wakes
+the parent immediately, even inside a waiting group. The parent answers with
+`agevex_message_child`. Each child accepts 4 follow-ups, 8 at the hard maximum.
+Questions and follow-ups spend the run's hops and use the 4,000-character bound.
+
+## Budgets
+
+A user prompt starts one run. Its turns, results, questions and follow-ups
+share 12 launches and 24 hops, with hard maxima of 50 and 100. Over budget,
+`agevex_delegate` returns `{ status: "denied", code: "RUN_BUDGET" }`. A root
+admits at most 5 active descendants, 15 at the hard maximum.
+
+## Reading the tree
+
+`runTree({ threadId })` is owner-authorized and root-only. It returns the
+current request's descendants with agent, status, depth, group, parent
+assignment, native child thread and timings. `delegations({ threadId,
+paginationOpts })` returns the same runs newest-first, 50 per page. Every run
+carries `side: boolean`, marking a side review as distinct from a child.
+
+## Per-agent model overrides
+
+`open` and `send` accept `models: { Main: "model-id" }`. Register
+`modelAllowlist` and `models: id => provider.chat(id)`; only reachable agent
+names and allowed ids are accepted. Each accepted prompt starts a run with an
+immutable model snapshot that every descendant and result turn shares. A later
+send updates the next run only: omitting `models` inherits the last accepted
+thread policy, and `{}` restores the Agent defaults. A map holds at most 8
+entries and 512 Convex-encoded bytes, with ids of at most 200 characters.
+
+```ts title="Managed delegation tool"
+agevex_delegate({
+  agent: "Builder",
+  task: "Draft the migration guide",
+  group: "draft", // at most 200 characters
+  wait: "all", // "each" (default) | "all"
 })
 ```
-
-## Model-facing tools (planned)
-
-| Tool | Contract |
-| --- | --- |
-| `delegate` | `{ agent, task, context?: "isolated" \| "forked", group?, wait?: "all" \| "each" }` → `{ runId }` or a typed denial |
-| `message_child` | Send a follow-up to a running child. |
-| `ask_parent` | Ask the parent one question, bounded per turn. |
-
-The planned defaults are depth 2, five active children per root, 12 launches
-and 24 hops per run, and tasks of at most 4,000 characters. A **run** covers one
-user prompt and everything it causes, including result-triggered turns.
-When its budget ends, `delegate` returns
-`{ status: "denied", code: "RUN_BUDGET" }`; the model answers with what it has.
-
-## Groups and context
-
-`delegate({ group: "draft", wait: "all" })` waits for the group to settle and
-wakes the parent once with all results. The parent receives a host-verified
-child reply, rather than trusting a child’s claim about its own result.
-
-`isolated` is the default and gives the child only its task. `forked` adds a
-bounded snapshot of the parent: recent messages, at most 48 KiB, with tool
-outputs stripped. `summarized` context is deferred.
-
-## One reader
-
-`messages({ threadId })` reads the root and every child thread the caller
-owns, in the same envelope. `delegations` returns each run's `childThreadId`
-(`null` until the child starts). There is no separate transcript endpoint and
-no opt-in flag. `open`, `send`, `activity` and `delegations` accept root
-threads only.
-
-## Available today
-
-The current runtime supports depth 1, three launches per accepted user prompt
-and five active children per root. Children are queued asynchronously, and
-results arrive in later parent turns. Groups, joins, deeper delegation,
-`message_child` and `ask_parent` are planned.
