@@ -318,12 +318,12 @@ it("distinct identical requests and notes persist once across hook turns", async
 it("maximum native control history fits platform limits across all eight hook continuations", async () => {
   // Posted hook notes wait for the following claim, including hook continuations.
   fixture.hooks.beforeTurn = async (hc) => {
-    const row = await hc.ctx.runQuery(components.agevex.queue.assignment, {
+    const row = await hc.ctx.runQuery(components.agevex.turns.send.assignment, {
       threadId: hc.threadId,
     });
     for (let n = 0; n < HOST_LIMITS.notesPending.max; n++)
       expect(
-        await hc.ctx.runMutation(components.agevex.hooks.addNote, {
+        await hc.ctx.runMutation(components.agevex.hooks.notes.addNote, {
           assignmentId: row!.assignmentId,
           text: '"'.repeat(LIMITS.noteLength),
           from: '"'.repeat(LIMITS.requestKeyLength),
@@ -843,7 +843,7 @@ it.each(
     );
     const receipt = await open(t);
     const root = { assignmentId: receipt.assignmentId, turnToken: `${receipt.assignmentId}:0` };
-    await t.mutation(components.agevex.queue.claim, root);
+    await t.mutation(components.agevex.turns.slices.claim, root);
     const launch = async (
       parent: typeof root,
       agent: string,
@@ -865,7 +865,7 @@ it.each(
         assignmentId: child.childAssignmentId!,
         turnToken: `${child.childAssignmentId}:0`,
       };
-      const claimed = await t.mutation(components.agevex.queue.claim, turn);
+      const claimed = await t.mutation(components.agevex.turns.slices.claim, turn);
       return { ...turn, threadId: child.childThreadId!, ...claimed!.subagent! };
     };
     const builder = await launch(root, "Builder");
@@ -878,7 +878,7 @@ it.each(
             path === "empty all release" ? { group: "empty", wait: "all" } : {},
           );
     const saved = await t.run(async (ctx) =>
-      ctx.runMutation(components.agevex.queue.write, {
+      ctx.runMutation(components.agevex.turns.slices.write, {
         assignmentId: builder.assignmentId,
         executionId: builder.turnToken,
         cancellationEpoch: 0,
@@ -894,7 +894,7 @@ it.each(
         },
       }),
     );
-    await t.mutation(components.agevex.hooks.hookState, {
+    await t.mutation(components.agevex.hooks.state.hookState, {
       assignmentId: builder.assignmentId,
       executionId: builder.turnToken,
       complete: true,
@@ -916,21 +916,21 @@ it.each(
         (run) => run.runId === builder.runId,
       )!.status;
     const fail = async (child: typeof side) => {
-      await t.mutation(components.agevex.subagents.settle, {
+      await t.mutation(components.agevex.subagents.settle.settle, {
         assignmentId: child.assignmentId,
         turnToken: child.turnToken,
         runId: child.runId,
         childResultMessageId: null,
         errorCode: "GENERATION_FAILED",
       });
-      await t.mutation(components.agevex.subagents.deliver, {
+      await t.mutation(components.agevex.subagents.deliver.deliver, {
         runId: child.runId,
         deliveryToken: child.deliveryToken,
         deliveryStatus: "failed",
         parentMessageId: null,
         errorCode: "DELIVERY_FAILED",
       });
-      await t.mutation(components.agevex.queue.finish, {
+      await t.mutation(components.agevex.turns.slices.finish, {
         assignmentId: child.assignmentId,
         turnToken: child.turnToken,
         errorCode: null,
@@ -950,7 +950,7 @@ it.each(
         errorCode: null,
       }),
     ).toEqual(ordinary ? { status: "deferred", runId: builder.runId } : null);
-    await t.mutation(components.agevex.queue.finish, {
+    await t.mutation(components.agevex.turns.slices.finish, {
       assignmentId: builder.assignmentId,
       turnToken: builder.turnToken,
       errorCode: null,
@@ -973,7 +973,7 @@ it.each(
       runId: builder.runId,
       deliveryToken: builder.deliveryToken,
     });
-    await t.mutation(components.agevex.queue.finish, { ...root, errorCode: null });
+    await t.mutation(components.agevex.turns.slices.finish, { ...root, errorCode: null });
     await drain(t);
     expect(calls("Builder")).toHaveLength(0);
     expect(calls("Critic")).toHaveLength(0);
@@ -1098,7 +1098,7 @@ it("a maximum-size delta reads bounded exact source ids and sends at most 48 KiB
     cancellationEpoch: 0,
   };
   expect(
-    await t.mutation(components.agevex.queue.claim, {
+    await t.mutation(components.agevex.turns.slices.claim, {
       assignmentId: receipt.assignmentId,
       turnToken: fence.executionId,
     }),
@@ -1107,7 +1107,7 @@ it("a maximum-size delta reads bounded exact source ids and sends at most 48 KiB
   // exceeds 16 MiB; a transcript/body scan would fail the enforced 8 MiB gate.
   for (let index = 0; index < LIMITS.contextMessages; index++) {
     await t.run(async (ctx) =>
-      ctx.runMutation(components.agevex.queue.write, {
+      ctx.runMutation(components.agevex.turns.slices.write, {
         ...fence,
         handle: await createFunctionHandle(components.agent.messages.addMessages),
         nativeMessages: {
@@ -1123,7 +1123,7 @@ it("a maximum-size delta reads bounded exact source ids and sends at most 48 KiB
       }),
     );
   }
-  await t.mutation(components.agevex.hooks.hookState, {
+  await t.mutation(components.agevex.hooks.state.hookState, {
     assignmentId: receipt.assignmentId,
     executionId: fence.executionId,
     complete: true,
@@ -1139,7 +1139,7 @@ it("a maximum-size delta reads bounded exact source ids and sends at most 48 KiB
       task: "review exact delta",
     }),
   ).toMatchObject({ status: "queued" });
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: receipt.assignmentId,
     turnToken: fence.executionId,
     errorCode: null,
@@ -1252,7 +1252,7 @@ it.each(["hook failure", "abandoned action"])(
     if (path === "abandoned action") {
       const tree = await owner(t).query(api.agents.runTree, { threadId: receipt.threadId });
       const first = tree.find((run) => run.childThreadId === ownerThreadId)!;
-      await t.mutation(components.agevex.queue.ambiguous, {
+      await t.mutation(components.agevex.turns.failures.ambiguous, {
         assignmentId: first.childAssignmentId!,
         turnToken: `${first.childAssignmentId}:0`,
       });
@@ -1465,11 +1465,11 @@ it("cancel discards a staged hook continuation and its notes before a fresh send
   const row = (await t.query(rawAssignment, {
     assignmentId: receipt.assignmentId,
   }))!;
-  await t.mutation(components.agevex.queue.claim, {
+  await t.mutation(components.agevex.turns.slices.claim, {
     assignmentId: receipt.assignmentId,
     turnToken: row.turnToken!,
   });
-  await t.mutation(components.agevex.hooks.continueAdmission, {
+  await t.mutation(components.agevex.hooks.state.continueAdmission, {
     assignmentId: receipt.assignmentId,
     executionId: row.turnToken!,
     prompt: "cancelled continuation".padEnd(LIMITS.messageLength, "x"),

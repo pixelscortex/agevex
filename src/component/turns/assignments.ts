@@ -3,8 +3,8 @@
  *
  * One assignment is one native thread under agevex management: its execution
  * token, cancellation epoch, inbox counters, approval pause and recovery state.
- * Roots are created by `queue.accept` on a host send; children by
- * `subagents.attach` when a delegation's native thread exists. Both builders
+ * Roots are created by `turns.send.accept` on a host send; children by
+ * `subagents.launch.attach` when a delegation's native thread exists. Both builders
  * return the complete first row so the insert call sites stay short and every
  * counter visibly starts at its zero state.
  */
@@ -24,7 +24,7 @@ export function assignmentByThread(ctx: Pick<QueryCtx, "db">, threadId: string) 
     .unique();
 }
 
-/** First row of a public root thread, created by `queue.accept` on its first
+/** First row of a public root thread, created by `turns.send.accept` on its first
  * send. It carries no `childRunId`/`rootAssignmentId`: the absence of those
  * two fields is what makes it a root for its whole life. */
 export function newRootAssignment(fields: {
@@ -59,7 +59,7 @@ export function newRootAssignment(fields: {
   };
 }
 
-/** First row of a delegated child thread, created by `subagents.attach` in the
+/** First row of a delegated child thread, created by `subagents.launch.attach` in the
  * same transaction as its first inbox row. The child inherits the root's
  * subject, host action and resolved limits, and runs under the parent's run
  * budget (`runId`), so its delegations spend the same launches and hops. Its

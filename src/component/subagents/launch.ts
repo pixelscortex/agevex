@@ -1,6 +1,6 @@
 /**
- * Launching a delegation: admission (`subagents.reserve`) and attaching the
- * native child thread (`subagents.attach`).
+ * Launching a delegation: the trusted `delegateContext` of a running turn,
+ * admission (`reserve`) and attaching the native child thread (`attach`).
  *
  * `reserveRun` checks, in order: the turn still owns its token, root and
  * parent run are live in the current epoch, depth and group arguments are
@@ -12,17 +12,17 @@
  * its task as the first inbox row and wakes it. Touches `subagentRuns`,
  * `runs`, `assignments`, `inbox` and the root's delegation counters.
  */
-import type { ObjectType } from "convex/values";
-import { v } from "convex/values";
-import type { MutationCtx } from "../_generated/server.js";
+import { type ObjectType, v } from "convex/values";
+import { type MutationCtx, mutation, query } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
 import { denialCode } from "../schema.js";
 import { LIMITS } from "../limits.js";
 import { approvalKey } from "../approvals.js";
 import { groupMembers, newSubagentRun, runById } from "./runs.js";
 import { messageRef, recordRefs } from "../hooks/refs.js";
-import { newChildAssignment } from "../queue/assignments.js";
-import { wake } from "../queue/wake.js";
+import { newChildAssignment } from "../turns/assignments.js";
+import { wake } from "../turns/wake.js";
+import { delegateScope } from "./views.js";
 
 export const reserveArgs = {
   assignmentId: v.id("assignments"),
@@ -237,3 +237,35 @@ export async function attachChild(ctx: MutationCtx, args: ObjectType<typeof atta
   await wake(ctx, (await ctx.db.get("assignments", childId))!);
   return null;
 }
+
+/** Trusted root context for a running turn that wants to delegate. */
+export const delegateContext = query({
+  args: { assignmentId: v.id("assignments"), turnToken: v.string() },
+  returns: v.union(
+    v.null(),
+    v.object({
+      rootAssignmentId: v.string(),
+      rootThreadId: v.string(),
+      subject: v.string(),
+      rootAgent: v.string(),
+      actorAgent: v.string(),
+      activeRuns: v.number(),
+    }),
+  ),
+  handler: (ctx, args) => delegateScope(ctx, args),
+});
+
+/** Admit one delegation and spend its budget; see `reserveRun`. */
+export const reserve = mutation({
+  args: reserveArgs,
+  returns: reservation,
+  handler: (ctx, args) => reserveRun(ctx, args),
+});
+
+/** Create the child assignment for a reserved run's native thread and queue
+ * its task; see `attachChild`. */
+export const attach = mutation({
+  args: attachArgs,
+  returns: v.null(),
+  handler: (ctx, args) => attachChild(ctx, args),
+});

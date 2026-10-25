@@ -13,11 +13,11 @@ agent index, and `open` looks roots up in `config.agents`.
    and models once (`registration/`) and returns the endpoints, `runTurn`,
    `coordinate` and the host helpers.
 2. **Accept.** `open` / `send` (`endpoints/requests.ts`) authorize the subject,
-   dedupe the request key, save the native prompt and call `queue.accept`.
+   dedupe the request key, save the native prompt and call `turns.send.accept`.
 3. **Schedule.** The component's Workflow loop schedules `runTurn` once per turn
    slice.
 4. **Claim.** `turn/claim.ts` checks the execution row and claims the turn
-   (`queue.claim`, which also delivers pending notes).
+   (`turns.slices.claim`, which also delivers pending notes).
 5. **Admit.** `turn/admission.ts` re-runs `authorizeExecution` and the budget slot.
 6. **Generate.** `turn/generation.ts` starts the cancellation fence
    (`turn/fence.ts`), runs extract admission and `beforeTurn` / model routing
@@ -25,7 +25,7 @@ agent index, and `open` looks roots up in `config.agents`.
    (`turn/tools.ts`, `turn/collaboration-tools.ts`) and runs one native model step.
 7. **Continue or complete.** `turn/completion.ts` continues after tool calls, runs
    `afterTurn`, launches side reviews and admits continuations.
-8. **Finish.** `turn/finish.ts` calls `queue.finish`; a child turn first settles its
+8. **Finish.** `turn/finish.ts` calls `turns.slices.finish`; a child turn first settles its
    run (`coordinate/settle.ts`) and delivers the result (`coordinate/delivery.ts`).
 
 Collaboration tools and side reviews call the `coordinate` mutation

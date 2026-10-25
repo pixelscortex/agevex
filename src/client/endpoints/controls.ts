@@ -1,8 +1,8 @@
 // Public endpoints that resolve or stop work in an owned thread.
 //
-// `respond` resolves a recorded tool approval (`queue.respond`), `answer` answers
-// a recorded deferred tool call (`queue.answer`), and `cancel` cancels the
-// thread's current request (`queue.cancel`). Each runs the `ownedThread` gate
+// `respond` resolves a recorded tool approval (`turns.approvals.respond`), `answer` answers
+// a recorded deferred tool call (`turns.approvals.answer`), and `cancel` cancels the
+// thread's current request (`turns.cancel.cancel`). Each runs the `ownedThread` gate
 // first; `respond` and `answer` also work on child threads the subject owns.
 
 import { createFunctionHandle, mutationGeneric } from "convex/server";
@@ -21,7 +21,7 @@ export function respondEndpoint(ep: EndpointContext) {
     returns: v.object({ messageId: v.string(), replayed: v.boolean() }),
     handler: async (ctx, args) => {
       const row = await ownedThread(ep, ctx, args.threadId, "respond");
-      return ctx.runMutation(ep.component.queue.respond, {
+      return ctx.runMutation(ep.component.turns.approvals.respond, {
         assignmentId: row.assignmentId,
         subject: row.subject,
         approvalId: args.approvalId,
@@ -40,7 +40,7 @@ export function answerEndpoint(ep: EndpointContext) {
     returns: v.object({ messageId: v.string(), replayed: v.boolean() }),
     handler: async (ctx, args) => {
       const row = await ownedThread(ep, ctx, args.threadId, "answer");
-      return ctx.runMutation(ep.component.queue.answer, {
+      return ctx.runMutation(ep.component.turns.approvals.answer, {
         assignmentId: row.assignmentId,
         subject: row.subject,
         toolCallId: args.toolCallId,
@@ -57,7 +57,7 @@ export function cancelEndpoint(ep: EndpointContext) {
     returns: v.null(),
     handler: async (ctx, args) => {
       const row = await ownedThread(ep, ctx, args.threadId, "cancel");
-      await ctx.runMutation(ep.component.queue.cancel, {
+      await ctx.runMutation(ep.component.turns.cancel.cancel, {
         assignmentId: row.assignmentId,
         subject: row.subject,
       });

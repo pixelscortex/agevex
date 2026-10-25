@@ -4,8 +4,8 @@
 // `note` lets host code add a note for the thread's next turn after the host
 // `note` policy authorizes the current caller; `sandboxComplete` turns a sandbox
 // job completion into a bounded note after the host `sandbox` policy re-checks the
-// stored owner. Both read `queue.assignment` and admit through `postNote`
-// (`hooks.addNote`), which holds the note until the next safe turn claim; side
+// stored owner. Both read `turns.send.assignment` and admit through `postNote`
+// (`hooks.notes.addNote`), which holds the note until the next safe turn claim; side
 // agent delivery (`coordinate/delivery.ts`) posts its notes the same way.
 
 import { assertFact } from "../../component/facts.js";
@@ -25,7 +25,7 @@ export async function postNote(
   assignmentId: string,
   args: NoteArgs,
 ): Promise<boolean> {
-  return ctx.runMutation(component.hooks.addNote, {
+  return ctx.runMutation(component.hooks.notes.addNote, {
     assignmentId,
     text: args.text,
     from: args.from,
@@ -59,7 +59,7 @@ export async function sandboxComplete(
   assertFact(event.subject, "subject");
   assertFact(event.threadId, "threadId");
   assertFact(event.runId, "runId");
-  const assignment = await ctx.runQuery(rt.component.queue.assignment, {
+  const assignment = await ctx.runQuery(rt.component.turns.send.assignment, {
     threadId: event.threadId,
   });
   const managed = assignment && rt.graph.byName.get(assignment.agent);
@@ -123,7 +123,7 @@ export async function note(
   args: NoteArgs,
 ): Promise<boolean> {
   assertFact(args.threadId, "threadId");
-  const scope = await ctx.runQuery(rt.component.queue.assignment, { threadId: args.threadId });
+  const scope = await ctx.runQuery(rt.component.turns.send.assignment, { threadId: args.threadId });
   if (!scope) throw new Error("FORBIDDEN");
 
   const { subject } = await rt.config.authorize(ctx, {

@@ -4,7 +4,7 @@
 // component must later find again (a prompt, a delivered result, a review delta),
 // it records the saved message's id, order and size in the same transaction as
 // the save. `savedMessageRef` builds that record; `saveTrackedMessage` saves and,
-// when side agents watch this registration, captures it through `hooks.capture`.
+// when side agents watch this registration, captures it through `hooks.reviews.capture`.
 // Used by the public endpoints, the coordinator and delivery.
 
 import { saveMessage } from "@convex-dev/agent";
@@ -42,7 +42,7 @@ export async function saveTrackedMessage(
 ) {
   const saved = await saveMessage(ctx, native, args);
   if (rt.watching)
-    await ctx.runMutation(rt.component.hooks.capture, {
+    await ctx.runMutation(rt.component.hooks.reviews.capture, {
       threadId: args.threadId,
       savedMessage: savedMessageRef(saved.messageId, saved.message),
     });

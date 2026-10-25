@@ -316,7 +316,7 @@ async function manualRoot(t: Test, requestKey = "manual") {
     threadId: receipt.threadId,
   };
   expect(
-    await t.mutation(components.agevex.queue.claim, {
+    await t.mutation(components.agevex.turns.slices.claim, {
       assignmentId: turn.assignmentId,
       turnToken: turn.turnToken,
     }),
@@ -345,13 +345,13 @@ async function launch(
   const root = actor.rootAssignmentId
     ? (await t.query(rawAssignment, { assignmentId: actor.rootAssignmentId }))!
     : actor;
-  const runs = await t.query(components.agevex.subagents.delegations, {
+  const runs = await t.query(components.agevex.subagents.history.delegations, {
     threadId: root.threadId,
     subject: "alice",
     paginationOpts: { cursor: null, numItems: 50 },
   });
   const run = runs.page.find((entry) => entry.runId === response.runId)!;
-  const assignment = await t.query(components.agevex.queue.assignment, {
+  const assignment = await t.query(components.agevex.turns.send.assignment, {
     threadId: run.childThreadId!,
   });
   const turn = {
@@ -359,7 +359,7 @@ async function launch(
     turnToken: assignment!.assignmentId + ":0",
     threadId: run.childThreadId!,
   };
-  const claimed = await t.mutation(components.agevex.queue.claim, {
+  const claimed = await t.mutation(components.agevex.turns.slices.claim, {
     assignmentId: turn.assignmentId,
     turnToken: turn.turnToken,
   });
@@ -374,7 +374,7 @@ async function nativeSave(
   status: "success" | "pending" = "success",
 ) {
   return t.run(async (ctx) => {
-    const saved = (await ctx.runMutation(components.agevex.queue.write, {
+    const saved = (await ctx.runMutation(components.agevex.turns.slices.write, {
       assignmentId: turn.assignmentId,
       executionId: turn.turnToken,
       cancellationEpoch: 0,
@@ -409,7 +409,7 @@ async function complete(t: Test, child: Awaited<ReturnType<typeof launch>>, resu
     runId: child.runId,
     deliveryToken: child.deliveryToken,
   });
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: child.assignmentId,
     turnToken: child.turnToken,
     errorCode: null,
@@ -433,7 +433,7 @@ it("ask_parent denies ASK_WITH_CHILDREN until Reviewer settles, then answers res
   expect((await tree(t, root.threadId))[0].status).toBe("running");
   await complete(t, reviewer, "review before the question");
   expect(await ask()).toMatchObject({ status: "accepted" });
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: builder.assignmentId,
     turnToken: builder.turnToken,
     errorCode: null,
@@ -452,7 +452,7 @@ it("ask_parent denies ASK_WITH_CHILDREN until Reviewer settles, then answers res
     }),
   ).toMatchObject({ status: "accepted" });
   v2.steps.Builder = () => text("Builder completed with the answer and review");
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: root.assignmentId,
     turnToken: root.turnToken,
     errorCode: null,
@@ -482,13 +482,13 @@ it.each(["finish", "slice"] as const)(
     ).toBe(0);
     if (boundary === "slice") {
       const messageId = await nativeSave(t, root, "Main", "launching slice ended");
-      await t.mutation(components.agevex.queue.continueTurn, {
+      await t.mutation(components.agevex.turns.slices.continueTurn, {
         assignmentId: root.assignmentId,
         executionId: root.turnToken,
         cancellationEpoch: 0,
         messageId,
       });
-      await t.mutation(components.agevex.queue.claim, {
+      await t.mutation(components.agevex.turns.slices.claim, {
         assignmentId: root.assignmentId,
         turnToken: root.turnToken,
         sliceId: "next-slice",
@@ -507,7 +507,7 @@ it.each(["finish", "slice"] as const)(
       ).toMatchObject({ status: "denied", code: "GROUP_CLOSED" });
       await complete(t, second, "second member");
     }
-    await t.mutation(components.agevex.queue.finish, {
+    await t.mutation(components.agevex.turns.slices.finish, {
       assignmentId: root.assignmentId,
       turnToken: root.turnToken,
       errorCode: null,
@@ -517,7 +517,7 @@ it.each(["finish", "slice"] as const)(
       assignmentId: root.assignmentId,
     }))!;
     expect(current.turnStatus).toBe("queued");
-    const claimed = await t.mutation(components.agevex.queue.claim, {
+    const claimed = await t.mutation(components.agevex.turns.slices.claim, {
       assignmentId: root.assignmentId,
       turnToken: current.turnToken!,
     });
@@ -562,7 +562,7 @@ it("a queued wait:all join reports its result messages as results, not notes", a
   const root = await manualRoot(t);
   const member = await launch(t, root, "Reviewer", { group: "labelled", wait: "all" });
   await complete(t, member, "labelled member result");
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: root.assignmentId,
     turnToken: root.turnToken,
     errorCode: null,
@@ -591,13 +591,13 @@ it("a child that fails with a staged continuation under live descendants keeps n
   const reviewer = await launch(t, builder, "Reviewer");
   // afterTurn stages its continuation, then the slice budget runs out.
   expect(
-    await t.mutation(components.agevex.hooks.continueAdmission, {
+    await t.mutation(components.agevex.hooks.state.continueAdmission, {
       assignmentId: builder.assignmentId,
       executionId: builder.turnToken,
       prompt: "continue after the review",
     }),
   ).not.toBeNull();
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: builder.assignmentId,
     turnToken: builder.turnToken,
     errorCode: "SLICE_LIMIT",
@@ -621,7 +621,7 @@ it.each(["join", "question"] as const)(
     const first = await launch(t, root, "Reviewer");
     const slow = await launch(t, root, "Reviewer");
     const independent = await launch(t, root, "Reviewer", { group: "independent", wait: "all" });
-    await t.mutation(components.agevex.queue.finish, {
+    await t.mutation(components.agevex.turns.slices.finish, {
       assignmentId: root.assignmentId,
       turnToken: root.turnToken,
       errorCode: null,
@@ -649,7 +649,7 @@ it.each(["join", "question"] as const)(
       assignmentId: root.assignmentId,
     }))!;
     expect(current.turnStatus).toBe("queued");
-    const claimed = await t.mutation(components.agevex.queue.claim, {
+    const claimed = await t.mutation(components.agevex.turns.slices.claim, {
       assignmentId: root.assignmentId,
       turnToken: current.turnToken!,
     });
@@ -667,7 +667,7 @@ it.each(["join", "question"] as const)(
         })
       )?.queuedMessages,
     ).toBe(0);
-    await t.mutation(components.agevex.queue.finish, {
+    await t.mutation(components.agevex.turns.slices.finish, {
       assignmentId: root.assignmentId,
       turnToken: current.turnToken!,
       errorCode: null,
@@ -676,11 +676,11 @@ it.each(["join", "question"] as const)(
     current = (await t.query(rawAssignment, {
       assignmentId: root.assignmentId,
     }))!;
-    await t.mutation(components.agevex.queue.claim, {
+    await t.mutation(components.agevex.turns.slices.claim, {
       assignmentId: root.assignmentId,
       turnToken: current.turnToken!,
     });
-    await t.mutation(components.agevex.queue.finish, {
+    await t.mutation(components.agevex.turns.slices.finish, {
       assignmentId: root.assignmentId,
       turnToken: current.turnToken!,
       errorCode: null,
@@ -720,7 +720,7 @@ it("cancel at all maxima fences live loop → turn → Workpool dispatch chains 
     ).toMatchObject({ status: "accepted" });
     // R3 settles an ended child with no blockers. Admit the follow-up first
     // so the real queued dispatch, rather than a terminal run, owns this work.
-    await t.mutation(components.agevex.queue.finish, {
+    await t.mutation(components.agevex.turns.slices.finish, {
       assignmentId: child.assignmentId,
       turnToken: child.turnToken,
       errorCode: null,
@@ -745,7 +745,7 @@ it("cancel at all maxima fences live loop → turn → Workpool dispatch chains 
       { timeout: 5000 },
     )
     .toBe(HOST_LIMITS.childLane.max);
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: root.assignmentId,
     turnToken: root.turnToken,
     errorCode: null,
@@ -835,7 +835,7 @@ it("message_child reaches running and idle children, rejects foreign and finishe
       text: message,
     });
   expect(await send()).toMatchObject({ status: "accepted" });
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: child.assignmentId,
     turnToken: child.turnToken,
     errorCode: null,
@@ -843,7 +843,7 @@ it("message_child reaches running and idle children, rejects foreign and finishe
   const resumed = await t.query(rawAssignment, {
     assignmentId: child.assignmentId,
   });
-  const claim = await t.mutation(components.agevex.queue.claim, {
+  const claim = await t.mutation(components.agevex.turns.slices.claim, {
     assignmentId: child.assignmentId,
     turnToken: resumed!.turnToken!,
   });
@@ -854,7 +854,7 @@ it("message_child reaches running and idle children, rejects foreign and finishe
       })
     )[0]?.text,
   ).toBe("follow-up");
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: child.assignmentId,
     turnToken: resumed!.turnToken!,
     errorCode: null,
@@ -869,7 +869,7 @@ it("message_child reaches running and idle children, rejects foreign and finishe
   const foreign = await manualRoot(t, "foreign");
   const other = await launch(t, foreign, "Reviewer");
   expect(await send(other.runId)).toMatchObject({ status: "denied", code: "FORBIDDEN" });
-  await t.mutation(components.agevex.subagents.settle, {
+  await t.mutation(components.agevex.subagents.settle.settle, {
     assignmentId: other.assignmentId,
     turnToken: other.turnToken,
     runId: other.runId,
@@ -1049,7 +1049,7 @@ it("a 15-member closed group bounds native results and large call ids, rejects e
     // Settled members cannot close membership while this launching turn is live.
     expect(execution?.queuedMessages).toBe(0);
   }
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: root.assignmentId,
     turnToken: root.turnToken,
     errorCode: null,
@@ -1057,7 +1057,7 @@ it("a 15-member closed group bounds native results and large call ids, rejects e
   const execution = await t.query(rawAssignment, {
     assignmentId: root.assignmentId,
   });
-  const claimed = await t.mutation(components.agevex.queue.claim, {
+  const claimed = await t.mutation(components.agevex.turns.slices.claim, {
     assignmentId: root.assignmentId,
     turnToken: execution!.turnToken!,
   });
@@ -1089,21 +1089,21 @@ it("the run launch budget counts all 50 descendants across turns and runTree rea
   for (let i = 1; i < HOST_LIMITS.runLaunches.max; i++) {
     const child = await launch(t, parent, "Reviewer");
     reserved.push(child.runId);
-    await t.mutation(components.agevex.subagents.settle, {
+    await t.mutation(components.agevex.subagents.settle.settle, {
       assignmentId: child.assignmentId,
       turnToken: child.turnToken,
       runId: child.runId,
       childResultMessageId: null,
       errorCode: "GENERATION_FAILED",
     });
-    await t.mutation(components.agevex.subagents.deliver, {
+    await t.mutation(components.agevex.subagents.deliver.deliver, {
       runId: child.runId,
       deliveryToken: child.deliveryToken,
       deliveryStatus: "blocked",
       parentMessageId: null,
       errorCode: "DELIVERY_FAILED",
     });
-    await t.mutation(components.agevex.queue.finish, {
+    await t.mutation(components.agevex.turns.slices.finish, {
       assignmentId: child.assignmentId,
       turnToken: child.turnToken,
       errorCode: null,
@@ -1124,7 +1124,7 @@ it("the run launch budget counts all 50 descendants across turns and runTree rea
   for (let i = 0; i < HOST_LIMITS.sideRunsPerRun.max; i++) {
     const actor = i % 2 ? root : parent;
     const side = await t.run(async (ctx) =>
-      ctx.runMutation(components.agevex.subagents.reserve, {
+      ctx.runMutation(components.agevex.subagents.launch.reserve, {
         assignmentId: actor.assignmentId,
         turnToken: actor.turnToken,
         side: true,
@@ -1220,7 +1220,7 @@ it("a later user turn may message an active child of an earlier run on the same 
     text: "new request",
     requestKey: "new-request",
   });
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: root.assignmentId,
     turnToken: root.turnToken,
     errorCode: null,
@@ -1229,7 +1229,7 @@ it("a later user turn may message an active child of an earlier run on the same 
     assignmentId: root.assignmentId,
   }))!;
   expect(
-    await t.mutation(components.agevex.queue.claim, {
+    await t.mutation(components.agevex.turns.slices.claim, {
       assignmentId: current._id,
       turnToken: current.turnToken!,
     }),
@@ -1311,7 +1311,7 @@ it("a joined group needs one queue slot and resumes after a full inbox without r
       })
     ).page.every((run) => run.deliveryStatus === "accepted"),
   ).toBe(true);
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: root.assignmentId,
     turnToken: root.turnToken,
     errorCode: null,
@@ -1319,11 +1319,11 @@ it("a joined group needs one queue slot and resumes after a full inbox without r
   let current = (await t.query(rawAssignment, {
     assignmentId: root.assignmentId,
   }))!;
-  await t.mutation(components.agevex.queue.claim, {
+  await t.mutation(components.agevex.turns.slices.claim, {
     assignmentId: root.assignmentId,
     turnToken: current.turnToken!,
   });
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: root.assignmentId,
     turnToken: current.turnToken!,
     errorCode: null,
@@ -1331,7 +1331,7 @@ it("a joined group needs one queue slot and resumes after a full inbox without r
   current = (await t.query(rawAssignment, {
     assignmentId: root.assignmentId,
   }))!;
-  const claimed = await t.mutation(components.agevex.queue.claim, {
+  const claimed = await t.mutation(components.agevex.turns.slices.claim, {
     assignmentId: root.assignmentId,
     turnToken: current.turnToken!,
   });
@@ -1361,7 +1361,7 @@ it("cancel bounds every descendant inbox across fourteen independent maximum-lau
   const parents = [];
   for (let p = 0; p < HOST_LIMITS.activeChildrenPerRoot.max; p++) {
     if (p) {
-      await t.mutation(components.agevex.queue.finish, {
+      await t.mutation(components.agevex.turns.slices.finish, {
         assignmentId: root.assignmentId,
         turnToken: root.turnToken,
         errorCode: null,
@@ -1375,7 +1375,7 @@ it("cancel bounds every descendant inbox across fourteen independent maximum-lau
         assignmentId: root.assignmentId,
       }))!;
       root = { ...root, turnToken: next.turnToken! };
-      await t.mutation(components.agevex.queue.claim, {
+      await t.mutation(components.agevex.turns.slices.claim, {
         assignmentId: root.assignmentId,
         turnToken: root.turnToken,
       });
@@ -1387,7 +1387,7 @@ it("cancel bounds every descendant inbox across fourteen independent maximum-lau
     if (p === HOST_LIMITS.activeChildrenPerRoot.max - 1) break;
     for (let i = 1; i < HOST_LIMITS.runLaunches.max; i++) {
       const child = await launch(t, parent, "Reviewer", { task: "short fixture task" });
-      await t.mutation(components.agevex.subagents.settle, {
+      await t.mutation(components.agevex.subagents.settle.settle, {
         assignmentId: child.assignmentId,
         turnToken: child.turnToken,
         runId: child.runId,
@@ -1399,7 +1399,7 @@ it("cancel bounds every descendant inbox across fourteen independent maximum-lau
         runId: child.runId,
         deliveryToken: child.deliveryToken,
       });
-      await t.mutation(components.agevex.queue.finish, {
+      await t.mutation(components.agevex.turns.slices.finish, {
         assignmentId: child.assignmentId,
         turnToken: child.turnToken,
         errorCode: null,
@@ -1463,7 +1463,7 @@ it("cancelled groups cannot hide a fresh run's deferred join behind their archiv
   for (let i = 0; i < HOST_LIMITS.activeChildrenPerRoot.max; i++)
     old.push(await launch(t, root, "Reviewer", { group: "old", wait: "all" }));
   for (const child of old.slice(0, -1)) {
-    await t.mutation(components.agevex.subagents.settle, {
+    await t.mutation(components.agevex.subagents.settle.settle, {
       assignmentId: child.assignmentId,
       turnToken: child.turnToken,
       runId: child.runId,
@@ -1486,7 +1486,7 @@ it("cancelled groups cannot hide a fresh run's deferred join behind their archiv
     assignmentId: root.assignmentId,
   }))!;
   root = { ...root, turnToken: fresh.turnToken! };
-  await t.mutation(components.agevex.queue.claim, {
+  await t.mutation(components.agevex.turns.slices.claim, {
     assignmentId: root.assignmentId,
     turnToken: root.turnToken,
   });
@@ -1496,7 +1496,7 @@ it("cancelled groups cannot hide a fresh run's deferred join behind their archiv
     text: "fill queue",
     requestKey: "fill-fresh",
   });
-  await t.mutation(components.agevex.subagents.settle, {
+  await t.mutation(components.agevex.subagents.settle.settle, {
     assignmentId: child.assignmentId,
     turnToken: child.turnToken,
     runId: child.runId,
@@ -1508,7 +1508,7 @@ it("cancelled groups cannot hide a fresh run's deferred join behind their archiv
     runId: child.runId,
     deliveryToken: child.deliveryToken,
   });
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: root.assignmentId,
     turnToken: root.turnToken,
     errorCode: null,
@@ -1516,11 +1516,11 @@ it("cancelled groups cannot hide a fresh run's deferred join behind their archiv
   const queued = (await t.query(rawAssignment, {
     assignmentId: root.assignmentId,
   }))!;
-  await t.mutation(components.agevex.queue.claim, {
+  await t.mutation(components.agevex.turns.slices.claim, {
     assignmentId: root.assignmentId,
     turnToken: queued.turnToken!,
   });
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: root.assignmentId,
     turnToken: queued.turnToken!,
     errorCode: null,
@@ -1529,7 +1529,7 @@ it("cancelled groups cannot hide a fresh run's deferred join behind their archiv
     assignmentId: root.assignmentId,
   }))!;
   expect(released.turnStatus).toBe("queued");
-  const claim = await t.mutation(components.agevex.queue.claim, {
+  const claim = await t.mutation(components.agevex.turns.slices.claim, {
     assignmentId: root.assignmentId,
     turnToken: released.turnToken!,
   });
@@ -1566,7 +1566,7 @@ it("a child whose delivered wait-all cohort is still open cannot settle until it
     "running",
   );
   // Ending the slice seals the cohort; the join is released as Builder's next turn.
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: builder.assignmentId,
     turnToken: builder.turnToken,
     errorCode: null,
@@ -1576,7 +1576,7 @@ it("a child whose delivered wait-all cohort is still open cannot settle until it
   expect((await tree(t, root.threadId)).find((run) => run.runId === builder.runId)?.status).toBe(
     "running",
   );
-  const joined = await t.mutation(components.agevex.queue.claim, {
+  const joined = await t.mutation(components.agevex.turns.slices.claim, {
     assignmentId: builder.assignmentId,
     turnToken: queued.turnToken!,
   });
@@ -1618,21 +1618,21 @@ it("a cancelled request's open cohort never seals into or joins the next request
   });
   const fresh = (await t.query(rawAssignment, { assignmentId: root.assignmentId }))!;
   root = { ...root, turnToken: fresh.turnToken! };
-  await t.mutation(components.agevex.queue.claim, {
+  await t.mutation(components.agevex.turns.slices.claim, {
     assignmentId: root.assignmentId,
     turnToken: root.turnToken,
   });
   const member = await launch(t, root, "Reviewer", { group: "shared", wait: "all" });
   expect((await tree(t, root.threadId)).map((run) => run.runId)).toEqual([member.runId]);
   await complete(t, member, "fresh review from the next request");
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: root.assignmentId,
     turnToken: root.turnToken,
     errorCode: null,
   });
   const queued = (await t.query(rawAssignment, { assignmentId: root.assignmentId }))!;
   expect(queued.turnStatus).toBe("queued");
-  const joined = await t.mutation(components.agevex.queue.claim, {
+  const joined = await t.mutation(components.agevex.turns.slices.claim, {
     assignmentId: root.assignmentId,
     turnToken: queued.turnToken!,
   });
@@ -1667,7 +1667,7 @@ it("the root epoch rejects a late native write from a child that settled immedia
   );
   await expect(
     t.run(async (ctx) =>
-      ctx.runMutation(components.agevex.queue.write, {
+      ctx.runMutation(components.agevex.turns.slices.write, {
         assignmentId: child.assignmentId,
         executionId: child.turnToken,
         cancellationEpoch: 0,
@@ -1710,13 +1710,13 @@ it("a deferred older join coalesces with the newer parent answer without hiding 
     }),
   ).toMatchObject({ status: "accepted" });
   expect(await message("newer answer: use revision two")).toMatchObject({ status: "accepted" });
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: builder.assignmentId,
     turnToken: builder.turnToken,
     errorCode: null,
   });
   v2.steps.Builder = () => text("Builder verified the answer and review");
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: root.assignmentId,
     turnToken: root.turnToken,
     errorCode: null,
@@ -1837,12 +1837,12 @@ it("an answer fits an asking child's full length-one follow-up inbox and the chi
   expect(await t.query(rawAssignment, { assignmentId: child.assignmentId })).toMatchObject({
     queuedMessages: 2,
   });
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: child.assignmentId,
     turnToken: child.turnToken,
     errorCode: null,
   });
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: root.assignmentId,
     turnToken: root.turnToken,
     errorCode: null,
@@ -1858,7 +1858,7 @@ it("a newer each result cannot overtake an older each result from another reques
   let root = await manualRoot(t);
   const older = await launch(t, root, "Reviewer");
   const slow = await launch(t, root, "Reviewer");
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: root.assignmentId,
     turnToken: root.turnToken,
     errorCode: null,
@@ -1872,14 +1872,14 @@ it("a newer each result cannot overtake an older each result from another reques
     assignmentId: root.assignmentId,
   }))!;
   root = { ...root, turnToken: current.turnToken! };
-  await t.mutation(components.agevex.queue.claim, {
+  await t.mutation(components.agevex.turns.slices.claim, {
     assignmentId: root.assignmentId,
     turnToken: root.turnToken,
   });
   const newer = await launch(t, root, "Reviewer");
   await complete(t, older, "older each must run first");
   await complete(t, newer, "newer each must run second");
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: root.assignmentId,
     turnToken: root.turnToken,
     errorCode: null,
@@ -1888,7 +1888,7 @@ it("a newer each result cannot overtake an older each result from another reques
     current = (await t.query(rawAssignment, {
       assignmentId: root.assignmentId,
     }))!;
-    const claimed = await t.mutation(components.agevex.queue.claim, {
+    const claimed = await t.mutation(components.agevex.turns.slices.claim, {
       assignmentId: root.assignmentId,
       turnToken: current.turnToken!,
     });
@@ -1899,7 +1899,7 @@ it("a newer each result cannot overtake an older each result from another reques
         })
       )[0]?.text,
     ).toContain(expected);
-    await t.mutation(components.agevex.queue.finish, {
+    await t.mutation(components.agevex.turns.slices.finish, {
       assignmentId: root.assignmentId,
       turnToken: current.turnToken!,
       errorCode: null,
@@ -1931,13 +1931,13 @@ it("fifteen older unreleased group members cannot hide a ready group in the same
     });
   }
   const sliceMessage = await nativeSave(t, root, "Main", "close the old cohort");
-  await t.mutation(components.agevex.queue.continueTurn, {
+  await t.mutation(components.agevex.turns.slices.continueTurn, {
     assignmentId: root.assignmentId,
     executionId: root.turnToken,
     cancellationEpoch: 0,
     messageId: sliceMessage,
   });
-  await t.mutation(components.agevex.queue.claim, {
+  await t.mutation(components.agevex.turns.slices.claim, {
     assignmentId: root.assignmentId,
     turnToken: root.turnToken,
     sliceId: "fresh-cohort-slice",
@@ -1952,7 +1952,7 @@ it("fifteen older unreleased group members cannot hide a ready group in the same
     requestKey: "history-full",
   });
   await complete(t, fresh, "the ready group beyond fifteen historical rows");
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: root.assignmentId,
     turnToken: root.turnToken,
     errorCode: null,
@@ -1960,11 +1960,11 @@ it("fifteen older unreleased group members cannot hide a ready group in the same
   let current = (await t.query(rawAssignment, {
     assignmentId: root.assignmentId,
   }))!;
-  await t.mutation(components.agevex.queue.claim, {
+  await t.mutation(components.agevex.turns.slices.claim, {
     assignmentId: root.assignmentId,
     turnToken: current.turnToken!,
   });
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: root.assignmentId,
     turnToken: current.turnToken!,
     errorCode: null,
@@ -1973,7 +1973,7 @@ it("fifteen older unreleased group members cannot hide a ready group in the same
     assignmentId: root.assignmentId,
   }))!;
   expect(current.turnStatus).toBe("queued");
-  const claimed = await t.mutation(components.agevex.queue.claim, {
+  const claimed = await t.mutation(components.agevex.turns.slices.claim, {
     assignmentId: root.assignmentId,
     turnToken: current.turnToken!,
   });
@@ -2074,7 +2074,7 @@ it("Builder cannot settle in the gap between Reviewer's terminal state and its n
       errorCode: null,
     }),
   ).toMatchObject({ status: "deferred" });
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: builder.assignmentId,
     turnToken: builder.turnToken,
     errorCode: null,
@@ -2086,12 +2086,12 @@ it("Builder cannot settle in the gap between Reviewer's terminal state and its n
     deliveryToken: reviewer.deliveryToken,
   });
   v2.steps.Builder = () => text("last turn verified after native delivery");
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: reviewer.assignmentId,
     turnToken: reviewer.turnToken,
     errorCode: null,
   });
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: root.assignmentId,
     turnToken: root.turnToken,
     errorCode: null,
@@ -2118,7 +2118,7 @@ it("a claim drains fifty ready deferred groups at the maximum launch and hop bud
     text: "full queue delays every ready cohort",
     requestKey: "fifty-groups-full",
   });
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: root.assignmentId,
     turnToken: root.turnToken,
     errorCode: null,
@@ -2126,11 +2126,11 @@ it("a claim drains fifty ready deferred groups at the maximum launch and hop bud
   let current = (await t.query(rawAssignment, {
     assignmentId: root.assignmentId,
   }))!;
-  await t.mutation(components.agevex.queue.claim, {
+  await t.mutation(components.agevex.turns.slices.claim, {
     assignmentId: root.assignmentId,
     turnToken: current.turnToken!,
   });
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: root.assignmentId,
     turnToken: current.turnToken!,
     errorCode: null,
@@ -2139,7 +2139,7 @@ it("a claim drains fifty ready deferred groups at the maximum launch and hop bud
     assignmentId: root.assignmentId,
   }))!;
   const { claimed, metrics } = await t.run(async (ctx) => {
-    const claimed = await ctx.runMutation(components.agevex.queue.claim, {
+    const claimed = await ctx.runMutation(components.agevex.turns.slices.claim, {
       assignmentId: root.assignmentId,
       turnToken: current.turnToken!,
     });
@@ -2158,7 +2158,7 @@ it("a claim drains fifty ready deferred groups at the maximum launch and hop bud
   expect(await t.query(rawAssignment, { assignmentId: root.assignmentId })).toMatchObject({
     queuedMessages: 0,
   });
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: root.assignmentId,
     turnToken: current.turnToken!,
     errorCode: null,
@@ -2202,12 +2202,12 @@ it.each(
         errorCode: result === "failed" ? "GENERATION_FAILED" : null,
       }),
     ).toMatchObject({ status: "deferred" });
-    await t.mutation(components.agevex.queue.finish, {
+    await t.mutation(components.agevex.turns.slices.finish, {
       assignmentId: builder.assignmentId,
       turnToken: builder.turnToken,
       errorCode: null,
     });
-    await t.mutation(components.agevex.subagents.settle, {
+    await t.mutation(components.agevex.subagents.settle.settle, {
       assignmentId: reviewer.assignmentId,
       turnToken: reviewer.turnToken,
       runId: reviewer.runId,
@@ -2216,7 +2216,7 @@ it.each(
     });
     // The terminal-to-delivery gap remains fenced even after Builder ended.
     expect((await tree(t, root.threadId))[0].status).toBe("running");
-    await t.mutation(components.agevex.subagents.deliver, {
+    await t.mutation(components.agevex.subagents.deliver.deliver, {
       runId: reviewer.runId,
       deliveryToken: reviewer.deliveryToken,
       deliveryStatus,
@@ -2228,12 +2228,12 @@ it.each(
     expect((await tree(t, root.threadId))[0].status).toBe(
       result === "verified" ? "completed" : "failed",
     );
-    await t.mutation(components.agevex.queue.finish, {
+    await t.mutation(components.agevex.turns.slices.finish, {
       assignmentId: reviewer.assignmentId,
       turnToken: reviewer.turnToken,
       errorCode: null,
     });
-    await t.mutation(components.agevex.queue.finish, {
+    await t.mutation(components.agevex.turns.slices.finish, {
       assignmentId: root.assignmentId,
       turnToken: root.turnToken,
       errorCode: null,
@@ -2339,12 +2339,8 @@ it.each([1, HOST_LIMITS.queueLength.max])(
         executionId: row.turnToken!,
         sliceId: row.turnToken! + "/0",
       };
-      const dispatch = componentsGeneric().agevex.worker.dispatch as unknown as FunctionReference<
-        "action",
-        "internal",
-        typeof args,
-        null
-      >;
+      const dispatch = componentsGeneric().agevex.workflows.worker
+        .dispatch as unknown as FunctionReference<"action", "internal", typeof args, null>;
       await t.action(dispatch, args);
       // Duplicate dispatch completion must neither decrement nor escalate again.
       await t.action(dispatch, args);
@@ -2375,7 +2371,7 @@ it.each([1, HOST_LIMITS.queueLength.max])(
     const live = [];
     for (let i = 0; i < HOST_LIMITS.activeChildrenPerRoot.max; i++) {
       if (i) {
-        await t.mutation(components.agevex.queue.finish, {
+        await t.mutation(components.agevex.turns.slices.finish, {
           assignmentId: root.assignmentId,
           turnToken: root.turnToken,
           errorCode: null,
@@ -2390,7 +2386,7 @@ it.each([1, HOST_LIMITS.queueLength.max])(
         }))!;
         root = { ...root, turnToken: current.turnToken! };
         expect(
-          await t.mutation(components.agevex.queue.claim, {
+          await t.mutation(components.agevex.turns.slices.claim, {
             assignmentId: root.assignmentId,
             turnToken: root.turnToken,
           }),
@@ -2399,7 +2395,7 @@ it.each([1, HOST_LIMITS.queueLength.max])(
       const child = await queued();
       live.push(child);
       expect(
-        await t.mutation(components.agevex.queue.claim, {
+        await t.mutation(components.agevex.turns.slices.claim, {
           assignmentId: child.row._id,
           turnToken: child.row.turnToken!,
         }),
@@ -2407,7 +2403,7 @@ it.each([1, HOST_LIMITS.queueLength.max])(
       for (let n = 0; n < Math.min(queueLength, HOST_LIMITS.messagesPerChild.max); n++)
         expect(await message(child.run.runId)).toMatchObject({ status: "accepted" });
       expect(await message(child.run.runId)).toMatchObject({ status: "denied" });
-      await t.mutation(components.agevex.queue.finish, {
+      await t.mutation(components.agevex.turns.slices.finish, {
         assignmentId: child.row._id,
         turnToken: child.row.turnToken!,
         errorCode: null,
@@ -2452,21 +2448,21 @@ it("an ended Builder releases every empty all cohort at the maximum launch budge
   const builder = await launch(t, root, "Builder");
   for (let i = 1; i < HOST_LIMITS.runLaunches.max; i++) {
     const reviewer = await launch(t, builder, "Reviewer", { group: "empty-" + i, wait: "all" });
-    await t.mutation(components.agevex.subagents.settle, {
+    await t.mutation(components.agevex.subagents.settle.settle, {
       assignmentId: reviewer.assignmentId,
       turnToken: reviewer.turnToken,
       runId: reviewer.runId,
       childResultMessageId: null,
       errorCode: "GENERATION_FAILED",
     });
-    await t.mutation(components.agevex.subagents.deliver, {
+    await t.mutation(components.agevex.subagents.deliver.deliver, {
       runId: reviewer.runId,
       deliveryToken: reviewer.deliveryToken,
       deliveryStatus: "failed",
       parentMessageId: null,
       errorCode: "DELIVERY_FAILED",
     });
-    await t.mutation(components.agevex.queue.finish, {
+    await t.mutation(components.agevex.turns.slices.finish, {
       assignmentId: reviewer.assignmentId,
       turnToken: reviewer.turnToken,
       errorCode: null,
@@ -2489,7 +2485,7 @@ it("an ended Builder releases every empty all cohort at the maximum launch budge
     }),
   ).toMatchObject({ status: "deferred" });
   const metrics = await t.run(async (ctx) => {
-    await ctx.runMutation(components.agevex.queue.finish, {
+    await ctx.runMutation(components.agevex.turns.slices.finish, {
       assignmentId: builder.assignmentId,
       turnToken: builder.turnToken,
       errorCode: null,
@@ -2500,7 +2496,7 @@ it("an ended Builder releases every empty all cohort at the maximum launch budge
   expect(metrics.documentsRead.used).toBeLessThan(4096);
   expect(metrics.documentsWritten.used).toBeLessThan(8000);
   expect((await tree(t, root.threadId))[0].status).toBe("completed");
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: root.assignmentId,
     turnToken: root.turnToken,
     errorCode: null,
@@ -2541,7 +2537,7 @@ it.each(
       }),
     ).toMatchObject({ status: "deferred" });
     await t.run(async (ctx) =>
-      ctx.runMutation(components.agevex.queue.write, {
+      ctx.runMutation(components.agevex.turns.slices.write, {
         assignmentId: child.assignmentId,
         executionId: child.turnToken,
         cancellationEpoch: 0,
@@ -2583,7 +2579,7 @@ it.each(
       }),
     );
     const failDelivery = async () => {
-      await t.mutation(components.agevex.subagents.settle, {
+      await t.mutation(components.agevex.subagents.settle.settle, {
         assignmentId: descendant.assignmentId,
         turnToken: descendant.turnToken,
         runId: descendant.runId,
@@ -2591,14 +2587,14 @@ it.each(
         errorCode: "GENERATION_FAILED",
       });
       // Clearing the last descendant is an R3 re-check without new inbox work.
-      await t.mutation(components.agevex.subagents.deliver, {
+      await t.mutation(components.agevex.subagents.deliver.deliver, {
         runId: descendant.runId,
         deliveryToken: descendant.deliveryToken,
         deliveryStatus: "failed",
         parentMessageId: null,
         errorCode: "DELIVERY_FAILED",
       });
-      await t.mutation(components.agevex.queue.finish, {
+      await t.mutation(components.agevex.turns.slices.finish, {
         assignmentId: descendant.assignmentId,
         turnToken: descendant.turnToken,
         errorCode: null,
@@ -2628,7 +2624,7 @@ it.each(
       queuedMessages: 0,
     });
     v2.steps.Builder = () => text("final result after response");
-    await t.mutation(components.agevex.queue.finish, {
+    await t.mutation(components.agevex.turns.slices.finish, {
       assignmentId: root.assignmentId,
       turnToken: root.turnToken,
       errorCode: null,
@@ -2655,7 +2651,7 @@ it.each([1, HOST_LIMITS.messagesPerChild.max])(
     const root = await manualRoot(t);
     const child = await launch(t, root, "Builder");
     const descendant = await launch(t, child, "Reviewer");
-    await t.mutation(components.agevex.queue.finish, {
+    await t.mutation(components.agevex.turns.slices.finish, {
       assignmentId: child.assignmentId,
       turnToken: child.turnToken,
       errorCode: null,
@@ -2665,7 +2661,7 @@ it.each([1, HOST_LIMITS.messagesPerChild.max])(
       assignmentId: child.assignmentId,
     }))!;
     expect(current.turnOrigin).toBe("subagent_result");
-    await t.mutation(components.agevex.queue.claim, {
+    await t.mutation(components.agevex.turns.slices.claim, {
       assignmentId: child.assignmentId,
       turnToken: current.turnToken!,
     });
@@ -2682,7 +2678,7 @@ it.each([1, HOST_LIMITS.messagesPerChild.max])(
         }),
       ).toMatchObject({ status: "accepted" });
     await t.run(async (ctx) =>
-      ctx.runMutation(components.agevex.queue.write, {
+      ctx.runMutation(components.agevex.turns.slices.write, {
         assignmentId: child.assignmentId,
         executionId: current.turnToken!,
         cancellationEpoch: current.cancellationEpoch,
@@ -2727,7 +2723,7 @@ it.each([1, HOST_LIMITS.messagesPerChild.max])(
       text: "Use the final revision from this deferred answer",
     });
     v2.steps.Builder = () => text("Builder completed after the deferred answer");
-    await t.mutation(components.agevex.queue.finish, {
+    await t.mutation(components.agevex.turns.slices.finish, {
       assignmentId: root.assignmentId,
       turnToken: root.turnToken,
       errorCode: null,
@@ -2747,7 +2743,7 @@ it("pending notes precede every claimed wait-all group member while generation k
   const root = await manualRoot(t);
   const first = await launch(t, root, "Reviewer", { group: "noted group", wait: "all" });
   const second = await launch(t, root, "Reviewer", { group: "noted group", wait: "all" });
-  await t.mutation(components.agevex.hooks.addNote, {
+  await t.mutation(components.agevex.hooks.notes.addNote, {
     assignmentId: root.assignmentId,
     text: "before all group members",
     from: "critic",
@@ -2755,7 +2751,7 @@ it("pending notes precede every claimed wait-all group member while generation k
   // Deliver in reverse launch order: placement follows native arrival order.
   await complete(t, second, "earlier group result");
   await complete(t, first, "later group result");
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: root.assignmentId,
     turnToken: root.turnToken,
     errorCode: null,

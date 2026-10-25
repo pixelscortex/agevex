@@ -7,8 +7,8 @@
  * an idle child whose last blocker cleared (R3), reserves at most one ready
  * inbox row as the next queued turn, starts or rings the loop workflow, and
  * leaves exactly the right recovery check armed. The loop's side of the
- * doorbell is `nextQueuedTurn` (`queue.next`); `reconcileDoorbell`
- * (`queue.reconcile`) re-rings a loop whose ping was lost. Touches
+ * doorbell is `nextQueuedTurn` (`turns.loop.next`); `reconcileDoorbell`
+ * (`turns.loop.reconcile`) re-rings a loop whose ping was lost. Touches
  * `assignments`, reads the ready `inbox` range and `subagentRuns`.
  */
 import type { WorkflowId } from "@convex-dev/workflow";
@@ -18,7 +18,7 @@ import type { Doc, Id } from "../_generated/dataModel.js";
 import { laneManager, startLoop } from "../workflows/lanes.js";
 import { firstReady } from "./inbox.js";
 import { runById } from "../subagents/runs.js";
-import { settleIdleParent } from "../subagents/settlement.js";
+import { settleIdleParent } from "../subagents/settle.js";
 import {
   armRecovery,
   cancelIfPending,
@@ -95,7 +95,8 @@ export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = tru
 async function drainEmptyCohorts(ctx: MutationCtx, row: Doc<"assignments">) {
   const releases = row.childRunId ? row.limits.runLaunches : 1;
   for (let i = 0; i < releases; i++) {
-    if (!(await ctx.runMutation(api.subagents.releaseGroups, { assignmentId: row._id }))) break;
+    if (!(await ctx.runMutation(api.subagents.deliver.releaseGroups, { assignmentId: row._id })))
+      break;
     row = (await ctx.db.get("assignments", row._id))!;
     if (await needsRecovery(ctx, row)) break;
   }

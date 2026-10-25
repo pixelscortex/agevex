@@ -1,5 +1,5 @@
 /**
- * `queue.write`: the transactional fence around every native Agent write and
+ * `turns.slices.write`: the transactional fence around every native Agent write and
  * host tool mutation made by a running turn.
  *
  * The host action never writes native history directly. It hands the native
@@ -9,7 +9,7 @@
  * or the write commits first, with no race. Around native message saves it
  * also records coordination facts atomically: the exact message refs, the
  * usage step, the child's final result id, the pending generation and stream,
- * and any approval pause (queue/pause.ts). Touches `assignments`,
+ * and any approval pause (turns/pause.ts). Touches `assignments`,
  * `subagentRuns.childResultMessageId` and `inbox`.
  */
 import type { MessageDoc } from "@convex-dev/agent";
@@ -22,7 +22,7 @@ import { LIMITS } from "../limits.js";
 import { recordMessages } from "../hooks/refs.js";
 import { runById } from "../subagents/runs.js";
 import { disarmRecovery } from "./recovery.js";
-import { disarmSlice } from "./slice.js";
+import { disarmSlice } from "./boundaries.js";
 import { deferChildFailure, failChild } from "./finish.js";
 import {
   collectPause,
@@ -106,7 +106,7 @@ async function liveWriter(ctx: MutationCtx, row: Doc<"assignments"> | null, args
 }
 
 /** A write from a turn that lost its fence. The one stale write allowed is
- * failing this execution's own pending placeholder (cancellation.close);
+ * failing this execution's own pending placeholder (cancellation.cleanup.close);
  * everything else is refused or silently dropped. */
 async function staleWrite(ctx: MutationCtx, row: Doc<"assignments"> | null, args: WriteArgs) {
   const pending = row?.pendingGeneration;
@@ -118,7 +118,7 @@ async function staleWrite(ctx: MutationCtx, row: Doc<"assignments"> | null, args
     args.args?.messageId === pending.messageId &&
     args.args?.result?.status === "failed"
   )
-    return ctx.runMutation(internal.cancellation.close, {
+    return ctx.runMutation(internal.cancellation.cleanup.close, {
       assignmentId: args.assignmentId,
       executionId: args.executionId,
       epoch: args.cancellationEpoch,

@@ -2,10 +2,10 @@
 // (next message in an owned root conversation).
 //
 // Both are idempotent per subject and request key: input is validated and
-// fingerprinted, a duplicate returns its stored receipt (`queue.lookupReceipt`),
+// fingerprinted, a duplicate returns its stored receipt (`turns.send.lookupReceipt`),
 // and only a fresh request saves the native prompt (with its attachments) and is
-// admitted by `queue.accept` in the same transaction. `send` also respects the
-// thread's admission state (`queue.admission`) before any native write.
+// admitted by `turns.send.accept` in the same transaction. `send` also respects the
+// thread's admission state (`turns.send.admission`) before any native write.
 
 import { createThread, saveMessage } from "@convex-dev/agent";
 import {
@@ -59,7 +59,7 @@ function validModels(
   );
 }
 
-/** One admitted request, as `acceptRequest` passes it to `queue.accept`. */
+/** One admitted request, as `acceptRequest` passes it to `turns.send.accept`. */
 type AcceptedRequest = {
   operation: "open" | "send";
   subject: string;
@@ -84,7 +84,7 @@ async function acceptRequest(
   request: AcceptedRequest,
 ) {
   const { messageId, message } = request.saved;
-  const accepted = await ctx.runMutation(ep.component.queue.accept, {
+  const accepted = await ctx.runMutation(ep.component.turns.send.accept, {
     subject: request.subject,
     agent: request.agent,
     threadId: request.threadId,
@@ -135,7 +135,7 @@ export function openEndpoint(ep: EndpointContext) {
 
       const { prompt, models, files } = args;
       const hash = await fingerprint(["open", args.agent, prompt, models ?? null, files ?? []]);
-      const duplicate = await ctx.runQuery(ep.component.queue.lookupReceipt, {
+      const duplicate = await ctx.runQuery(ep.component.turns.send.lookupReceipt, {
         subject,
         requestKey: args.requestKey,
         fingerprint: hash,
@@ -191,13 +191,13 @@ export function sendEndpoint(ep: EndpointContext) {
 
       const { threadId, text, models, files } = args;
       const hash = await fingerprint(["send", threadId, text, models ?? null, files ?? []]);
-      const duplicate = await ctx.runQuery(ep.component.queue.lookupReceipt, {
+      const duplicate = await ctx.runQuery(ep.component.turns.send.lookupReceipt, {
         subject: row.subject,
         requestKey: args.requestKey,
         fingerprint: hash,
       });
       if (duplicate) return duplicate;
-      const refusal = await ctx.runQuery(ep.component.queue.admission, {
+      const refusal = await ctx.runQuery(ep.component.turns.send.admission, {
         threadId,
         subject: row.subject,
       });

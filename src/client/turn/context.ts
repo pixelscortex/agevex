@@ -21,11 +21,11 @@ import type {
 } from "../types.js";
 import type { TurnFence } from "./fence.js";
 
-/** The `queue.execution` row a turn is fenced against. */
-export type Execution = FunctionReturnType<ComponentApi["queue"]["execution"]>;
+/** The `turns.slices.execution` row a turn is fenced against. */
+export type Execution = FunctionReturnType<ComponentApi["turns"]["slices"]["execution"]>;
 
-/** The facts `queue.claim` returns for a claimed turn. */
-export type Claimed = NonNullable<FunctionReturnType<ComponentApi["queue"]["claim"]>>;
+/** The facts `turns.slices.claim` returns for a claimed turn. */
+export type Claimed = NonNullable<FunctionReturnType<ComponentApi["turns"]["slices"]["claim"]>>;
 
 /** One claimed turn: everything later phases may assume. */
 export type Turn = {

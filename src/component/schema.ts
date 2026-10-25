@@ -319,8 +319,9 @@ export default defineSchema({
     ),
     runId: v.id("runs"),
     // Read by wake (result/note make a subagent_result turn; user/parent make a
-    // user turn), claim (non-user kinds merge consecutively; a user row ends it) and hooks.origins
-    // (note and continue label their message, result falls through to its run).
+    // user turn), claim (non-user kinds merge consecutively; a user row ends
+    // it) and hooks.origins.origins (note and continue label their message,
+    // result falls through to its run).
     kind: v.union(
       v.literal("user"),
       v.literal("result"),
@@ -340,7 +341,7 @@ export default defineSchema({
     models: v.optional(modelOverrides),
     // Bit sets over agent indexes: startedAgents marks agents that began in this
     // run (claim isRunStart); routingAgents marks the owner of a pending
-    // beforeTurn model decision (hooks.routing/settleRouting).
+    // beforeTurn model decision (hooks.routing.routing/settleRouting).
     startedAgents: v.int64(),
     routingAgents: v.int64(),
     // Read by continueAdmission against limits.continuesPerRun.

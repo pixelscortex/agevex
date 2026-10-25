@@ -2,10 +2,10 @@
  * Read-only delegation views for the host.
  *
  * Trusted contexts for a running turn: `delegateScope` (may it delegate, and
- * under which root: `subagents.delegateContext`), `settlementScope` (what a
- * finishing child needs to verify its result: `subagents.settlementContext`)
+ * under which root: `subagents.launch.delegateContext`), `settlementScope` (what a
+ * finishing child needs to verify its result: `subagents.settle.settlementContext`)
  * and `terminalContext` (what the coordinator needs to deliver a finished
- * run: `subagents.deliveryContext`). Public views: `delegationPage` (the
+ * run: `subagents.deliver.deliveryContext`). Public views: `delegationPage` (the
  * root's paginated history) and `requestTree` (the current request's tree).
  * Only small coordination fields cross the query boundary: no transcript
  * bodies, and capabilities only to the turn or coordinator that owns them.
@@ -17,7 +17,7 @@ import type { Doc, Id } from "../_generated/dataModel.js";
 import { runErrorCode } from "../schema.js";
 import { LIMITS } from "../limits.js";
 import { runById } from "./runs.js";
-import { settlementBlocked } from "./settlement.js";
+import { settlementBlocked } from "./settle.js";
 
 /** The root context of a running turn that wants to delegate: who the root
  * is and how many children it already has live. Null for stale turns. */
@@ -45,7 +45,7 @@ export async function delegateScope(
 /**
  * What a finishing child turn needs before it reports its outcome: the run it
  * is finishing, the child's recorded final assistant message (written by
- * queue.write in the same transaction as the native save), and whether the
+ * turns.slices.write in the same transaction as the native save), and whether the
  * settlement fence still holds (`blocked`: pending inbox work, descendants or
  * an unjoined cohort). The host uses it to verify the result before calling
  * `settle`. Null unless this exact turn token still owns a running child turn

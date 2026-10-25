@@ -1,10 +1,10 @@
 // File attachments on `open` / `send`.
 //
 // `validateFiles` bounds the requested file list; `attachment` checks each file's
-// grant (`files.owns`), native metadata and Convex storage size, and builds the
+// grant (`files.attachments.owns`), native metadata and Convex storage size, and builds the
 // native user message (file parts, or a text pointer when the extract slot reads
 // files instead); `recordAttachments` binds the files to the saved message
-// (`files.attach`). All of it runs in the request's transaction, before and after
+// (`files.attachments.attach`). All of it runs in the request's transaction, before and after
 // the native save, so ownership and byte checks precede any native refcount write.
 
 import {
@@ -51,10 +51,10 @@ export async function attachment(
   // <=1 KiB storage metadata rows and eight <=8 KiB grants. An invalid oversized native row aborts immediately after
   // at most one <=1 MiB read, before any native write. Native attachment saves
   // reread <=8*4 KiB for refcounts; total attachment-specific admission <1 MiB plus
-  // existing queue/Workflow bookkeeping. Storage holds all actual file bytes.
+  // existing turn/Workflow bookkeeping. Storage holds all actual file bytes.
   let bytes = 0;
   for (const fileId of files) {
-    if (!(await ctx.runQuery(ep.component.files.owns, { native, fileId, subject })))
+    if (!(await ctx.runQuery(ep.component.files.attachments.owns, { native, fileId, subject })))
       throw new Error("FILE_FORBIDDEN");
     const file = await ctx.runQuery(managed.component.files.get, { fileId });
     if (!file || getConvexSize(file) > LIMITS.fileMetadataBytes) throw new Error("INVALID_FILE");
@@ -117,7 +117,7 @@ export async function recordAttachments(
   messageId: string,
 ) {
   if (files?.length)
-    await ctx.runMutation(ep.component.files.attach, {
+    await ctx.runMutation(ep.component.files.attachments.attach, {
       native,
       files,
       subject,

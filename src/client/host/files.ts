@@ -1,8 +1,8 @@
 // Trusted host helpers for file attachments, returned by `registerAgent`.
 //
 // `registerFile` binds a native Agent file the host has just stored for an
-// authorized subject (`files.register`); `fileAttached` is the exact attachment
-// policy an extract adapter's `authorize` callback uses (`files.owns`). Neither is
+// authorized subject (`files.attachments.register`); `fileAttached` is the exact attachment
+// policy an extract adapter's `authorize` callback uses (`files.attachments.owns`). Neither is
 // a public endpoint: they trust their caller's subject, so the host must call them
 // only from its own server code after authorizing that subject.
 
@@ -35,7 +35,7 @@ export async function registerFile(
   const file = await ctx.runQuery(managed.component.files.get, { fileId: args.fileId });
   if (!file || getConvexSize(file) > LIMITS.fileMetadataBytes) throw new Error("INVALID_FILE");
 
-  await ctx.runMutation(rt.component.files.register, {
+  await ctx.runMutation(rt.component.files.attachments.register, {
     native: await createFunctionHandle(managed.component.files.get),
     fileId: args.fileId,
     subject: args.subject,
@@ -53,13 +53,13 @@ export async function fileAttached(
 ) {
   assertFact(args.subject, "subject");
   assertFact(args.threadId, "threadId");
-  const assignment = await ctx.runQuery(rt.component.queue.assignment, {
+  const assignment = await ctx.runQuery(rt.component.turns.send.assignment, {
     threadId: args.threadId,
   });
   const managed = assignment && rt.graph.byName.get(assignment.agent);
   if (!managed || assignment.subject !== args.subject) return false;
 
-  return ctx.runQuery(rt.component.files.owns, {
+  return ctx.runQuery(rt.component.files.attachments.owns, {
     ...args,
     native: await createFunctionHandle(managed.component.files.get),
   });

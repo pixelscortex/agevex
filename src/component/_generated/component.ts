@@ -8,12 +8,23 @@
  */
 import type { ApiFromModules, FunctionReference } from "convex/server";
 import type { GenericId } from "convex/values";
-import type * as files from "../files.js";
-import type * as hooks from "../hooks.js";
-import type * as queue from "../queue.js";
-import type * as subagents from "../subagents.js";
-import type * as ledger from "../ledger.js";
-import type * as cancellation from "../cancellation.js";
+import type * as files_attachments from "../files/attachments.js";
+import type * as hooks_notes from "../hooks/notes.js";
+import type * as hooks_origins from "../hooks/origins.js";
+import type * as hooks_reviews from "../hooks/reviews.js";
+import type * as hooks_routing from "../hooks/routing.js";
+import type * as hooks_state from "../hooks/state.js";
+import type * as receipts_effects from "../receipts/effects.js";
+import type * as subagents_deliver from "../subagents/deliver.js";
+import type * as subagents_history from "../subagents/history.js";
+import type * as subagents_launch from "../subagents/launch.js";
+import type * as subagents_messages from "../subagents/messages.js";
+import type * as subagents_settle from "../subagents/settle.js";
+import type * as turns_approvals from "../turns/approvals.js";
+import type * as turns_cancel from "../turns/cancel.js";
+import type * as turns_failures from "../turns/failures.js";
+import type * as turns_send from "../turns/send.js";
+import type * as turns_slices from "../turns/slices.js";
 
 type Wire<T> = T extends GenericId<string>
   ? string
@@ -35,12 +46,23 @@ type Exposed<T, Name extends string | undefined> = {
 
 export type ComponentApi<Name extends string | undefined = string | undefined> = Exposed<
   ApiFromModules<{
-    cancellation: typeof cancellation;
-    files: typeof files;
-    hooks: typeof hooks;
-    queue: typeof queue;
-    subagents: typeof subagents;
-    ledger: typeof ledger;
+    "files/attachments": typeof files_attachments;
+    "hooks/notes": typeof hooks_notes;
+    "hooks/origins": typeof hooks_origins;
+    "hooks/reviews": typeof hooks_reviews;
+    "hooks/routing": typeof hooks_routing;
+    "hooks/state": typeof hooks_state;
+    "receipts/effects": typeof receipts_effects;
+    "subagents/deliver": typeof subagents_deliver;
+    "subagents/history": typeof subagents_history;
+    "subagents/launch": typeof subagents_launch;
+    "subagents/messages": typeof subagents_messages;
+    "subagents/settle": typeof subagents_settle;
+    "turns/approvals": typeof turns_approvals;
+    "turns/cancel": typeof turns_cancel;
+    "turns/failures": typeof turns_failures;
+    "turns/send": typeof turns_send;
+    "turns/slices": typeof turns_slices;
   }>,
   Name
 >;

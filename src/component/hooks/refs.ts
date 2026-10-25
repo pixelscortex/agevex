@@ -4,10 +4,10 @@
  * Watched assignments (those a side review reads) record the identity, order
  * and size of every successful user/assistant message in the same transaction
  * that saves it natively, so a review can later read exactly those documents
- * without listing the transcript. Writers: queue.write (model saves),
- * queue.accept / subagents.attach (prompts), hooks.capture (host coordinator
+ * without listing the transcript. Writers: turns.slices.write (model saves),
+ * turns.send.accept / subagents.launch.attach (prompts), hooks.reviews.capture (host coordinator
  * saves) and hooks/notes.ts (notes). Readers: `reviewWindow`
- * (`hooks.reviewContext`), with `markReviewed` (`hooks.reviewed`) recording
+ * (`hooks.reviews.reviewContext`), with `markReviewed` (`hooks.reviews.reviewed`) recording
  * each side reviewer's consumed boundary.
  */
 import { getConvexSize, v, type Infer } from "convex/values";

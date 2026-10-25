@@ -579,21 +579,25 @@ it("one message never binds more than filesPerMessage attachments, so forMessage
   const native = "native-files";
   const fileIds = Array.from({ length: LIMITS.filesPerMessage + 1 }, (_, n) => `file-${n}`);
   for (const fileId of fileIds)
-    await t.mutation(components.agevex.files.register, { native, fileId, subject: "alice" });
+    await t.mutation(components.agevex.files.attachments.register, {
+      native,
+      fileId,
+      subject: "alice",
+    });
   const message = { native, subject: "alice", threadId: "thread", messageId: "message" };
   const bound = fileIds.slice(0, LIMITS.filesPerMessage);
-  await t.mutation(components.agevex.files.attach, { ...message, files: bound });
+  await t.mutation(components.agevex.files.attachments.attach, { ...message, files: bound });
   // A second host call for the same message cannot push it past the cap that
   // attach's dedup read and forMessage's bounded read both rely on.
   await expect(
-    t.mutation(components.agevex.files.attach, {
+    t.mutation(components.agevex.files.attachments.attach, {
       ...message,
       files: fileIds.slice(LIMITS.filesPerMessage),
     }),
   ).rejects.toThrow("FILE_LIMIT");
   // Re-binding an already bound file stays an idempotent no-op at the cap.
-  await t.mutation(components.agevex.files.attach, { ...message, files: [bound[0]] });
-  expect((await t.query(components.agevex.files.forMessage, message)).sort()).toEqual(
+  await t.mutation(components.agevex.files.attachments.attach, { ...message, files: [bound[0]] });
+  expect((await t.query(components.agevex.files.attachments.forMessage, message)).sort()).toEqual(
     [...bound].sort(),
   );
 });
@@ -804,9 +808,9 @@ it("upload ownership survives effect receipt cleanup without keeping purge work 
   const t = setup();
   const fileId = await upload(t);
   const args = { scope: "expired-effect", key: "effect", fingerprint: "effect" };
-  const claim = await t.mutation(components.agevex.ledger.begin, args);
+  const claim = await t.mutation(components.agevex.receipts.effects.begin, args);
   if (claim.status !== "claimed") throw new Error("EXPECTED_CLAIM");
-  await t.mutation(components.agevex.ledger.complete, {
+  await t.mutation(components.agevex.receipts.effects.complete, {
     scope: args.scope,
     key: args.key,
     claim: claim.claim,

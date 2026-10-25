@@ -81,7 +81,7 @@ const activity = (t: Convex, threadId: string) =>
   }>;
 
 /**
- * Child linkage the real `queue.claim` returns for a delegated turn. Used to
+ * Child linkage the real `turns.slices.claim` returns for a delegated turn. Used to
  * prove that no stale or foreign capability can settle or deliver a run.
  */
 type ClaimedChild = {
@@ -102,7 +102,7 @@ type ClaimedChild = {
  * Drives the same real pieces the coordinator does — a native thread and task
  * message save plus `reserve` and `attach` in one transaction — so the test owns
  * the child thread id and can look its assignment up through the public
- * `queue.assignment` projection instead of reaching into component state. It
+ * `turns.send.assignment` projection instead of reaching into component state. It
  * neither claims nor releases the root turn, so a test can hold one root turn
  * open across several launches.
  */
@@ -119,7 +119,7 @@ async function reserveAndAttachChild(
       prompt: "one bounded task",
       userId: "alice",
     });
-    const reserved = await ctx.runMutation(components.agevex.subagents.reserve, {
+    const reserved = await ctx.runMutation(components.agevex.subagents.launch.reserve, {
       ...rootTurn,
       toolCallId,
       agent: "Researcher",
@@ -127,7 +127,7 @@ async function reserveAndAttachChild(
       coordinateHandle: await createFunctionHandle(coordinateReference()),
     });
     if (reserved.kind !== "reserved") throw new Error(`RESERVE_${reserved.kind}`);
-    await ctx.runMutation(components.agevex.subagents.attach, {
+    await ctx.runMutation(components.agevex.subagents.launch.attach, {
       runId: reserved.runId,
       childThreadId: threadId,
       promptMessageId: messageId,
@@ -136,7 +136,7 @@ async function reserveAndAttachChild(
     return threadId;
   });
   const child = await t.run((ctx) =>
-    ctx.runQuery(components.agevex.queue.assignment, { threadId: childThreadId }),
+    ctx.runQuery(components.agevex.turns.send.assignment, { threadId: childThreadId }),
   );
   if (!child) throw new Error("CHILD_ASSIGNMENT_MISSING");
   return {
@@ -153,9 +153,9 @@ async function reserveAndAttachChild(
  */
 async function launchChild(t: Convex, rootAssignmentId: string) {
   const rootTurn = { assignmentId: rootAssignmentId, turnToken: `${rootAssignmentId}:0` };
-  await t.mutation(components.agevex.queue.claim, rootTurn);
+  await t.mutation(components.agevex.turns.slices.claim, rootTurn);
   const child = await reserveAndAttachChild(t, rootTurn);
-  await t.mutation(components.agevex.queue.finish, { ...rootTurn, errorCode: null });
+  await t.mutation(components.agevex.turns.slices.finish, { ...rootTurn, errorCode: null });
   return child;
 }
 
@@ -182,9 +182,9 @@ async function fillActiveChildSlots(t: Convex, count: number) {
       });
     }
     const rootTurn = { assignmentId, turnToken: `${assignmentId}:${index}` };
-    expect(await t.mutation(components.agevex.queue.claim, rootTurn)).not.toBeNull();
+    expect(await t.mutation(components.agevex.turns.slices.claim, rootTurn)).not.toBeNull();
     children.push(await reserveAndAttachChild(t, rootTurn, `call-${index}`));
-    await t.mutation(components.agevex.queue.finish, { ...rootTurn, errorCode: null });
+    await t.mutation(components.agevex.turns.slices.finish, { ...rootTurn, errorCode: null });
   }
   return { ...receipt, children };
 }
@@ -204,7 +204,7 @@ async function probeReserve(
   let outcome = "";
   await t
     .run(async (ctx) => {
-      const reserved = await ctx.runMutation(components.agevex.subagents.reserve, {
+      const reserved = await ctx.runMutation(components.agevex.subagents.launch.reserve, {
         ...rootTurn,
         toolCallId,
         agent: "Researcher",
@@ -225,7 +225,7 @@ async function probeReserve(
 
 /** Claim a queued child turn and return the linkage a dispatcher would receive. */
 async function claimChild(t: Convex, childTurn: { assignmentId: string; turnToken: string }) {
-  const claimed = (await t.mutation(components.agevex.queue.claim, childTurn)) as {
+  const claimed = (await t.mutation(components.agevex.turns.slices.claim, childTurn)) as {
     subagent: ClaimedChild | null;
   } | null;
   if (!claimed?.subagent) throw new Error("CLAIM_REFUSED");
@@ -405,7 +405,7 @@ it("holds five concurrent child runs per root and refuses the sixth", async () =
     requestKey: "r6",
   });
   const rootTurn = { assignmentId, turnToken: `${assignmentId}:5` };
-  expect(await t.mutation(components.agevex.queue.claim, rootTurn)).not.toBeNull();
+  expect(await t.mutation(components.agevex.turns.slices.claim, rootTurn)).not.toBeNull();
   expect(
     await t.mutation(coordinateReference(), {
       op: "launch" as const,
@@ -420,7 +420,7 @@ it("holds five concurrent child runs per root and refuses the sixth", async () =
   expect(await activity(t, threadId)).toMatchObject({
     subagents: { active: 5, history: 0, total: 5 },
   });
-  await t.mutation(components.agevex.queue.finish, { ...rootTurn, errorCode: null });
+  await t.mutation(components.agevex.turns.slices.finish, { ...rootTurn, errorCode: null });
 });
 
 it("replays a duplicated launch at the concurrent cap without taking a slot", async () => {
@@ -434,7 +434,7 @@ it("replays a duplicated launch at the concurrent cap without taking a slot", as
     requestKey: "r5",
   });
   const rootTurn = { assignmentId, turnToken: `${assignmentId}:4` };
-  expect(await t.mutation(components.agevex.queue.claim, rootTurn)).not.toBeNull();
+  expect(await t.mutation(components.agevex.turns.slices.claim, rootTurn)).not.toBeNull();
   const coordinate = coordinateReference();
   const launch = {
     op: "launch" as const,
@@ -464,7 +464,7 @@ it("replays a duplicated launch at the concurrent cap without taking a slot", as
     status: "denied",
     code: "ACTIVE_LIMIT",
   });
-  await t.mutation(components.agevex.queue.finish, { ...rootTurn, errorCode: null });
+  await t.mutation(components.agevex.turns.slices.finish, { ...rootTurn, errorCode: null });
 });
 
 it("frees an active child slot when a run settles", async () => {
@@ -491,7 +491,7 @@ it("frees an active child slot when a run settles", async () => {
     requestKey: "r6",
   });
   const rootTurn = { assignmentId, turnToken: `${assignmentId}:5` };
-  expect(await t.mutation(components.agevex.queue.claim, rootTurn)).not.toBeNull();
+  expect(await t.mutation(components.agevex.turns.slices.claim, rootTurn)).not.toBeNull();
   expect(
     await t.mutation(coordinateReference(), {
       op: "launch" as const,
@@ -505,7 +505,7 @@ it("frees an active child slot when a run settles", async () => {
   expect(await activity(t, threadId)).toMatchObject({
     subagents: { active: 5, history: 1, total: 6 },
   });
-  await t.mutation(components.agevex.queue.finish, { ...rootTurn, errorCode: null });
+  await t.mutation(components.agevex.turns.slices.finish, { ...rootTurn, errorCode: null });
 });
 
 it("keeps the root usable while a child is still running", async () => {
@@ -679,7 +679,7 @@ it("escalates a stalled child run once and makes one bounded notification attemp
   // the claim-armed watchdog and moves the run to `running`; the dispatch that
   // is already queued then observes an owned token and no-ops, so no model ever
   // runs and no abort timer is left behind.
-  const claimed = (await t.mutation(components.agevex.queue.claim, childTurn)) as {
+  const claimed = (await t.mutation(components.agevex.turns.slices.claim, childTurn)) as {
     subagent: ClaimedChild | null;
   } | null;
   const child = claimed?.subagent;
@@ -815,7 +815,7 @@ it("refuses to settle a result the child transcript does not prove", async () =>
   const t = setup();
   const receipt = await open(t);
   const { childTurn } = await launchChild(t, receipt.assignmentId);
-  const claimed = (await t.mutation(components.agevex.queue.claim, childTurn)) as {
+  const claimed = (await t.mutation(components.agevex.turns.slices.claim, childTurn)) as {
     subagent: ClaimedChild | null;
   } | null;
   const runId = claimed!.subagent!.runId;
@@ -935,7 +935,7 @@ it("delivers a committed child result even when child finalization fails", async
   await drain(t);
   await drain(t);
   // Settlement committed before the delivery attempt, and the child turn's own
-  // `queue.finish` is the only fault, so the outcome and counters are exactly
+  // `turns.slices.finish` is the only fault, so the outcome and counters are exactly
   // the ones an unfaulted run records.
   const page = (await runs(t, receipt.threadId)).page[0];
   expect(page).toMatchObject({
@@ -1026,7 +1026,7 @@ it("run budget denies the 13th launch", async () => {
   // back, so the actor is still RUNNING while its child runs and settles. The
   // already-queued dispatch then observes the owned token and no-ops.
   const rootTurn = { assignmentId: receipt.assignmentId, turnToken: `${receipt.assignmentId}:0` };
-  await t.mutation(components.agevex.queue.claim, rootTurn);
+  await t.mutation(components.agevex.turns.slices.claim, rootTurn);
   const coordinate = coordinateReference();
   const launch = {
     op: "launch" as const,
@@ -1085,7 +1085,7 @@ it("run budget denies the 13th launch", async () => {
   expect((await runs(t, receipt.threadId)).page).toHaveLength(12);
 
   // The refusal is a tool result, so the root turn still finalizes normally.
-  await t.mutation(components.agevex.queue.finish, { ...rootTurn, errorCode: null });
+  await t.mutation(components.agevex.turns.slices.finish, { ...rootTurn, errorCode: null });
   await drain(t);
   expect(await activity(t, receipt.threadId)).toMatchObject({
     turnStatus: "idle",
@@ -1133,7 +1133,7 @@ it("rolls the whole launch back when attaching the child fails", async () => {
   // capability the managed tool would present while the actor still owns its
   // running token.
   const rootTurn = { assignmentId: receipt.assignmentId, turnToken: `${receipt.assignmentId}:0` };
-  await t.mutation(components.agevex.queue.claim, rootTurn);
+  await t.mutation(components.agevex.turns.slices.claim, rootTurn);
   await expect(
     t.mutation(coordinateReference(), {
       op: "launch" as const,
@@ -1155,7 +1155,7 @@ it("rolls the whole launch back when attaching the child fails", async () => {
     expect(await probeReserve(t, rootTurn, toolCallId)).toBe("reserved");
   }
   expect((await runs(t, receipt.threadId)).page).toHaveLength(0);
-  await t.mutation(components.agevex.queue.finish, { ...rootTurn, errorCode: null });
+  await t.mutation(components.agevex.turns.slices.finish, { ...rootTurn, errorCode: null });
 });
 
 it("records a failed delivery when the notification transaction does not commit", async () => {
@@ -1327,7 +1327,7 @@ it("spends no launch allowance on a stale, out-of-graph or policy-denied attempt
     assignmentId: receipt.assignmentId,
     turnToken: `${receipt.assignmentId}:0`,
   };
-  expect(await t.mutation(components.agevex.queue.claim, rootTurn)).not.toBeNull();
+  expect(await t.mutation(components.agevex.turns.slices.claim, rootTurn)).not.toBeNull();
   const coordinate = coordinateReference();
   const launch = (toolCallId: string, agent = "Researcher", turnToken = rootTurn.turnToken) =>
     t.mutation(coordinate, {
@@ -1358,7 +1358,7 @@ it("spends no launch allowance on a stale, out-of-graph or policy-denied attempt
   // Phase 1a: expected refusals leave the run budget unspent.
   expect(await launch("call-4")).toMatchObject({ status: "queued" });
   expect((await runs(t, receipt.threadId)).page).toHaveLength(4);
-  await t.mutation(components.agevex.queue.finish, { ...rootTurn, errorCode: null });
+  await t.mutation(components.agevex.turns.slices.finish, { ...rootTurn, errorCode: null });
 });
 
 // Phase 1a drops legacy per-prompt counters; breaking schema changes need no migration.
@@ -1368,7 +1368,7 @@ it("gives each accepted user prompt a fresh run budget", async () => {
   const { assignmentId, threadId } = await open(t, "prompt 1", "r1");
   const spendPrompt = async (index: number, prefix: string) => {
     const rootTurn = { assignmentId, turnToken: `${assignmentId}:${index}` };
-    expect(await t.mutation(components.agevex.queue.claim, rootTurn)).not.toBeNull();
+    expect(await t.mutation(components.agevex.turns.slices.claim, rootTurn)).not.toBeNull();
     const children = [];
     for (const n of [1, 2, 3])
       children.push(await reserveAndAttachChild(t, rootTurn, `${prefix}-${n}`));
@@ -1386,7 +1386,7 @@ it("gives each accepted user prompt a fresh run budget", async () => {
         errorCode: null,
       });
     }
-    await t.mutation(components.agevex.queue.finish, { ...rootTurn, errorCode: null });
+    await t.mutation(components.agevex.turns.slices.finish, { ...rootTurn, errorCode: null });
   };
   await spendPrompt(0, "first");
   expect(await activity(t, threadId)).toMatchObject({

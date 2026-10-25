@@ -3,7 +3,7 @@
 //
 // `hookRunner` returns the single function every hook call goes through. It
 // validates the hook's result against the turn's bounds, posts a returned `note`
-// under the turn's fence (`hooks.addNote`, or `hooks.beforeTurnNote` for
+// under the turn's fence (`hooks.notes.addNote`, or `hooks.notes.beforeTurnNote` for
 // `beforeTurn`, which must land before the prompt), and turns any hook failure
 // into `HOOK_FAILED`: it marks the generation, aborts the model call and throws.
 // Built by `turn/generation.ts`; used by routing, tools and completion.
@@ -79,7 +79,7 @@ async function postHookNote(
 ) {
   const { claimed, managed } = turn;
   await fence.ctx.runMutation(
-    beforeTurn ? rt.component.hooks.beforeTurnNote : rt.component.hooks.addNote,
+    beforeTurn ? rt.component.hooks.notes.beforeTurnNote : rt.component.hooks.notes.addNote,
     {
       assignmentId: claimed.assignmentId,
       text,

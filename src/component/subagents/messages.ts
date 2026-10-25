@@ -1,21 +1,21 @@
 /**
  * Parent/child conversation while a delegation runs: follow-up messages from
- * a parent to its running (or asking) child, and a child's question to its
- * parent.
+ * a parent to its running (or asking) child (`messageChild`), and a child's
+ * question to its parent (`askParent`, authenticated by `questionContext`).
  *
  * `interaction` is the constant-size admission check shared by the trusted
- * context query (`subagents.interactionContext`, `interactionTarget`) and
- * both writes (`sendToChild`, `askParentRun`), which rerun it inside the
- * host's native-save transaction. `post` then enqueues the saved native
- * message on the target thread and wakes it. Touches `inbox`, the target's counters, and (at the
- * call sites) `subagentRuns` and `runs`.
+ * context query (`interactionContext`, `interactionTarget`) and both writes
+ * (`sendToChild`, `askParentRun`), which rerun it inside the host's
+ * native-save transaction. `post` then enqueues the saved native message on
+ * the target thread and wakes it. Touches `inbox`, the target's counters,
+ * and (at the call sites) `subagentRuns` and `runs`.
  */
 import { v } from "convex/values";
-import type { MutationCtx, QueryCtx } from "../_generated/server.js";
+import { type MutationCtx, type QueryCtx, mutation, query } from "../_generated/server.js";
 import type { Doc } from "../_generated/dataModel.js";
 import { runById } from "./runs.js";
-import { wake } from "../queue/wake.js";
-import { hasPendingChildren } from "./settlement.js";
+import { wake } from "../turns/wake.js";
+import { hasPendingChildren } from "./settle.js";
 
 export const interactionArgs = {
   assignmentId: v.id("assignments"),
@@ -178,7 +178,7 @@ export async function interactionTarget(ctx: QueryCtx, args: InteractionArgs) {
   };
 }
 
-/** `subagents.messageChild`: the exact native follow-up id is saved in the
+/** `subagents.messages.messageChild`: the exact native follow-up id is saved in the
  * child's inbox in the same transaction. Answers an open question (resuming
  * the child) when the child is asking; spends one hop either way. */
 export async function sendToChild(
@@ -204,7 +204,7 @@ export async function sendToChild(
   return { status: "accepted" as const, runId: run.runId };
 }
 
-/** `subagents.askParent`: asking holds the active slot. The question bypasses
+/** `subagents.messages.askParent`: asking holds the active slot. The question bypasses
  * result joins (otherwise a child waiting for its parent would deadlock its
  * own group). Its native assistant id and the parent's inbox id commit with
  * BOTH native saves; spends one hop. */
@@ -229,3 +229,40 @@ export async function askParentRun(
   await post(ctx, parent, budget._id, args.parentMessageId, "note");
   return { status: "accepted" as const, runId: run.runId };
 }
+
+/** Trusted target projection for the host's atomic native message saves. */
+export const interactionContext = query({
+  args: interactionArgs,
+  handler: (ctx, args) => interactionTarget(ctx, args),
+});
+
+/** The exact native follow-up id is saved in the inbox in the same transaction. */
+export const messageChild = mutation({
+  args: {
+    assignmentId: v.id("assignments"),
+    turnToken: v.string(),
+    runId: v.string(),
+    messageId: v.string(),
+  },
+  handler: (ctx, args) => sendToChild(ctx, args),
+});
+
+/** A child's question to its parent; see `askParentRun`. */
+export const askParent = mutation({
+  args: {
+    assignmentId: v.id("assignments"),
+    turnToken: v.string(),
+    questionMessageId: v.string(),
+    parentMessageId: v.string(),
+  },
+  handler: (ctx, args) => askParentRun(ctx, args),
+});
+
+/** Only a recorded open question can be authenticated; never scan history. */
+export const questionContext = query({
+  args: { runId: v.string() },
+  handler: async (ctx, args) => {
+    const run = await runById(ctx, args.runId);
+    return run?.status === "asking" ? (run.questionMessageId ?? null) : null;
+  },
+});

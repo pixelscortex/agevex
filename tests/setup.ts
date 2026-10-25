@@ -86,14 +86,15 @@ type AgevexMutation = {
   _handler: (ctx: unknown, args: unknown) => Promise<unknown>;
 };
 
-/** Arguments of `queue.finish`, the only conditional-fault boundary on a turn. */
+/** Arguments of `turns.slices.finish`, the only conditional-fault boundary on
+ * a turn. */
 type FinishArgs = { assignmentId: string; turnToken: string; errorCode: string | null };
 
 /**
- * Queue fault: refuse the finalization of a delegated child turn only.
+ * Turn fault: refuse the finalization of a delegated child turn only.
  *
  * A child turn is identified by the run it owns on its assignment, read from
- * the same table `queue.finish` itself reads, so a root turn finalizes through
+ * the same table `turns.slices.finish` itself reads, so a root turn finalizes through
  * the real handler and only the child's release of its run fails. This is what
  * a child-only finalization fault looks like; the blanket `finish` fault is not
  * the same boundary.
@@ -112,7 +113,7 @@ function childFinishFault(real: AgevexMutation) {
   });
 }
 
-/** Arguments of the one-shot `subagents.deliver` transition. */
+/** Arguments of the one-shot `subagents.deliver.deliver` transition. */
 type DeliverArgs = {
   runId: string;
   deliveryToken: string;
@@ -291,16 +292,24 @@ export function setup(
       },
     });
   } else agent.register(t);
-  const queueFault = fault === "accept" || fault === "finish" ? fault : undefined;
+  // Each blanket fault replaces one registered function in the module that
+  // defines it; each conditional fault wraps one instead.
+  const blanketFault = (
+    {
+      accept: { module: "./component/turns/send.ts", name: "accept" },
+      finish: { module: "./component/turns/slices.ts", name: "finish" },
+      attach: { module: "./component/subagents/launch.ts", name: "attach" },
+      deliver: { module: "./component/subagents/deliver.ts", name: "deliver" },
+      settle: { module: "./component/subagents/settle.ts", name: "settle" },
+    } as const
+  )[fault as "accept" | "finish" | "attach" | "deliver" | "settle"];
   const conditionalFault =
     fault === "childFinish"
-      ? { module: "./component/queue.ts", name: "finish" as const }
+      ? { module: "./component/turns/slices.ts", name: "finish" as const }
       : fault === "acceptedDelivery"
-        ? { module: "./component/subagents.ts", name: "deliver" as const }
+        ? { module: "./component/subagents/deliver.ts", name: "deliver" as const }
         : undefined;
-  const subagentFault =
-    fault === "attach" || fault === "deliver" || fault === "settle" ? fault : undefined;
-  if (queueFault || conditionalFault || subagentFault) {
+  if (blanketFault || conditionalFault) {
     // A conditional fault wraps one real component mutation instead of replacing
     // it, so every other call on the same path stays real.
     const conditionalOverride = conditionalFault
@@ -316,25 +325,18 @@ export function setup(
           },
         }
       : {};
+    const blanketOverride = blanketFault
+      ? {
+          [blanketFault.module]: async () => ({
+            ...((await agevex.modules[blanketFault.module]()) as Record<string, unknown>),
+            [blanketFault.name]: failure,
+          }),
+        }
+      : {};
     t.registerComponent("agevex", agevex.schema, {
       ...agevex.modules,
-      ...(queueFault
-        ? {
-            "./component/queue.ts": async () => ({
-              ...((await agevex.modules["./component/queue.ts"]()) as Record<string, unknown>),
-              [queueFault]: failure,
-            }),
-          }
-        : {}),
       ...conditionalOverride,
-      ...(subagentFault
-        ? {
-            "./component/subagents.ts": async () => ({
-              ...((await agevex.modules["./component/subagents.ts"]()) as Record<string, unknown>),
-              [subagentFault]: failure,
-            }),
-          }
-        : {}),
+      ...blanketOverride,
     });
     // Preserve the real nested bridge even for failure injection.
     registerWorkflow(t, "agevex/rootWorkflow");
@@ -364,7 +366,7 @@ export function setup(
                     const entry = await ctx.db.get(completion.context.stepId);
                     if (
                       !completion.context.delayed &&
-                      entry?.step.name === "queue:next" &&
+                      entry?.step.name === "turns/loop:next" &&
                       completion.result.kind === "success" &&
                       completion.result.returnValue === null
                     ) {

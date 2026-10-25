@@ -2,11 +2,11 @@
 //
 // After a child turn settles its run, the runner calls `deliverTerminalRun`, which
 // invokes the coordinator's `notify` op; that op loads the trusted delivery
-// context (`subagents.deliveryContext`) and makes the single bounded
+// context (`subagents.deliver.deliveryContext`) and makes the single bounded
 // `attemptDelivery`. Delivery verifies the child result, re-authorizes with the
 // host `deliver` policy, then either saves the parent notification (normal child)
 // or posts a note (side agent), and always records the outcome through
-// `subagents.deliver`. Settlement itself lives in `settle.ts`.
+// `subagents.deliver.deliver`. Settlement itself lives in `settle.ts`.
 
 import { LIMITS } from "../../component/limits.js";
 import { postNote } from "../host/notes.js";
@@ -56,7 +56,7 @@ export async function notifyRun(
   ctx: CoordinatorCtx,
   args: { runId: string; deliveryToken: string },
 ): Promise<null> {
-  const context = await ctx.runQuery(rt.component.subagents.deliveryContext, {
+  const context = await ctx.runQuery(rt.component.subagents.deliver.deliveryContext, {
     runId: args.runId,
     deliveryToken: args.deliveryToken,
   });
@@ -85,7 +85,7 @@ async function attemptDelivery(
   deliveryToken: string,
 ): Promise<null> {
   const record: RecordDelivery = (deliveryStatus, code, parentMessageId = null) =>
-    ctx.runMutation(rt.component.subagents.deliver, {
+    ctx.runMutation(rt.component.subagents.deliver.deliver, {
       runId: context.runId,
       deliveryToken,
       deliveryStatus,
@@ -206,7 +206,7 @@ async function deliverSideNote(
   text: string,
 ): Promise<null> {
   if (text.trim() && text.trim() !== "NONE") {
-    const row = await ctx.runQuery(rt.component.queue.assignment, {
+    const row = await ctx.runQuery(rt.component.turns.send.assignment, {
       threadId: context.parentThreadId,
     });
     const accepted =
@@ -285,7 +285,7 @@ export async function deliverTerminalRun(
     await ctx.runMutation(rt.config.refs.coordinate!(), { op: "notify", runId, deliveryToken });
   } catch {
     try {
-      await ctx.runMutation(rt.component.subagents.deliver, {
+      await ctx.runMutation(rt.component.subagents.deliver.deliver, {
         runId,
         deliveryToken,
         deliveryStatus: "failed",

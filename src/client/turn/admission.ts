@@ -4,8 +4,8 @@
 // `admitExecution` re-runs the host `authorizeExecution` policy with the trusted
 // execution scope, then the optional budget slot. A refusal becomes the turn's
 // typed error code (`AUTHORIZATION_DENIED` / `BUDGET_EXCEEDED`) and generation is
-// skipped; a budget refusal also leaves the model a note through `queue.write`
-// → `hooks.addNote` under the turn's fence.
+// skipped; a budget refusal also leaves the model a note through `turns.slices.write`
+// → `hooks.notes.addNote` under the turn's fence.
 
 import { createFunctionHandle } from "convex/server";
 import type { RuntimeContext } from "../registration/context.js";
@@ -79,11 +79,11 @@ async function withinBudget(rt: RuntimeContext, turn: Turn, budget: BudgetSlot) 
     });
     if (verdict.allowed) return true;
 
-    await turn.rawCtx.runMutation(rt.component.queue.write, {
+    await turn.rawCtx.runMutation(rt.component.turns.slices.write, {
       assignmentId: turn.claimed.assignmentId,
       executionId: turn.args.turnToken,
       cancellationEpoch: turn.claimed.cancellationEpoch,
-      handle: await createFunctionHandle(rt.component.hooks.addNote),
+      handle: await createFunctionHandle(rt.component.hooks.notes.addNote),
       rejectStale: true,
       args: { assignmentId: turn.claimed.assignmentId, text: BUDGET_NOTE, from: "budget" },
     });

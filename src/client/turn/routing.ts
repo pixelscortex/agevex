@@ -1,10 +1,10 @@
 // Model selection for one turn: the `beforeTurn` hook and per-agent routing.
 //
 // At a turn's start `beforeTurn` may add a note, block the turn, or (at a run's
-// start) pick an allowlisted model, which is persisted with `hooks.hookState`.
+// start) pick an allowlisted model, which is persisted with `hooks.state.hookState`.
 // Siblings of the same agent in one request share that decision: the run-start
-// slice completes the routing attempt (`hooks.completeRouting`) and every slice
-// waits on `hooks.routing` until it is decided. `completeRouting` is also called
+// slice completes the routing attempt (`hooks.routing.completeRouting`) and every slice
+// waits on `hooks.routing.routing` until it is decided. `completeRouting` is also called
 // on every exit path by `turn/generation.ts` and `turn/run-turn.ts`, so a failed
 // or refused turn never leaves siblings waiting.
 
@@ -17,7 +17,7 @@ import type { Generation, Turn } from "./context.js";
  * component; called when the run-start slice is done deciding (or failed).
  */
 export async function completeRouting(rt: RuntimeContext, turn: Turn) {
-  await turn.rawCtx.runMutation(rt.component.hooks.completeRouting, {
+  await turn.rawCtx.runMutation(rt.component.hooks.routing.completeRouting, {
     assignmentId: turn.claimed.assignmentId,
     executionId: turn.args.turnToken,
     agentIndex: rt.agentIndexes.get(turn.claimed.agent)!,
@@ -62,7 +62,7 @@ async function runBeforeTurn(rt: RuntimeContext, gen: Generation) {
     await hook(async () => {
       if (!rt.config.models || !rt.config.modelAllowlist?.includes(before.model!))
         throw new Error("MODEL_NOT_ALLOWED");
-      await fence.ctx.runMutation(rt.component.hooks.hookState, {
+      await fence.ctx.runMutation(rt.component.hooks.state.hookState, {
         assignmentId: claimed.assignmentId,
         executionId: turn.args.turnToken,
         model: before.model,
@@ -91,7 +91,7 @@ async function awaitRoutedModel(rt: RuntimeContext, gen: Generation) {
   if (claimed.isRunStart) await completeRouting(rt, turn);
 
   const readRouting = () =>
-    turn.rawCtx.runQuery(rt.component.hooks.routing, {
+    turn.rawCtx.runQuery(rt.component.hooks.routing.routing, {
       assignmentId: claimed.assignmentId,
       agentIndex: rt.agentIndexes.get(claimed.agent)!,
     });

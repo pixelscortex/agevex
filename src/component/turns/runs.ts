@@ -3,7 +3,7 @@
  *
  * A run is one accepted user request and all the work it causes: every turn,
  * delegated child, delivered result and hook continuation spends from the same
- * launch/hop/continue/side-run counters. `queue.accept` creates one per send;
+ * launch/hop/continue/side-run counters. `turns.send.accept` creates one per send;
  * descendants inherit its id. Claim reads the per-agent model choice fixed
  * here, and cancel marks the run cancelled for every assignment under it.
  */

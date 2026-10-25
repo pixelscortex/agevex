@@ -4,7 +4,7 @@
 // three ways: a deadline and a poll that abort the model call (cooperative
 // providers), `assertActive` before every new nested call (admission fencing),
 // and a fenced action context whose every native write goes through
-// `queue.write`, which re-checks the execution, token and epoch in the write's own
+// `turns.slices.write`, which re-checks the execution, token and epoch in the write's own
 // transaction (the transactional write fence). Built by `turn/generation.ts`;
 // the model call, hooks, slot tools, extract admission and hook notes use
 // `TurnFence.ctx`. Receipt-bound tools (`bindOnceTool`) get the raw context plus
@@ -54,7 +54,7 @@ export function startTurnFence(rt: RuntimeContext, turn: Turn): TurnFence {
   const timer = setTimeout(() => controller.abort(), LIMITS.generationAbortMs);
   const poll = setInterval(() => {
     void turn.rawCtx
-      .runQuery(rt.component.queue.execution, { assignmentId: turn.args.assignmentId })
+      .runQuery(rt.component.turns.slices.execution, { assignmentId: turn.args.assignmentId })
       .then((row) => {
         if (!stillRunning(row, turn)) fenceOut();
       })
@@ -66,7 +66,7 @@ export function startTurnFence(rt: RuntimeContext, turn: Turn): TurnFence {
   // uncooperative provider that returns after cancellation.
   const nativeCtx = nativeWriteContext(rt, turn, state);
   const assertActive = async () => {
-    const row = await turn.rawCtx.runQuery(rt.component.queue.execution, {
+    const row = await turn.rawCtx.runQuery(rt.component.turns.slices.execution, {
       assignmentId: turn.args.assignmentId,
     });
     if (controller.signal.aborted || !stillRunning(row, turn)) {
@@ -88,7 +88,7 @@ export function startTurnFence(rt: RuntimeContext, turn: Turn): TurnFence {
 }
 
 /**
- * Action context whose `runMutation` always goes through `queue.write`.
+ * Action context whose `runMutation` always goes through `turns.slices.write`.
  *
  * Once fenced out it drops every write except the native placeholder close
  * (`finalizeMessage`), which an abort listener may still issue for its own
@@ -101,9 +101,9 @@ function nativeWriteContext(rt: RuntimeContext, turn: Turn, state: FenceState): 
     ...rawCtx,
     runMutation: (async (ref: Parameters<RunnerCtx["runMutation"]>[0], payload: unknown) => {
       // An abort listener may only close its own recorded placeholder.
-      // queue.write verifies the exact handle, id, execution and epoch.
+      // turns.slices.write verifies the exact handle, id, execution and epoch.
       if (state.fencedOut && functionKey(ref) !== finalizeKey) return null;
-      return rawCtx.runMutation(rt.component.queue.write, {
+      return rawCtx.runMutation(rt.component.turns.slices.write, {
         assignmentId: args.assignmentId,
         executionId: args.turnToken,
         cancellationEpoch: claimed.cancellationEpoch,
@@ -124,7 +124,7 @@ function nativeWriteContext(rt: RuntimeContext, turn: Turn, state: FenceState): 
  * while SDK-owned/native writes retain the transactional write fence.
  * Agent 0.7.7 fires these void saves from asynchronous abort listeners.
  * They must resolve after cancellation to avoid an unhandled rejection;
- * queue.write permits only their own terminal close after the fence. All other
+ * turns.slices.write permits only their own terminal close after the fence. All other
  * native operations, including createTool's injected ctx, reject new
  * nested calls after revocation just like defineOnceTool does.
  */
@@ -152,7 +152,7 @@ function fencedContext(
       await assertActive();
       try {
         const saved = await rawCtx.runMutation(
-          rt.component.queue.write,
+          rt.component.turns.slices.write,
           await fencedWriteArgs(rt, turn, ref, payload),
         );
         if (rt.config.usage && functionKey(ref) === addMessagesKey)
@@ -167,7 +167,7 @@ function fencedContext(
 }
 
 /**
- * `queue.write` arguments for one fenced native mutation.
+ * `turns.slices.write` arguments for one fenced native mutation.
  *
  * `rejectStale` makes a fenced-out write throw `CANCELLED` instead of silently
  * returning. A native stream start also passes the stream-abort handle so the

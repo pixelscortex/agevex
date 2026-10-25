@@ -80,7 +80,7 @@ it("a running turn no longer occupies the inbox, so its first queued send has po
   const row = (await t.query(rawAssignment, {
     assignmentId: first.assignmentId,
   }))!;
-  await t.mutation(components.agevex.queue.claim, {
+  await t.mutation(components.agevex.turns.slices.claim, {
     assignmentId: first.assignmentId,
     turnToken: row.turnToken!,
   });

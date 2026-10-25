@@ -1,10 +1,10 @@
 // Public read endpoints for an owned thread.
 //
 // `messages` pages the native transcript (clamped to the server's count and byte
-// bounds) and labels each message with its origin (`hooks.origins`); `streams`
+// bounds) and labels each message with its origin (`hooks.origins.origins`); `streams`
 // syncs native stream deltas with bounded cursors; `activity`, `runTree` and
-// `delegations` project the thread's coordination state (`queue.activity`,
-// `subagents.runTree`, `subagents.delegations`). Each runs the `ownedThread` gate
+// `delegations` project the thread's coordination state (`turns.send.activity`,
+// `subagents.history.runTree`, `subagents.history.delegations`). Each runs the `ownedThread` gate
 // first; `activity`/`runTree`/`delegations` are root-only.
 
 import {
@@ -82,7 +82,7 @@ export function messagesEndpoint(ep: EndpointContext) {
         ...args,
         paginationOpts: clampPage(args.paginationOpts),
       });
-      const origins = await ctx.runQuery(ep.component.hooks.origins, {
+      const origins = await ctx.runQuery(ep.component.hooks.origins.origins, {
         assignmentId: row.assignmentId,
         subject: row.subject,
         messageIds: page.page.map((message) => message.id),
@@ -180,7 +180,7 @@ export function activityEndpoint(ep: EndpointContext) {
     returns: activity,
     handler: async (ctx, args) => {
       const row = await ownedThread(ep, ctx, args.threadId, "activity");
-      return ctx.runQuery(ep.component.queue.activity, {
+      return ctx.runQuery(ep.component.turns.send.activity, {
         threadId: args.threadId,
         subject: row.subject,
       });
@@ -194,7 +194,7 @@ export function runTreeEndpoint(ep: EndpointContext) {
     args: { threadId: v.string() },
     handler: async (ctx, args) => {
       const row = await ownedThread(ep, ctx, args.threadId, "activity");
-      return ctx.runQuery(ep.component.subagents.runTree, {
+      return ctx.runQuery(ep.component.subagents.history.runTree, {
         threadId: args.threadId,
         subject: row.subject,
       });
@@ -223,7 +223,7 @@ export function delegationsEndpoint(ep: EndpointContext) {
     returns: vPaginationResult(subagentRun),
     handler: async (ctx, args) => {
       const row = await ownedThread(ep, ctx, args.threadId, "activity");
-      return ctx.runQuery(ep.component.subagents.delegations, {
+      return ctx.runQuery(ep.component.subagents.history.delegations, {
         threadId: args.threadId,
         subject: row.subject,
         paginationOpts: args.paginationOpts,

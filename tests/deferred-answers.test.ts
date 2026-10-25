@@ -272,7 +272,7 @@ it("mixed approval and free-text calls resume only after both native protocols a
   const row = (await t.query(rawAssignment, {
     assignmentId: receipt.assignmentId,
   }))!;
-  await t.mutation(components.agevex.queue.claim, {
+  await t.mutation(components.agevex.turns.slices.claim, {
     assignmentId: receipt.assignmentId,
     turnToken: row.turnToken!,
   });
@@ -283,7 +283,7 @@ it("mixed approval and free-text calls resume only after both native protocols a
       finalizeMessage: await createFunctionHandle(components.agent.messages.finalizeMessage),
     },
   }));
-  await t.mutation(components.agevex.queue.write, {
+  await t.mutation(components.agevex.turns.slices.write, {
     assignmentId: receipt.assignmentId,
     executionId: row.turnToken!,
     cancellationEpoch: row.cancellationEpoch,
@@ -394,7 +394,7 @@ it("notes during a multi-call deferred-answer pause wait for every committed res
   const t = setup(undefined, undefined, true);
   const receipt = await pending(t, LIMITS.approvalsPerPause);
   for (const text of ["paused first", "paused second"])
-    await t.mutation(components.agevex.hooks.addNote, {
+    await t.mutation(components.agevex.hooks.notes.addNote, {
       assignmentId: receipt.assignmentId,
       text,
       from: "critic",

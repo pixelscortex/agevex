@@ -1,9 +1,9 @@
 /**
  * Approval pauses: when a model step asks for tool approval (or calls a
  * declared no-execute "deferred" tool the host must answer), the turn stops
- * and waits for `queue.respond` / `queue.answer`.
+ * and waits for `turns.approvals.respond` / `turns.approvals.answer`.
  *
- * All of it runs inside `queue.write`, in the same transaction as the native
+ * All of it runs inside `turns.slices.write`, in the same transaction as the native
  * assistant save that contains the requests: count them against
  * `LIMITS.approvalsPerPause` before the save, retire requests whose results
  * the save carries, collect the new requests as fixed-size hashes, and
@@ -18,7 +18,7 @@ import { LIMITS } from "../limits.js";
 import { approvalKey, callKey, keyString } from "../approvals.js";
 import { firstReady } from "./inbox.js";
 import { disarmRecovery } from "./recovery.js";
-import { disarmSlice } from "./slice.js";
+import { disarmSlice } from "./boundaries.js";
 
 type PauseRequest = NonNullable<Doc<"assignments">["approvals"]>["requests"][number];
 

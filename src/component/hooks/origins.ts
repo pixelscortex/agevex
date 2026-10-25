@@ -1,5 +1,5 @@
 /**
- * Message origins for the public thread reader (`hooks.origins`).
+ * Message origins for the public thread reader (`origins`).
  *
  * The reader shows a page of native messages; for each id it asks whether the
  * message was an agevex control (a note, with its sender, or a hook
@@ -7,9 +7,10 @@
  * come from exact-id indexes (`inbox.by_message`,
  * `subagentRuns.by_result_message`) scoped to the page, never history.
  */
-import type { QueryCtx } from "../_generated/server.js";
+import { type QueryCtx, query } from "../_generated/server.js";
 import type { Id } from "../_generated/dataModel.js";
 import { LIMITS } from "../limits.js";
+import { v } from "convex/values";
 
 type Origin = { origin: "note" | "continue" | "result"; from?: string; runId?: string };
 
@@ -53,3 +54,9 @@ export async function messageOrigins(
   }
   return origins;
 }
+
+/** Label note, continuation and result messages on one reader page. */
+export const origins = query({
+  args: { assignmentId: v.id("assignments"), subject: v.string(), messageIds: v.array(v.string()) },
+  handler: (ctx, args) => messageOrigins(ctx, args),
+});

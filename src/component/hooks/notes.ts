@@ -2,22 +2,22 @@
  * Notes and staged hook continuations, from admission to native history.
  *
  * Notes are short `<note from="...">` user messages posted by hooks or the
- * host. `queueNote` (`hooks.addNote`) keeps one as a passive `inbox` row
- * (body in `text`) until a safe turn claim saves it (`claimNotes`, called by
- * queue/claim.ts), placed after the prior response and before the claimed
- * work. `saveBeforeTurnNote` (`hooks.beforeTurnNote`) saves one immediately
- * when no approval results are outstanding. `dropCancelledNotes`
- * (`hooks.cancelNotes`) deletes a cancelled epoch's unsaved bodies. Touches
- * `inbox` and `assignments`.
+ * host. `addNote` (`queueNote`) keeps one as a passive `inbox` row (body in
+ * `text`) until a safe turn claim saves it (`claimNotes`, called by
+ * turns/claim.ts), placed after the prior response and before the claimed
+ * work. `beforeTurnNote` (`saveBeforeTurnNote`) saves one immediately when
+ * no approval results are outstanding. `cancelNotes` (`dropCancelledNotes`)
+ * deletes a cancelled epoch's unsaved bodies. Touches `inbox` and
+ * `assignments`.
  */
 import { ConvexError, v, type Infer } from "convex/values";
 import type { MessageDoc } from "@convex-dev/agent";
 import type { FunctionHandle } from "convex/server";
 import { api } from "../_generated/api.js";
-import type { MutationCtx } from "../_generated/server.js";
+import { type MutationCtx, mutation, internalMutation } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
 import { LIMITS } from "../limits.js";
-import { awaitingApprovalResults } from "../queue/pause.js";
+import { awaitingApprovalResults } from "../turns/pause.js";
 import { recordMessages } from "./refs.js";
 
 /** The native Agent handles claim needs to place notes: read the anchor, save
@@ -177,7 +177,7 @@ function validNote(text: string, from: string) {
   );
 }
 
-/** queue.write fences hook notes by execution/epoch; external notes serialize
+/** turns.slices.write fences hook notes by execution/epoch; external notes serialize
  * against cancellation here. Every post retains only its bounded raw payload.
  * Refuses past the assignment's `notesPending` cap. */
 export async function queueNote(
@@ -211,7 +211,7 @@ export async function queueNote(
 
 /** Before-turn notes can enter history immediately only when prior approvals
  * have committed their results. Otherwise share the pending-note admission cap
- * and defer delivery to a safe claim. queue.write supplies the epoch fence.
+ * and defer delivery to a safe claim. turns.slices.write supplies the epoch fence.
  */
 export async function saveBeforeTurnNote(
   ctx: MutationCtx,
@@ -234,7 +234,7 @@ export async function saveBeforeTurnNote(
     throw new Error("INVALID_NOTE");
 
   if (awaitingApprovalResults(row)) {
-    await ctx.runMutation(api.hooks.addNote, {
+    await ctx.runMutation(api.hooks.notes.addNote, {
       assignmentId: row._id,
       text: args.text,
       from: args.from,
@@ -282,3 +282,34 @@ export async function dropCancelledNotes(
     await ctx.db.delete("inbox", note._id);
   }
 }
+
+/** Queue a note for the next safe claim; see `queueNote`. */
+export const addNote = mutation({
+  args: {
+    assignmentId: v.id("assignments"),
+    text: v.string(),
+    from: v.string(),
+  },
+  returns: v.boolean(),
+  handler: (ctx, args): Promise<boolean> => queueNote(ctx, args),
+});
+
+/** Save a beforeTurn note now, or queue it behind outstanding approval
+ * results; see `saveBeforeTurnNote`. */
+export const beforeTurnNote = mutation({
+  args: {
+    assignmentId: v.id("assignments"),
+    text: v.string(),
+    from: v.string(),
+    addMessages: v.string(),
+    getMessages: v.string(),
+  },
+  handler: (ctx, args) => saveBeforeTurnNote(ctx, args),
+});
+
+/** Delete a cancelled epoch's unsaved note bodies; one finite job per
+ * assignment, scheduled by turns.cancel.cancel. */
+export const cancelNotes = internalMutation({
+  args: { assignmentId: v.id("assignments"), epoch: v.number() },
+  handler: (ctx, { assignmentId, epoch }) => dropCancelledNotes(ctx, assignmentId, epoch),
+});

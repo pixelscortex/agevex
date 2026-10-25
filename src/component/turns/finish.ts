@@ -7,17 +7,17 @@
  * inbox work still fence settlement, the failure is recorded on the run and
  * the child idles instead of escalating. Otherwise the assignment becomes
  * `recovery_required` and the child's run is escalated to a failed
- * settlement (`subagents.escalate`). Paid generations are never retried.
+ * settlement (`subagents.settle.escalate`). Paid generations are never retried.
  * Touches `assignments`, `inbox` (the reserved head / staged continuation)
  * and, via escalate, `subagentRuns`.
  */
 import { internal } from "../_generated/api.js";
 import type { MutationCtx } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
-import { settlementBlocked } from "../subagents/settlement.js";
+import { settlementBlocked } from "../subagents/settle.js";
 import { sealGroups } from "../subagents/groups.js";
 import { disarmRecovery } from "./recovery.js";
-import { disarmSlice } from "./slice.js";
+import { disarmSlice } from "./boundaries.js";
 import { wake } from "./wake.js";
 
 type ErrorCode = Doc<"assignments">["errorCode"];
@@ -132,17 +132,20 @@ export async function deferChildFailure(
 }
 
 /** All terminal child failures share the idempotent settlement/notification
- * path (`subagents.escalate`). A no-op for roots. */
+ * path (`subagents.settle.escalate`). A no-op for roots. */
 export async function failChild(ctx: MutationCtx, row: Doc<"assignments">, code: ErrorCode) {
   if (!row.childRunId) return null;
 
-  await ctx.runMutation(internal.subagents.escalate, { runId: row.childRunId, errorCode: code });
+  await ctx.runMutation(internal.subagents.settle.escalate, {
+    runId: row.childRunId,
+    errorCode: code,
+  });
   return null;
 }
 
 /** The dispatch of `turnToken` failed with an unknown outcome (the host action
- * threw, or its workflow failed). Called by `queue.ambiguous` and
- * `queue.failWorkflow`. The token/status fence makes duplicates no-ops; the
+ * threw, or its workflow failed). Called by `turns.failures.ambiguous` and
+ * `turns.failures.failWorkflow`. The token/status fence makes duplicates no-ops; the
  * paid generation is never retried. */
 export async function markAmbiguous(
   ctx: MutationCtx,

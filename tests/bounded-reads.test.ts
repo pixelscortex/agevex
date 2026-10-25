@@ -71,14 +71,14 @@ it("one atomic maximum-note claim stays bounded with six near-1 MiB native merge
     }
   const handles = await nativeHandles(t);
   for (let n = 0; n < HOST_LIMITS.notesPending.max; n++) {
-    await t.mutation(components.agevex.hooks.addNote, {
+    await t.mutation(components.agevex.hooks.notes.addNote, {
       assignmentId: turn.assignmentId,
       text: '"'.repeat(LIMITS.noteLength),
       from: '"'.repeat(LIMITS.requestKeyLength),
     });
   }
   // Notes now drain in the next turn claim, never at a tool-step boundary.
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: turn.assignmentId,
     turnToken: turn.executionId,
     errorCode: null,
@@ -91,7 +91,7 @@ it("one atomic maximum-note claim stays bounded with six near-1 MiB native merge
   const next = (await execution(t, turn.assignmentId))!;
   const metrics = await t.run(async (ctx) => {
     expect(
-      await ctx.runMutation(components.agevex.queue.claim, {
+      await ctx.runMutation(components.agevex.turns.slices.claim, {
         assignmentId: turn.assignmentId,
         turnToken: next.turnToken!,
         notes: {
@@ -129,7 +129,7 @@ it("cancelled note cleanup cannot deliver old payloads or remove notes from a fr
   const turn = await claimed(t);
   const handles = await nativeHandles(t);
   const note = (text: string) =>
-    t.mutation(components.agevex.hooks.addNote, {
+    t.mutation(components.agevex.hooks.notes.addNote, {
       assignmentId: turn.assignmentId,
       text,
       from: "critic",
@@ -145,7 +145,7 @@ it("cancelled note cleanup cannot deliver old payloads or remove notes from a fr
   const fresh = (await execution(t, turn.assignmentId))!;
   // Admission precedes the fresh claim so cleanup can race the new epoch.
   await note("fresh advice");
-  await t.mutation(components.agevex.queue.claim, {
+  await t.mutation(components.agevex.turns.slices.claim, {
     assignmentId: turn.assignmentId,
     turnToken: fresh.turnToken!,
     notes: {
@@ -172,7 +172,7 @@ it("cancelled note cleanup cannot deliver old payloads or remove notes from a fr
 async function claimed(t: Test) {
   const receipt = await open(t);
   const row = (await execution(t, receipt.assignmentId))!;
-  await t.mutation(components.agevex.queue.claim, {
+  await t.mutation(components.agevex.turns.slices.claim, {
     assignmentId: receipt.assignmentId,
     turnToken: row.turnToken!,
   });
@@ -194,7 +194,7 @@ async function nativeHandles(t: Test) {
 }
 async function request(t: Test, count = 2, providerExecuted = false, idPrefix = "approval-") {
   const turn = await claimed(t);
-  const writeResult = await t.mutation(components.agevex.queue.write, {
+  const writeResult = await t.mutation(components.agevex.turns.slices.write, {
     assignmentId: turn.assignmentId,
     executionId: turn.executionId,
     cancellationEpoch: turn.cancellationEpoch,
@@ -382,7 +382,7 @@ it("an approval-pause note is delivered exactly once at the first safe queued tu
     ? requestMessage.message.content.find((part) => part.type === "tool-approval-request")
     : undefined;
   expect(approval).toBeDefined();
-  await t.mutation(components.agevex.hooks.addNote, {
+  await t.mutation(components.agevex.hooks.notes.addNote, {
     assignmentId: turn.assignmentId,
     text: "first safe claim advice",
     from: "critic",
@@ -486,7 +486,9 @@ it("respond authorizes an owned child and continues its managed settlement", asy
     paginationOpts: { cursor: null, numItems: 10 },
   });
   const childThreadId = runs.page[0].childThreadId!;
-  const assignment = await t.query(components.agevex.queue.assignment, { threadId: childThreadId });
+  const assignment = await t.query(components.agevex.turns.send.assignment, {
+    threadId: childThreadId,
+  });
   expect(assignment).toMatchObject({ root: false, subject: "alice" });
   const child = (await execution(t, assignment!.assignmentId))!;
   expect(child.approvalBlocked).toBe(true);
@@ -554,7 +556,7 @@ it("an oversized approval step commits APPROVAL_LIMIT before the native save and
   expect(row.recoveryJobId).toBeUndefined();
   expect(turn.writeResult).toBeNull();
   // An action's later failure cannot overwrite the transaction's typed failure.
-  await t.mutation(components.agevex.queue.finish, {
+  await t.mutation(components.agevex.turns.slices.finish, {
     assignmentId: turn.assignmentId,
     turnToken: turn.executionId,
     errorCode: "GENERATION_FAILED",
@@ -777,11 +779,11 @@ it("cancel after one native tool result commits settles only the remaining exact
       approved: true,
     });
   const row = (await execution(t, turn.assignmentId))!;
-  await t.mutation(components.agevex.queue.claim, {
+  await t.mutation(components.agevex.turns.slices.claim, {
     assignmentId: turn.assignmentId,
     turnToken: row.turnToken!,
   });
-  await t.mutation(components.agevex.queue.write, {
+  await t.mutation(components.agevex.turns.slices.write, {
     assignmentId: turn.assignmentId,
     executionId: row.turnToken!,
     cancellationEpoch: row.cancellationEpoch,
@@ -929,7 +931,7 @@ it("huge native approval ids leave fixed-size assignment metadata and still reso
 
 async function activeStream(t: Test, bytes = 450 << 10) {
   const turn = await claimed(t);
-  await t.mutation(components.agevex.queue.write, {
+  await t.mutation(components.agevex.turns.slices.write, {
     assignmentId: turn.assignmentId,
     executionId: turn.executionId,
     cancellationEpoch: 0,
@@ -944,7 +946,7 @@ async function activeStream(t: Test, bytes = 450 << 10) {
     handle: await createFunctionHandle(components.agent.streams.create),
     nativeStream: await createFunctionHandle(components.agent.streams.abort),
   }));
-  const streamId = (await t.mutation(components.agevex.queue.write, {
+  const streamId = (await t.mutation(components.agevex.turns.slices.write, {
     assignmentId: turn.assignmentId,
     executionId: turn.executionId,
     cancellationEpoch: 0,
@@ -1180,7 +1182,7 @@ it("native byte-bounded delta pages preserve continuation", async () => {
   const turn = await activeStream(t);
   const deltaHandle = await t.run(() => createFunctionHandle(components.agent.streams.addDelta));
   for (let i = 0; i < 24; i++)
-    await t.mutation(components.agevex.queue.write, {
+    await t.mutation(components.agevex.turns.slices.write, {
       assignmentId: turn.assignmentId,
       executionId: turn.executionId,
       cancellationEpoch: 0,
@@ -1274,7 +1276,7 @@ it("provider continuation consumes its decision atomically and permits a second 
     approved: true,
   });
   const queued = (await execution(t, turn.assignmentId))!;
-  await t.mutation(components.agevex.queue.claim, {
+  await t.mutation(components.agevex.turns.slices.claim, {
     assignmentId: turn.assignmentId,
     turnToken: queued.turnToken!,
   });
@@ -1310,7 +1312,7 @@ it("provider continuation consumes its decision atomically and permits a second 
       ],
     },
   };
-  await t.mutation(components.agevex.queue.write, args);
+  await t.mutation(components.agevex.turns.slices.write, args);
   const next = (await execution(t, turn.assignmentId))!;
   expect(next.errorCode).toBeNull();
   expect(next.approvals?.requests).toHaveLength(1);
@@ -1340,11 +1342,11 @@ it("cancel after a consumed provider approval appends no result or decision", as
     approved: false,
   });
   const queued = (await execution(t, turn.assignmentId))!;
-  await t.mutation(components.agevex.queue.claim, {
+  await t.mutation(components.agevex.turns.slices.claim, {
     assignmentId: turn.assignmentId,
     turnToken: queued.turnToken!,
   });
-  await t.mutation(components.agevex.queue.write, {
+  await t.mutation(components.agevex.turns.slices.write, {
     assignmentId: turn.assignmentId,
     executionId: queued.turnToken!,
     cancellationEpoch: queued.cancellationEpoch,
@@ -1396,7 +1398,7 @@ it.each([true, false])(
     const t = setup(undefined, undefined, true);
     const turn = await request(t, 2);
     await drain(t);
-    await t.mutation(components.agevex.hooks.addNote, {
+    await t.mutation(components.agevex.hooks.notes.addNote, {
       assignmentId: turn.assignmentId,
       text: "approval-pause advice",
       from: "critic",

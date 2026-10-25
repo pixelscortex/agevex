@@ -1,10 +1,10 @@
 // What happens after a clean model step: how the turn continues or ends.
 //
 // `completeGeneration` decides, in order: stop if the turn was fenced out; pause a
-// child that asked its parent a question (`queue.finish`); continue with another
-// slice after undelegated tool calls (`queue.continueTurn`); otherwise complete
-// the turn (`hooks.hookState`), run `afterTurn`, launch side reviews, admit an
-// `afterTurn` continuation (`hooks.continueAdmission`), and finally pick a
+// child that asked its parent a question (`turns.slices.finish`); continue with another
+// slice after undelegated tool calls (`turns.slices.continueTurn`); otherwise complete
+// the turn (`hooks.state.hookState`), run `afterTurn`, launch side reviews, admit an
+// `afterTurn` continuation (`hooks.state.continueAdmission`), and finally pick a
 // child's result message. Called by `turn/generation.ts` inside its try, so a
 // throw here is a GENERATION_FAILED / HOOK_FAILED outcome.
 
@@ -28,13 +28,13 @@ export async function completeGeneration(
 ): Promise<TurnOutcome | null> {
   const { turn, fence, state } = gen;
   const { args, child } = turn;
-  const snapshot = await turn.rawCtx.runQuery(rt.component.queue.execution, {
+  const snapshot = await turn.rawCtx.runQuery(rt.component.turns.slices.execution, {
     assignmentId: args.assignmentId,
   });
   if (!stillOwns(snapshot, turn)) return null;
 
   if (child && state.asked) {
-    await fence.ctx.runMutation(rt.component.queue.finish, {
+    await fence.ctx.runMutation(rt.component.turns.slices.finish, {
       assignmentId: args.assignmentId,
       turnToken: args.turnToken,
       errorCode: null,
@@ -48,7 +48,7 @@ export async function completeGeneration(
   )
     return null;
 
-  const completedTurn = await fence.ctx.runMutation(rt.component.hooks.hookState, {
+  const completedTurn = await fence.ctx.runMutation(rt.component.hooks.state.hookState, {
     assignmentId: turn.claimed.assignmentId,
     executionId: args.turnToken,
     complete: true,
@@ -75,7 +75,7 @@ async function continueAfterToolCalls(rt: RuntimeContext, turn: Turn, result: St
   const last = result.savedMessages?.[result.savedMessages.length - 1];
   if (!last) return false;
 
-  await turn.rawCtx.runMutation(rt.component.queue.continueTurn, {
+  await turn.rawCtx.runMutation(rt.component.turns.slices.continueTurn, {
     assignmentId: turn.args.assignmentId,
     executionId: turn.args.turnToken,
     cancellationEpoch: turn.claimed.cancellationEpoch,
@@ -131,7 +131,7 @@ async function launchSideReviews(rt: RuntimeContext, gen: Generation, completedT
 async function continueFromHook(rt: RuntimeContext, gen: Generation, after: HookResult) {
   const { turn, fence } = gen;
   const continuation = after?.continue
-    ? await fence.ctx.runMutation(rt.component.hooks.continueAdmission, {
+    ? await fence.ctx.runMutation(rt.component.hooks.state.continueAdmission, {
         assignmentId: turn.claimed.assignmentId,
         executionId: turn.args.turnToken,
         prompt: after.continue,
@@ -139,7 +139,7 @@ async function continueFromHook(rt: RuntimeContext, gen: Generation, after: Hook
     : null;
   if (!continuation) return false;
 
-  await fence.ctx.runMutation(rt.component.queue.continueTurn, {
+  await fence.ctx.runMutation(rt.component.turns.slices.continueTurn, {
     assignmentId: turn.claimed.assignmentId,
     executionId: turn.args.turnToken,
     cancellationEpoch: turn.claimed.cancellationEpoch,

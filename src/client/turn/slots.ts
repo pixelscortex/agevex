@@ -38,7 +38,7 @@ export function meterBackend(
  * Meter the model step one native message save just captured.
  *
  * Agent 0.7.7 start.ts:382-417 saves step usage with its
- * native result. queue.write captures the exact returned ids
+ * native result. turns.slices.write captures the exact returned ids
  * in the same transaction; no transcript discovery is needed.
  * Only the step whose id and step order match the captured `modelStep` is
  * recorded, under an opaque per-step key, so a replayed save is idempotent.
@@ -53,7 +53,7 @@ export async function recordStepUsage(
   const step = messages.find((message) => message.usage && message.status === "success");
   if (!step?.usage) return;
 
-  const captured = await turn.rawCtx.runQuery(rt.component.queue.execution, {
+  const captured = await turn.rawCtx.runQuery(rt.component.turns.slices.execution, {
     assignmentId: turn.claimed.assignmentId,
   });
   if (
@@ -87,7 +87,7 @@ export async function extractAttachedFiles(rt: RuntimeContext, turn: Turn, fence
   const { claimed, managed } = turn;
   if (!rt.config.extract || !claimed.isTurnStart) return;
 
-  const files = await fence.ctx.runQuery(rt.component.files.forMessage, {
+  const files = await fence.ctx.runQuery(rt.component.files.attachments.forMessage, {
     messageId: claimed.promptMessageId,
     subject: claimed.subject,
     threadId: claimed.threadId,

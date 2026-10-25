@@ -1,10 +1,10 @@
 /**
  * Read-only projections of an `assignments` row for the host.
  *
- * `activityView` is the thread owner's public status (`queue.activity`);
+ * `activityView` is the thread owner's public status (`turns.send.activity`);
  * `executionView` is the narrow execution metadata the host action polls
- * while it generates (`queue.execution`); `assignmentScope` tells the client
- * whether a thread is a public root (`queue.assignment`). None of them
+ * while it generates (`turns.slices.execution`); `assignmentScope` tells the client
+ * whether a thread is a public root (`turns.send.assignment`). None of them
  * exposes context refs, approvals or recovery state.
  */
 import { v } from "convex/values";
@@ -54,7 +54,7 @@ export function assignmentScope(row: Doc<"assignments">, threadId: string) {
 export const vExecution = v.object({
   // Read by runTurn to resolve the managed agent and its agent index.
   agent: v.string(),
-  // Read by worker.dispatch: the host action that runs one slice.
+  // Read by workflows.worker.dispatch: the host action that runs one slice.
   runTurn: v.string(),
   // Read by every client fence check alongside token and epoch.
   turnStatus: vTurnStatus,
@@ -63,7 +63,7 @@ export const vExecution = v.object({
   cancelled: v.boolean(),
   // Read by runTurn: a paused turn never claims (Agent auto-denies otherwise).
   approvalBlocked: v.boolean(),
-  // Read by usage capture to match the exact step saved by queue.write.
+  // Read by usage capture to match the exact step saved by turns.slices.write.
   modelStep: v.optional(v.object({ messageId: v.string(), stepOrder: v.number() })),
   // Read by runTurn's bounded download of attached files.
   attachmentBytes: v.number(),
@@ -71,7 +71,7 @@ export const vExecution = v.object({
 
 /** Read execution metadata outside the Workflow journal; only ids cross steps.
  * The host polls this during generation, so it returns only the fields its
- * readers use (src/component/worker.ts dispatch; in src/client/turn/, runTurn's
+ * readers use (workflows/worker.ts dispatch; in src/client/turn/, runTurn's
  * fence checks, cancel poll, usage capture and download bound), never the
  * context refs, approvals or recovery state of the whole row. */
 export function executionView(row: Doc<"assignments">) {

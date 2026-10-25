@@ -100,7 +100,7 @@ export const HOST_LIMITS = {
  *
  * Other proportional paths: claim drains <=152 consecutive ready rows,
  * including <=50 ready joins from its run. Notes additionally read one exact
- * anchor and one native merge-head batch (hooks.ts); no history is scanned. Each
+ * anchor and one native merge-head batch (hooks/notes.ts); no history is scanned. Each
  * join uses an indexed ready representative and <=15 cohort metadata rows;
  * admission/send/attach handle one item. Membership sealing reads/patches
  * <=50 launch rows. Descendant/settlement fences use indexed existence probes,

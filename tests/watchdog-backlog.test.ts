@@ -49,9 +49,8 @@ it("an expired watchdog timer cannot strand a turn that is still queued", async 
   const receipt = await open(alice, "queued survivor");
   // `stalled` is internal to the queue component, so the test addresses it by
   // path, the way a leftover scheduled timer would.
-  const watchdog = (components.agevex.queue as Record<string, unknown>).stalled as Parameters<
-    typeof t.mutation
-  >[0];
+  const watchdog = (components.agevex.turns.failures as Record<string, unknown>)
+    .stalled as Parameters<typeof t.mutation>[0];
   await t.mutation(watchdog, {
     assignmentId: receipt.assignmentId,
     turnToken: `${receipt.assignmentId}:0`,
@@ -76,7 +75,7 @@ it("a claimed turn keeps the full execution window", async () => {
   const alice = t.withIdentity({ subject: "alice" });
   const receipt = await open(alice, "slow owner");
   const args = { assignmentId: receipt.assignmentId, turnToken: `${receipt.assignmentId}:0` };
-  expect(await t.mutation(components.agevex.queue.claim, args)).not.toBeNull();
+  expect(await t.mutation(components.agevex.turns.slices.claim, args)).not.toBeNull();
 
   await vi.advanceTimersByTimeAsync(119_000);
   expect(await alice.query(api.agents.activity, { threadId: receipt.threadId })).toMatchObject({
@@ -91,5 +90,5 @@ it("a claimed turn keeps the full execution window", async () => {
   });
   // The watchdog only detects: it never takes the turn over or replays it.
   expect(state.calls).toHaveLength(0);
-  expect(await t.mutation(components.agevex.queue.claim, args)).toBeNull();
+  expect(await t.mutation(components.agevex.turns.slices.claim, args)).toBeNull();
 });

@@ -2,9 +2,9 @@
 //
 // `defineTask` declares a task (name, input/output schemas, prompt); `runTask`
 // runs it at most once per idempotency key through the core receipts ledger
-// (`ledger.begin` → `ledger.complete` / `ledger.unknown`), with at most one
-// repair re-ask for invalid structured output and never a retry of an unknown
-// paid outcome. Inside a turn, `bindTaskContext` (called by `turn/generation.ts`)
+// (`receipts.effects.begin` → `receipts.effects.complete` /
+// `receipts.effects.unknown`), with at most one repair re-ask for invalid
+// structured output and never a retry of an unknown paid outcome. Inside a turn, `bindTaskContext` (called by `turn/generation.ts`)
 // lets hooks call `runTask` with the turn's attribution, key and cancellation
 // fence; outside a turn `registerAgent(...).runTask` supplies the component.
 
@@ -100,7 +100,10 @@ type Receipt = {
   cancellationEpoch?: number;
 };
 
-type Claimed = Extract<FunctionReturnType<ComponentApi["ledger"]["begin"]>, { status: "claimed" }>;
+type Claimed = Extract<
+  FunctionReturnType<ComponentApi["receipts"]["effects"]["begin"]>,
+  { status: "claimed" }
+>;
 
 /**
  * Run one structured task at most once per key.
@@ -132,7 +135,7 @@ export async function runTask<Input, Output>(
   const result = await generateWithRepair(call, receipt, admission);
   if (result.status === "unknown") return result;
 
-  await ctx.runMutation(component.ledger.complete, {
+  await ctx.runMutation(component.receipts.effects.complete, {
     ...receipt,
     claim: admission.claim,
     result,
@@ -207,7 +210,7 @@ async function prepareTask<Input, Output>(
  */
 async function beginTask<Input, Output>(call: TaskCall<Input, Output>, receipt: Receipt) {
   const { model } = call;
-  return call.ctx.runMutation(call.component.ledger.begin, {
+  return call.ctx.runMutation(call.component.receipts.effects.begin, {
     ...receipt,
     fingerprint: await fingerprint([
       call.parsed,
@@ -239,7 +242,10 @@ async function generateWithRepair<Input, Output>(
       // Admission owns the authoritative deadline. A known invalid first answer
       // does not authorize another paid attempt after that claim has expired.
       if (Date.now() >= admission.leaseUntil) {
-        await ctx.runMutation(component.ledger.unknown, { ...receipt, claim: admission.claim });
+        await ctx.runMutation(component.receipts.effects.unknown, {
+          ...receipt,
+          claim: admission.claim,
+        });
         return { status: "unknown" };
       }
       try {
@@ -264,7 +270,10 @@ async function generateWithRepair<Input, Output>(
       }
     }
   } catch {
-    await ctx.runMutation(component.ledger.unknown, { ...receipt, claim: admission.claim });
+    await ctx.runMutation(component.receipts.effects.unknown, {
+      ...receipt,
+      claim: admission.claim,
+    });
     return { status: "unknown" };
   }
   return result;

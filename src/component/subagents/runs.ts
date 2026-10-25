@@ -3,9 +3,9 @@
  *
  * One row per delegation: the child linkage, the root epoch it was admitted
  * under, its wait-"all" join state, its verified result reference, delivery
- * capability and a bounded event history. `subagents.reserve` inserts it;
+ * capability and a bounded event history. `subagents.launch.reserve` inserts it;
  * settlement, delivery and group release (subagents/*) move it forward;
- * `queue.cancel` fails every live one. All reads here are exact indexed
+ * `turns.cancel.cancel` fails every live one. All reads here are exact indexed
  * lookups; no history prefix is ever read.
  */
 import type { WithoutSystemFields } from "convex/server";
@@ -58,7 +58,7 @@ export function groupMembers(
     .take(limit);
 }
 
-/** The queued row `subagents.reserve` inserts once admission passed. The
+/** The queued row `subagents.launch.reserve` inserts once admission passed. The
  * native child thread does not exist yet; `attach` adds the child linkage.
  * `wait: "all"` members start in the "open" join state, which the launching
  * slice's sealGroups later closes. */

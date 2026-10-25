@@ -4,9 +4,9 @@
 // `message` (tool `agevex_message_child`) sends a parent's follow-up into a child
 // thread; `ask` (tool `agevex_ask_parent`) posts a child's question into the
 // parent thread and pauses the child. Both validate the actor's running turn
-// token (`subagents.interactionContext`), reuse the background delegate/deliver
+// token (`subagents.messages.interactionContext`), reuse the background delegate/deliver
 // host policy, save native messages, and admit them through
-// `subagents.messageChild` / `subagents.askParent` in one transaction.
+// `subagents.messages.messageChild` / `subagents.messages.askParent` in one transaction.
 
 import { saveMessage } from "@convex-dev/agent";
 import type { FunctionReturnType } from "convex/server";
@@ -18,7 +18,7 @@ import { verifyChildMessage } from "./verify.js";
 type MessageArgs = Extract<CoordinateArgs, { op: "message" }>;
 type AskArgs = Extract<CoordinateArgs, { op: "ask" }>;
 type Target = Exclude<
-  FunctionReturnType<RuntimeContext["component"]["subagents"]["interactionContext"]>,
+  FunctionReturnType<RuntimeContext["component"]["subagents"]["messages"]["interactionContext"]>,
   { kind: "denied" }
 >;
 
@@ -38,14 +38,14 @@ export async function interact(
   // Each native save reads at most its one <=1 MiB tail document.
   // message: one <=128 KiB saved text projection; ask: two such
   // saves +one <=128 KiB exact question verification. Add <=2.25 MiB
-  // bounded queue/group recovery and <128 KiB admission metadata:
+  // bounded inbox/group recovery and <128 KiB admission metadata:
   // either transaction stays <8 MiB, <600 reads and <128 writes.
   // No backlog or transcript body scan participates in admission.
   const text = (args.op === "message" ? args.text : args.question).trim();
   if (!text || text.length > rt.limits.taskLength)
     return { status: "denied" as const, code: "TASK_LIMIT" as const };
 
-  const target = await ctx.runQuery(rt.component.subagents.interactionContext, {
+  const target = await ctx.runQuery(rt.component.subagents.messages.interactionContext, {
     assignmentId: args.assignmentId,
     turnToken: args.turnToken,
     op: args.op,
@@ -123,7 +123,7 @@ async function messageChild(
     prompt: text,
     userId: target.subject,
   });
-  return ctx.runMutation(rt.component.subagents.messageChild, {
+  return ctx.runMutation(rt.component.subagents.messages.messageChild, {
     assignmentId: args.assignmentId,
     turnToken: args.turnToken,
     runId: args.runId,
@@ -160,13 +160,13 @@ async function askParent(
     userId: target.subject,
   });
 
-  const response = await ctx.runMutation(rt.component.subagents.askParent, {
+  const response = await ctx.runMutation(rt.component.subagents.messages.askParent, {
     assignmentId: args.assignmentId,
     turnToken: args.turnToken,
     questionMessageId,
     parentMessageId,
   });
-  const recorded = await ctx.runQuery(rt.component.subagents.questionContext, {
+  const recorded = await ctx.runQuery(rt.component.subagents.messages.questionContext, {
     runId: target.runId,
   });
   if (

@@ -3,10 +3,10 @@
 // Called from the managed `agevex_delegate` tool and from the turn runner's side
 // reviews (`turn/completion.ts`), always through the coordinator mutation, so
 // every step below shares one transaction: capability check
-// (`subagents.delegateContext`), graph permission, host `delegate` policy, side
-// review admission (`hooks.reviewContext`), idempotent reservation
-// (`subagents.reserve`), then, for a fresh reservation only, the native child
-// thread, its first prompt and `subagents.attach`. A replayed tool call returns
+// (`subagents.launch.delegateContext`), graph permission, host `delegate` policy, side
+// review admission (`hooks.reviews.reviewContext`), idempotent reservation
+// (`subagents.launch.reserve`), then, for a fresh reservation only, the native child
+// thread, its first prompt and `subagents.launch.attach`. A replayed tool call returns
 // the original run and never creates a second child thread.
 
 import { createThread } from "@convex-dev/agent";
@@ -19,12 +19,14 @@ import type { CoordinateArgs, ManagedAgent, SideAgent } from "../types.js";
 
 type LaunchArgs = Extract<CoordinateArgs, { op: "launch" }>;
 type Owned = NonNullable<
-  FunctionReturnType<RuntimeContext["component"]["subagents"]["delegateContext"]>
+  FunctionReturnType<RuntimeContext["component"]["subagents"]["launch"]["delegateContext"]>
 >;
 type Review = NonNullable<
-  FunctionReturnType<RuntimeContext["component"]["hooks"]["reviewContext"]>
+  FunctionReturnType<RuntimeContext["component"]["hooks"]["reviews"]["reviewContext"]>
 >;
-type Reservation = FunctionReturnType<RuntimeContext["component"]["subagents"]["reserve"]>;
+type Reservation = FunctionReturnType<
+  RuntimeContext["component"]["subagents"]["launch"]["reserve"]
+>;
 
 /**
  * Launch one child run for the actor's currently running turn.
@@ -38,7 +40,7 @@ export async function launchChild(rt: RuntimeContext, ctx: CoordinatorCtx, args:
   const task = args.task.trim();
   if (!task || task.length > rt.limits.taskLength) return denied("TASK_LIMIT");
 
-  const owned = await ctx.runQuery(rt.component.subagents.delegateContext, {
+  const owned = await ctx.runQuery(rt.component.subagents.launch.delegateContext, {
     assignmentId: args.assignmentId,
     turnToken: args.turnToken,
   });
@@ -51,7 +53,7 @@ export async function launchChild(rt: RuntimeContext, ctx: CoordinatorCtx, args:
 
   const side = args.side ? sideAgentFor(rt, owned, args.agent) : undefined;
   const review = side
-    ? await ctx.runQuery(rt.component.hooks.reviewContext, {
+    ? await ctx.runQuery(rt.component.hooks.reviews.reviewContext, {
         assignmentId: args.assignmentId,
         executionId: args.turnToken,
         agent: args.agent,
@@ -142,7 +144,7 @@ async function reserveRun(
   owned: Owned,
   task: string,
 ): Promise<Reservation> {
-  return ctx.runMutation(rt.component.subagents.reserve, {
+  return ctx.runMutation(rt.component.subagents.launch.reserve, {
     assignmentId: args.assignmentId,
     turnToken: args.turnToken,
     toolCallId: args.toolCallId,
@@ -163,7 +165,7 @@ async function reserveRun(
 
 /**
  * Append the watched conversation delta to a side review's task and advance the
- * review boundary (`hooks.reviewed`) in the same transaction.
+ * review boundary (`hooks.reviews.reviewed`) in the same transaction.
  */
 async function withReviewDelta(
   rt: RuntimeContext,
@@ -182,7 +184,7 @@ async function withReviewDelta(
   });
   const childTask = task + "\n\n" + clipReviewDelta(docs).join("\n");
 
-  await ctx.runMutation(rt.component.hooks.reviewed, {
+  await ctx.runMutation(rt.component.hooks.reviews.reviewed, {
     assignmentId: args.assignmentId,
     executionId: args.turnToken,
     agent: args.agent,
@@ -234,7 +236,7 @@ async function startChildThread(
     order: LIMITS.firstPromptOrder,
     userId: owned.subject,
   });
-  await ctx.runMutation(rt.component.subagents.attach, {
+  await ctx.runMutation(rt.component.subagents.launch.attach, {
     runId,
     childThreadId: threadId,
     promptMessageId: messageId,

@@ -70,9 +70,9 @@ it("serializes a finish versus arrival race into exactly one next owner", async 
   const alice = t.withIdentity({ subject: "alice" });
   const receipt = await alice.mutation(api.agents.open, input).then(requireReceipt);
   const args = { assignmentId: receipt.assignmentId, turnToken: `${receipt.assignmentId}:0` };
-  await t.mutation(components.agevex.queue.claim, args);
+  await t.mutation(components.agevex.turns.slices.claim, args);
   await Promise.all([
-    t.mutation(components.agevex.queue.finish, { ...args, errorCode: null }),
+    t.mutation(components.agevex.turns.slices.finish, { ...args, errorCode: null }),
     alice.mutation(api.agents.send, {
       threadId: receipt.threadId,
       text: "racing arrival",

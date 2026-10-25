@@ -3,11 +3,11 @@
  * `receipts` table.
  *
  * `receipts` is one `(scope, key)` ledger shared by request acceptance
- * (`request:<subject>`, queue/accept.ts), tool effects (ledger.ts,
- * receipts/claims.ts) and approval/answer responses (queue/responses.ts),
- * plus attachment attestations (files.ts). Effect rows expire after
+ * (`request:<subject>`, turns/send.ts), tool effects (receipts/effects.ts)
+ * and approval/answer responses (turns/approvals.ts), plus attachment
+ * attestations (files/attachments.ts). Effect rows expire after
  * `LIMITS.receiptRetentionMs`; `armPurge` starts the single purge chain
- * (`ledger.purge`) that removes them in bounded batches.
+ * (`receipts.effects.purge`) that removes them in bounded batches.
  */
 import type { WithoutSystemFields } from "convex/server";
 import { internal } from "../_generated/api.js";
@@ -56,5 +56,5 @@ export async function armPurge(ctx: MutationCtx) {
       .withIndex("by_expiry", (q) => q.eq("kind", "effect"))
       .first())
   )
-    await ctx.scheduler.runAfter(LIMITS.purgeIntervalMs, internal.ledger.purge, {});
+    await ctx.scheduler.runAfter(LIMITS.purgeIntervalMs, internal.receipts.effects.purge, {});
 }

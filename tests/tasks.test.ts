@@ -128,7 +128,7 @@ it("an expired task lease becomes unknown without calling the model again", asyn
   const { model, definition } = task(['{"category":"yes"}']);
   const parsed = { text: "hello" };
   const prompt = definition.prompt(parsed);
-  await t.mutation(components.agevex.ledger.begin, {
+  await t.mutation(components.agevex.receipts.effects.begin, {
     scope: `task:${await fingerprint([attribution.subject, attribution.threadId, definition.name])}`,
     key: options.key,
     fingerprint: await fingerprint([parsed, prompt, [model.provider, model.modelId]]),

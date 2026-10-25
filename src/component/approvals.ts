@@ -5,7 +5,7 @@
  * rows store their SHA-256 (`callKey` bytes, `approvalKey` hex) instead.
  * `saveResponses` writes approval responses and cancellation's
  * "execution-denied" tool results in Agent 0.7.7's exact native protocol.
- * Used by queue/ (pause, responses), subagents/launch.ts (dedup keys) and
+ * Used by turns/ (pause.ts, approvals.ts), subagents/launch.ts (dedup keys) and
  * cancellation/cleanup.ts. Reads and writes no agevex table.
  */
 import type { FunctionHandle } from "convex/server";

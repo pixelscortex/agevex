@@ -2,7 +2,7 @@
 //
 // `defineOnceTool` marks a tool whose effect must happen at most once per key;
 // `bindOnceTool` (called for every tool by `turn/tools.ts`) turns that marker into
-// a ledger-guarded execute: `ledger.begin` admits or replays, `ledger.complete`
+// a ledger-guarded execute: `receipts.effects.begin` admits or replays, `receipts.effects.complete`
 // stores the result or a sanitized failure, and an unknown outcome is surfaced to
 // the model instead of retried. Unmarked tools pass through unchanged.
 
@@ -67,7 +67,7 @@ export function defineOnceTool<Input, Output extends Value>(
  * Bind one declared tool to the turn's receipts ledger and fence.
  *
  * Returns the tool unchanged unless it was made by `defineOnceTool`. A bound
- * tool admits each call through `ledger.begin` under a per-subject, per-thread,
+ * tool admits each call through `receipts.effects.begin` under a per-subject, per-thread,
  * per-tool scope and a key from `config.key` (or the call id): a repeated key
  * returns the stored result, a different payload under the same key is a
  * `KEY_CONFLICT`, and a throwing `run` stores a sanitized `TOOL_FAILED`. The
@@ -99,7 +99,7 @@ export function bindOnceTool(
       const scope = await opaqueKey("tool", tc.subject, tc.threadId, config.name);
       const key = await opaqueKey("once", config.key?.(input, tc) ?? tc.toolCallId);
       const common = { scope, key, ...fence };
-      const admission = await rawCtx.runMutation(component.ledger.begin, {
+      const admission = await rawCtx.runMutation(component.receipts.effects.begin, {
         ...common,
         fingerprint: await fingerprint(input),
         repeatSafe: config.repeatSafe,
@@ -113,7 +113,7 @@ export function bindOnceTool(
 
       try {
         const result = await config.run(input, tc);
-        await rawCtx.runMutation(component.ledger.complete, {
+        await rawCtx.runMutation(component.receipts.effects.complete, {
           ...common,
           claim: admission.claim,
           result,
@@ -121,7 +121,7 @@ export function bindOnceTool(
         return result;
       } catch {
         const result = { status: "failed", code: "TOOL_FAILED" };
-        await rawCtx.runMutation(component.ledger.complete, {
+        await rawCtx.runMutation(component.receipts.effects.complete, {
           ...common,
           claim: admission.claim,
           result,

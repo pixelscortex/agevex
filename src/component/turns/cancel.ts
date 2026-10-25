@@ -1,25 +1,26 @@
 /**
- * `queue.cancel`: stop a root thread and every live descendant in ONE
- * bounded transaction.
+ * `cancel`: stop a root thread and every live descendant in ONE bounded
+ * transaction.
  *
  * Cancel sets fences before it cancels Workflow (which cannot abort a running
  * action): each affected assignment gets a new cancellation epoch, is idled,
  * loses its ready inbox rows and run budget, and has its loop workflow
  * cancelled; every live delegation fails with ROOT_UNAVAILABLE. Work that
  * cannot fit the budget (unsaved note bodies, pending native placeholders,
- * approval cleanup) is handed to one finite job per assignment. The full
- * read/write arithmetic is in limits.ts. Touches `assignments`, `inbox`,
- * `runs` and `subagentRuns`.
+ * approval cleanup) is handed to finite jobs (hooks.notes.cancelNotes,
+ * cancellation.cleanup.cleanup). The full read/write arithmetic is in
+ * limits.ts. Touches `assignments`, `inbox`, `runs` and `subagentRuns`.
  */
 import type { WorkflowId } from "@convex-dev/workflow";
 import { internal } from "../_generated/api.js";
-import type { MutationCtx } from "../_generated/server.js";
+import { type MutationCtx, mutation } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
 import { LIMITS } from "../limits.js";
 import { childLane, rootLane } from "../workflows/lanes.js";
 import { readyRows } from "./inbox.js";
 import { disarmRecovery } from "./recovery.js";
-import { disarmSlice } from "./slice.js";
+import { disarmSlice } from "./boundaries.js";
+import { v } from "convex/values";
 
 /** Cancel the root thread owned by `subject` and all its live descendants.
  * Returns the affected native threads so the host can abort their streams. */
@@ -133,22 +134,30 @@ function cancelledState(row: Doc<"assignments">, approvalCleanup: boolean) {
 }
 
 /** Hand the out-of-budget cleanup to finite jobs: unsaved note bodies of the
- * old epoch (hooks.cancelNotes) and the pending placeholder/stream plus
- * approval denials (cancellation.cleanup). */
+ * old epoch (hooks.notes.cancelNotes) and the pending placeholder/stream plus
+ * approval denials (cancellation.cleanup.cleanup). */
 async function scheduleCleanup(
   ctx: MutationCtx,
   row: Doc<"assignments">,
   approvalCleanup: boolean,
 ) {
   if (row.notesPending)
-    await ctx.scheduler.runAfter(0, internal.hooks.cancelNotes, {
+    await ctx.scheduler.runAfter(0, internal.hooks.notes.cancelNotes, {
       assignmentId: row._id,
       epoch: row.cancellationEpoch,
     });
   if (row.pendingGeneration || approvalCleanup)
-    await ctx.scheduler.runAfter(0, internal.cancellation.cleanup, {
+    await ctx.scheduler.runAfter(0, internal.cancellation.cleanup.cleanup, {
       assignmentId: row._id,
       pending: row.pendingGeneration,
       approvalEpoch: approvalCleanup ? row.approvals!.epoch : undefined,
     });
 }
+
+/** Cancel sets fences before canceling Workflow, which cannot abort actions.
+ * See `cancelRoot`. */
+export const cancel = mutation({
+  args: { assignmentId: v.id("assignments"), subject: v.string() },
+  returns: v.array(v.object({ threadId: v.string(), agent: v.string() })),
+  handler: (ctx, args) => cancelRoot(ctx, args),
+});

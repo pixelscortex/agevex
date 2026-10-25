@@ -256,9 +256,9 @@ it("purge keeps maximum-size receipt batches below an 8 MiB read budget", async 
   const t = setup(undefined, undefined, { bytesRead: 8 << 20 });
   for (let i = 0; i < LIMITS.purgeBatch + 1; i++) {
     const args = { scope: "purge-margin", key: String(i), fingerprint: String(i) };
-    const claim = await t.mutation(components.agevex.ledger.begin, args);
+    const claim = await t.mutation(components.agevex.receipts.effects.begin, args);
     if (claim.status !== "claimed") throw new Error("RECEIPT_NOT_CLAIMED");
-    await t.mutation(components.agevex.ledger.complete, {
+    await t.mutation(components.agevex.receipts.effects.complete, {
       scope: args.scope,
       key: args.key,
       claim: claim.claim,
@@ -266,7 +266,8 @@ it("purge keeps maximum-size receipt batches below an 8 MiB read budget", async 
     });
   }
   vi.setSystemTime(Date.now() + LIMITS.receiptRetentionMs + 1);
-  const purge = componentsGeneric().agevex.ledger.purge as unknown as FunctionReference<"mutation">;
+  const purge = componentsGeneric().agevex.receipts.effects
+    .purge as unknown as FunctionReference<"mutation">;
   const count = componentsGeneric().agevex.agevexTest
     .receiptCount as unknown as FunctionReference<"query">;
   expect(await t.query(count)).toBe(LIMITS.purgeBatch + 1);
@@ -383,7 +384,7 @@ async function savePending(
   order?: number,
 ) {
   return t.run(async (ctx) => {
-    const saved = (await ctx.runMutation(components.agevex.queue.write, {
+    const saved = (await ctx.runMutation(components.agevex.turns.slices.write, {
       assignmentId: turn.assignmentId,
       executionId: turn.turnToken,
       cancellationEpoch: epoch,
@@ -412,7 +413,7 @@ it("a cancelled execution can only fail its own recorded placeholder before sche
   const t = setup();
   const receipt = await open(t);
   const turn = { assignmentId: receipt.assignmentId, turnToken: receipt.assignmentId + ":0" };
-  expect(await t.mutation(components.agevex.queue.claim, turn)).not.toBeNull();
+  expect(await t.mutation(components.agevex.turns.slices.claim, turn)).not.toBeNull();
   const own = await savePending(t, turn, receipt.threadId);
   const other = await t.mutation(components.agent.messages.addMessages, {
     threadId: receipt.threadId,
@@ -424,7 +425,7 @@ it("a cancelled execution can only fail its own recorded placeholder before sche
     .withIdentity({ subject: "alice" })
     .mutation(api.agents.cancel, { threadId: receipt.threadId });
   const finalize = (messageId: string, status: "success" | "failed", cancellationEpoch = 0) =>
-    t.mutation(components.agevex.queue.write, {
+    t.mutation(components.agevex.turns.slices.write, {
       assignmentId: receipt.assignmentId,
       executionId: turn.turnToken,
       cancellationEpoch,
@@ -460,7 +461,7 @@ it("cancel cleanup leaves a recorded placeholder alone if it is already terminal
   const t = setup();
   const receipt = await open(t);
   const turn = { assignmentId: receipt.assignmentId, turnToken: receipt.assignmentId + ":0" };
-  expect(await t.mutation(components.agevex.queue.claim, turn)).not.toBeNull();
+  expect(await t.mutation(components.agevex.turns.slices.claim, turn)).not.toBeNull();
   const own = await savePending(t, turn, receipt.threadId);
   await t
     .withIdentity({ subject: "alice" })
@@ -479,7 +480,7 @@ it("cancel leaves unrelated native pending placeholders untouched", async () => 
   const t = setup();
   const receipt = await open(t);
   const turn = { assignmentId: receipt.assignmentId, turnToken: receipt.assignmentId + ":0" };
-  expect(await t.mutation(components.agevex.queue.claim, turn)).not.toBeNull();
+  expect(await t.mutation(components.agevex.turns.slices.claim, turn)).not.toBeNull();
   const managed = await savePending(t, turn, receipt.threadId);
   // Round 4 adaptation: native-only placeholders have no managed owner, so
   // cancellation must leave them alone instead of exhausting transcript pages.
@@ -537,12 +538,16 @@ it.each(["routing", "approval"])(
       .then(requireReceipt);
     const root = { assignmentId: receipt.assignmentId, turnToken: receipt.assignmentId + ":0" };
     expect(
-      await t.mutation(components.agevex.queue.claim, { ...root, agentIndex: 0, routeModel: true }),
+      await t.mutation(components.agevex.turns.slices.claim, {
+        ...root,
+        agentIndex: 0,
+        routeModel: true,
+      }),
     ).not.toBeNull();
     const turns = [{ ...root, threadId: receipt.threadId }];
     for (let i = 0; i < HOST_LIMITS.activeChildrenPerRoot.max; i++) {
       const child = await t.run(async (ctx) => {
-        const reserved = await ctx.runMutation(components.agevex.subagents.reserve, {
+        const reserved = await ctx.runMutation(components.agevex.subagents.launch.reserve, {
           ...root,
           side: i < HOST_LIMITS.sideRunsPerRun.max,
           toolCallId: "large-child-" + i,
@@ -556,12 +561,14 @@ it.each(["routing", "approval"])(
           threadId,
           prompt: "😀".repeat(HOST_LIMITS.taskLength.max / 2),
         });
-        await ctx.runMutation(components.agevex.subagents.attach, {
+        await ctx.runMutation(components.agevex.subagents.launch.attach, {
           runId: reserved.runId,
           childThreadId: threadId,
           promptMessageId: messageId,
         });
-        const assignment = await ctx.runQuery(components.agevex.queue.assignment, { threadId });
+        const assignment = await ctx.runQuery(components.agevex.turns.send.assignment, {
+          threadId,
+        });
         if (!assignment) throw new Error("CHILD_MISSING");
         return {
           assignmentId: assignment.assignmentId,
@@ -570,7 +577,7 @@ it.each(["routing", "approval"])(
         };
       });
       expect(
-        await t.mutation(components.agevex.queue.claim, {
+        await t.mutation(components.agevex.turns.slices.claim, {
           assignmentId: child.assignmentId,
           turnToken: child.turnToken,
           agentIndex: i + 1,
@@ -603,7 +610,7 @@ it.each(["routing", "approval"])(
     }));
     if (mode === "approval")
       for (const turn of turns) {
-        await t.mutation(components.agevex.queue.write, {
+        await t.mutation(components.agevex.turns.slices.write, {
           assignmentId: turn.assignmentId,
           executionId: turn.turnToken,
           cancellationEpoch: 0,
@@ -645,7 +652,7 @@ it.each(["routing", "approval"])(
     for (const turn of turns)
       for (let i = 0; i < HOST_LIMITS.notesPending.max; i++)
         expect(
-          await t.mutation(components.agevex.hooks.addNote, {
+          await t.mutation(components.agevex.hooks.notes.addNote, {
             assignmentId: turn.assignmentId,
             text: "\uFFFF".repeat(LIMITS.noteLength),
             from: '"'.repeat(LIMITS.requestKeyLength),
@@ -745,7 +752,7 @@ it("cancel cleanup preserves a fresh generation after native deletion reuses ord
   const t = setup();
   const receipt = await open(t);
   const root = { assignmentId: receipt.assignmentId, turnToken: receipt.assignmentId + ":0" };
-  expect(await t.mutation(components.agevex.queue.claim, root)).not.toBeNull();
+  expect(await t.mutation(components.agevex.turns.slices.claim, root)).not.toBeNull();
   await t.mutation(components.agent.messages.addMessages, {
     threadId: receipt.threadId,
     order: 5,
@@ -817,13 +824,13 @@ it.each(["failed", "blocked"] as const)(
     const t = setup();
     const receipt = await open(t);
     const root = { assignmentId: receipt.assignmentId, turnToken: `${receipt.assignmentId}:0` };
-    expect(await t.mutation(components.agevex.queue.claim, root)).not.toBeNull();
+    expect(await t.mutation(components.agevex.turns.slices.claim, root)).not.toBeNull();
     const deliveries = [];
     // Use real launch, claim and settlement transitions, holding delivery until
     // the root is asleep. No fake-time advance may resume it between deliveries.
     for (let i = 0; i < 2; i++) {
       const delivery = await t.run(async (ctx) => {
-        const reserved = await ctx.runMutation(components.agevex.subagents.reserve, {
+        const reserved = await ctx.runMutation(components.agevex.subagents.launch.reserve, {
           ...root,
           toolCallId: "empty-delivery-" + i,
           agent: "Researcher",
@@ -836,28 +843,28 @@ it.each(["failed", "blocked"] as const)(
           threadId,
           prompt: "task",
         });
-        await ctx.runMutation(components.agevex.subagents.attach, {
+        await ctx.runMutation(components.agevex.subagents.launch.attach, {
           runId: reserved.runId,
           childThreadId: threadId,
           promptMessageId: messageId,
         });
-        const child = await ctx.runQuery(components.agevex.queue.assignment, { threadId });
+        const child = await ctx.runQuery(components.agevex.turns.send.assignment, { threadId });
         if (!child) throw new Error("CHILD_MISSING");
         const turn = { assignmentId: child.assignmentId, turnToken: `${child.assignmentId}:0` };
-        const claimed = await ctx.runMutation(components.agevex.queue.claim, turn);
+        const claimed = await ctx.runMutation(components.agevex.turns.slices.claim, turn);
         if (!claimed?.subagent) throw new Error("CHILD_NOT_CLAIMED");
-        await ctx.runMutation(components.agevex.subagents.settle, {
+        await ctx.runMutation(components.agevex.subagents.settle.settle, {
           ...turn,
           runId: reserved.runId,
           childResultMessageId: null,
           errorCode: "GENERATION_FAILED",
         });
-        await ctx.runMutation(components.agevex.queue.finish, { ...turn, errorCode: null });
+        await ctx.runMutation(components.agevex.turns.slices.finish, { ...turn, errorCode: null });
         return { runId: reserved.runId, deliveryToken: claimed.subagent.deliveryToken };
       });
       deliveries.push(delivery);
     }
-    await t.mutation(components.agevex.queue.finish, { ...root, errorCode: null });
+    await t.mutation(components.agevex.turns.slices.finish, { ...root, errorCode: null });
     await drain(t);
     expect(
       await t.query(rawAssignment, {
@@ -882,7 +889,7 @@ it.each(["failed", "blocked"] as const)(
       assignmentId: receipt.assignmentId,
     });
     for (const delivery of deliveries)
-      await t.mutation(components.agevex.subagents.deliver, {
+      await t.mutation(components.agevex.subagents.deliver.deliver, {
         ...delivery,
         deliveryStatus,
         parentMessageId: null,
@@ -926,7 +933,8 @@ it("recovery never re-rings an active generation with queued inbox work", async 
   });
   // Exercise even a stale detector arriving after the turn was claimed.
   await t.mutation(
-    (components.agevex.queue as Record<string, unknown>).reconcile as FunctionReference<"mutation">,
+    (components.agevex.turns as Record<string, Record<string, unknown>>).loop
+      .reconcile as FunctionReference<"mutation">,
     { assignmentId: receipt.assignmentId },
   );
   await tick(t, LIMITS.reconcileIntervalMs * 2);
@@ -1200,7 +1208,7 @@ it("registration lease limits expire an in-flight once tool without repeating it
   const execution = (await t.query(rawAssignment, {
     assignmentId: receipt.assignmentId,
   }))!;
-  const admission = await t.mutation(components.agevex.ledger.begin, {
+  const admission = await t.mutation(components.agevex.receipts.effects.begin, {
     scope: await opaqueKey("tool", "alice", receipt.threadId, "nested-cancel-probe"),
     key: await opaqueKey(
       "once",
@@ -1273,12 +1281,14 @@ it("completed slices ignore stale watchdogs, refuse replayed or overlapping slic
   const t = setup();
   const receipt = await open(t);
   const args = { assignmentId: receipt.assignmentId, turnToken: receipt.assignmentId + ":0" };
-  const watchdog = (components.agevex.queue as Record<string, unknown>).stalled as Parameters<
-    typeof t.mutation
-  >[0];
-  const claimed = await t.mutation(components.agevex.queue.claim, { ...args, sliceId: "first" });
+  const watchdog = (components.agevex.turns.failures as Record<string, unknown>)
+    .stalled as Parameters<typeof t.mutation>[0];
+  const claimed = await t.mutation(components.agevex.turns.slices.claim, {
+    ...args,
+    sliceId: "first",
+  });
   if (!claimed) throw new Error("not claimed");
-  await t.mutation(components.agevex.queue.continueTurn, {
+  await t.mutation(components.agevex.turns.slices.continueTurn, {
     assignmentId: receipt.assignmentId,
     executionId: args.turnToken,
     cancellationEpoch: claimed.cancellationEpoch,
@@ -1296,18 +1306,22 @@ it("completed slices ignore stale watchdogs, refuse replayed or overlapping slic
     turnStatus: "running",
     errorCode: null,
   });
-  expect(await t.mutation(components.agevex.queue.claim, { ...args, sliceId: "first" })).toBeNull();
   expect(
-    await t.mutation(components.agevex.queue.claim, { ...args, sliceId: "second" }),
+    await t.mutation(components.agevex.turns.slices.claim, { ...args, sliceId: "first" }),
+  ).toBeNull();
+  expect(
+    await t.mutation(components.agevex.turns.slices.claim, { ...args, sliceId: "second" }),
   ).not.toBeNull();
   // A slice in flight admits no other slice until it continues.
-  expect(await t.mutation(components.agevex.queue.claim, { ...args, sliceId: "third" })).toBeNull();
+  expect(
+    await t.mutation(components.agevex.turns.slices.claim, { ...args, sliceId: "third" }),
+  ).toBeNull();
   await t.mutation(watchdog, { ...args, sliceId: "first" });
   expect(await activity(t, receipt.threadId)).toMatchObject({
     turnStatus: "running",
     errorCode: null,
   });
-  await t.mutation(components.agevex.queue.finish, { ...args, errorCode: null });
+  await t.mutation(components.agevex.turns.slices.finish, { ...args, errorCode: null });
   await drain(t);
 });
 

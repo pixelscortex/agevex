@@ -1,9 +1,9 @@
 // Finalizing a turn: record its outcome in the queue (and, for a child, its run).
 //
-// `finishTurn` re-checks the fence, then a root turn calls `queue.finish`; a child
+// `finishTurn` re-checks the fence, then a root turn calls `turns.slices.finish`; a child
 // turn settles its run through the coordinator (`coordinate/settle.ts`), attempts
 // the one-shot delivery (`coordinate/delivery.ts`) and only then calls
-// `queue.finish`. Settlement, delivery and finalization are three separate
+// `turns.slices.finish`. Settlement, delivery and finalization are three separate
 // transactions so none can roll back another's outcome. Called by
 // `turn/run-turn.ts` with the outcome of admission or generation.
 
@@ -23,7 +23,7 @@ export async function finishTurn(
   turn: Turn,
   outcome: TurnOutcome,
 ): Promise<null> {
-  const current = await turn.rawCtx.runQuery(rt.component.queue.execution, {
+  const current = await turn.rawCtx.runQuery(rt.component.turns.slices.execution, {
     assignmentId: turn.args.assignmentId,
   });
   if (!stillOwns(current, turn)) return null;
@@ -43,7 +43,7 @@ export async function finishTurn(
  * A child turn additionally owns exactly one run. Settlement,
  * delivery and finalization are three separate transactions, so none
  * can roll back another's outcome, and the child token still owns the
- * run until `queue.finish` releases it.
+ * run until `turns.slices.finish` releases it.
  */
 async function finishChildTurn(
   rt: RuntimeContext,
@@ -57,8 +57,8 @@ async function finishChildTurn(
     // The outcome could not be recorded, so this failure propagates on
     // purpose. Finishing the turn here would clear the child token and
     // with it the only claim-armed watchdog that could still record this
-    // run, stranding it active forever. `worker.dispatch` catches the
-    // thrown action and calls `queue.ambiguous`, which fails the turn
+    // run, stranding it active forever. `workflows.worker.dispatch` catches the
+    // thrown action and calls `turns.failures.ambiguous`, which fails the turn
     // and escalates the run exactly once; nothing replays the
     // generation.
     throw new Error("EXECUTION_AMBIGUOUS");
@@ -66,7 +66,7 @@ async function finishChildTurn(
 
   // Delivery is attempted here, after the outcome is committed and
   // before the turn is finalized. The child turn owns the delivery
-  // capability, so finalizing first would let a `queue.finish` failure
+  // capability, so finalizing first would let a `turns.slices.finish` failure
   // skip notification permanently: the run would already be terminal,
   // `escalate` would return without scheduling anything, and the
   // watchdog ignores a recovery-required child. Ordering it first makes
@@ -116,7 +116,7 @@ async function settleChildRun(
 }
 
 function finishQueueTurn(rt: RuntimeContext, turn: Turn, errorCode: Activity["errorCode"]) {
-  return turn.rawCtx.runMutation(rt.component.queue.finish, {
+  return turn.rawCtx.runMutation(rt.component.turns.slices.finish, {
     assignmentId: turn.args.assignmentId,
     turnToken: turn.args.turnToken,
     errorCode,

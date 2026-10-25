@@ -3,17 +3,18 @@
  *
  * The first claimed slice of an agent in a run may own the run's routing bit
  * (`runs.routingAgents`) while its hook chooses a model; sibling turns of the
- * same agent wait and then read the decided model. Ownership is recorded on
- * the owning assignment (`routingAgentIndex`) so every terminal fence can
- * release it without scanning siblings. Acquisition itself is inline in
- * queue/claim.ts, which only calls `assertAgentIndex` from here. Called by
- * hooks.ts (`routing` -> `routingState`, `completeRouting` ->
- * `completeRoutingFor`) and queue/slice.ts (`disarmSlice`, release). Touches
- * `runs` and `assignments.routingAgentIndex`.
+ * same agent wait (`routing`) and then read the decided model. Ownership is
+ * recorded on the owning assignment (`routingAgentIndex`) so every terminal
+ * fence can release it without scanning siblings. Acquisition itself is
+ * inline in turns/claim.ts, which only calls `assertAgentIndex` from here;
+ * the owner releases with `completeRouting`, and turns/boundaries.ts
+ * (`disarmSlice`) releases on every slice end. Touches `runs` and
+ * `assignments.routingAgentIndex`.
  */
-import type { MutationCtx, QueryCtx } from "../_generated/server.js";
+import { type MutationCtx, type QueryCtx, mutation, query } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
 import { LIMITS } from "../limits.js";
+import { v } from "convex/values";
 
 /** Agent indexes address bits of the 64-bit run masks; reject anything else
  * before shifting a BigInt by it. */
@@ -78,3 +79,16 @@ export async function completeRoutingFor(
   if (row.routingAgentIndex === args.agentIndex) await settleRouting(ctx, row);
   return null;
 }
+
+/** Whether the run's routing decision for this agent is still pending. */
+export const routing = query({
+  args: { assignmentId: v.id("assignments"), agentIndex: v.number() },
+  handler: (ctx, args) => routingState(ctx, args),
+});
+
+/** The routing owner finished its decision: release routing ownership. */
+export const completeRouting = mutation({
+  args: { assignmentId: v.id("assignments"), executionId: v.string(), agentIndex: v.number() },
+  returns: v.null(),
+  handler: (ctx, args) => completeRoutingFor(ctx, args),
+});

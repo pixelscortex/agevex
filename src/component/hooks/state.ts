@@ -1,18 +1,19 @@
 /**
  * Per-turn hook bookkeeping of a running turn.
  *
- * `recordHookState` (`hooks.hookState`) stores a beforeTurn model choice on
- * the run and counts completed turns (the hooks' `turn` number and side
- * review cadence). `stageContinuation` (`hooks.continueAdmission`) stages an
- * afterTurn continuation prompt as a non-ready inbox row that only the
- * turn's next slice claim consumes, spending one of the run's
- * `continuesPerRun`. Both are fenced to the turn's execution token. Touches
- * `assignments`, `runs` and `inbox`.
+ * `hookState` (`recordHookState`) stores a beforeTurn model choice on the run
+ * and counts completed turns (the hooks' `turn` number and side review
+ * cadence). `continueAdmission` (`stageContinuation`) stages an afterTurn
+ * continuation prompt as a non-ready inbox row that only the turn's next
+ * slice claim consumes, spending one of the run's `continuesPerRun`. Both are
+ * fenced to the turn's execution token. Touches `assignments`, `runs` and
+ * `inbox`.
  */
-import type { MutationCtx } from "../_generated/server.js";
+import { type MutationCtx, mutation } from "../_generated/server.js";
 import type { Id } from "../_generated/dataModel.js";
 import { LIMITS } from "../limits.js";
 import { validModelOverrides } from "../models.js";
+import { v } from "convex/values";
 
 /** Record a beforeTurn model choice (validated against the override bounds)
  * and/or count a completed turn. Returns the completed-turn count after this
@@ -85,3 +86,24 @@ export async function stageContinuation(
   });
   return messageId;
 }
+
+/** Record a beforeTurn model choice and/or a completed turn. */
+export const hookState = mutation({
+  args: {
+    assignmentId: v.id("assignments"),
+    executionId: v.string(),
+    model: v.optional(v.string()),
+    complete: v.optional(v.boolean()),
+  },
+  handler: (ctx, args) => recordHookState(ctx, args),
+});
+
+/** Stage an afterTurn hook's continuation prompt for the next slice. */
+export const continueAdmission = mutation({
+  args: {
+    assignmentId: v.id("assignments"),
+    executionId: v.string(),
+    prompt: v.string(),
+  },
+  handler: (ctx, args) => stageContinuation(ctx, args),
+});

@@ -1,17 +1,19 @@
 /**
- * Accepting a host send (`queue.accept`) and its request receipts
- * (`queue.lookupReceipt`).
+ * Registered send endpoints of one assignment (one managed thread): `accept`
+ * admits a host send, `lookupReceipt` replays its request receipt,
+ * `admission` is the preflight refusal check, and `assignment` / `activity`
+ * are the thread's scope and public status.
  *
  * Acceptance runs in the same transaction as the host's native prompt save:
  * it creates the root assignment on the thread's first send, opens a new run
  * budget, queues the prompt as a ready inbox row, records a `done` request
- * receipt under `request:<subject>` and wakes the thread. A repeated request
- * key returns its original receipt as `duplicate`; a different payload under
- * the same key is a KEY_CONFLICT. Touches `assignments`, `runs`, `inbox` and
- * `receipts`.
+ * receipt under `request:<subject>` and wakes the thread (turns/wake.ts). A
+ * repeated request key returns its original receipt as `duplicate`; a
+ * different payload under the same key is a KEY_CONFLICT. Touches
+ * `assignments`, `runs`, `inbox` and `receipts`.
  */
 import { v, type ObjectType } from "convex/values";
-import type { MutationCtx, QueryCtx } from "../_generated/server.js";
+import { type MutationCtx, type QueryCtx, mutation, query } from "../_generated/server.js";
 import { limitsValidator } from "../limits.js";
 import { modelOverrides, validModelOverrides } from "../models.js";
 import { messageRef, recordRefs } from "../hooks/refs.js";
@@ -19,6 +21,8 @@ import { armPurge, findReceipt, newDoneReceipt } from "../receipts/records.js";
 import { assignmentByThread, newRootAssignment } from "./assignments.js";
 import { newRun } from "./runs.js";
 import { wake } from "./wake.js";
+import { activity as vActivity, receipt as vReceipt, scope } from "../schema.js";
+import { activityView, assignmentScope } from "./views.js";
 
 export const acceptArgs = {
   subject: v.string(),
@@ -120,3 +124,61 @@ export async function acceptSend(ctx: MutationCtx, args: ObjectType<typeof accep
     position,
   };
 }
+
+/** Replay lookup for a host send, before any native save is attempted. */
+export const lookupReceipt = query({
+  args: { subject: v.string(), requestKey: v.string(), fingerprint: v.string() },
+  returns: v.union(v.null(), vReceipt),
+  handler: (ctx, args) => requestReceipt(ctx, args.subject, args.requestKey, args.fingerprint),
+});
+
+/** Preflight shares the host mutation's snapshot with its later native save.
+ * Expected refusal must happen before that save: returning a receipt after a
+ * write would commit an orphan prompt rather than rolling the transaction back.
+ */
+export const admission = query({
+  args: { threadId: v.string(), subject: v.string() },
+  returns: v.union(v.null(), vReceipt),
+  handler: async (ctx, args) => {
+    const row = await assignmentByThread(ctx, args.threadId);
+    if (!row || row.subject !== args.subject) throw new Error("FORBIDDEN");
+
+    if (row.turnStatus === "recovery_required")
+      return {
+        status: "rejected" as const,
+        code: row.cancelled ? ("CANCELLED" as const) : ("RECOVERY_REQUIRED" as const),
+      };
+    if (row.queuedMessages >= row.limits.queueLength)
+      return { status: "rejected" as const, code: "QUEUE_FULL" as const };
+    return null;
+  },
+});
+
+/** The thread's assignment scope and whether it is a public root. */
+export const assignment = query({
+  args: { threadId: v.string() },
+  returns: v.union(v.null(), v.object({ ...scope.fields, root: v.boolean() })),
+  handler: async (ctx, { threadId }) => {
+    const row = await assignmentByThread(ctx, threadId);
+    return row ? assignmentScope(row, threadId) : null;
+  },
+});
+
+/** Admit one host send with its native prompt save; see `acceptSend`. */
+export const accept = mutation({
+  args: acceptArgs,
+  returns: vReceipt,
+  handler: (ctx, args) => acceptSend(ctx, args),
+});
+
+/** The thread's public status for its owner. */
+export const activity = query({
+  args: { threadId: v.string(), subject: v.string() },
+  returns: vActivity,
+  handler: async (ctx, args) => {
+    const row = await assignmentByThread(ctx, args.threadId);
+    if (!row || row.subject !== args.subject) throw new Error("FORBIDDEN");
+
+    return activityView(row);
+  },
+});

@@ -1,21 +1,30 @@
 /**
  * Settling a delegated run: the settlement fence, the R3 invariant, and the
- * `subagents.settle` / `subagents.escalate` outcomes.
+ * registered `settlementContext`, `settle` and `escalate` endpoints.
  *
  * A child run may become terminal only when nothing can still produce work
  * for it: no ready inbox row, no pending descendant delivery, no unjoined
  * wait-"all" member (`settlementBlocked`). An idle child whose last blocker
  * clears settles from its recorded, host-verified last-turn outcome
  * (`settleIdleParent`, "R3") and notifies the host coordinator to deliver the
- * result upward. Called by wake, finish/failure paths, `subagents.settle`,
- * `subagents.escalate` and group release. Touches `subagentRuns` and the
- * root's `activeRuns`; reads `inbox` and `assignments`.
+ * result upward. Called by wake, finish/failure paths, `settle`, `escalate`
+ * and group release. Touches `subagentRuns` and the root's `activeRuns`;
+ * reads `inbox` and `assignments`.
  */
 import { internal } from "../_generated/api.js";
-import type { MutationCtx, QueryCtx } from "../_generated/server.js";
+import {
+  type MutationCtx,
+  type QueryCtx,
+  mutation,
+  query,
+  internalMutation,
+} from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
-import { firstReady } from "../queue/inbox.js";
+import { firstReady } from "../turns/inbox.js";
 import { appendEvent, isSettled, runById } from "./runs.js";
+import { v } from "convex/values";
+import { runErrorCode } from "../schema.js";
+import { settlementScope } from "./views.js";
 
 /** Every non-terminal child retains deliveryStatus=pending; delivery can only
  * change after settlement. One indexed existence probe therefore covers live
@@ -131,7 +140,7 @@ export async function settleRunState(
  * notify action runs outside this transaction and records a failed delivery
  * if the coordinator throws. */
 export async function scheduleNotify(ctx: MutationCtx, run: Doc<"subagentRuns">) {
-  await ctx.scheduler.runAfter(0, internal.subagents.notify, {
+  await ctx.scheduler.runAfter(0, internal.subagents.deliver.notify, {
     runId: run.runId,
     deliveryToken: run.deliveryToken,
     coordinateHandle: run.coordinateHandle,
@@ -174,7 +183,7 @@ export async function settleIdleParent(ctx: MutationCtx, parent: Doc<"assignment
   return true;
 }
 
-/** `subagents.settle`: record the host-verified outcome of a child's turn and
+/** `subagents.settle.settle`: record the host-verified outcome of a child's turn and
  * settle its run if nothing fences settlement. A fenced outcome waits on the
  * run (R3 settles it later from `lastTurnResult`). Only the turn that owns
  * the token may report; anything else is FORBIDDEN. */
@@ -215,8 +224,8 @@ export async function recordTurnOutcome(
   return null;
 }
 
-/** `subagents.escalate`: fail a live run after its child turn failed
- * terminally (queue/finish.ts failChild). Records the failure as the
+/** `subagents.settle.escalate`: fail a live run after its child turn failed
+ * terminally (turns/finish.ts failChild). Records the failure as the
  * last-turn outcome first, so a fenced run still fails once its blockers
  * clear; notifies only on the first successful settlement. */
 export async function escalateRun(
@@ -236,3 +245,48 @@ export async function escalateRun(
   await scheduleNotify(ctx, run);
   return null;
 }
+
+/** What a finishing child turn needs to verify and report its result: the
+ * run, its recorded final message id and whether settlement is still fenced.
+ * Null unless this exact token owns the running child turn of a live run;
+ * see `settlementScope` in subagents/views.ts. */
+export const settlementContext = query({
+  args: {
+    assignmentId: v.id("assignments"),
+    turnToken: v.string(),
+    runId: v.string(),
+  },
+  returns: v.union(
+    v.null(),
+    v.object({
+      runId: v.string(),
+      agent: v.string(),
+      subject: v.string(),
+      childThreadId: v.string(),
+      childResultMessageId: v.union(v.string(), v.null()),
+      blocked: v.boolean(),
+    }),
+  ),
+  handler: (ctx, args) => settlementScope(ctx, args),
+});
+
+/** Record a child turn's host-verified outcome and settle its run when
+ * nothing fences it; see `recordTurnOutcome`. */
+export const settle = mutation({
+  args: {
+    assignmentId: v.id("assignments"),
+    turnToken: v.string(),
+    runId: v.string(),
+    childResultMessageId: v.union(v.string(), v.null()),
+    errorCode: runErrorCode,
+  },
+  returns: v.null(),
+  handler: (ctx, args) => recordTurnOutcome(ctx, args),
+});
+
+/** Fail a live run after its child turn failed terminally. */
+export const escalate = internalMutation({
+  args: { runId: v.string(), errorCode: v.optional(runErrorCode) },
+  returns: v.null(),
+  handler: (ctx, args) => escalateRun(ctx, args.runId, args.errorCode),
+});

@@ -1,19 +1,26 @@
 /**
- * The claim/lease protocol of effect receipts, used by ledger.ts (`begin`,
- * `complete`, `unknown`) on behalf of the client's `defineOnceTool`.
+ * Effect receipts behind `defineOnceTool`: the registered `begin`,
+ * `complete` and `unknown` endpoints with their claim/lease protocol, plus
+ * the `purge` chain for every expiring receipt.
  *
- * `beginEffect` either replays a recorded outcome, reports a live claim, or
- * hands out a fresh fencing claim with a lease. `completeEffect` records the
- * outcome only for the current claim inside its lease. Paid work is never
- * retried automatically: an expired lease is an `unknown` outcome, and only
- * a repeat-safe tool may claim again. An optional assignment fence ties the
- * effect to the turn that started it. Table: `receipts`; reads `assignments`.
+ * A paid or external effect claims its `(scope, key)` receipt with `begin`
+ * (`beginEffect`: replay a recorded outcome, report a live claim, or hand out
+ * a fresh fencing claim with a lease), then records `complete`
+ * (`completeEffect`, only for the current claim inside its lease) or
+ * `unknown`. Paid work is never retried automatically: an expired lease or a
+ * transport error becomes `unknown`, never a fresh claim (unless the tool is
+ * repeat-safe). An optional assignment fence ties the effect to the turn
+ * that started it. Request/response receipts are written by turns/send.ts and
+ * turns/approvals.ts. `purge` deletes expired receipts in bounded batches and
+ * reschedules itself only while expiring receipts remain. Table: `receipts`;
+ * reads `assignments`.
  */
-import { getConvexSize, type Value } from "convex/values";
-import type { MutationCtx } from "../_generated/server.js";
+import { getConvexSize, type Value, v } from "convex/values";
+import { type MutationCtx, internalMutation, mutation } from "../_generated/server.js";
 import type { Id } from "../_generated/dataModel.js";
 import { LIMITS } from "../limits.js";
 import { armPurge, findReceipt } from "./records.js";
+import { internal } from "../_generated/api.js";
 
 /** A receipt only carries its fencing token and lease while running; every
  * transition out of running spreads this to drop them, and a late holder's
@@ -118,3 +125,84 @@ export async function completeEffect(
   });
   return null;
 }
+
+/** The optional turn fence every ledger call may carry. */
+const fenceArgs = {
+  assignmentId: v.optional(v.id("assignments")),
+  executionId: v.optional(v.string()),
+  cancellationEpoch: v.optional(v.number()),
+};
+
+/** Claim an effect, or replay/refuse it; see `beginEffect`. */
+export const begin = mutation({
+  args: {
+    scope: v.string(),
+    key: v.string(),
+    fingerprint: v.string(),
+    repeatSafe: v.optional(v.boolean()),
+    leaseMs: v.optional(v.number()),
+    ...fenceArgs,
+  },
+  handler: (ctx, args) => beginEffect(ctx, args),
+});
+
+/** Record the current claim's outcome (or `unknown` after its lease). */
+export const complete = mutation({
+  args: {
+    scope: v.string(),
+    key: v.string(),
+    claim: v.string(),
+    failed: v.optional(v.boolean()),
+    result: v.any(),
+    ...fenceArgs,
+  },
+  returns: v.null(),
+  handler: (ctx, args) => completeEffect(ctx, args),
+});
+
+/** Bounded indexed TTL work: never scan the entire ledger in a mutation. */
+export const purge = internalMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const expired = await ctx.db
+      .query("receipts")
+      .withIndex("by_expiry", (q) => q.eq("kind", "effect").lte("expiresAt", Date.now()))
+      .take(LIMITS.purgeBatch);
+    for (const row of expired) await ctx.db.delete("receipts", row._id);
+
+    if (
+      await ctx.db
+        .query("receipts")
+        .withIndex("by_expiry", (q) => q.eq("kind", "effect"))
+        .first()
+    )
+      await ctx.scheduler.runAfter(
+        expired.length === LIMITS.purgeBatch ? 0 : LIMITS.purgeIntervalMs,
+        internal.receipts.effects.purge,
+        {},
+      );
+    return null;
+  },
+});
+
+/** A transport failure may have happened after provider admission. Preserve an
+ * honest unknown outcome and never make that receipt eligible for paid replay.
+ * One indexed receipt read + one <=64 KiB patch, independent of journal size. */
+export const unknown = mutation({
+  args: {
+    scope: v.string(),
+    key: v.string(),
+    claim: v.string(),
+    ...fenceArgs,
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    if (!(await fenceHolds(ctx, args))) return null;
+
+    const row = await findReceipt(ctx, args.scope, args.key);
+    if (row?.status === "running" && row.claim === args.claim)
+      await ctx.db.patch("receipts", row._id, { ...unclaimed, status: "unknown" });
+    return null;
+  },
+});

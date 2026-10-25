@@ -1,6 +1,6 @@
 /**
  * Per-agent model overrides: the validator and its byte/count bounds. A run
- * snapshots these at acceptance (queue/accept.ts) and beforeTurn hooks may
+ * snapshots these at acceptance (turns/send.ts) and beforeTurn hooks may
  * update the current agent's choice (hooks/state.ts). Also used by the client.
  */
 import { getConvexSize, v } from "convex/values";

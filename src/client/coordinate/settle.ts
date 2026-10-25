@@ -1,9 +1,9 @@
 // The coordinator's `settle` op: record a child run's verified outcome.
 //
 // Called once per child turn by the turn runner (`turn/finish.ts`) with the child
-// turn token that owns the run. `subagents.settlementContext` validates that
+// turn token that owns the run. `subagents.settle.settlementContext` validates that
 // capability and returns the facts settlement may assume; the reported result is
-// verified against the native child transcript before `subagents.settle` writes
+// verified against the native child transcript before `subagents.settle.settle` writes
 // any terminal state. Delivery is a separate transaction (`delivery.ts`).
 
 import type { CoordinatorCtx, RuntimeContext } from "../registration/context.js";
@@ -30,7 +30,7 @@ type SettleArgs = Extract<CoordinateArgs, { op: "settle" }>;
  * outcome is retained and applied later), otherwise `null`.
  */
 export async function settleRun(rt: RuntimeContext, ctx: CoordinatorCtx, args: SettleArgs) {
-  const settlement = await ctx.runQuery(rt.component.subagents.settlementContext, {
+  const settlement = await ctx.runQuery(rt.component.subagents.settle.settlementContext, {
     assignmentId: args.assignmentId,
     turnToken: args.turnToken,
     runId: args.runId,
@@ -54,7 +54,7 @@ export async function settleRun(rt: RuntimeContext, ctx: CoordinatorCtx, args: S
     else errorCode = "RESULT_UNVERIFIED";
   }
 
-  await ctx.runMutation(rt.component.subagents.settle, {
+  await ctx.runMutation(rt.component.subagents.settle.settle, {
     assignmentId: args.assignmentId,
     turnToken: args.turnToken,
     runId: args.runId,

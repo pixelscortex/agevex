@@ -43,7 +43,7 @@ export const recoveryJobs = internalQueryGeneric({
   args: {},
   handler: async (ctx) => {
     const jobs = (await ctx.db.system.query("_scheduled_functions").collect()).filter(
-      (job) => job.name === "queue:reconcile",
+      (job) => job.name === "turns/loop:reconcile",
     );
     return {
       total: jobs.length,
@@ -68,7 +68,7 @@ export const receiptCount = internalQueryGeneric({
   handler: async (ctx) => (await ctx.db.query("receipts").take(LIMITS.purgeBatch + 1)).length,
 });
 
-/** White-box tests read the whole coordination row; queue.execution returns
+/** White-box tests read the whole coordination row; turns.slices.execution returns
  * only the projection the runtime reads. */
 export const assignment = internalQueryGeneric({
   args: { assignmentId: v.string() },

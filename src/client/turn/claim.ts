@@ -3,7 +3,7 @@
 // The Workflow loop schedules `runTurn` with an assignment id and turn token;
 // before any host code runs, `loadExecution` checks the execution row still
 // belongs to that token and is not waiting on an approval, and `claimTurn` calls
-// `queue.claim` (which delivers pending notes into the native thread with the
+// `turns.slices.claim` (which delivers pending notes into the native thread with the
 // handles passed here) and builds the `Turn` every later phase receives.
 
 import { createFunctionHandle } from "convex/server";
@@ -18,7 +18,7 @@ import type { Turn } from "./context.js";
  * Throws `UNKNOWN_AGENT` when the stored agent is no longer registered.
  */
 export async function loadExecution(rt: RuntimeContext, ctx: RunnerCtx, args: TurnArgs) {
-  const queued = await ctx.runQuery(rt.component.queue.execution, {
+  const queued = await ctx.runQuery(rt.component.turns.slices.execution, {
     assignmentId: args.assignmentId,
   });
   if (!queued || queued.cancelled || queued.turnToken !== args.turnToken) return null;
@@ -48,7 +48,7 @@ export async function claimTurn(
   queued: Turn["queued"],
   managed: ManagedAgent,
 ): Promise<Turn | null> {
-  const claimed = await ctx.runMutation(rt.component.queue.claim, {
+  const claimed = await ctx.runMutation(rt.component.turns.slices.claim, {
     ...args,
     agentIndex: rt.agentIndexes.get(queued.agent),
     routeModel: !!managed.hooks?.beforeTurn,

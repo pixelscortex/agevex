@@ -5,16 +5,16 @@
  * group name under one run budget. Its join state moves one way:
  * open (reserve) -> sealed (the launching slice ends, `sealGroups`) -> ready
  * (every member terminal and its delivery no longer pending: accepted, failed
- * or blocked, `markGroupReady`) -> joined (one
- * inbox row carrying all accepted results is published, `releaseGroup`).
- * `releaseReadyCohort` (`subagents.releaseGroups`) finds one ready cohort
- * and releases it. Called by queue/ slice ends, delivery, wake and claim.
- * Touches `subagentRuns.join`, `inbox` and the parent's counters.
+ * or blocked, `markGroupReady`) -> joined (one inbox row carrying all
+ * accepted results is published, `releaseGroup`). `releaseReadyCohort`
+ * (`subagents.deliver.releaseGroups`) finds one ready cohort and releases it.
+ * Called by turns/ slice ends (boundaries.ts, finish.ts), delivery, wake and
+ * claim. Touches `subagentRuns.join`, `inbox` and the parent's counters.
  */
 import type { MutationCtx } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
 import { groupMembers, isSettled } from "./runs.js";
-import { settleIdleParent } from "./settlement.js";
+import { settleIdleParent } from "./settle.js";
 
 /** Readiness belongs to one sealed cohort, never a prefix of historical runs.
  * One representative is sufficient for indexed discovery; release marks every
@@ -106,7 +106,7 @@ function joinedRelease(
     },
     sequence: parent.nextSequence,
     // A joined release carries delegated results. Labelling it "note" made
-    // hooks.origins report the newest member's result as an origin-less note
+    // hooks.origins.origins report the newest member's result as an origin-less note
     // while the release was queued; wake and claim treat "result" and "note"
     // identically, so only the label changes.
     kind: "result" as const,

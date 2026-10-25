@@ -1,6 +1,6 @@
 /**
- * Resolving an approval pause: `queue.respond` (approve/deny a tool approval
- * request) and `queue.answer` (supply the result of a deferred tool call).
+ * Resolving an approval pause: `respond` (approve/deny a tool approval
+ * request) and `answer` (supply the result of a deferred tool call).
  *
  * Each response saves its native message and an idempotency receipt in one
  * transaction, marks or removes the matching recorded request, points the
@@ -12,7 +12,7 @@
 import type { MessageDoc } from "@convex-dev/agent";
 import type { FunctionHandle } from "convex/server";
 import { ConvexError, getConvexSize, v } from "convex/values";
-import type { MutationCtx } from "../_generated/server.js";
+import { type MutationCtx, mutation } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
 import { LIMITS } from "../limits.js";
 import { approvalKey, saveResponses } from "../approvals.js";
@@ -239,3 +239,33 @@ async function saveToolResult(
   })) as { messages: MessageDoc[] };
   return saved.messages[0]._id;
 }
+
+/** Approval responses MUST go through the authorized respond endpoint. A
+ * response saved directly through Agent is not seen by this runtime.
+ * See `respondToApproval`.
+ */
+export const respond = mutation({
+  args: {
+    assignmentId: v.id("assignments"),
+    subject: v.string(),
+    approvalId: v.string(),
+    approved: v.boolean(),
+    reason: v.optional(v.string()),
+    addMessages: v.string(),
+  },
+  returns: vResponseResult,
+  handler: (ctx, args) => respondToApproval(ctx, args),
+});
+
+/** Save a deferred native result and release its continuation atomically.
+ * See `answerDeferredCall` for the read budget. */
+export const answer = mutation({
+  args: {
+    assignmentId: v.id("assignments"),
+    subject: v.string(),
+    toolCallId: v.string(),
+    text: v.string(),
+  },
+  returns: vResponseResult,
+  handler: (ctx, args) => answerDeferredCall(ctx, args),
+});

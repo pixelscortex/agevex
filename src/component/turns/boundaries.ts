@@ -4,8 +4,8 @@
  * A turn runs as up to `slicesPerTurn` paid model slices. claim arms a
  * watchdog per slice; `disarmSlice` closes it (also on every terminal path).
  * A running turn without a watchdog is "between slices": `closeSlice`
- * (`queue.continueTurn`) puts it there and publishes results released by the
- * slice, and `admitNextSlice` (`queue.betweenSlices`) lets the turn workflow
+ * (`turns.slices.continueTurn`) puts it there and publishes results released by the
+ * slice, and `admitNextSlice` (`turns.slices.betweenSlices`) lets the turn workflow
  * run another slice while the run budget allows. Touches `assignments`,
  * `runs` (routing bit, budget read) and sealed `subagentRuns` cohorts.
  */

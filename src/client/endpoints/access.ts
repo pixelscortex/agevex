@@ -3,7 +3,7 @@
 // `createEndpointContext` indexes every registered agent once; `rootAgent`
 // resolves a public root for `open`; `ownedThread` is the authorization gate every
 // thread-scoped endpoint runs first: it loads the persisted assignment
-// (`queue.assignment`), runs the host `authorize` policy, requires the returned
+// (`turns.send.assignment`), runs the host `authorize` policy, requires the returned
 // subject to own the thread, and enforces which operations a child thread allows.
 
 import type { GenericDataModel, GenericMutationCtx, GenericQueryCtx } from "convex/server";
@@ -81,7 +81,7 @@ export async function ownedThread(
   operation: ThreadOperation,
 ) {
   assertFact(threadId, "threadId");
-  const row = await ctx.runQuery(ep.component.queue.assignment, { threadId });
+  const row = await ctx.runQuery(ep.component.turns.send.assignment, { threadId });
   if (!row) throw new Error("FORBIDDEN");
 
   const trusted = await ep.config.authorize(ctx, { operation, agent: row.agent, threadId });

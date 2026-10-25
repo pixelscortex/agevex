@@ -1,9 +1,9 @@
 /**
- * The recovery check: one scheduled `queue.reconcile` per assignment that has
+ * The recovery check: one scheduled `turns.loop.reconcile` per assignment that has
  * durable inbox work but no running turn.
  *
  * wake arms or disarms it after every publish; claim, cancel and approval
- * pauses retire it; `queue.reconcile` re-rings a loop whose awaited ping was
+ * pauses retire it; `turns.loop.reconcile` re-rings a loop whose awaited ping was
  * lost and backs off otherwise. Idle deployments schedule nothing, so this is
  * never a perpetual chain. Touches `assignments` (recovery fields, `pinged`)
  * and reads the ready `inbox` range. Also home of `cancelIfPending`, the
@@ -38,7 +38,7 @@ export async function armRecovery(
   if (row.recoveryAt !== undefined) return;
 
   const recoveryAt = Date.now() + delayMs;
-  const recoveryJobId = await ctx.scheduler.runAt(recoveryAt, internal.queue.reconcile, {
+  const recoveryJobId = await ctx.scheduler.runAt(recoveryAt, internal.turns.loop.reconcile, {
     assignmentId: row._id,
     recoveryAt,
   });

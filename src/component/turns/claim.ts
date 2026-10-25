@@ -1,5 +1,5 @@
 /**
- * `queue.claim`: the host action's admission to run ONE paid model slice.
+ * `turns.slices.claim`: the host action's admission to run ONE paid model slice.
  *
  * The first slice of a queued turn consumes its reserved inbox head (and any
  * consecutive results of the same run), flushes posted notes into native
@@ -23,7 +23,7 @@ import { firstReady } from "./inbox.js";
 import { runById } from "../subagents/runs.js";
 import { assertAgentIndex } from "../hooks/routing.js";
 import { disarmRecovery } from "./recovery.js";
-import { disarmSlice } from "./slice.js";
+import { disarmSlice } from "./boundaries.js";
 import { failChild, markRecoveryRequired } from "./finish.js";
 import { awaitingApprovalResults } from "./pause.js";
 import { isAsking } from "./wake.js";
@@ -159,7 +159,7 @@ async function mergeConsecutive(
   let earliest = head.join?.earliestSequence ?? newest;
   const bound = row.limits.queueLength + row.limits.runLaunches + 1;
   for (let count = 0; count < bound; count++) {
-    await ctx.runMutation(api.subagents.releaseGroups, {
+    await ctx.runMutation(api.subagents.deliver.releaseGroups, {
       assignmentId: row._id,
       parentRunId: head.runId,
     });
@@ -232,7 +232,7 @@ async function flushNotes(
 }
 
 /** Publish the running state for this slice, retire the recovery check and
- * arm the slice watchdog (`queue.stalled`), recorded on the row so only
+ * arm the slice watchdog (`turns.failures.stalled`), recorded on the row so only
  * disarmSlice clears it. */
 async function markRunning(
   ctx: MutationCtx,
@@ -255,7 +255,7 @@ async function markRunning(
 
   const watchdogId = await ctx.scheduler.runAfter(
     LIMITS.executionWatchdogMs,
-    internal.queue.stalled,
+    internal.turns.failures.stalled,
     {
       assignmentId: args.assignmentId,
       turnToken: args.turnToken,

@@ -33,55 +33,61 @@ const admission = {
 
 it("expired lease becomes unknown and a late completion cannot change it", async () => {
   const t = setup();
-  const first = await t.mutation(components.agevex.ledger.begin, admission);
+  const first = await t.mutation(components.agevex.receipts.effects.begin, admission);
   expect(first.status).toBe("claimed");
   vi.advanceTimersByTime(11);
-  expect(await t.mutation(components.agevex.ledger.begin, admission)).toEqual({
+  expect(await t.mutation(components.agevex.receipts.effects.begin, admission)).toEqual({
     status: "unknown",
   });
   if (first.status !== "claimed") throw new Error("not claimed");
-  await t.mutation(components.agevex.ledger.complete, {
+  await t.mutation(components.agevex.receipts.effects.complete, {
     scope: admission.scope,
     key: admission.key,
     claim: first.claim,
     result: "late",
   });
-  expect(await t.mutation(components.agevex.ledger.begin, admission)).toEqual({
+  expect(await t.mutation(components.agevex.receipts.effects.begin, admission)).toEqual({
     status: "unknown",
   });
 });
 
 it("KEY_CONFLICT on reused key with new input", async () => {
   const t = setup();
-  await t.mutation(components.agevex.ledger.begin, admission);
+  await t.mutation(components.agevex.receipts.effects.begin, admission);
   expect(
-    await t.mutation(components.agevex.ledger.begin, { ...admission, fingerprint: "different" }),
+    await t.mutation(components.agevex.receipts.effects.begin, {
+      ...admission,
+      fingerprint: "different",
+    }),
   ).toEqual({ status: "conflict", code: "KEY_CONFLICT" });
 });
 
 it("repeatSafe re-claims an expired lease and fences the previous claim", async () => {
   const t = setup();
-  const first = await t.mutation(components.agevex.ledger.begin, admission);
+  const first = await t.mutation(components.agevex.receipts.effects.begin, admission);
   vi.advanceTimersByTime(11);
-  const next = await t.mutation(components.agevex.ledger.begin, { ...admission, repeatSafe: true });
+  const next = await t.mutation(components.agevex.receipts.effects.begin, {
+    ...admission,
+    repeatSafe: true,
+  });
   if (first.status !== "claimed" || next.status !== "claimed") throw new Error("not claimed");
   expect(first.claim).not.toBe(next.claim);
-  await t.mutation(components.agevex.ledger.complete, {
+  await t.mutation(components.agevex.receipts.effects.complete, {
     scope: admission.scope,
     key: admission.key,
     claim: first.claim,
     result: "stale",
   });
-  expect(await t.mutation(components.agevex.ledger.begin, admission)).toEqual({
+  expect(await t.mutation(components.agevex.receipts.effects.begin, admission)).toEqual({
     status: "running",
   });
-  await t.mutation(components.agevex.ledger.complete, {
+  await t.mutation(components.agevex.receipts.effects.complete, {
     scope: admission.scope,
     key: admission.key,
     claim: next.claim,
     result: "current",
   });
-  expect(await t.mutation(components.agevex.ledger.begin, admission)).toEqual({
+  expect(await t.mutation(components.agevex.receipts.effects.begin, admission)).toEqual({
     status: "done",
     result: "current",
   });
