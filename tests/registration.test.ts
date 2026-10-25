@@ -48,6 +48,7 @@ it("registers a Main -> Researcher graph and rejects an unusable one", () => {
     "messages",
     "open",
     "respond",
+    "runTree",
     "send",
   ]);
   expect(() => registerAgent(components.agevex, { ...policy, agents: [main, main] })).toThrow(
@@ -91,10 +92,10 @@ it("rejects an invalid delegation graph instead of pretending collaboration exis
       agents: [parent],
     }),
   ).toThrow("COORDINATE_REF_REQUIRED");
-  // Depth greater than 1.
-  expect(() => registerAgent(components.agevex, { ...policy, agents: [deep] })).toThrow(
-    "SUBAGENT_DEPTH",
-  );
+  // A host may lower the supported depth to 1.
+  expect(() =>
+    registerAgent(components.agevex, { ...policy, agents: [deep], limits: { maxDepth: 1 } }),
+  ).toThrow("SUBAGENT_DEPTH");
   // A name-only entry is not an executable agent.
   const nameOnly = new Agent(components.agent, {
     name: "NameOnly",

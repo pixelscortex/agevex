@@ -132,6 +132,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
         const native = agent(args.agent);
         const { subject } = await config.authorize(ctx, { operation: "open", agent: args.agent });
         if (!subject) throw new Error("FORBIDDEN");
+        if (subject.length > LIMITS.requestKeyLength) throw new Error("INVALID_SUBJECT");
         const hash = await fingerprint(["open", args.agent, args.prompt]);
         const duplicate = await ctx.runQuery(component.queue.lookupReceipt, {
           subject,
@@ -295,6 +296,17 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
      * Execution and delivery tokens stay private. The delivered result in the
      * native parent transcript remains reachable through `resultMessageId`.
      */
+    /** Return the current request's full delegation tree after root ownership authorization. */
+    runTree: queryGeneric({
+      args: { threadId: v.string() },
+      handler: async (ctx, args) => {
+        const row = await owned(ctx, args.threadId, "activity");
+        return ctx.runQuery(component.subagents.runTree, {
+          threadId: args.threadId,
+          subject: row.subject,
+        });
+      },
+    }),
     delegations: queryGeneric({
       args: { threadId: v.string(), paginationOpts: paginationOptsValidator },
       returns: vPaginationResult(subagentRun),

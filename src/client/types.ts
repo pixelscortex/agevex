@@ -157,16 +157,27 @@ export type DelegationDenialCode =
   | "FORBIDDEN"
   | "STALE_TURN"
   | "DELEGATION_CONFLICT"
-  | "RUN_BUDGET";
+  | "RUN_BUDGET"
+  | "DEPTH_LIMIT"
+  | "GROUP_LIMIT"
+  | "GROUP_CLOSED"
+  | "GROUP_CONFLICT"
+  | "CHILD_FINISHED"
+  | "MESSAGE_LIMIT"
+  | "ASK_PENDING"
+  | "ASK_WITH_CHILDREN"
+  | "QUEUE_LIMIT";
 
 /**
  * The single host-internal coordinator mutation.
  *
- * Exactly three operations, all authenticated by a capability the caller already
+ * Every operation is authenticated by a capability the caller already
  * holds: `launch` by the actor's currently running turn token plus the native
  * tool call id, `settle` by the child turn token that owns the run, and `notify`
  * by the one-shot delivery capability minted when the run was launched. There is
- * no separate `runChildTurn` entry point and no third authorization callback.
+ * no separate `runChildTurn` entry point or extra authorization callback.
+ * `message` and `ask` use the actor's current token and the existing background
+ * delegate/deliver policy, respectively.
  */
 export type CoordinateArgs =
   | {
@@ -176,7 +187,11 @@ export type CoordinateArgs =
       toolCallId: string;
       agent: string;
       task: string;
+      group?: string;
+      wait?: "each" | "all";
     }
+  | { op: "message"; assignmentId: string; turnToken: string; runId: string; text: string }
+  | { op: "ask"; assignmentId: string; turnToken: string; question: string }
   | {
       op: "settle";
       assignmentId: string;
@@ -188,11 +203,14 @@ export type CoordinateArgs =
   | { op: "notify"; runId: string; deliveryToken: string };
 
 /**
- * `launch` returns a receipt or a sanitized denial. `settle` and `notify`
- * return `null`: their outcome is recorded as persisted state, and neither
- * reports generated output, a read or a completed task.
+ * Launch returns a receipt or denial; message/ask return acceptance or denial.
+ * Settlement returns deferred when an admitted follow-up owns the next turn,
+ * otherwise null; notify returns null. These are control outcomes only.
  */
-export type CoordinateResult = DelegationResult | null;
+export type CoordinateResult =
+  | DelegationResult
+  | { status: "accepted" | "deferred"; runId: string }
+  | null;
 
 // Minimal execution capability, not Agent<object, ToolSet>: native tool sets
 // are invariant (notably stop conditions). No native result is widened publicly.

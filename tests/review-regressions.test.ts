@@ -968,7 +968,7 @@ it("two healthy slices complete when their combined duration exceeds the slice w
   });
 });
 
-it("a child's slice limit frees its slot and delivers one failure alongside sibling results", async () => {
+it("a child's slice limit frees its slot and delivers a failure after an immediately ready sibling result", async () => {
   const t = setup();
   state.delegate = true;
   state.delegateFanout = 2;
@@ -991,9 +991,11 @@ it("a child's slice limit frees its slot and delivers one failure alongside sibl
     turnStatus: "idle",
     subagents: { active: 0, history: 2 },
   });
-  expect(state.calls).toHaveLength(2);
-  expect(JSON.stringify(state.calls[1].prompt)).toContain("SLICE_LIMIT");
+  // R1 delivers the ready sibling immediately instead of waiting for the slicing child.
+  expect(state.calls).toHaveLength(3);
   expect(JSON.stringify(state.calls[1].prompt)).toContain("RESEARCHER deterministic");
+  expect(JSON.stringify(state.calls[1].prompt)).not.toContain("SLICE_LIMIT");
+  expect(JSON.stringify(state.calls[2].prompt)).toContain("SLICE_LIMIT");
   const messages = await t.run((ctx) =>
     listMessages(ctx, components.agent, {
       threadId: receipt.threadId,

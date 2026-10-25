@@ -22,6 +22,8 @@ export const PLATFORM = {
 
 /** Host defaults and hard ceilings are paired so raising policy cannot unbound a transaction. */
 export const HOST_LIMITS = {
+  maxDepth: { default: 2, max: 2 },
+  messagesPerChild: { default: 4, max: 8 },
   // Pool admission shares eight scheduled-action slots at both maxima together.
   rootLane: { default: 2, max: 4 },
   childLane: { default: 4, max: 4 },
@@ -42,32 +44,45 @@ export const HOST_LIMITS = {
 
 /**
  * Cancel budget at ALL host maxima:
- * A = 1 root + 20 children = 21 assignments. The root has <=100 queued rows
- * plus one reserved head; each child has only its one attach-created prompt
- * (public sends and recursive delegation are forbidden): I = 101 + 20 = 121.
- * Each inbox row costs one run patch and one inbox delete: 2I = 242 writes.
- * Each assignment costs three assignment patches, one current-run patch, two
- * scheduler cancels and one exact-id cleanup job: 7A = 147. Add 20 child-run
- * patches and one final root patch. Workflow 0.4.10 cancel follows only the
- * current loop/turn step; reserve another 64 reads AND writes per assignment
- * for nested Workflow, Workpool, scheduler and callback bookkeeping: 64A=1,344.
- * Writes <= 2I + 7A + 20 + 1 + 64A = 1,754 < 8,000 < 16,000.
- * Reads include inbox query + delete read + run patch read (3I), assignments
- * and their three patch reads (4A), current runs (A), two scheduler jobs (2A),
- * child-run query + patch reads (2*20), final root patch and public ownership
- * read (2), plus SDK allowance (64A): <=1,896 < 4,096 < 8,192.
- * Budgeting 1 KiB per id-only inbox/run read and 4 KiB per other metadata read
- * gives 363 KiB + (1,896 - 363)*4 KiB < 8 MiB < 16 MiB. Native task/message
- * bodies (including 1 MiB pending placeholders) are never read here: each
- * recorded cleanup runs in its own later transaction.
+ * A = 1 root + 20 descendants = 21 assignments (depth never multiplies A).
+ * Every assignment has <=100 regular queued rows, one reserved answer slot,
+ * and its reserved head (or approval continuation). Use I=21*102=2,142 rows.
+ * This deliberately overcounts: many simultaneous child queues belong to
+ * DIFFERENT user-run budgets, so a single run's 100 hops is not a valid bound
+ * on the whole root's backlog. Depth two allows each parent its own results.
+ * Each inbox row costs one run patch and one inbox delete: 2I=4,284 writes.
+ * Each assignment costs three patches, one current-run patch, two scheduler
+ * cancels and one exact-id cleanup job: 7A=147. Add 20 child-run patches and
+ * one final root patch. Reserve 64A=1,344 reads AND writes for Workflow's
+ * current loop/turn, Workpool, scheduler and callback bookkeeping.
+ * Writes <=2I+7A+20+1+64A=5,796 <8,000 <16,000.
+ * Reads <=3I+4A+A+2A+2*20+2+64A=7,959 <8,192.
+ * Bytes: inbox/run reads 3I*1 KiB; assignment patch reads 4A*8 KiB;
+ * current runs A*1 KiB; scheduler 2A*4 KiB; child runs 40*4 KiB;
+ * ownership/final root 2*8 KiB; SDK allowance 64A*4 KiB:
+ * <=12,839 KiB <16 MiB. Native messages (including each nearly
+ * 1 MiB placeholder) are NEVER read by cancel; cleanup runs separately.
+ * Subagent rows stay <=4 KiB: names/subjects/groups <=200 UTF-16 units,
+ * hashed tool-call dedup keys, ids, counters and <=4 small events. Assignments
+ * allow <=8 KiB including the 16 recorded fixed-size approval keys.
  *
- * Other proportional paths: claim reads/deletes at most 101 inbox rows;
- * admission/send/reserve/attach/deliver handle one item, never the backlog or
+ * Other proportional paths: claim drains <=152 consecutive ready rows,
+ * including <=50 ready joins from its run, and reads no native bodies. Each
+ * join uses an indexed ready representative and <=20 cohort metadata rows;
+ * admission/send/attach handle one item. Membership sealing reads/patches
+ * <=50 launch rows. Descendant/settlement fences use indexed existence probes,
+ * never historical prefixes. The tree reads <=50 launch rows. Local comments
+ * include combined claim/seal/release metadata allowances.
+ * Native verification/delivery reads one exact <=1 MiB message, never the
  * launch history. Tasks are <=16,000 UTF-16 units (<=64 KiB UTF-8), with at
  * most one native task save per delegation. Hops/leases are scalar counters;
- * slices are separate Workflow steps. No transaction multiplies their maxima.
+ * slices are separate Workflow steps. Launch/hop/slice maxima never multiply
+ * native transcript sizes.
  */
 export const LIMITS = {
+  maxDepth: HOST_LIMITS.maxDepth.default,
+  messagesPerChild: HOST_LIMITS.messagesPerChild.default,
+  groupLength: 200,
   rootLane: HOST_LIMITS.rootLane.default,
   childLane: HOST_LIMITS.childLane.default,
   slicesPerTurn: HOST_LIMITS.slicesPerTurn.default,
@@ -118,6 +133,10 @@ export const LIMITS = {
 
 /** Only these policy bounds are tunable; internal safety/platform facts are not. */
 export const limitsValidator = v.object({
+  // Optional on persisted v1 assignments; resolveLimits always fills both for
+  // new registrations. Missing legacy fields use the current safe defaults.
+  maxDepth: v.optional(v.number()),
+  messagesPerChild: v.optional(v.number()),
   rootLane: v.number(),
   childLane: v.number(),
   runLaunches: v.number(),

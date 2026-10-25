@@ -2,7 +2,7 @@
 
 A Workflow-backed Convex component and host client for managed
 `@convex-dev/agent` agents. Native Agent owns threads, messages, tools and
-streaming. Agevex owns durable scheduling, authorization, depth-1 delegation,
+streaming. Agevex owns durable scheduling, authorization, depth-two delegation,
 run budgets and idempotency.
 
 Git-only, private package, **UNLICENSED**.
@@ -45,7 +45,7 @@ const runtime = registerAgent(components.agevex, {
   authorizeExecution: hostExecutionPolicy,
 });
 export const { runTurn, coordinate } = runtime.internalFunctions();
-export const { open, send, respond, cancel, messages, activity, delegations } =
+export const { open, send, respond, cancel, messages, activity, delegations, runTree } =
   runtime.authorizedEndpoints();
 ```
 
@@ -79,14 +79,51 @@ into one parent continuation. Every workflow carries a version argument;
 step order is protected by replay fixtures.
 
 A user prompt starts one run. Its turns and child results share a budget of
-12 launches / 24 hops (launches plus delivered results). Result turns may
+12 launches / 24 hops (launches, delivered results, questions and follow-ups). Result turns may
 call `agevex_delegate` again. Over budget returns
-`{ status: "denied", code: "RUN_BUDGET" }`. Depth remains 1, with at most
-5 active children per root and 4000 characters per delegated task.
+`{ status: "denied", code: "RUN_BUDGET" }`. A root admits at most
+5 active descendants by default and 4000 characters per delegated task.
 
 Failures are sanitized and never automatically replayed. Ambiguous execution
 sets `recovery_required`; the watchdog covers each active slice, excluding
 queue and between-slice time.
+
+## Delegation
+
+Agents may delegate two edges deep: Main → Builder → Reviewer. Set
+`limits.maxDepth: 1` to lower this; cycles and deeper graphs fail at
+registration. Shared child Agent objects are supported. Launch/hop budgets and
+cancellation cover every descendant; results return to the immediate parent.
+
+Parents receive `agevex_delegate({ agent, task, group?, wait? })` and
+`agevex_message_child({ runId, text })`. Default `wait: "each"` delivers each
+settled result immediately. With `wait: "all"`, a group
+wakes its parent once after the launching slice ends and every member settles,
+including failures. Membership seals when that slice ends; later launches into
+the group return `GROUP_CLOSED`. Groups belong to one parent assignment and user run.
+A group has at most `activeChildrenPerRoot` members (hard maximum 20);
+omitting its name selects the unnamed group. Names are at most 200 characters.
+
+Children receive `agevex_ask_parent({ question })`: one open question pauses
+the child as `asking`, and its verified question wakes its parent immediately,
+even inside a waiting group. The parent answers with `agevex_message_child`.
+Follow-ups reach running or idle children in the same root; finished or foreign
+runs return typed denials. Each child accepts 4 follow-ups by default (maximum
+8); questions and follow-ups spend the originating run's hops. Both use the
+task-length bound. Asking children remain cancellable; one inbox slot is
+reserved for their answer.
+
+R1: The inbox holds ready work in FIFO order; claims coalesce consecutive head rows.
+R2: `ask_parent` denies `ASK_WITH_CHILDREN` while any descendant is non-terminal.
+R3: Runs settle after the last turn ends, descendants settle, and the inbox empties.
+
+The verified run result is the final text of the last turn before settlement;
+earlier final text while descendants are running does not finish the run.
+
+`runTree({ threadId })` is an owner-authorized, root-only query returning the
+current request's descendants with agent, status, depth, group, parent
+assignment, native child thread and timings. Its full-history read is bounded
+by `runLaunches` (maximum 50); the active descendant cap remains 20.
 
 ## Cancellation and approvals
 
@@ -133,7 +170,7 @@ receipts are purged in scheduled batches after seven days.
 
 `messages({ threadId, paginationOpts, streamArgs? })` reads roots and children
 with native pagination and stream sync. Find `childThreadId` in `delegations`.
-`activity` and `delegations` are root coordination reads. Public sends and
+`activity`, `delegations` and `runTree` are root coordination reads. Public sends and
 cancels cannot drive a child's lifecycle.
 
 `authorize` checks public ownership and background `delegate`/`deliver`
@@ -145,7 +182,8 @@ observer failures do not change execution.
 `LIMITS`, exported from `agevex`, is the single source of runtime bounds,
 including lane sizes, model output/deadline, slices, run budgets, queue size,
 ledger retention. Registration accepts `limits?: Partial<Limits>` for lanes,
-run budgets, active children, task/queue size, slices and lease; positive
+depth, run budgets, active descendants, follow-ups per child, task/queue size,
+slices and lease; positive
 integers are required and lanes must fit scheduled concurrency. Registrations
 sharing a component mount share its lane capacities. `PLATFORM` contains
 documented facts, not checked by the SDK, including Workflow journal/step
@@ -170,6 +208,7 @@ in `.vite-plus/live-results.json`. `agevex/test` exports `register`,
 `scriptedModel` and `expectJournalUnchanged`; the latter checks committed
 journals and replays them through the real Workflow engine.
 
-See [component ownership](src/component/README.md). Deferred: deeper delegation,
-groups/joins, peer messaging, approval UX, hooks, meter and other optional
-modules. No migration is supplied for this pre-adoption schema change.
+See [component ownership](src/component/README.md). Deferred: depth above two,
+peer messaging, approval UX, hooks, meter and other optional modules. Existing
+v1 Workflow step order is preserved; new delegation fields are optional on
+persisted v1 rows.

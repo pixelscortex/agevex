@@ -15,8 +15,8 @@ type AgentOptions<Tools extends ToolSet> = Omit<Config, "languageModel"> & {
   /**
    * Agents this one may delegate to through the managed `agevex_delegate` tool.
    * Must be real `Agent` objects, not names: `registerAgent` resolves the
-   * executable child through this list. Managed depth is 1, so a child declares
-   * `subagents: []`.
+   * executable child through this list. Registration allows up to two edges
+   * from each root (or one when limits.maxDepth is lowered).
    */
   subagents: readonly ManagedAgent[];
 };

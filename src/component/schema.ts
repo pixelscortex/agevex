@@ -39,10 +39,20 @@ export const denialCode = v.union(
   v.literal("STALE_TURN"),
   v.literal("DELEGATION_CONFLICT"),
   v.literal("RUN_BUDGET"),
+  v.literal("DEPTH_LIMIT"),
+  v.literal("GROUP_LIMIT"),
+  v.literal("GROUP_CLOSED"),
+  v.literal("GROUP_CONFLICT"),
+  v.literal("CHILD_FINISHED"),
+  v.literal("MESSAGE_LIMIT"),
+  v.literal("ASK_PENDING"),
+  v.literal("ASK_WITH_CHILDREN"),
+  v.literal("QUEUE_LIMIT"),
 );
 export const runStatus = v.union(
   v.literal("queued"),
   v.literal("running"),
+  v.literal("asking"),
   v.literal("completed"),
   v.literal("failed"),
 );
@@ -202,6 +212,9 @@ export default defineSchema({
     assignmentId: v.id("assignments"),
     messageId: v.string(),
     sequence: v.number(),
+    // Deferred joins append later than their native save. Claim compares this
+    // recorded save order, never queue insertion order, to retain newer answers.
+    messageSequence: v.optional(v.number()),
     runId: v.id("runs"),
     kind: v.union(
       v.literal("user"),
@@ -212,11 +225,10 @@ export default defineSchema({
     ),
   }).index("by_assignment_sequence", ["assignmentId", "sequence"]),
   // A run outlives an individual turn: results and subsequent delegations spend
-  // the same budget. pendingResults lets the parent batch child notifications.
+  // the same launch/hop budget. Results are ready independently of siblings.
   runs: defineTable({
     launches: v.number(),
     hops: v.number(),
-    pendingResults: v.number(),
     cancelled: v.boolean(),
   }),
   receipts: defineTable({
@@ -244,9 +256,36 @@ export default defineSchema({
     payloadFingerprint: v.string(),
     rootAssignmentId: v.id("assignments"),
     actorAssignmentId: v.id("assignments"),
+    // Optional only for replaying existing depth-one runs. Read by admission,
+    // group release and the tree projection; never duplicate native messages.
+    depth: v.optional(v.number()),
+    group: v.optional(v.string()),
+    wait: v.optional(v.union(v.literal("each"), v.literal("all"))),
+    groupReleased: v.optional(v.boolean()),
+    // Only a sealed, fully delivered cohort enters the ready-group index.
+    // Read by releaseGroups; historical incomplete cohorts cannot hide it.
+    groupReady: v.optional(v.boolean()),
+    // The launching slice seals its cohorts before results may release them.
+    // Read by admission (closed membership), release, and the indexed seal.
+    groupSealed: v.optional(v.boolean()),
+    // The exact native question id is recorded with its native save and read
+    // for verification before delivery. `asking` itself is the open-question fence.
+    questionMessageId: v.optional(v.string()),
+    messagesReceived: v.optional(v.number()),
     childAssignmentId: v.optional(v.id("assignments")),
     childThreadId: v.optional(v.string()),
+    // Recorded with native final saves, cleared on every new turn claim, and
+    // read by settlement verification: only the last turn may supply a result.
     childResultMessageId: v.optional(v.string()),
+    // Host-verified outcome of the last ended turn, retained while descendants
+    // or inbox work fence settlement. Claim clears it before the next turn.
+    // Read by idle settlement; no native transcript is scanned or copied.
+    lastTurnResult: v.optional(
+      v.object({
+        messageId: v.optional(v.string()),
+        errorCode: runErrorCode,
+      }),
+    ),
     agent: v.string(),
     rootAgent: v.string(),
     actorAgent: v.string(),
@@ -263,10 +302,25 @@ export default defineSchema({
     finishedAt: v.optional(v.number()),
     deliveryAt: v.optional(v.number()),
     resultMessageId: v.optional(v.string()),
+    // Native notifications can share a millisecond; this parent-local order
+    // selects the latest exact anchor when the closed group is released.
+    resultSequence: v.optional(v.number()),
     events: v.array(runEvent),
   })
     .index("by_dedup", ["dedupKey"])
     .index("by_run", ["runId"])
     .index("by_root_sequence", ["rootAssignmentId", "sequence"])
-    .index("by_root_status", ["rootAssignmentId", "status"]),
+    .index("by_root_status", ["rootAssignmentId", "status"])
+    .index("by_parent_delivery", ["actorAssignmentId", "deliveryStatus"])
+    .index("by_ready_group", [
+      "actorAssignmentId",
+      "rootCancellationEpoch",
+      "groupReady",
+      "groupReleased",
+      "parentRunId",
+    ])
+    .index("by_membership", ["actorAssignmentId", "parentRunId", "groupSealed"])
+    .index("by_group", ["actorAssignmentId", "parentRunId", "group"])
+    .index("by_unjoined", ["actorAssignmentId", "rootCancellationEpoch", "wait", "groupReleased"])
+    .index("by_root_run", ["rootAssignmentId", "parentRunId", "sequence"]),
 });

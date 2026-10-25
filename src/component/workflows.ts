@@ -30,7 +30,7 @@ export const childLane = new WorkflowManager(components.childWorkflow, {
  * instead of resetting a host override to the SDK default on every turn.
  * A mount owns one pair of lanes; registrations sharing it must share capacity.
  */
-export function laneManager(child: boolean, limits: Limits) {
+export function laneManager(child: boolean, limits: Pick<Limits, "rootLane" | "childLane">) {
   return new WorkflowManager(child ? components.childWorkflow : components.rootWorkflow, {
     workpoolOptions: {
       maxParallelism: child ? limits.childLane : limits.rootLane,

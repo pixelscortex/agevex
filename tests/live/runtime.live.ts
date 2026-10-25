@@ -14,23 +14,32 @@ const api = anyApi as unknown as ApiFromModules<{ agents: typeof agents }>;
 const modules = import.meta.glob(["./convex/**/*.ts", "./convex/**/*.js"]);
 
 it.skipIf(!process.env.OPENROUTER_API_KEY)(
-  "live plain turn and delegation round trip with a result turn delegating again",
+  "live plain turn, repeated delegation and Main → Builder → Reviewer depth-two round trip",
   async () => {
+    const scenarios = [];
     try {
-      for (const delegation of [false, true]) {
+      for (const scenario of ["plain", "delegation", "depth"] as const) {
+        const delegation = scenario === "delegation";
+        const depth = scenario === "depth";
+        const before = { input: live.inputTokens, output: live.outputTokens };
         const t = convexTest(schema, modules);
         agent.register(t);
         agevex.register(t);
         const owner = t.withIdentity({ subject: "live-owner" });
         live.delegation = delegation;
+        live.depth = depth;
+        live.builderCalls = 0;
+        live.reviewerCalls = 0;
         live.rootCalls = 0;
         live.childCalls = 0;
         const receipt = await owner.mutation(api.agents.open, {
           agent: "Main",
-          prompt: delegation
-            ? "Delegate a short task to Researcher, then delegate one more short task after its result, then answer."
-            : "Say hello in three words.",
-          requestKey: delegation ? "collaboration" : "plain",
+          prompt: depth
+            ? "Do a depth-two task: delegate one short task to Builder, which delegates to Reviewer, then answer after Builder completes."
+            : delegation
+              ? "Delegate a short task to Researcher, then delegate one more short task after its result, then answer."
+              : "Say hello in three words.",
+          requestKey: scenario,
         });
         await expect
           .poll(
@@ -51,8 +60,8 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
           .toEqual({
             status: "idle",
             active: 0,
-            history: delegation ? 2 : 0,
-            rootCalls: delegation ? 3 : 1,
+            history: delegation || depth ? 2 : 0,
+            rootCalls: depth ? 2 : delegation ? 3 : 1,
             queued: 0,
           });
         if (delegation) {
@@ -68,6 +77,27 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
           ).toBe(true);
           expect(live.childCalls).toBe(2);
         }
+        if (depth) {
+          expect(live.builderCalls).toBe(2);
+          expect(live.reviewerCalls).toBe(1);
+          const tree = await owner.query(api.agents.runTree, { threadId: receipt.threadId });
+          const deliveries = await owner.query(api.agents.delegations, {
+            threadId: receipt.threadId,
+            paginationOpts: { cursor: null, numItems: 20 },
+          });
+          expect(
+            tree.map((run) => ({ agent: run.agent, depth: run.depth, status: run.status })),
+            JSON.stringify(deliveries.page),
+          ).toEqual([
+            { agent: "Builder", depth: 1, status: "completed" },
+            { agent: "Reviewer", depth: 2, status: "completed" },
+          ]);
+        }
+        scenarios.push({
+          scenario,
+          inputTokens: live.inputTokens - before.input,
+          outputTokens: live.outputTokens - before.output,
+        });
         const messages = await owner.query(api.agents.messages, {
           threadId: receipt.threadId,
           paginationOpts: { cursor: null, numItems: 20 },
@@ -83,6 +113,7 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
         Number(process.env.OPENROUTER_LIVE_MAX_USD ?? LIVE_LIMITS.maxUsd),
       );
       const evidence = JSON.stringify({
+        scenarios,
         requestedModel: modelId,
         routedModels: [...live.models],
         requests: live.requests,
