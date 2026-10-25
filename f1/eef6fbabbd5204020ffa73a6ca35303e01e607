@@ -1,0 +1,399 @@
+example/src/components/charts/use-chart-interaction.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-380
+example/src/components/charts/bar-squares.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-644
+example/src/components/charts/bar-squares-layout.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-99
+example/src/components/ui/skiper-ui/skiper41.tsx
+  s_d863bd773ba186::t_cbdd26cc38afce 1-103
+example/src/components/charts/bar-depth-geometry.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-34
+example/README.md
+  s_d863bd773ba186::t_48b10bf2c15854 1-18,21-22
+  s_d863bd773ba186::t_e6a2050e299e03 19-20
+example/src/lib/convex.tsx
+  s_d863bd773ba186::t_bfd685e0855ebd 1-10
+example/src/components/charts/patterns/pattern.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-27
+example/src/components/charts/tooltip/tooltip-box.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-339
+example/src/components/charts/patterns/waves.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-61
+example/src/styles.css
+  s_d863bd773ba186::t_5bc2841d877059 265-267,270
+  s_d863bd773ba186::t_e6a2050e299e03 1-48,89-123,154-187,213-224
+  s_d863bd773ba186::t_138c7f2a807d64 49-88,124-153,188-212
+  s_d863bd773ba186::t_b4316f1d9c7adb 263-264,268-269,271-274
+  s_d863bd773ba186::t_2902c204e06ec2 225-262
+src/component/subagents.ts
+  s_d863bd773ba186::t_77b0ac4a4a0575 734-761
+example/src/router.tsx
+  s_d863bd773ba186::t_e6a2050e299e03 1-20
+src/component/_generated/component.ts
+  s_d863bd773ba186::t_f8e3f5512d209f 161-167
+src/client/types.ts
+  s_d863bd773ba186::t_d8b0a04f196da3 44-49,204-210
+  s_d863bd773ba186::t_8d0e77d666b1db 50-56
+example/src/components/charts/patterns/LICENSE-visx-pattern
+  s_d863bd773ba186::t_138c7f2a807d64 1-21
+example/public/robots.txt
+  s_d863bd773ba186::t_e6a2050e299e03 1-3
+example/convex/_generated/api.js
+  s_d863bd773ba186::t_09e879b09444a4 1-23
+example/src/components/charts/tooltip/chart-tooltip.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-627
+example/src/components/ui/dropdown-menu.tsx
+  s_d863bd773ba186::t_612927d2e7f78d 1-265
+example/src/components/charts/tooltip/tooltip-content.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-95
+example/src/components/charts/chart-phase.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-52
+example/src/components/ui/input.tsx
+  s_d863bd773ba186::t_8cb651e69c0a26 1-19
+example/src/components/charts/bar.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-580
+example/src/components/charts/chart-config-context.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-92
+example/src/components/playground/markdown.tsx
+  s_d863bd773ba186::t_d241bfc52ed9a0 1-5,7-10
+  s_d863bd773ba186::t_3b576c6fc87784 6
+example/src/components/ui/hover-card.tsx
+  s_d863bd773ba186::t_612927d2e7f78d 1-50
+example/public/manifest.json
+  s_d863bd773ba186::t_e6a2050e299e03 1-25
+example/src/components/charts/grid.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-317
+example/src/components/playground/waterfall.tsx
+  s_d863bd773ba186::t_3b576c6fc87784 83-85
+  s_d863bd773ba186::t_246603588d7541 1-9,11,18,23-24,30,56-57,63-65,72-73,76-81,86-88,90,92,97-100,112-116
+  s_d863bd773ba186::t_e8972bdf2db18d 12-16
+  s_d863bd773ba186::t_691a5ee12770b4 10,25-29,31-37,42-55,74-75,93-96,101-111
+  s_d863bd773ba186::t_3f9d95682ed339 17,82,89,91
+  s_d863bd773ba186::t_fdd135267856f0 19-22
+  s_d863bd773ba186::t_2e17c7d1f87e55 38-41,58-62,66-71
+example/src/components/charts/chart-child-passthrough.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-191
+example/components.json
+  s_d863bd773ba186::t_cbdd26cc38afce 24-27
+  s_d863bd773ba186::t_e6a2050e299e03 1-23,28
+example/src/components/ui/empty.tsx
+  s_d863bd773ba186::t_8cb651e69c0a26 1-103
+example/src/components/playground/run-inspector.tsx
+  s_d863bd773ba186::t_03966144cb13f8 3,7-10,12,14-33,80-81,83-86,88-93,95-117,120-128
+  s_d863bd773ba186::t_b11c5afc5996d8 1-2,4-6,11,34-79,82,87,118-119
+  s_d863bd773ba186::t_6b710e299ec40b 13,94
+example/convex/model.ts
+  s_d863bd773ba186::t_748026ccef7f9c 8-12
+  s_d863bd773ba186::t_fd442e344f9ef9 1-7
+example/src/components/ui/bubble.tsx
+  s_d863bd773ba186::t_612927d2e7f78d 1-127
+example/src/components/charts/y-axis-ticks.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-25
+example/src/components/charts/patterns/hexagons.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-59
+example/src/components/ui/spinner.tsx
+  s_d863bd773ba186::t_8cb651e69c0a26 1-10
+example/src/components/ui/skeleton.tsx
+  s_d863bd773ba186::t_8cb651e69c0a26 1-13
+example/src/components/theme/mode-toggle.tsx
+  s_d863bd773ba186::t_3aa2a7b28da9b6 1-45
+example/src/components/ui/badge.tsx
+  s_d863bd773ba186::t_8cb651e69c0a26 1-51
+example/src/components/ui/marker.tsx
+  s_d863bd773ba186::t_612927d2e7f78d 1-70
+example/src/hooks/use-mobile.ts
+  s_d863bd773ba186::t_612927d2e7f78d 1-19
+example/src/components/charts/patterns/index.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-14
+example/src/components/charts/loading-sweep.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-488
+example/src/components/charts/y-domain-utils.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-256
+example/convex/_generated/server.js
+  s_d863bd773ba186::t_09e879b09444a4 1-101
+example/src/components/charts/use-mount-progress.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-33
+example/src/components/ui/message.tsx
+  s_d863bd773ba186::t_8cb651e69c0a26 1-91
+example/tsconfig.json
+  s_d863bd773ba186::t_e6a2050e299e03 1-33
+example/.prettierignore
+  s_d863bd773ba186::t_e6a2050e299e03 1-3
+example/.cta.json
+  s_d863bd773ba186::t_e6a2050e299e03 1-17
+example/convex/threads.ts
+  s_d863bd773ba186::t_bfd685e0855ebd 3-17
+  s_d863bd773ba186::t_fd442e344f9ef9 1-2,18
+example/src/components/ui/resizable.tsx
+  s_d863bd773ba186::t_035f8876219190 1-47
+example/convex/_generated/api.d.ts
+  s_d863bd773ba186::t_09e879b09444a4 1-58
+example/src/components/ui/collapsible.tsx
+  s_d863bd773ba186::t_8cb651e69c0a26 1-19
+example/src/components/playground/activity-panel.tsx
+  s_d863bd773ba186::t_03966144cb13f8 1-9,14,20,25,27-34,37,39-41,43,46-52,54,56-61,69-73,77,79-87,89-92,94-106,108-109,112-121,123-126
+  s_d863bd773ba186::t_530afceaa315d6 11,38,42,44-45,93,122
+  s_d863bd773ba186::t_691a5ee12770b4 55
+  s_d863bd773ba186::t_fc09f533fa3600 63-68,78
+  s_d863bd773ba186::t_052c74cdc89e21 10,12-13,15-19,21,26,35-36,53,62,74,127-129
+  s_d863bd773ba186::t_3b576c6fc87784 22-24,75-76,88,107,110-111
+example/convex/agents.ts
+  s_d863bd773ba186::t_748026ccef7f9c 38-40
+  s_d863bd773ba186::t_fd442e344f9ef9 1-37,41-75,77
+  s_d863bd773ba186::t_bfc6607c7e4446 76
+example/src/components/charts/chart-context.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-481
+example/src/components/charts/pattern-preset.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-186
+example/src/components/ui/scroll-area.tsx
+  s_d863bd773ba186::t_8cb651e69c0a26 1-51
+example/.gitignore
+  s_d863bd773ba186::t_e6a2050e299e03 1-16
+example/convex/_generated/server.d.ts
+  s_d863bd773ba186::t_09e879b09444a4 1-162
+example/src/lib/local-threads.ts
+  s_d863bd773ba186::t_3aa2a7b28da9b6 1-38
+example/src/components/charts/bar-chart.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-749
+example/vite.config.ts
+  s_d863bd773ba186::t_e6a2050e299e03 1-12
+example/src/components/ui/tooltip.tsx
+  s_d863bd773ba186::t_8cb651e69c0a26 1-63
+example/src/components/playground/playground.tsx
+  s_d863bd773ba186::t_3ad93ff31ac03c 53
+  s_d863bd773ba186::t_691a5ee12770b4 130,136
+  s_d863bd773ba186::t_3b576c6fc87784 109,111,134
+  s_d863bd773ba186::t_530afceaa315d6 18
+  s_d863bd773ba186::t_0a9e61ab76c3df 1,12,27-31,33,37-41,46-48,51-52,54-80,103,126
+  s_d863bd773ba186::t_902c59b64b05f2 32,34-36,42-45
+  s_d863bd773ba186::t_585ec90c8f0d24 2-4,7,10-11,13-17,20-25,81-83,85-89,91-93,95-102,104-105,110,112-125,127-128
+  s_d863bd773ba186::t_d241bfc52ed9a0 5-6,19,26,49-50,84,94,106,142-143
+  s_d863bd773ba186::t_d0aecd7618b5ac 8
+  s_d863bd773ba186::t_7949e41676c84d 90
+  s_d863bd773ba186::t_52069ff4081981 9,107-108,129,131-133,135,137-141
+example/src/components/charts/filter-data-by-x-domain.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-59
+src/client/endpoints.ts
+  s_d863bd773ba186::t_d8b0a04f196da3 176-208,211-213,219-222
+  s_d863bd773ba186::t_8d0e77d666b1db 209-210,214-218
+  s_d863bd773ba186::t_6e7f2671bec6d0 175
+example/convex/auth.ts
+  s_d863bd773ba186::t_fd442e344f9ef9 1-13
+example/src/components/charts/bar-y-axis.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-141
+tests/fixture/api.ts
+  s_d863bd773ba186::t_70893c65dba59a 20-29,63
+example/src/components/charts/tooltip/tooltip-dot.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-219
+example/src/components/playground/steps.tsx
+  s_d863bd773ba186::t_89031b2440eea7 1-17,19-79,81-89,91,93-174
+  s_d863bd773ba186::t_d0aecd7618b5ac 18,92
+  s_d863bd773ba186::t_3b576c6fc87784 80
+  s_d863bd773ba186::t_ad6d7e9d60f684 90
+example/src/components/ui/card.tsx
+  s_d863bd773ba186::t_8cb651e69c0a26 1-102
+vite.config.ts
+  s_d863bd773ba186::t_8df0e9be3f1e63 11
+example/src/routeTree.gen.ts
+  s_d863bd773ba186::t_0e909a13d7e697 11-12,15-16,21,24,28,32,34-35,42,44-47,61-63
+  s_d863bd773ba186::t_e6a2050e299e03 1-10,13-14,17-20,22-23,25-27,29-31,33,36-41,43,48-60,64-68
+example/src/hooks/use-highlighted-code.ts
+  s_d863bd773ba186::t_8cb651e69c0a26 1-75
+example/src/components/ui/progress.tsx
+  s_d863bd773ba186::t_612927d2e7f78d 1-80
+example/src/components/charts/tooltip/index.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-16
+example/src/components/charts/static-chart-preview-context.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-22
+example/src/routes/__root.tsx
+  s_d863bd773ba186::t_585ec90c8f0d24 4,38,43
+  s_d863bd773ba186::t_d241bfc52ed9a0 17
+  s_d863bd773ba186::t_e6a2050e299e03 1-3,5-16,18-37,39-42,44-48
+example/src/components/ui/kbd.tsx
+  s_d863bd773ba186::t_8cb651e69c0a26 1-26
+example/src/components/playground/labels.ts
+  s_d863bd773ba186::t_3aa2a7b28da9b6 1-28
+example/src/components/charts/sparkline-geometry.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-321
+example/src/components/charts/patterns/path.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-60
+example/src/routes/index.tsx
+  s_d863bd773ba186::t_d241bfc52ed9a0 2-4,6,10-14
+  s_d863bd773ba186::t_e6a2050e299e03 1,5,7-9,15-16
+example/src/components/charts/patterns/lines.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-93
+example/src/components/charts/reference-area-config.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-68
+example/src/components/ui/code-block.tsx
+  s_d863bd773ba186::t_8cb651e69c0a26 1-247
+example/src/components/charts/tooltip/tooltip-indicator.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-211
+example/src/components/charts/use-grid-shimmer.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-111
+example/src/components/charts/y-axis-scales.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-115
+example/convex/tsconfig.json
+  s_d863bd773ba186::t_d53b0d6afc2997 21-22
+  s_d863bd773ba186::t_09e879b09444a4 1-20,23-26
+example/src/components/charts/chart-parent-size.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-34
+.prettierignore
+  s_d863bd773ba186::t_8df0e9be3f1e63 5
+  s_d863bd773ba186::t_9810a82d6ddc18 6
+example/src/components/charts/decimate-time-series.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-136
+example/src/components/ui/message-scroller.tsx
+  s_d863bd773ba186::t_8cb651e69c0a26 1-131
+example/src/components/charts/motion-utils.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-58
+example/src/components/ui/sheet.tsx
+  s_d863bd773ba186::t_612927d2e7f78d 1-138
+example/src/logo.svg
+  s_d863bd773ba186::t_e6a2050e299e03 1-12
+example/src/components/playground/suggestions.tsx
+  s_d863bd773ba186::t_052c74cdc89e21 1-31,33-34,36,38-43
+  s_d863bd773ba186::t_3b576c6fc87784 32,35,37
+example/src/components/charts/responsive-chart-label-count.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-33
+example/src/components/charts/use-enter-complete.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-28
+example/src/components/charts/bar-x-axis.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-167
+example/src/components/charts/tooltip/date-ticker.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-298
+tests/setup.ts
+  s_d863bd773ba186::t_70893c65dba59a 189-190
+example/src/components/charts/generate-chart-skeleton-data.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-42
+example/src/components/charts/animation.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-36
+example/src/components/charts/chart-legend-hover.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-44
+tests/registration.test.ts
+  s_d863bd773ba186::t_8d0e77d666b1db 45
+example/package.json
+  s_d863bd773ba186::t_748026ccef7f9c 49,51
+  s_d863bd773ba186::t_8cb651e69c0a26 24,53
+  s_d863bd773ba186::t_035f8876219190 50
+  s_d863bd773ba186::t_e6a2050e299e03 1-21,23,25-29,37-38,40-42,45,47-48,52,55-73
+  s_d863bd773ba186::t_cbdd26cc38afce 22,30-35,39,43-44,46,54
+  s_d863bd773ba186::t_647cc29e699e28 36
+example/src/components/ui/tabs.tsx
+  s_d863bd773ba186::t_8cb651e69c0a26 1-81
+example/src/components/charts/background.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-219
+example/src/components/charts/chart-formatters.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-49
+example/src/components/ui/attachment.tsx
+  s_d863bd773ba186::t_612927d2e7f78d 1-207
+example/src/components/ui/item.tsx
+  s_d863bd773ba186::t_612927d2e7f78d 1-201
+tests/child-messages.test.ts
+  s_d863bd773ba186::t_aafe2e1c6bda32 1-87
+example/src/lib/utils.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-6
+example/src/components/ui/textarea.tsx
+  s_d863bd773ba186::t_8cb651e69c0a26 1-17
+example/src/components/charts/use-chart-phase-orchestrator.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-284
+example/src/components/playground/types.ts
+  s_d863bd773ba186::t_bfd685e0855ebd 1-10,21-28
+  s_d863bd773ba186::t_530afceaa315d6 12-18
+  s_d863bd773ba186::t_03966144cb13f8 11,19-20
+example/.prettierrc
+  s_d863bd773ba186::t_e6a2050e299e03 1-11
+example/src/components/theme/provider.tsx
+  s_d863bd773ba186::t_3aa2a7b28da9b6 1-66
+example/src/components/ui/input-group.tsx
+  s_d863bd773ba186::t_8cb651e69c0a26 1-158
+example/src/lib/highlighter.tsx
+  s_d863bd773ba186::t_8cb651e69c0a26 1-124
+example/src/components/charts/bar-value-label-layout.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-63
+example/src/components/charts/chart-reveal-clip.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-99
+example/src/components/charts/tooltip/use-delayed-tooltip-data.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-64
+example/src/components/ui/button.tsx
+  s_d863bd773ba186::t_e6a2050e299e03 1-57
+example/src/components/playground/transcript.tsx
+  s_d863bd773ba186::t_29f004269aacdf 79,132-133
+  s_d863bd773ba186::t_3b576c6fc87784 109
+  s_d863bd773ba186::t_7949e41676c84d 17,39-55
+  s_d863bd773ba186::t_5bc2841d877059 134-135
+  s_d863bd773ba186::t_8d19792fa053b5 1-16,19-21,38,56-78,80-108,110-131,136-154
+  s_d863bd773ba186::t_530afceaa315d6 18,22-37
+example/convex/convex.config.ts
+  s_d863bd773ba186::t_fd442e344f9ef9 1-8
+example/src/components/ui/trace.tsx
+  s_d863bd773ba186::t_8cb651e69c0a26 1-162
+example/src/components/playground/composer.tsx
+  s_d863bd773ba186::t_3b576c6fc87784 28,57-58,106,118,125,133,139
+  s_d863bd773ba186::t_8d19792fa053b5 1-27,29-56,59-105,107-117,119-124,126-132,134-138,140-150
+example/src/components/charts/indicator-fade.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-64
+example/src/components/charts/line-loading-timing.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-12
+tests/host.ts
+  s_d863bd773ba186::t_70893c65dba59a 63-66,191,196-198,206-207
+example/tsr.config.json
+  s_d863bd773ba186::t_e6a2050e299e03 1-3
+example/src/components/charts/use-animated-y-domains.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-248
+example/src/components/charts/bar-chart-loading.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-42
+example/src/components/charts/chart-defs.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-72
+example/src/components/charts/patterns/circles.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-82
+example/eslint.config.js
+  s_d863bd773ba186::t_e6a2050e299e03 1-21
+.gitignore
+  s_d863bd773ba186::t_5d3c7121995d92 18-20
+  s_d863bd773ba186::t_6258d5adb5c38f 21
+example/src/components/charts/sparkline.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-1209
+example/src/components/charts/visx-pattern.tsx
+  s_d863bd773ba186::t_138c7f2a807d64 1-33
+example/src/components/charts/use-scheduled-tooltip.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-103
+example/src/components/ui/separator.tsx
+  s_d863bd773ba186::t_8cb651e69c0a26 1-24
+example/convex/_generated/dataModel.d.ts
+  s_d863bd773ba186::t_09e879b09444a4 1-58
+example/src/components/ui/sidebar.tsx
+  s_d863bd773ba186::t_612927d2e7f78d 1-721
+example/src/components/playground/app-sidebar.tsx
+  s_d863bd773ba186::t_585ec90c8f0d24 1-15,17-46,49-54,56,58-72,74-75,77-84
+  s_d863bd773ba186::t_d0aecd7618b5ac 16,47-48,73
+  s_d863bd773ba186::t_3b576c6fc87784 55,57,76
+example/src/components/charts/patterns/constants.ts
+  s_d863bd773ba186::t_138c7f2a807d64 1-9
+example/src/components/playground/use-now.ts
+  s_d863bd773ba186::t_246603588d7541 4
+  s_d863bd773ba186::t_bfd685e0855ebd 1-3,5-13
+README.md
+  s_d863bd773ba186::t_3187dc5adca58b 33,113-114,134,147-163,191-192
+bun.lock
+  s_d863bd773ba186::t_dea43fb6cdcef4 20,48-77,80-95,98-103,118-121,192-193,204-207,218-225,322-327,334-335,348-349,428-429,436-440,442,450-453,456-459,462-469,472-477,480-497,506-511,514-517,520-521,524-533,538-539,542-563,566-567,570-573,584-585,596-599,602-603,606-609,612-613,618-621,626-627,630-633,640-645,648-670,674-677,680-685,690-697,702-726,730-731,734-736,740-743,746-747,776-779,784-803,806-807,816-827,830-837,840-841,852-859,864-865,872-875,880-883,890-895,900-907,912-936,942-951,954-961,964-965,968-983,994-997,1002-1007,1010-1013,1018-1025,1028-1033,1040,1046-1047,1050-1053,1056-1059,1066-1075,1080-1095,1098-1099,1102-1121,1123-1156
+example/bun.lock
+  s_d863bd773ba186::t_b742b3db24bbf0 1-1720
+package.json
+  s_d863bd773ba186::t_a2c15b91db9929 62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f1eef6fbabbd5204020ffa73a6ca35303e01e607",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
