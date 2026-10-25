@@ -8,8 +8,34 @@ export default defineConfig({
   // Vite+/Vitest writes stays inside the checkout instead of node_modules.
   cacheDir: ".vite-plus/vite",
   lint: {
-    // Loaded as an Oxlint JavaScript plugin; the ESLint runner is never invoked.
-    jsPlugins: ["@convex-dev/eslint-plugin"],
+    // Loaded as Oxlint JavaScript plugins; the ESLint runner is never invoked.
+    jsPlugins: ["@convex-dev/eslint-plugin", "@stylistic/eslint-plugin"],
+    rules: {
+      // Readable step-by-step functions: a blank line after every declaration
+      // block and around every multi-line statement, and before each return,
+      // so each step of a handler reads as its own paragraph. Autofixable
+      // (`vp lint --fix`) and it only ever inserts blank lines.
+      "@stylistic/padding-line-between-statements": [
+        "error",
+        { blankLine: "always", prev: "*", next: "return" },
+        { blankLine: "always", prev: ["const", "let"], next: "*" },
+        {
+          blankLine: "any",
+          prev: ["singleline-const", "singleline-let"],
+          next: ["singleline-const", "singleline-let"],
+        },
+        {
+          blankLine: "always",
+          prev: "*",
+          next: ["if", "for", "while", "try", "multiline-expression", "multiline-const"],
+        },
+        {
+          blankLine: "always",
+          prev: ["if", "for", "while", "try", "multiline-expression", "multiline-const"],
+          next: "*",
+        },
+      ],
+    },
     ignorePatterns: [
       "node_modules/**",
       "dist/**",
