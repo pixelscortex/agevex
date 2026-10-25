@@ -1,0 +1,89 @@
+src/client/tasks.ts
+  s_3cb8c4d6edfc03::t_4425b62e4f51a7 74-76
+  s_3cb8c4d6edfc03::t_cbe34af49eb99d 78,124-129
+tests/hooks.host.ts
+  s_3cb8c4d6edfc03::t_895849034ac535 11,30-33,55-59,91-106,123,127-130,141,156-160
+src/client/runtime.ts
+  s_3cb8c4d6edfc03::t_b5f2c729df445d 20-22,46-66,72-80,149-150,236-251,548-624,989-991,993,995,997-998,1001,1004-1025,1027-1077,1080-1110,1113-1241,1245,1247-1251,1253-1264,1266-1298,1300-1562,1564-1568,1571-1572,1574-1578,1583-1602,1604-1607,1609-1624,1626-1640,1643,1645-1655,1657-1664,1666-1669,1671-1689,1691-1697,1699-1712,1714-1724,1732-1749,1751-1757,1759-1768,1770-1773,1775-1779,1786-1791,1794-1801,1803-1812,1827-1852
+src/component/ledger.ts
+  s_14762e0b2e0132::t_852c3fda0999fa 14,18,21-22,24-29,74,81,143,146-151
+tests/slots.test.ts
+  s_3cb8c4d6edfc03::t_791435cda7ab73 1-473,476,486,488,490-493
+  s_3cb8c4d6edfc03::t_4159c7e4ab8ee9 474-475,477-485,487,489
+src/client/endpoints.ts
+  s_3cb8c4d6edfc03::t_5062e50ba1fdf5 149-220,228,242-249,256,261-262,265,301,310-317,329,332-333,336-343
+src/component/files.ts
+  s_3cb8c4d6edfc03::t_85ded6c6bffa3b 1-136
+src/component/_generated/api.ts
+  s_3cb8c4d6edfc03::t_bcc5aa8227f058 13,33
+src/client/index.ts
+  s_3cb8c4d6edfc03::t_bd2d22ca94f00e 47
+src/component/queue.ts
+  s_3cb8c4d6edfc03::t_26bf6e43e29342 341,1157
+  s_3cb8c4d6edfc03::t_14ab71101ae022 805,911-917
+src/client/agent.ts
+  s_3cb8c4d6edfc03::t_3cea98e249e8eb 22,49,64
+src/component/hooks.ts
+  s_3cb8c4d6edfc03::t_133e6d576d2c1e 216-218,237,239-240,259-264
+tests/live/convex/agents.ts
+  s_c65e939e588631::t_453633e6a65d61 12-14,28,69,103-119,259
+tests/tasks.test.ts
+  s_3cb8c4d6edfc03::t_f218e74f40e6c5 1-222
+tests/live/runtime.live.ts
+  s_3cb8c4d6edfc03::t_23502702aaba1d 10-13,25-55,107-122,129-154,159-162
+  s_b39d195254f51a::t_a2b853882bfce6 21
+src/component/schema.ts
+  s_3cb8c4d6edfc03::t_fc5025262f0fb4 17,28,173-175,331-333
+  s_3cb8c4d6edfc03::t_1afc2c8cf063c2 307-314,329-330,334-337
+  s_14762e0b2e0132::t_72cc416d32330a 315-328,338,340,342-344
+src/component/_generated/component.ts
+  s_3cb8c4d6edfc03::t_e27f8a4e7e470b 11,39
+src/component/limits.ts
+  s_3cb8c4d6edfc03::t_f1d2cb06b3f0bc 94-99
+src/client/once.ts
+  s_3cb8c4d6edfc03::t_b5f06c8d270e53 7-9,14-15,78,85-89
+src/client/types.ts
+  s_3cb8c4d6edfc03::t_448272e1598209 1,83,270,296,313-319
+README.md
+  s_3cb8c4d6edfc03::t_6d4e4cf8fd8487 156-235
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "866b0f22989deaf74387edce64cd29d046e4eff3",
+  "prompts": {},
+  "sessions": {
+    "s_14762e0b2e0132": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16f81-ca68-7f92-ab89-1d35a9e6d90e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_3cb8c4d6edfc03": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a170b4-8b30-70a2-b7bc-60180de42f5c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_b39d195254f51a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17083-09f3-7672-a03e-e770d3b91c60",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_c65e939e588631": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a170b5-a3a0-7af0-9f5d-38cf77f1d3f2",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
