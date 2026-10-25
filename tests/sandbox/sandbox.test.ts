@@ -543,7 +543,6 @@ it("TTL cleanup runs only on demand and never retries an uncertain delete", asyn
   await advance(s.t, 0);
   expect(s.fake.calls.delete).toBe(1);
   expect(await row(s)).toMatchObject({ state: "deleted" });
-  await expect(invoke(s.t, "prepare")).rejects.toThrow("SANDBOX_DELETED");
 
   const second = setup("thread", { ttl: 1 }, fakeSandboxProvider());
   await invoke(second.t, "prepare");
@@ -735,4 +734,100 @@ it("hard-maximum cleanup batches stay within enforced transaction limits and dra
   await advance(s.t, 1);
   await advance(s.t, 0);
   expect(s.fake.calls.delete).toBe(HARD_LIMITS.cleanupBatch + 1);
+});
+
+it("a scope whose sandbox TTL cleanup deleted gets a fresh sandbox on next use", async () => {
+  const s = setup("thread", { ttl: 1 });
+  await invoke(s.t, "prepare");
+  const first = (await row(s))!;
+  await advance(s.t, LIMITS.actionBudgetMs + 1);
+  await invoke(s.t, "cleanup");
+  await advance(s.t, 0);
+  expect(await row(s)).toMatchObject({ state: "deleted" });
+  await invoke(s.t, "sandbox_write_file", { path: "/again", content: "new" });
+  const second = (await row(s))!;
+  expect(second).toMatchObject({ state: "ready", sandboxId: "fake-sandbox-2" });
+  expect(second.claim).not.toBe(first.claim);
+  expect(s.fake.calls.create).toBe(2);
+  expect(await invoke(s.t, "sandbox_read_file", { path: "/again" })).toEqual({ content: "new" });
+});
+
+it("a final watchdog claimed past the deadline whose action never settled ends the job once and schedules nothing", async () => {
+  const fake = fakeSandboxProvider({ background: () => [{ state: "running" }] });
+  fake.provider.cancelBackground = async (_ctx, id) => {
+    fake.calls.cancel.push(id);
+    return new Promise<never>(() => {});
+  };
+  const s = setup("thread", { pollMinMs: 100, pollMaxMs: 400, jobTimeoutMs: 1_000 }, fake);
+  const { jobId } = (await invoke(s.t, "sandbox_run_background", { command: "forever" })) as {
+    jobId: string;
+  };
+  // This attempt takes the claim and dies without ever settling it. Its lease
+  // runs to the deadline plus the full kill budget, which is the last wake.
+  expect(await s.t.mutation(s.component.state.claimPoll, { jobId })).not.toBeNull();
+  await advance(s.t, 1_000 + LIMITS.backgroundKillBudgetMs + LIMITS.backgroundLeaseMarginMs + 1);
+  expect(await s.t.query(s.component.state.getJob, { jobId })).toMatchObject({
+    state: "unknown",
+    code: "SANDBOX_JOB_DEADLINE",
+  });
+  const work = [fake.calls.poll.length, fake.calls.cancel.length];
+  expect(work[1]).toBeLessThanOrEqual(1);
+  await advance(s.t, LIMITS.actionBudgetMs);
+  expect([fake.calls.poll.length, fake.calls.cancel.length]).toEqual(work);
+  const live = await s.t.run((ctx) =>
+    ctx.db.system
+      .query("_scheduled_functions")
+      .collect()
+      .then((rows) => rows.filter((row) => ["pending", "inProgress"].includes(row.state.kind))),
+  );
+  expect(live).toHaveLength(0);
+});
+
+it("cleanup defers a delete the remaining action budget cannot finish instead of recording it unknown", async () => {
+  const fake = fakeSandboxProvider();
+  const s = setup("thread", { ttl: 1 }, fake);
+  await invoke(s.t, "prepare", {}, { threadId: "a" });
+  await invoke(s.t, "prepare", {}, { threadId: "b" });
+  await advance(s.t, LIMITS.actionBudgetMs + 1);
+  const remove = fake.provider.delete;
+  let calls = 0;
+  fake.provider.delete = async (ctx, id) => {
+    // The first delete eats nearly the whole 540 s action budget; the second
+    // one then takes 5 s, far more than the 1 s left.
+    if (++calls === 1) vi.setSystemTime(Date.now() + LIMITS.actionBudgetMs - 1_000);
+    else await new Promise((resolve) => setTimeout(resolve, 5_000));
+    await remove(ctx, id);
+  };
+  await invoke(s.t, "cleanup");
+  await advance(s.t, 0);
+  await advance(s.t, 10_000);
+  const rows = await Promise.all(
+    ["a", "b"].map(async (threadId) =>
+      s.t.query(s.component.state.get, {
+        scopeKey: await keyFor({ subject: "owner", threadId, runId: "run" }),
+      }),
+    ),
+  );
+  expect(rows.map((entry) => entry!.state)).toEqual(["deleted", "deleted"]);
+  expect(fake.calls.delete).toBe(2);
+});
+
+it("forget clears a lost create so the scope can create again, but never a known sandbox", async () => {
+  let lose = true;
+  const fake = fakeSandboxProvider({
+    create: async () => {
+      if (lose) throw new Error("lost response");
+    },
+  });
+  const s = setup("thread", {}, fake);
+  const facts = { subject: "owner", threadId: "thread", runId: "run" };
+  await expect(invoke(s.t, "prepare")).rejects.toThrow("lost response");
+  await expect(invoke(s.t, "prepare")).rejects.toThrow("SANDBOX_UNKNOWN");
+  expect(await invoke(s.t, "forget", facts)).toBe(true);
+  expect(await row(s)).toBeNull();
+  lose = false;
+  await invoke(s.t, "prepare");
+  expect(fake.calls.create).toBe(2);
+  expect(await invoke(s.t, "forget", facts)).toBe(false);
+  expect(await row(s)).toMatchObject({ sandboxId: "fake-sandbox-1", state: "ready" });
 });

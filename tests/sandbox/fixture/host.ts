@@ -131,6 +131,8 @@ export const invoke = internalActionGeneric({
         return null;
       case "export":
         return sandbox.export(ctx, { threadId: tc.threadId, path: args.input.path });
+      case "forget":
+        return sandbox.forget(ctx, args.input);
       case "cleanup":
         await sandbox.cleanup(ctx);
         return null;

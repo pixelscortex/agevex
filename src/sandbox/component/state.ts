@@ -30,9 +30,28 @@ export const reserve = mutation({
     integer(args.ttl, HARD_LIMITS.ttl, "TTL");
     const row = await sandbox(ctx, args.scopeKey);
     const now = Date.now();
+    if (row && row.state === "deleted") {
+      // A deleted sandbox is gone for good, so the scope is simply free again.
+      // A new claim fences every action of the old binding (save/finish all
+      // compare it), and the stale sandboxId must not survive into the new one.
+      const claim = crypto.randomUUID();
+      const leaseUntil = now + LIMITS.actionBudgetMs;
+      await ctx.db.patch(row._id, {
+        provider: args.provider,
+        sandboxId: undefined,
+        state: "creating",
+        ttl: args.ttl,
+        claim,
+        lastUsedAt: now,
+        leaseUntil,
+        cleanupAt: Math.max(now + args.ttl, leaseUntil),
+      });
+      return { status: "claimed" as const, claim };
+    }
     if (row) {
       if (row.provider !== args.provider) throw new Error("SANDBOX_PROVIDER_CONFLICT");
-      if (row.state === "deleting" || row.state === "deleted") throw new Error("SANDBOX_DELETED");
+      // Only an in-flight delete blocks use: its outcome is not known yet.
+      if (row.state === "deleting") throw new Error("SANDBOX_DELETING");
       if (!row.sandboxId) {
         if (row.leaseUntil <= now && row.state === "creating")
           await ctx.db.patch(row._id, { state: "unknown" });
@@ -65,6 +84,25 @@ export const reserve = mutation({
     checkSize(fields, LIMITS.sandboxRowBytes);
     await ctx.db.insert("sandboxes", fields);
     return { status: "claimed" as const, claim };
+  },
+});
+
+/**
+ * Drop a reservation whose create outcome was lost (no provider id, unknown or
+ * its lease expired). Never touches a row that has a sandboxId, so it cannot
+ * orphan a known paid resource. The host first looks the lost sandbox up at
+ * the provider (Daytona: label agevexScope / userKey = this scopeKey).
+ */
+export const forget = mutation({
+  args: { scopeKey: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const row = await sandbox(ctx, args.scopeKey);
+    if (!row || row.sandboxId) return false;
+    if (row.state !== "unknown" && !(row.state === "creating" && row.leaseUntil <= Date.now()))
+      return false;
+    await ctx.db.delete(row._id);
+    return true;
   },
 });
 
@@ -265,21 +303,69 @@ export const getJob = query({
   handler: (ctx, args) => ctx.db.get(args.jobId),
 });
 
+/** Terminal transition shared by settlement and the watchdog's direct finish. */
+async function terminate(
+  ctx: MutationCtx,
+  row: Doc<"jobs">,
+  result: {
+    state: "done" | "failed" | "unknown";
+    exitCode?: number;
+    logTail?: string;
+    code?: "SANDBOX_JOB_DEADLINE";
+  },
+) {
+  await cancelWake(ctx, row);
+  checkSize({ ...row, ...result }, LIMITS.jobRowBytes);
+  await ctx.db.patch(row._id, { ...result, wakeId: undefined });
+  const owner = await sandbox(ctx, row.scopeKey);
+  if (
+    owner &&
+    owner.state !== "deleted" &&
+    owner.state !== "deleting" &&
+    !(await hasJobs(ctx, row.scopeKey))
+  )
+    await ctx.db.patch(owner._id, {
+      cleanupAt: Math.max(owner.lastUsedAt + owner.ttl, owner.leaseUntil),
+    });
+  return {
+    type: "sandbox.job.completed" as const,
+    jobId: row._id,
+    ...(row.providerJobId ? { providerJobId: row.providerJobId } : {}),
+    scopeKey: row.scopeKey,
+    subject: row.subject,
+    threadId: row.threadId,
+    runId: row.runId,
+    ...result,
+  };
+}
+
 /** Polls only read provider state, but a lease still fences overlapping watchdogs. */
 export const claimPoll = mutation({
   args: { jobId: v.id("jobs") },
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.jobId);
-    if (!row || !["starting", "running"].includes(row.state) || row.leaseUntil > Date.now())
+    const now = Date.now();
+    if (!row || !["starting", "running"].includes(row.state) || row.leaseUntil > now) return null;
+    if (now > row.deadline + LIMITS.backgroundKillBudgetMs && row.leaseUntil > row.deadline) {
+      // The previous claim was already leased past the deadline, with the full
+      // kill budget, and its action never settled (it died or hung). Another
+      // claim could only repeat that attempt and, with a lease in the past,
+      // reschedule itself immediately forever while kills pile up. End the job
+      // here instead: unknown, never retried; the host reads it via job().
+      await terminate(ctx, row, { state: "unknown", code: "SANDBOX_JOB_DEADLINE" });
       return null;
+    }
     await cancelWake(ctx, row);
     const claim = crypto.randomUUID();
+    // The lease starts no earlier than now, so it is always in the future: a
+    // deadline already behind us must not produce a lease (and wake) in the
+    // past. It covers the action, the separate bounded kill, and the settle.
     const leaseUntil =
-      Math.min(Date.now() + LIMITS.actionBudgetMs, row.deadline) + LIMITS.backgroundKillBudgetMs;
-    // A hard action timeout still leaves a wake to report an unknown launch
-    // or continue safe status polling. Include the separate bounded kill
-    // budget so a slow kill cannot overlap a second deadline watchdog. Neither
-    // wake ever replays the command; even an interrupted kill gets a finite wake.
+      Math.max(Math.min(now + LIMITS.actionBudgetMs, row.deadline), now) +
+      LIMITS.backgroundKillBudgetMs +
+      LIMITS.backgroundLeaseMarginMs;
+    // A hard action timeout still leaves one wake to report an unknown launch
+    // or continue safe status polling; it never replays the command.
     const wakeId = await ctx.scheduler.runAt(
       leaseUntil,
       row.pollHandle as FunctionHandle<"action">,
@@ -329,29 +415,7 @@ export const finishJob = mutation({
       throw new Error("SANDBOX_INVALID_EXIT_CODE");
     if (args.logTail && args.logTail.length > HARD_LIMITS.outputChars)
       throw new Error("SANDBOX_OUTPUT_TOO_LARGE");
-    await cancelWake(ctx, row);
     const { jobId: _jobId, claim: _claim, ...result } = args;
-    checkSize({ ...row, ...result }, LIMITS.jobRowBytes);
-    await ctx.db.patch(row._id, { ...result, wakeId: undefined });
-    const owner = await sandbox(ctx, row.scopeKey);
-    if (
-      owner &&
-      owner.state !== "deleted" &&
-      owner.state !== "deleting" &&
-      !(await hasJobs(ctx, row.scopeKey))
-    )
-      await ctx.db.patch(owner._id, {
-        cleanupAt: Math.max(owner.lastUsedAt + owner.ttl, owner.leaseUntil),
-      });
-    return {
-      type: "sandbox.job.completed" as const,
-      jobId: row._id,
-      ...(row.providerJobId ? { providerJobId: row.providerJobId } : {}),
-      scopeKey: row.scopeKey,
-      subject: row.subject,
-      threadId: row.threadId,
-      runId: row.runId,
-      ...result,
-    };
+    return terminate(ctx, row, result);
   },
 });

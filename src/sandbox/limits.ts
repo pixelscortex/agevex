@@ -23,6 +23,18 @@ export const LIMITS = {
   backgroundEnvironmentBytes: 2 * 1024 * 1024,
   backgroundPublishPollS: 0.01,
   backgroundKillBudgetMs: 10_000,
+  // Slack added after the kill budget when leasing a poll claim: the bounded
+  // kill (10 s) plus the settle mutation must finish inside the claim, or the
+  // watchdog wake would take the claim over and fail the settlement.
+  backgroundLeaseMarginMs: 5_000,
+  // Daytona kills the exec wrapper at its own timeout. The wrapper enforces
+  // the command's timeout itself, so Daytona's is set this much later: the
+  // wrapper must always get to kill the command's process group first.
+  execKillMarginS: 5,
+  // A delete may take one Daytona request (30 s). Below this much remaining
+  // action budget cleanup defers the row instead of claiming it, because a
+  // claimed delete that times out is recorded as unknown.
+  deleteMinBudgetMs: 30_000,
   backgroundRoot: "/tmp/agevex/jobs",
   exportRoot: "/tmp/agevex/exports",
   ttl: 24 * 60 * 60 * 1000,

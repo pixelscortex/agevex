@@ -513,13 +513,32 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
     };
   }
 
+  /** True while at least `minMs` of this action's shared budget remains. */
+  function hasBudget(ctx: SandboxContext, minMs: number) {
+    try {
+      return remaining(ctx) >= minMs;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Returns "deferred" when the action budget is too short to finish a delete.
+   * Checked BEFORE claimDelete: a claimed delete that then times out is
+   * recorded as unknown, which would strand a healthy idle sandbox. A deferred
+   * row is untouched and the next sweep (with a fresh budget) takes it.
+   */
   async function remove(ctx: SandboxContext, key: string, expiredOnly: boolean) {
     await authorize(ctx, { operation: "delete", scopeKey: key });
+    if (!hasBudget(ctx, LIMITS.deleteMinBudgetMs)) {
+      if (!expiredOnly) throw new Error("SANDBOX_ACTION_DEADLINE");
+      return "deferred" as const;
+    }
     const binding = await ctx.runMutation(component.state.claimDelete, {
       scopeKey: key,
       expiredOnly,
     });
-    if (!binding) return;
+    if (!binding) return "done" as const;
     try {
       await within(ctx, () => provider.delete(ctx, binding.sandboxId));
       await ctx.runMutation(component.state.save, { scopeKey: key, ...binding, state: "deleted" });
@@ -528,6 +547,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
       await ctx.runMutation(component.state.save, { scopeKey: key, ...binding, state: "unknown" });
       await observe(ctx, binding.sandboxId, "delete", "unknown");
     }
+    return "done" as const;
   }
 
   /** Internal host actions retain provider configuration in code, never scheduled args. */
@@ -662,8 +682,16 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
         // Each deletion is its own small transaction/action. At the hard
         // maximum this action reads 64 * 8 KiB=512 KiB in its selection query;
         // no transaction loops over remote effects or the entire component.
-        for (const row of rows) await remove(ctx, row.scopeKey, true);
-        if (rows.length === limits.cleanupBatch && options.refs)
+        // A batch can outlast the 540 s budget (64 deletes of up to 30 s), so
+        // the loop stops when a delete would not fit and reschedules itself:
+        // every pass settles at least its first row, so the chain is finite.
+        let deferred = false;
+        for (const row of rows)
+          if ((await remove(ctx, row.scopeKey, true)) === "deferred") {
+            deferred = true;
+            break;
+          }
+        if ((deferred || rows.length === limits.cleanupBatch) && options.refs)
           await ctx.scheduler.runAfter(0, options.refs.cleanup(), {});
         return null;
       },
@@ -702,6 +730,18 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
       await authorize(ctx, { operation: "cleanup" });
       if (!options.refs) throw new Error("SANDBOX_REFS_REQUIRED");
       return ctx.scheduler.runAfter(0, options.refs.cleanup(), {});
+    },
+    /**
+     * Clear a lost create (an `unknown` reservation with no provider id) so the
+     * scope can create again. A reservation that already has a sandbox id is
+     * never forgotten. First find the possibly-created sandbox at the provider
+     * (Daytona: label `agevexScope` / `userKey` equals `scopeKey(facts)`) and
+     * delete it; forgetting an orphan that is still running keeps billing it.
+     */
+    async forget(ctx: SandboxContext, input: SandboxFacts): Promise<boolean> {
+      const key = await scopeKey(input);
+      await authorize(ctx, { operation: "forget", ...facts(input), scopeKey: key });
+      return ctx.runMutation(component.state.forget, { scopeKey: key });
     },
     /** Explicit host deletion. Automatic provider deletion is always disabled. */
     async delete(tc: SandboxCall) {

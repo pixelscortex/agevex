@@ -98,7 +98,7 @@ export type SandboxJobEvent = SandboxFacts & {
 };
 
 export type SandboxAuthorization = Partial<SandboxFacts> & {
-  operation: "use" | "export" | "stop" | "delete" | "poll" | "cleanup";
+  operation: "use" | "export" | "stop" | "delete" | "poll" | "cleanup" | "forget";
   scopeKey?: string;
 };
 
