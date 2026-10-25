@@ -1,0 +1,45 @@
+src/client/registration/context.ts
+  s_d863bd773ba186::t_20d0bfe9c662a8 1-138
+src/client/host/notes.ts
+  s_d863bd773ba186::t_668883e8afc63d 1-120
+src/client/tool-names.ts
+  s_d863bd773ba186::t_a93a953a3baa8c 1-18
+src/client/coordinate/verify.ts
+  s_d863bd773ba186::t_7723ed68cc8945 1-73
+src/client/host/files.ts
+  s_d863bd773ba186::t_6d5fb3c093f6b1 1-65
+  s_d863bd773ba186::t_9f25b4ec9162a7 66
+src/client/registration/graph.ts
+  s_d863bd773ba186::t_d5866153b96201 1-144
+src/client/native-saves.ts
+  s_d863bd773ba186::t_ada7a49808ae3b 1-50
+src/client/coordinate/delivery.ts
+  s_d863bd773ba186::t_6a6a6e367d1c1b 1-299
+  s_d863bd773ba186::t_71d6593baf4cf9 300
+src/client/coordinate/launch.ts
+  s_d863bd773ba186::t_f04930774df2f0 1-244
+src/client/coordinate/settle.ts
+  s_d863bd773ba186::t_3419717c4e5d74 1-66
+src/client/coordinate/coordinator.ts
+  s_d863bd773ba186::t_0512b68ba43efa 1-84
+src/client/coordinate/interaction.ts
+  s_d863bd773ba186::t_1a7561fa8e1b79 1-183
+src/client/runtime.ts
+  s_d863bd773ba186::t_e1073cda0033db 7,13-14,26-47,49-50,56,78-79,87-92,95,131,919,954,980,986
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a548a5a9b7835f1fda5b8c0222270cb3ea88032f",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
