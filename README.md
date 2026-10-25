@@ -478,7 +478,10 @@ try {
 ```
 
 Agent 0.7.7 forwards the same `telemetry` option in its `streamText` arguments.
-Core registration wiring belongs to the separate telemetry slot integration.
+For managed turns, pass `telemetry: telemetry.slot({ exporters: [langfuse({
+baseUrl: "https://cloud.langfuse.com", publicKey, secretKey })] })` to
+`registerAgent`. Core supplies facts and flushes each turn's isolated buffer;
+export failures and cancellation discard it without failing the turn.
 Per-call integrations replace AI SDK global integrations. AI SDK 7 has no
 `tracer` option.
 

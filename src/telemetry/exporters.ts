@@ -14,6 +14,7 @@ export type Exporter = {
 export async function bestEffort(
   work: (signal: AbortSignal) => PromiseLike<unknown> | unknown,
   signal?: AbortSignal,
+  ownDeadline = true,
 ): Promise<void> {
   if (signal?.aborted) return;
   const controller = new AbortController();
@@ -24,7 +25,9 @@ export async function bestEffort(
       resolve();
     };
   });
-  const timer = setTimeout(stop, LIMITS.exportTimeoutMs);
+  // Managed slots already receive core's bounded signal. They need the abort
+  // race (custom exporters may ignore cancellation), but no second deadline.
+  const timer = ownDeadline ? setTimeout(stop, LIMITS.exportTimeoutMs) : undefined;
   signal?.addEventListener("abort", stop, { once: true });
   try {
     await Promise.race([Promise.resolve().then(() => work(controller.signal)), stopped]);

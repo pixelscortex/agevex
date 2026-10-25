@@ -1,4 +1,5 @@
 import type { Telemetry } from "ai";
+import type { TelemetrySlot } from "../client/slots.js";
 import { bestEffort, type Exporter } from "./exporters.js";
 import { LIMITS, truncate, validateString } from "./limits.js";
 import {
@@ -59,6 +60,47 @@ type Call = {
  * agents/src/runtime/tracing.ts:133-215, without its durable outbox/SDK layer.
  */
 export function telemetry(options: TelemetryOptions): TurnTelemetry {
+  return createTurnTelemetry(options);
+}
+
+/**
+ * Registration adapter. Configuration can be shared; mutable span buffers cannot.
+ * Core supplies an opaque, stable turnKey and always flushes that key in finally.
+ * Removing its entry before awaiting export prevents a hung exporter from keeping
+ * a turn in the shared registry or contaminating later/concurrent turns. A retry
+ * after flush gets a fresh buffer with stable ids and may export duplicates.
+ */
+telemetry.slot = (options: TelemetryOptions): TelemetrySlot => {
+  validateOptions(options);
+  const configuration = { ...options, exporters: [...options.exporters] };
+  const turns = new Map<string, TurnTelemetry>();
+  return {
+    integration(facts) {
+      const existing = turns.get(facts.turnKey);
+      const turn = existing ?? createTurnTelemetry(configuration, false);
+      // Validate/copy facts before admitting a new entry, so invalid attribution
+      // cannot leave an unflushable buffer behind. Each integration's call paths
+      // still come from the same per-turn ordinal allocator.
+      const integration = turn.integration(facts);
+      if (!existing) turns.set(facts.turnKey, turn);
+      return integration;
+    },
+    async flush(facts, signal) {
+      const turn = turns.get(facts.turnKey);
+      turns.delete(facts.turnKey);
+      try {
+        // Missing, empty and already-flushed keys are no-ops. The one-shot buffer
+        // seals synchronously, even if signal was already aborted. Core owns the
+        // 3 s deadline; only race its signal here, without another timer/retry.
+        await turn?.flush(signal);
+      } catch {
+        /* No telemetry export failure may change managed execution. */
+      }
+    },
+  };
+};
+
+function validateOptions(options: TelemetryOptions): void {
   if (!Array.isArray(options.exporters) || options.exporters.length > LIMITS.maxExporters)
     throw new Error("Invalid telemetry exporters");
   for (const exporter of options.exporters)
@@ -69,6 +111,10 @@ export function telemetry(options: TelemetryOptions): TurnTelemetry {
       throw new Error("Invalid telemetry recording option");
   if (options.sanitize !== undefined && typeof options.sanitize !== "function")
     throw new Error("Invalid telemetry sanitize");
+}
+
+function createTurnTelemetry(options: TelemetryOptions, ownDeadline = true): TurnTelemetry {
+  validateOptions(options);
   const exporters = [...options.exporters];
   const recordInputs = options.recordInputs === true;
   const recordOutputs = options.recordOutputs === true;
@@ -399,7 +445,8 @@ export function telemetry(options: TelemetryOptions): TurnTelemetry {
           // No Convex reads/writes. At the hard ceiling: 128 spans × 16 KiB
           // encoded attributes = 2 MiB; names/ids/times/envelopes add < 256 KiB,
           // so the single OTLP request is < 2.25 MiB. At most four exporters
-          // run concurrently under the same 3 s deadline; there is no retry.
+          // run concurrently; standalone buffers own a 3 s deadline, managed
+          // buffers receive core's bounded signal. Neither path retries.
           const serialized = await Promise.all(
             spans.map(async (span): Promise<Span> => {
               const traceId = await hash(span.seed, LIMITS.traceIdHexLength);
@@ -431,7 +478,11 @@ export function telemetry(options: TelemetryOptions): TurnTelemetry {
           const body = payload(serialized);
           await Promise.all(
             exporters.map((exporter) =>
-              bestEffort((exportSignal) => exporter.export(body, exportSignal), signal),
+              bestEffort(
+                (exportSignal) => exporter.export(body, exportSignal),
+                signal,
+                ownDeadline,
+              ),
             ),
           );
         } catch {

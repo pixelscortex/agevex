@@ -5,11 +5,40 @@ description: Bounded, action-scoped AI SDK 7 traces with Langfuse and Braintrust
 status: Available
 ---
 
-## Setup
+## Wire it into agevex
 
-No component mount is required. Create a fresh buffer per turn and register its integration on the SDK call.
-Consume the stream before flushing in `finally`. Wiring into managed turns
-comes with core and is not available yet; use the SDK integration directly.
+Pass the slot to `registerAgent`; core supplies attribution and flushes each managed turn in `finally`.
+No component mount is required.
+
+```ts title="Managed turns → Langfuse OTLP"
+import { registerAgent } from "agevex";
+import { langfuse, telemetry } from "agevex/telemetry";
+
+const runtime = registerAgent(components.agevex, {
+  agents: [main],
+  refs: { runTurn: () => internal.agents.runTurn },
+  authorize,
+  authorizeExecution,
+  telemetry: telemetry.slot({
+    exporters: [langfuse({
+      baseUrl: "https://cloud.langfuse.com",
+      publicKey: process.env.LANGFUSE_PUBLIC_KEY!,
+      secretKey: process.env.LANGFUSE_SECRET_KEY!,
+    })],
+  }),
+});
+```
+
+For Braintrust, use `braintrust({ apiKey, projectId })` from the same subpath
+instead; it posts to `https://api.braintrust.dev/otel/v1/traces`. The slot gives
+each `turnKey` its own bounded buffer, exports it once, then discards it even
+on cancellation or failure. Core bounds flush to 3 s and fails open. Stable
+run/turn facts produce stable IDs; retries may export duplicates.
+
+## Direct AI SDK setup
+
+For SDK calls outside managed turns, create a fresh buffer per turn and register its integration on the call.
+Consume the stream before flushing in `finally`.
 
 ```ts title="Register telemetry on an AI SDK call"
 import { streamText, type LanguageModel } from "ai";
@@ -55,6 +84,7 @@ global integrations; AI SDK 7 has no `tracer` option.
 ## API
 
 - `telemetry(options: TelemetryOptions): TurnTelemetry` — creates a one-turn buffer; `exporters` is required (an empty array is valid).
+- `telemetry.slot(options: TelemetryOptions): TelemetrySlot` — creates the registration adapter with isolated buffers per `turnKey`; its `integration(facts)` and `flush(facts, signal?)` implement core's slot contract.
 - `integration(facts: Facts): Telemetry` — returns SDK callbacks for `streamText` or `generateText`; validates and copies attribution facts.
 - `flush(signal?: AbortSignal): Promise<void>` — seals and drains the buffer once; repeated calls share the same promise.
 - `langfuse(options: { baseUrl: string; publicKey: string; secretKey: string }): Exporter` — posts to `<baseUrl>/api/public/otel/v1/traces` using Basic auth and v4 ingestion.
