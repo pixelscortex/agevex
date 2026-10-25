@@ -44,6 +44,8 @@ const toolNames = (tools: unknown): string[] =>
   Array.isArray(tools) ? tools.map((entry) => (entry as { name?: string }).name ?? "?") : [];
 
 export const state = {
+  overrideCalls: [] as string[],
+  overrideTools: false,
   dropPing: false,
   forbidTranscriptReads: false,
   transcriptReads: 0,
@@ -333,10 +335,23 @@ const runTurnRef = makeFunctionReference<"action", TurnArgs, null>(
   "agents:runTurn",
 ) as unknown as FunctionReference<"action", "internal", TurnArgs, null>;
 
+const overrideModel = (id: string) => {
+  const override = mockModel({ content: [{ type: "text", text: `model ${id}` }] });
+  const native = override.doStream.bind(override);
+  override.doStream = async (args) => {
+    state.overrideCalls.push(id);
+    if (state.overrideTools && state.overrideCalls.length === 1) return toolModel.doStream(args);
+    return native(args);
+  };
+  return override;
+};
+
 export function fixtureRuntime(limits?: Registration["limits"]) {
   return registerAgent(components.agevex, {
     limits,
     agents: [main],
+    models: overrideModel,
+    modelAllowlist: ["first", "second"],
     refs: {
       runTurn: () => runTurnRef,
       // The fixture app's generated api is generic and enumerates no exported

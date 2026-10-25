@@ -174,6 +174,15 @@ const delegationResult = v.union(
 export function registerAgent(component: ComponentApi, config: Registration) {
   const limits = resolveLimits(config.limits);
   const graph = resolveGraph(config);
+  if (
+    !!config.models !== !!config.modelAllowlist ||
+    (config.models !== undefined && typeof config.models !== "function") ||
+    (config.modelAllowlist &&
+      (config.modelAllowlist.length > LIMITS.modelAllowlist ||
+        new Set(config.modelAllowlist).size !== config.modelAllowlist.length ||
+        config.modelAllowlist.some((id) => !id || id.length > LIMITS.modelIdLength)))
+  )
+    throw new Error("INVALID_MODEL_REGISTRATION");
   const collaboration = [...graph.edges.values()].some((allowed) => allowed.size > 0);
   if (collaboration && !config.refs.coordinate) throw new Error("COORDINATE_REF_REQUIRED");
 
@@ -924,6 +933,17 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 { threadId: claimed.threadId },
                 {
                   promptMessageId: claimed.promptMessageId,
+                  // Agent 0.7.7 vercel/client/start.ts:107-108,234 supports this
+                  // per-call override natively; never mutate a shared Agent's options.
+                  ...(claimed.modelId
+                    ? {
+                        model: (() => {
+                          if (!config.models || !config.modelAllowlist?.includes(claimed.modelId))
+                            throw new Error("MODEL_NOT_ALLOWED");
+                          return config.models(claimed.modelId);
+                        })(),
+                      }
+                    : {}),
                   tools,
                   maxOutputTokens: LIMITS.outputTokens,
                   maxRetries: LIMITS.modelRetries,

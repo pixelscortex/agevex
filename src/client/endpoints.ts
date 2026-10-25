@@ -22,6 +22,7 @@ import { ConvexError, v, type Validator } from "convex/values";
 import { fingerprint } from "./once.js";
 import { LIMITS, resolveLimits } from "../component/limits.js";
 import type { ComponentApi } from "../component/_generated/component.js";
+import { modelOverrides, validModelOverrides } from "../component/models.js";
 import { activity, receipt, subagentRun, vPaginationResult } from "../component/schema.js";
 import type { AgentEvent, ManagedAgent, Registration } from "./types.js";
 
@@ -123,9 +124,30 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
     if (!native) throw new Error("UNKNOWN_AGENT");
     return { ...row, native };
   }
+  function validModels(models: Record<string, string> | undefined, root: ManagedAgent) {
+    if (models === undefined) return true;
+    const reachable = new Set<string>();
+    function visit(agent: ManagedAgent) {
+      if (reachable.has(agent.name)) return;
+      reachable.add(agent.name);
+      for (const child of agent.subagents) visit(child);
+    }
+    visit(root);
+    return (
+      validModelOverrides(models) &&
+      Object.entries(models).every(
+        ([name, id]) => reachable.has(name) && config.modelAllowlist?.includes(id),
+      )
+    );
+  }
   return {
     open: mutationGeneric({
-      args: { agent: v.string(), prompt: v.string(), requestKey: v.string() },
+      args: {
+        agent: v.string(),
+        prompt: v.string(),
+        requestKey: v.string(),
+        models: v.optional(modelOverrides),
+      },
       returns: receipt,
       handler: async (ctx, args) => {
         const { subject } = await config.authorize(ctx, { operation: "open", agent: args.agent });
@@ -135,8 +157,10 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
         if (!config.agents.some((a) => a.name === args.agent))
           return { status: "rejected" as const, code: "UNKNOWN_AGENT" as const };
         const native = agent(args.agent);
+        if (!validModels(args.models, native))
+          return { status: "rejected" as const, code: "INVALID_MODELS" as const };
         if (subject.length > LIMITS.requestKeyLength) throw new Error("INVALID_SUBJECT");
-        const hash = await fingerprint(["open", args.agent, args.prompt]);
+        const hash = await fingerprint(["open", args.agent, args.prompt, args.models ?? null]);
         const duplicate = await ctx.runQuery(component.queue.lookupReceipt, {
           subject,
           requestKey: args.requestKey,
@@ -159,6 +183,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           promptMessageId: messageId,
           runTurn,
           limits,
+          models: args.models,
         });
         if (accepted.status !== "accepted") throw new Error("ADMISSION_CHANGED");
         await observe(ctx, config, {
@@ -172,13 +197,20 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
       },
     }),
     send: mutationGeneric({
-      args: { threadId: v.string(), text: v.string(), requestKey: v.string() },
+      args: {
+        threadId: v.string(),
+        text: v.string(),
+        requestKey: v.string(),
+        models: v.optional(modelOverrides),
+      },
       returns: receipt,
       handler: async (ctx, args) => {
         const row = await owned(ctx, args.threadId, "send");
         const invalid = validateInput(args.text, args.requestKey);
         if (invalid) return { status: "rejected" as const, code: invalid };
-        const hash = await fingerprint(["send", args.threadId, args.text]);
+        if (!validModels(args.models, row.native))
+          return { status: "rejected" as const, code: "INVALID_MODELS" as const };
+        const hash = await fingerprint(["send", args.threadId, args.text, args.models ?? null]);
         const duplicate = await ctx.runQuery(component.queue.lookupReceipt, {
           subject: row.subject,
           requestKey: args.requestKey,
@@ -204,6 +236,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           promptMessageId: messageId,
           runTurn: await createFunctionHandle(config.refs.runTurn()),
           limits,
+          models: args.models,
         });
         if (accepted.status !== "accepted") throw new Error("ADMISSION_CHANGED");
         await observe(ctx, config, {

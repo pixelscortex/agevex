@@ -178,6 +178,8 @@ const main = new Agent(native, {
 });
 const runtime = registerAgent(agevex, {
   agents: [main],
+  modelAllowlist: [modelId],
+  models: () => rootModel,
   refs: {
     runTurn: () =>
       makeFunctionReference<"action", TurnArgs, null>(

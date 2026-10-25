@@ -22,6 +22,7 @@ import {
 } from "./schema.js";
 import { LIMITS, limitsValidator } from "./limits.js";
 import { approvalKey, callKey, keyString, saveResponses } from "./approvals.js";
+import { modelOverrides, validModelOverrides } from "./models.js";
 import { sealGroups, settleIdleParent, settlementBlocked } from "./subagents.js";
 
 async function existing(
@@ -256,9 +257,11 @@ export const accept = mutation({
     promptMessageId: v.string(),
     runTurn: v.string(),
     limits: v.optional(limitsValidator),
+    models: v.optional(modelOverrides),
   },
   returns: vReceipt,
   handler: async (ctx, args) => {
+    if (args.models && !validModelOverrides(args.models)) throw new Error("INVALID_MODELS");
     const duplicate = await existing(ctx, args.subject, args.requestKey, args.fingerprint);
     if (duplicate) return duplicate;
     let row = await ctx.db
@@ -289,7 +292,9 @@ export const accept = mutation({
       await ctx.db.patch("assignments", row._id, { cancelled: false });
       row = { ...row, cancelled: false };
     }
+    const models = args.models ?? row.models;
     const runId = await ctx.db.insert("runs", {
+      models,
       launches: 0,
       hops: 0,
       cancelled: false,
@@ -302,6 +307,7 @@ export const accept = mutation({
       runId,
     });
     await ctx.db.patch("assignments", row._id, {
+      models,
       queuedMessages: row.queuedMessages + 1,
       nextSequence: row.nextSequence + 1,
     });
@@ -358,6 +364,7 @@ export const claim = mutation({
       ...scope.fields,
       promptMessageId: v.string(),
       runId: v.string(),
+      modelId: v.optional(v.string()),
       cancellationEpoch: v.number(),
       turnOrigin: vTurnOrigin,
       subagent: v.union(
@@ -459,6 +466,8 @@ export const claim = mutation({
     await ctx.db.patch("assignments", row._id, { watchdogId, activeSlice });
     row.watchdogId = watchdogId;
     row.activeSlice = activeSlice;
+    const budget = row.runId ? await ctx.db.get("runs", row.runId) : null;
+    const modelId = budget?.models?.[row.agent];
     const runId = row.childRunId;
     if (!runId) {
       return {
@@ -468,6 +477,7 @@ export const claim = mutation({
         agent: row.agent,
         promptMessageId: row.promptMessageId!,
         runId: row.runId!,
+        modelId,
         cancellationEpoch: row.cancellationEpoch,
         turnOrigin: row.turnOrigin ?? "user",
         subagent: null,
@@ -509,6 +519,7 @@ export const claim = mutation({
       agent: row.agent,
       promptMessageId: row.promptMessageId!,
       runId: row.runId!,
+      modelId,
       cancellationEpoch: row.cancellationEpoch,
       turnOrigin: row.turnOrigin ?? "user",
       subagent: {

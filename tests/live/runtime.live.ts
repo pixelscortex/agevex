@@ -42,6 +42,7 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
                 ? "Delegate a short task to Researcher, then delegate one more short task after its result, then answer."
                 : "Say hello in three words.",
             requestKey: scenario,
+            ...(scenario === "plain" ? { models: { Main: modelId } } : {}),
           })
           .then(requireReceipt);
         await expect

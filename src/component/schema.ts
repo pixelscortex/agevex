@@ -1,6 +1,8 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v, type Validator } from "convex/values";
 
+import { modelOverrides } from "./models.js";
+
 import { limitsValidator } from "./limits.js";
 
 export const turnOrigin = v.union(v.literal("user"), v.literal("subagent_result"));
@@ -97,6 +99,7 @@ export const receipt = v.union(
       v.literal("INVALID_MESSAGE"),
       v.literal("INVALID_REQUEST_KEY"),
       v.literal("UNKNOWN_AGENT"),
+      v.literal("INVALID_MODELS"),
       v.literal("RECOVERY_REQUIRED"),
     ),
   }),
@@ -164,6 +167,8 @@ export default defineSchema({
     subject: v.string(),
     agent: v.string(),
     threadId: v.string(),
+    // Latest accepted thread policy; read only when creating the next run.
+    models: v.optional(modelOverrides),
     runTurn: v.string(),
     workflowId: v.optional(v.string()),
     limits: v.optional(limitsValidator),
@@ -246,6 +251,9 @@ export default defineSchema({
   // A run outlives an individual turn: results and subsequent delegations spend
   // the same launch/hop budget. Results are ready independently of siblings.
   runs: defineTable({
+    // Immutable run snapshot shared by every root/descendant/result turn.
+    // Read at claim, never replaced by a subsequent send's thread policy.
+    models: v.optional(modelOverrides),
     launches: v.number(),
     hops: v.number(),
     cancelled: v.boolean(),

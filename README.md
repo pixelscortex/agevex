@@ -216,3 +216,12 @@ See [component ownership](src/component/README.md). Deferred: depth above two,
 peer messaging, approval UX, hooks, meter and other optional modules. Existing
 v1 Workflow step order is preserved; new delegation fields are optional on
 persisted v1 rows.
+
+`open` and `send` accept `models: { Main: "model-id", Researcher: "model-id" }`.
+Register `modelAllowlist: ["model-id"]` and `models: id => provider.chat(id)`.
+Only registered reachable agent names and allowed model ids are accepted. Each
+accepted user prompt starts a run with an immutable model snapshot, shared by
+all its descendant and result turns. A later send updates the next run only;
+omitting `models` inherits the last accepted thread policy; `{}` restores Agent
+defaults. Maps have at most 8 entries and 512 Convex-encoded bytes (ids ≤200
+characters), keeping cancel's per-run read budget at 1 KiB.

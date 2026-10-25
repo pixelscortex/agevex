@@ -144,6 +144,8 @@ export function setup(
   limits?: Registration["limits"],
   transactionLimits: NonNullable<Parameters<typeof convexTest>[0]>["transactionLimits"] = false,
 ) {
+  state.overrideCalls.length = 0;
+  state.overrideTools = false;
   state.dropPing = false;
   state.forbidTranscriptReads = false;
   state.transcriptReads = 0;

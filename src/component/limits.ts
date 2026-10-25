@@ -129,6 +129,10 @@ export const LIMITS = {
   purgeIntervalMs: 60 * 60_000,
   streamThrottleMs: 0,
   modelRetries: 0,
+  modelOverrides: 8,
+  modelOverridesBytes: 512,
+  modelIdLength: 200,
+  modelAllowlist: 100,
 } as const;
 
 /** Only these policy bounds are tunable; internal safety/platform facts are not. */

@@ -7,7 +7,8 @@ import type {
 } from "convex/server";
 import type { Infer } from "convex/values";
 import type { AgentComponent, MessageDoc } from "@convex-dev/agent";
-import type { ToolSet } from "ai";
+import type { LanguageModelV4 } from "@ai-sdk/provider";
+import type { LanguageModel, ToolSet } from "ai";
 import type { activity, receipt, runErrorCode } from "../component/schema.js";
 
 export type Receipt = Infer<typeof receipt>;
@@ -232,6 +233,7 @@ export type ManagedAgent = {
     target: { threadId: string },
     args: {
       promptMessageId: string;
+      model?: Extract<LanguageModel, string | LanguageModelV4>;
       /** Only present when the managed delegation tool is merged in. */
       tools?: ToolSet;
       maxOutputTokens: number;
@@ -254,6 +256,10 @@ export type ManagedAgent = {
 import type { Limits } from "../component/limits.js";
 
 export type Registration = {
+  /** Host-owned model ids accepted in open/send. Both options must be supplied together. */
+  modelAllowlist?: readonly string[];
+  /** Resolver is called only in actions, after validating the stored id against the allowlist. */
+  models?: (id: string) => Extract<LanguageModel, string | LanguageModelV4>;
   /** Positive host bounds merged over LIMITS and validated at registration. */
   limits?: Partial<Limits>;
   /**

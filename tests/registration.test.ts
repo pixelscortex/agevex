@@ -188,3 +188,17 @@ it.each(Object.entries(HOST_LIMITS))(
     ).toThrow(`INVALID_LIMITS: ${key} exceeds maximum ${max}`);
   },
 );
+
+it("invalid model resolver registrations fail before accepting work", () => {
+  for (const options of [
+    { models: () => mockModel() },
+    { modelAllowlist: ["free"] },
+    { models: () => mockModel(), modelAllowlist: ["free", "free"] },
+    { models: () => mockModel(), modelAllowlist: [""] },
+    { models: () => mockModel(), modelAllowlist: ["x".repeat(201)] },
+    { models: () => mockModel(), modelAllowlist: Array.from({ length: 101 }, (_, i) => `m${i}`) },
+  ])
+    expect(() =>
+      registerAgent(components.agevex, { ...policy, agents: [main], ...options }),
+    ).toThrow("INVALID_MODEL_REGISTRATION");
+});
