@@ -5,10 +5,6 @@ description: Durable file extraction with bounded reads, thread-bound tools, and
 status: Available
 ---
 
-Extract turns native Agent files into text artifacts through a nested Workflow.
-URL acquisition is separate from extraction; RAG is opt-in. This component works
-independently of the core runtime.
-
 ## Setup
 
 ```ts title="convex/convex.config.ts"
@@ -28,7 +24,9 @@ import type { WorkerArgs } from "agevex/extract";
 import type { RegisteredAction, RegisteredQuery } from "convex/server";
 import { components, internal } from "./_generated/api.js";
 import { authorizeFileInThread } from "./filePolicy.js";
-import { visionModel } from "./models.js";
+import { openai } from "@ai-sdk/openai";
+
+const visionModel = openai("gpt-4.1-mini");
 
 export const extract = defineExtract(components.agevexExtract, {
   agent: components.agent,
@@ -52,8 +50,7 @@ export const storageMetadata: RegisteredQuery<
 > = functions.storageMetadata;
 ```
 
-The host supplies an instantiated AI SDK `visionModel` and
-`authorizeFileInThread(ctx, scope)`. The policy must verify thread access, the
+The host supplies `authorizeFileInThread(ctx, scope)`. The policy must verify thread access, the
 exact attachment when `fileId` is present, and namespace access when
 `namespace` is present. Background `execute` calls may have no user session;
 keep an exact attachment reference rather than scanning transcripts.
@@ -73,7 +70,11 @@ import rag from "@convex-dev/rag/convex.config";
 // Before export default app:
 app.use(rag, { name: "extractRag" });
 
-// convex/files.ts: add to defineExtract options
+// convex/files.ts
+import { openai } from "@ai-sdk/openai";
+const embeddingModel = openai.embedding("text-embedding-3-small");
+
+// Add to defineExtract options:
 // rag: {
 //   component: components.extractRag,
 //   embedding: embeddingModel,
@@ -87,8 +88,7 @@ The host authorizes namespaces; file search tools use `threadId` as namespace.
 
 ## API
 
-Signatures below omit TypeScript types for argument objects; every helper taking
-`ctx` is async and uses a Convex action context.
+Every helper taking `ctx` is async and uses a Convex action context.
 
 ### Registration and backends
 
@@ -167,13 +167,18 @@ zero new embedding tokens. Native entry creation and recording its exact id
 commit atomically before embedding. Caller keys are scoped to artifact ids.
 
 The independent indexing lease defaults to 10 minutes; lower it through
-`limits.indexLeaseMs`. Expiry records `unknown` and retains the exact entry id.
-Its one-shot check neither reschedules nor starts paid work. Explicit `index()`
-recovers failed, unknown or expired work by claiming a new lease, awaiting
-exact-id deletion of the old entry, then creating a replacement. A changed
-namespace/key also replaces the old entry. Claim and lease checks fence entry
+`limits.indexLeaseMs`.
+
+| Index state / trigger | Outcome |
+| --- | --- |
+| Lease expires | Records `unknown`, retaining the exact entry id; the one-shot check neither reschedules nor starts paid work. |
+| Explicit `index()` on failed, unknown or expired work | Claims a new lease, awaits exact-id deletion of the old entry, then creates a replacement. |
+| Changed namespace/key | Replaces the old entry. |
+
+Claim and lease checks fence entry
 creation, chunk writes and promotion, including late writers. Search rechecks
 attachments and returns only current ready indexes of ready artifacts.
+Failed embedding requests are not automatically retried.
 
 ### Artifacts and failures
 
@@ -246,18 +251,15 @@ than their hard maxima.
 
 ## Guarantees
 
-- Concurrent extraction admission and duplicate worker dispatch do not repeat provider work for the same identity; backend version and options hash distinguish identities.
-- Release and lease expiry prevent late payload publication while retaining reported paid usage. Expired extraction outcomes become unknown and are never reclaimed.
-- Exact attachment authorization runs before reads and before/after backend work; post-work ownership loss prevents publication.
-- UTF-8 windows resume without splitting characters; page windows enforce count and aggregate bytes, including a single oversized page.
-- Sanitized JSON stays outside the small artifact row; maximum payload/page and native RAG chunk/vector bounds are exercised under transaction limits.
-- RAG stays disabled unless configured. Failed embedding requests are not automatically retried; concurrent index calls share admission and completed calls reuse the entry.
-- Index recovery deletes the exact old entry before replacement; expired claims cannot insert chunks or promote, even before the scheduled expiry check runs.
-- Completion callbacks observe saved terminal results even if a host usage hook fails; that failure cannot replay provider work.
+- Concurrent [extraction](#acquisition-extraction-and-reads) admission and duplicate dispatch do not repeat provider work for the same identity.
+- Extraction lease expiry fences late publication, retains paid usage and never reclaims expired work; see [artifact states](#artifacts-and-failures).
+- [Authorization](#setup) runs before reads and before/after backend work; ownership loss prevents publication.
+- [Payload and RAG bounds](#limits) are exercised under transaction limits.
+- [Completion callbacks](#acquisition-extraction-and-reads) observe saved terminal results even if a usage hook fails; hook failure cannot replay provider work.
 
 ## Known limits
 
-- Core slot/send integration is separate. Hosts supply action wrappers, authorization, exact attachment records, worker/metadata exports and `tools({ ctx, threadId })` wiring.
+- Hosts supply action wrappers, authorization, exact attachment records, worker/metadata exports and `tools({ ctx, threadId })` wiring.
 - Failed, released and unknown extraction identities are reused without rerunning. Intentionally change a backend version or supply a different valid SHA-256 `optionsHash` to request new work. The default hash covers resolved extraction ceilings, excluding the indexing lease.
 - Windowed reads still load and parse the bounded full JSON payload in an action. Indexing covers only `doc.text`, up to 1 MiB, even when a larger artifact is readable.
 - A dedicated RAG mount/namespace is required for chunk bounds. Release hides indexed results through artifact checks; it does not delete native RAG entries. Prior-index cleanup happens on explicit replacement/recovery.
