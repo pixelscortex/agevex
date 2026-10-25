@@ -1,0 +1,19 @@
+src/modules/meter/client/scope.ts
+  s_27938b605a4a40::t_29f137b6189778 44-116,132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d1f886fafeda3375604e497f177bd02a09ece75e",
+  "prompts": {},
+  "sessions": {
+    "s_27938b605a4a40": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17570-86e1-78b2-9bc4-f311c9e82600",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
