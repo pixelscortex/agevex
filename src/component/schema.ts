@@ -1,3 +1,14 @@
+/**
+ * The agevex tables and the shared validators of the public API.
+ *
+ * Tables: `assignments` (one managed thread: execution token, epoch, queue
+ * counters, approval pause, recovery), `inbox` (ready work, passive notes and
+ * control ids), `runs` (one accepted request's shared budget), `receipts`
+ * (idempotency ledger and attachment attestations) and `subagentRuns` (one
+ * delegation). Every field comment names its readers. The validators above
+ * the schema (`receipt`, `activity`, `subagentRun`, error/denial codes, ...)
+ * are shared with the client, which imports them from this file.
+ */
 import { defineSchema, defineTable } from "convex/server";
 import { v, type Validator } from "convex/values";
 

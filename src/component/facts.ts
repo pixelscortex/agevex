@@ -1,3 +1,8 @@
+/**
+ * Validation of identity "facts" (subject, thread id, ...) that hosts pass in
+ * and that optional slot components later receive. Used by files.ts and the
+ * client's endpoints before admission.
+ */
 import { ConvexError } from "convex/values";
 import { LIMITS } from "./limits.js";
 

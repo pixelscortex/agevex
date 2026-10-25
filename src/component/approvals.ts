@@ -1,3 +1,13 @@
+/**
+ * Fixed-size keys for native ids, and the native approval-response save.
+ *
+ * Native approval ids and tool-call ids can be near 1 MiB, so coordination
+ * rows store their SHA-256 (`callKey` bytes, `approvalKey` hex) instead.
+ * `saveResponses` writes approval responses and cancellation's
+ * "execution-denied" tool results in Agent 0.7.7's exact native protocol.
+ * Used by queue/ (pause, responses), subagents/launch.ts (dedup keys) and
+ * cancellation/cleanup.ts. Reads and writes no agevex table.
+ */
 import type { FunctionHandle } from "convex/server";
 import type { MessageDoc } from "@convex-dev/agent";
 import type { MutationCtx } from "./_generated/server.js";

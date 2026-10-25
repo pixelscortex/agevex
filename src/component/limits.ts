@@ -5,6 +5,10 @@
  * its slot as soon as delegation is queued, so children can always progress.
  * Platform ceilings are documentation as well as a constraint on our defaults;
  * payloads stay in Agent storage rather than consuming the Workflow journal.
+ * Contents: PLATFORM facts, HOST_LIMITS (defaults + hard maxima a host may
+ * override), the full cancel budget arithmetic, LIMITS (fixed bounds) and
+ * `resolveLimits`, which the client calls at registration. A resolved copy is
+ * stored on every assignment row (`row.limits`).
  */
 import { v } from "convex/values";
 

@@ -1,3 +1,9 @@
+/**
+ * `worker.dispatch`: the Workflow step that runs one paid model slice by
+ * calling the host's registered `runTurn` action, never retried. A throwing
+ * action marks the turn ambiguous (`queue.ambiguous`) instead of re-running
+ * it. Reads `assignments` through `queue.execution`.
+ */
 import { v } from "convex/values";
 import type { FunctionHandle } from "convex/server";
 import { internalAction } from "./_generated/server.js";
