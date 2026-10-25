@@ -479,7 +479,7 @@ export const claim = mutation({
             latestRequestMessageId: row.promptMessageId,
           }
         : {}),
-      ...(first || row.hookContinue ? { notesTaken: 0, hookError: undefined } : {}),
+      ...(first || row.hookContinue ? { hookError: undefined } : {}),
       approvals: row.approvals
         ? {
             ...row.approvals,
@@ -1477,28 +1477,24 @@ export const cancel = mutation({
         approvalBlocked: !!approvalCleanup,
         approvals: approvalCleanup ? { ...row.approvals!, cleanupPending: true } : undefined,
       });
+      // Only ready rows are read here. Raw passive bodies are cleared by one
+      // bounded job per assignment, preserving the 12,680 KiB cancel ceiling.
       const inbox = await ctx.db
         .query("inbox")
-        .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
-        .take(
-          (row.limits ?? LIMITS).queueLength +
-            (row.limits?.notesPending ?? LIMITS.notesPending) +
-            2,
-        );
-      const deferredNotes = inbox.filter((item) => item.deferredNoteDelete);
-      if (row.pendingGeneration || approvalCleanup || deferredNotes.length)
+        .withIndex("by_assignment_ready", (q) =>
+          q.eq("assignmentId", row._id).eq("passive", undefined),
+        )
+        .take((row.limits ?? LIMITS).queueLength + 2);
+      if (row.notesPending)
+        await ctx.scheduler.runAfter(0, internal.hooks.cancelNotes, {
+          assignmentId: row._id,
+          epoch: row.cancellationEpoch,
+        });
+      if (row.pendingGeneration || approvalCleanup)
         await ctx.scheduler.runAfter(0, internal.cancellation.cleanup, {
           assignmentId: row._id,
           pending: row.pendingGeneration,
           approvalEpoch: approvalCleanup ? row.approvals!.epoch : undefined,
-          ...(deferredNotes.length
-            ? {
-                notes: {
-                  messageIds: deferredNotes.map((item) => item.messageId),
-                  deleteMessages: deferredNotes[0].deferredNoteDelete!,
-                },
-              }
-            : {}),
         });
       for (const item of inbox) {
         if (!item.passive) await ctx.db.patch("runs", item.runId, { cancelled: true });

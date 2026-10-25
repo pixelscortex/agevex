@@ -27,7 +27,6 @@ const cleanupArgs = {
   assignmentId: v.id("assignments"),
   pending: v.optional(pendingGeneration),
   approvalEpoch: v.optional(v.number()),
-  notes: v.optional(v.object({ messageIds: v.array(v.string()), deleteMessages: v.string() })),
 };
 
 export const cleanup = internalMutation({
@@ -60,7 +59,7 @@ export const cleanup = internalMutation({
 export const cleanupBatch = internalMutation({
   args: cleanupArgs,
   returns: v.null(),
-  handler: async (ctx, { assignmentId, pending, approvalEpoch, notes }) => {
+  handler: async (ctx, { assignmentId, pending, approvalEpoch }) => {
     // Stream creation is tracked atomically too: never list a thread's streams
     // after cancellation, when a fresh generation may already own another one.
     if (pending?.stream) {
@@ -86,27 +85,6 @@ export const cleanupBatch = internalMutation({
       row.pendingGeneration.epoch === pending.epoch
     )
       await ctx.db.patch("assignments", assignmentId, { pendingGeneration: undefined });
-    if (notes?.messageIds.length) {
-      // Cancel passed only <=24 exact ids, never native note bodies. Each
-      // cleanup transaction deletes one <=50 KiB provisional note; the finite
-      // chain stops after those ids and then continues approval cleanup.
-      await ctx.runMutation(notes.deleteMessages as FunctionHandle<"mutation">, {
-        messageIds: notes.messageIds.slice(0, 1),
-      });
-      await ctx.scheduler.runAfter(0, internal.cancellation.cleanup, {
-        assignmentId,
-        approvalEpoch,
-        ...(notes.messageIds.length > 1
-          ? {
-              notes: {
-                ...notes,
-                messageIds: notes.messageIds.slice(1),
-              },
-            }
-          : {}),
-      });
-      return null;
-    }
     const approvals = row?.approvals;
     if (!row || !approvals?.cleanupPending || approvals.epoch !== approvalEpoch) return null;
     const request = approvals.requests[0];

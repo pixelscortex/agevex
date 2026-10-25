@@ -130,6 +130,7 @@ export const scope = v.object({
 });
 export const subagentRun = v.object({
   runId: v.string(),
+  side: v.boolean(),
   childThreadId: v.union(v.string(), v.null()),
   agent: v.string(),
   status: runStatus,
@@ -191,7 +192,6 @@ export default defineSchema({
       ),
     ),
     completedTurns: v.optional(v.number()),
-    notesTaken: v.optional(v.number()),
     // Read by note admission/draining/cancel; never charged to ready work.
     notesPending: v.number(),
     // Read by beforeTurn: a continuation has its own prompt, while generation
@@ -281,9 +281,11 @@ export default defineSchema({
     // Deferred joins append later than their native save. Claim compares this
     // recorded save order, never queue insertion order, to retain newer answers.
     passive: v.optional(v.boolean()),
-    // Present only for an in-flight native note. Boundary draining replaces
-    // its pending payload document; cancel passes exact ids to native cleanup.
-    deferredNoteDelete: v.optional(v.string()),
+    // Only unsaved running notes hold a bounded body; saved controls retain ids.
+    noteText: v.optional(v.string()),
+    // Separates cancelled payloads from fresh admission before cleanup runs.
+    noteEpoch: v.optional(v.number()),
+    from: v.optional(v.string()),
     messageSequence: v.optional(v.number()),
     runId: v.id("runs"),
     kind: v.union(
@@ -292,10 +294,11 @@ export default defineSchema({
       v.literal("steer"),
       v.literal("parent"),
       v.literal("note"),
+      v.literal("continue"),
     ),
   })
-    .index("by_assignment_sequence", ["assignmentId", "sequence"])
-    .index("by_assignment_ready", ["assignmentId", "passive", "sequence"]),
+    .index("by_message", ["messageId"])
+    .index("by_assignment_ready", ["assignmentId", "passive", "noteEpoch", "sequence"]),
   // A run outlives an individual turn: results and subsequent delegations spend
   // the same launch/hop budget. Results are ready independently of siblings.
   runs: defineTable({
@@ -388,6 +391,7 @@ export default defineSchema({
     resultSequence: v.optional(v.number()),
     events: v.array(runEvent),
   })
+    .index("by_result_message", ["resultMessageId"])
     .index("by_dedup", ["dedupKey"])
     .index("by_run", ["runId"])
     .index("by_root_sequence", ["rootAssignmentId", "sequence"])

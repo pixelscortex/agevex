@@ -641,23 +641,21 @@ it.each(["routing", "approval"])(
       }
     const alice = t.withIdentity({ subject: "alice" });
     // Independent passive capacity can coexist with every ready-work slot. Use
-    // real, maximum-size escaped native notes on all 16 affected assignments;
-    // cancel must delete only their small inbox metadata within the same budget.
-    const { addMessages, getMessages, deleteMessages } = await t.run(async () => ({
+    // real maximum-size raw notes on all 16 affected assignments; cancellation
+    // fences them without loading bodies into its documented byte budget.
+    const { addMessages, getMessages } = await t.run(async () => ({
       addMessages: await createFunctionHandle(components.agent.messages.addMessages),
       getMessages: await createFunctionHandle(components.agent.messages.getMessagesByIds),
-      deleteMessages: await createFunctionHandle(components.agent.messages.deleteByIds),
     }));
     for (const turn of turns)
       for (let i = 0; i < HOST_LIMITS.notesPending.max; i++)
         expect(
           await t.mutation(components.agevex.hooks.addNote, {
             assignmentId: turn.assignmentId,
-            text: '"'.repeat(LIMITS.noteLength),
+            text: "\uFFFF".repeat(LIMITS.noteLength),
             from: '"'.repeat(LIMITS.requestKeyLength),
             addMessages,
             getMessages,
-            deleteMessages,
           }),
         ).toBe(true);
     for (let i = mode === "approval" ? 1 : 0; i < HOST_LIMITS.queueLength.max; i++) {
@@ -708,7 +706,8 @@ it.each(["routing", "approval"])(
     expect(metrics.documentsRead.used).toBeLessThan(4_096);
     expect(metrics.bytesRead.used).toBeLessThan(8 << 20);
     const after = await queuedWork();
-    expect(after.inbox).toEqual([]);
+    // Raw pending notes are cleaned in per-assignment jobs to preserve cancel bytes.
+    expect(after.inbox.every((item: { passive?: boolean }) => item.passive)).toBe(true);
     expect(after.runs).toHaveLength(before.runs.length);
     expect(after.runs.every((run: { cancelled: boolean }) => run.cancelled)).toBe(true);
     expect(
@@ -728,6 +727,7 @@ it.each(["routing", "approval"])(
       await t.query(components.agent.messages.getMessagesByIds, { messageIds: [messageIds[0]] }),
     ).toMatchObject([{ status: "pending" }]);
     await drain(t);
+    expect((await queuedWork()).inbox).toEqual([]);
     for (const messageId of messageIds)
       expect(
         await t.query(components.agent.messages.getMessagesByIds, { messageIds: [messageId] }),

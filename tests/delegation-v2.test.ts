@@ -276,6 +276,8 @@ it("runTree exposes the full current tree and rejects non-owners and child threa
     "group",
     "parentAssignmentId",
     "runId",
+    // Public run records now expose their side-run discriminator.
+    "side",
     "startedAt",
     "status",
   ]);

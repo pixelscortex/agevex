@@ -13,12 +13,16 @@ Workpool: root parallelism 2, child parallelism 4. Hosts export `runTurn` and
   a continuation. `promptMessageId` bounds native generation context, while
   `latestRequestMessageId` gives idle notes an exact anchor after a turn ends.
   Notes and continuation prompts append to that anchor's native order group;
-  in-flight notes use native pending status until a boundary atomically replaces
-  them after the complete step, preserving tool call/result adjacency. The
-  inbox's `deferredNoteDelete` holds the exact native delete handle used by
-  draining and cancel cleanup; no note body is copied into coordination tables.
-- `inbox`: FIFO ready message references and passive notes. The ready index
-  excludes passive notes, so a note cannot start a turn or block settlement.
+  in-flight notes retain <=4,000 characters on a bounded inbox row until a
+  completed step saves them atomically. Agent cleanup never sees a pending note.
+- `inbox`: FIFO ready message references, passive notes and retained control ids.
+  `noteText` holds only unsaved running text; `noteEpoch` isolates cancelled
+  payloads from fresh admission/cleanup. `from` labels notes in context and
+  the public reader. After save, `messageId`/`kind`/`from` retain origin metadata
+  with `passive: false`; `by_message` reads only ids on the requested page.
+  The ready index selects `passive: undefined`, so controls never start work or
+  block settlement. Cancel fences notes immediately, then a finite job per
+  assignment removes unsaved bodies without loading them in the cancel budget.
   A reserved row stays until claim, so approvals retain their work.
 - `runs`: one accepted user request and all caused work; launch/hop counters,
   cancellation, outstanding result deliveries, and a per-agent model choice
@@ -29,6 +33,7 @@ Workpool: root parallelism 2, child parallelism 4. Hosts export `runTurn` and
   results retain the original inbox position for typed duplicate receipts.
 - `subagentRuns`: child linkage, verified native result reference, root epoch,
   delivery capability, bounded transition history and the side-run marker.
+  `by_result_message` supplies page-local result origins without reading history.
   That marker excludes side runs from the settlement fence and routes their
   replies to passive notes without spending model delegation hops.
 

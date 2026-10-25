@@ -24,8 +24,7 @@ export const PLATFORM = {
 export const HOST_LIMITS = {
   continuesPerRun: { default: 3, max: 8 },
   sideRunsPerRun: { default: 2, max: 8 },
-  notesPerTurn: { default: 8, max: 24 },
-  // Passive inbox capacity is independent of the ready-work queue and turn cap.
+  // The single note admission cap is independent of the ready-work queue.
   notesPending: { default: 8, max: 24 },
   maxDepth: { default: 2, max: 2 },
   messagesPerChild: { default: 4, max: 8 },
@@ -56,8 +55,10 @@ export const HOST_LIMITS = {
  * This deliberately overcounts: simultaneous child queues can belong to
  * DIFFERENT user-run budgets, so one run's 100 hops cannot bound the backlog.
  * Each ready row costs one run patch and one inbox delete: 2I=3,264 writes.
- * Notes cost <=two metadata reads and one delete; their native bodies and
- * historical run rows are NEVER accessed by cancellation.
+ * Passive note bodies and retained control rows are NEVER read by cancel.
+ * One finite cleanup job per assignment handles <=24 raw notes separately.
+ * Keep the old 2N metadata/delete allowance below as conservative headroom;
+ * it also covers the extra <=A cleanup jobs (<=4 KiB each).
  * Each assignment costs three patches, one current-run patch, two scheduler
  * cancels and one exact-id cleanup job: 7A=112. Add C child-run patches and
  * one final root patch. Reserve 64A=1,024 reads AND writes for Workflow's
@@ -85,10 +86,10 @@ export const HOST_LIMITS = {
  * <=4 KiB exact message references, <=6 KiB side-review boundaries, <=3 KiB
  * private hook error, two prompt ids and scalar counters. The original 32 KiB
  * envelope remains conservative after removing the <=10 KiB control-id replay
- * list. Notes have their own bounded queue N; each inbox row, including the
- * deferred native delete handle, stays <=1 KiB. Up to 24 deferred-note ids fit
- * the existing <=4 KiB cleanup-job allowance; their bodies are read only by
- * separate bounded cleanup transactions. Run additions are scalar counters plus
+ * list. Notes have their own bounded queue N; each raw row stays <=17 KiB
+ * and is read only by separate per-assignment cleanup transactions (<864 KiB including ownership).
+ * Saved control rows retain <=1 KiB of exact-id origin metadata and are excluded
+ * from every ready/cancel index range. Run additions are scalar counters plus
  * two 64-bit start/routing masks, keeping each run within its <=1 KiB envelope.
  *
  * Other proportional paths: claim drains <=152 consecutive ready rows,
@@ -107,7 +108,6 @@ export const HOST_LIMITS = {
 export const LIMITS = {
   continuesPerRun: HOST_LIMITS.continuesPerRun.default,
   sideRunsPerRun: HOST_LIMITS.sideRunsPerRun.default,
-  notesPerTurn: HOST_LIMITS.notesPerTurn.default,
   notesPending: HOST_LIMITS.notesPending.default,
   noteLength: 4_000,
   hookErrorLength: 1_000,
@@ -149,6 +149,8 @@ export const LIMITS = {
   // (3 statuses * tool/non-tool; Agent src/component/messages.ts:809-845).
   // Messages: 0.5 MiB page + 1 MiB overshoot + 6*1 MiB heads + 0.25 MiB
   // coordination = 7.75 MiB <16 MiB. Count: <=100 page rows + six heads.
+  // Origin lookup adds <=100*1 KiB controls +100*4 KiB results +32 KiB
+  // ownership =532 KiB and <=201 reads/queries; combined <8.27 MiB <16 MiB.
   // Stream deltas: 2*1 MiB metadata + 8 MiB native page + 1 MiB delta
   // overshoot + 0.25 MiB coordination = 11.25 MiB <16 MiB. Agent's fixed
   // 8 MiB page reads <=200 deltas (src/component/streams.ts:listDeltas).
@@ -185,7 +187,6 @@ export const limitsValidator = v.object({
   // new registrations. Missing legacy fields use the current safe defaults.
   continuesPerRun: v.optional(v.number()),
   sideRunsPerRun: v.optional(v.number()),
-  notesPerTurn: v.optional(v.number()),
   notesPending: v.number(),
   maxDepth: v.optional(v.number()),
   messagesPerChild: v.optional(v.number()),

@@ -1,13 +1,14 @@
 // @vitest-environment edge-runtime
 import { requireReceipt } from "./receipt.js";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
-import { createFunctionHandle } from "convex/server";
+import { createFunctionHandle, type PaginationResult } from "convex/server";
 import { getConvexSize } from "convex/values";
 import { listMessages, saveMessage } from "@convex-dev/agent";
 import { setup, api, components, state } from "./setup.js";
 import { main } from "./host.js";
-import type { ManagedAgent } from "../src/client/index.js";
+import type { ManagedAgent, OriginMessage } from "../src/client/index.js";
 import { LIMITS } from "../src/client/index.js";
+import { HOST_LIMITS } from "../src/component/limits.js";
 
 type Test = ReturnType<typeof setup>;
 beforeEach(() => vi.useFakeTimers());
@@ -36,6 +37,123 @@ const nativePage = (t: Test, threadId: string) =>
       paginationOpts: { cursor: null, numItems: 100, maximumBytesRead: 2 << 20 },
     }),
   );
+
+it("one atomic maximum-note drain stays bounded with six near-1 MiB native merge heads", async () => {
+  const t = setup(undefined, { notesPending: HOST_LIMITS.notesPending.max }, true);
+  const turn = await claimed(t);
+  for (const status of ["success", "pending", "failed"] as const)
+    for (const tool of [false, true]) {
+      await t.mutation(components.agent.messages.addMessages, {
+        threadId: turn.threadId,
+        order: 0,
+        failPendingSteps: false,
+        messages: [
+          {
+            status,
+            message: tool
+              ? {
+                  role: "tool",
+                  content: [
+                    {
+                      type: "tool-result",
+                      toolCallId: `large-${status}`,
+                      toolName: "echo",
+                      output: { type: "text", value: "x".repeat(1020 << 10) },
+                    },
+                  ],
+                }
+              : { role: "user", content: "x".repeat(510 << 10) },
+          },
+        ],
+      });
+    }
+  const handles = await nativeHandles(t);
+  for (let n = 0; n < HOST_LIMITS.notesPending.max; n++) {
+    await t.mutation(components.agevex.hooks.addNote, {
+      assignmentId: turn.assignmentId,
+      text: '"'.repeat(LIMITS.noteLength),
+      from: '"'.repeat(LIMITS.requestKeyLength),
+      addMessages: handles.handle,
+      getMessages: handles.nativeMessages.getMessages,
+    });
+  }
+  const metrics = await t.run(async (ctx) => {
+    expect(
+      await ctx.runMutation(components.agevex.hooks.takeNotes, {
+        assignmentId: turn.assignmentId,
+        executionId: turn.executionId,
+        updateMessage: await createFunctionHandle(components.agent.messages.updateMessage),
+        addMessages: handles.handle,
+        getMessages: handles.nativeMessages.getMessages,
+      }),
+    ).toBe(true);
+    return ctx.meta.getTransactionMetrics();
+  });
+  expect(metrics.bytesRead.used).toBeLessThan(10 << 20);
+  expect(metrics.bytesWritten.used).toBeLessThan(3 << 20);
+  expect((await execution(t, turn.assignmentId))?.notesPending).toBe(0);
+  let cursor: string | null = null;
+  const notes: { order: number; status: string }[] = [];
+  do {
+    const page: PaginationResult<OriginMessage> = await owner(t).query(api.agents.messages, {
+      threadId: turn.threadId,
+      paginationOpts: { cursor, numItems: 100 },
+    });
+    notes.push(...page.page.filter((message) => message.origin === "note"));
+    cursor = page.isDone ? null : page.continueCursor;
+  } while (cursor);
+  expect(notes).toHaveLength(HOST_LIMITS.notesPending.max);
+  expect(notes.every((message) => message.order === 0 && message.status === "success")).toBe(true);
+  await owner(t).mutation(api.agents.cancel, { threadId: turn.threadId });
+  await drain(t);
+});
+
+it("cancelled note cleanup cannot deliver old payloads or remove notes from a fresh send", async () => {
+  const t = setup(undefined, { notesPending: 2 }, true);
+  const turn = await claimed(t);
+  const handles = await nativeHandles(t);
+  const note = (text: string) =>
+    t.mutation(components.agevex.hooks.addNote, {
+      assignmentId: turn.assignmentId,
+      text,
+      from: "critic",
+      addMessages: handles.handle,
+      getMessages: handles.nativeMessages.getMessages,
+    });
+  await note("cancelled advice");
+  await owner(t).mutation(api.agents.cancel, { threadId: turn.threadId });
+  // Fresh admission and draining deliberately precede the old scheduled cleanup.
+  await owner(t).mutation(api.agents.send, {
+    threadId: turn.threadId,
+    text: "fresh send",
+    requestKey: "fresh",
+  });
+  const fresh = (await execution(t, turn.assignmentId))!;
+  await t.mutation(components.agevex.queue.claim, {
+    assignmentId: turn.assignmentId,
+    turnToken: fresh.turnToken!,
+  });
+  await note("fresh advice");
+  await t.mutation(components.agevex.hooks.takeNotes, {
+    assignmentId: turn.assignmentId,
+    executionId: fresh.turnToken!,
+    addMessages: handles.handle,
+    getMessages: handles.nativeMessages.getMessages,
+    updateMessage: await t.run(() => createFunctionHandle(components.agent.messages.updateMessage)),
+  });
+  await drain(t);
+  const page = await owner(t).query(api.agents.messages, {
+    threadId: turn.threadId,
+    paginationOpts: { cursor: null, numItems: 100 },
+  });
+  expect(
+    page.page.filter((message) => message.origin === "note").map((message) => message.text),
+  ).toEqual(['<note from="critic">fresh advice</note>']);
+  expect((await execution(t, turn.assignmentId))?.notesPending).toBe(0);
+  await owner(t).mutation(api.agents.cancel, { threadId: turn.threadId });
+  await drain(t);
+});
+
 async function claimed(t: Test) {
   const receipt = await open(t);
   const row = (await execution(t, receipt.assignmentId))!;

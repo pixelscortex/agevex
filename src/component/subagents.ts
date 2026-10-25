@@ -908,6 +908,7 @@ export const delegations = query({
     return {
       page: page.map((run) => ({
         runId: run.runId,
+        side: run.side ?? false,
         // Defensively preserve absence between reservation and attachment,
         // or on older rows, even though the coordinator commits both together.
         childThreadId: run.childThreadId ?? null,
@@ -1157,6 +1158,7 @@ export const runTree = query({
       );
     return rows.map((run) => ({
       runId: run.runId,
+      side: run.side ?? false,
       parentAssignmentId: run.actorAssignmentId,
       childAssignmentId: run.childAssignmentId ?? null,
       agent: run.agent,

@@ -1,7 +1,7 @@
-import { getConvexSize, v, type Infer } from "convex/values";
+import { ConvexError, getConvexSize, v, type Infer } from "convex/values";
 import type { MessageDoc } from "@convex-dev/agent";
 import type { FunctionHandle } from "convex/server";
-import { mutation, query, type MutationCtx } from "./_generated/server.js";
+import { mutation, query, internalMutation, type MutationCtx } from "./_generated/server.js";
 import type { Doc } from "./_generated/dataModel.js";
 import { LIMITS } from "./limits.js";
 import { validModelOverrides } from "./models.js";
@@ -70,6 +70,7 @@ export const takeNotes = mutation({
     executionId: v.string(),
     getMessages: v.string(),
     addMessages: v.string(),
+    updateMessage: v.string(),
   },
   returns: v.boolean(),
   handler: async (ctx, args) => {
@@ -82,44 +83,55 @@ export const takeNotes = mutation({
       row.pendingGeneration
     )
       return false;
-    const cap = (row.limits?.notesPerTurn ?? LIMITS.notesPerTurn) - (row.notesTaken ?? 0);
-    if (cap <= 0) return false;
-    // One exact note per transaction: <=50 KiB body + six native merge heads
-    // <=6 MiB + bounded stream-abort metadata + assignment <8 MiB <16 MiB.
-    // The action drains <=24 notes using separate transactions, so native reads
-    // never multiply by notesPerTurn. No workflow step or transcript scan.
-    const note = await ctx.db
+    // Drain the entire admitted backlog atomically at a completed-step boundary.
+    // Agent moves a second USER in a batch to a fresh order (messages.ts:391-406).
+    // Allocate successful, empty assistant slots in ONE native batch, then use
+    // native updateMessage (:553-597) to finalize their user roles/text without
+    // moving positions. These intermediate rows are never pending or observable
+    // outside this transaction; cleanup cannot mark a note failed. No embeddings,
+    // model metadata or synthetic content survives, and no generation is active.
+    // One anchor <=1 MiB + six native merge heads <=6 MiB +24 raw rows *17 KiB
+    // read twice +24 finalized notes *50 KiB +metadata <128 KiB: <10 MiB read,
+    // <3 MiB written. Saving each note separately would re-read the six heads
+    // 24 times and exceed Convex's 16 MiB transaction limit.
+    const notes = await ctx.db
       .query("inbox")
-      .withIndex("by_assignment_ready", (q) => q.eq("assignmentId", row._id).eq("passive", true))
-      .first();
-    if (!note) return false;
-    if (note.deferredNoteDelete) {
-      const [message] = (await ctx.runQuery(args.getMessages as FunctionHandle<"query">, {
-        messageIds: [note.messageId],
-      })) as (MessageDoc | null)[];
-      if (!message || message.threadId !== row.threadId || message.message?.role !== "user")
-        throw new Error("NOTE_MISSING");
-      // A pending user note stores the original payload only in Agent. Once
-      // the step finishes, atomically replace that provisional document with
-      // an ordinary user message AFTER the complete tool-call/result pair.
-      // Native deleteByIds operates on our recorded id; streams have finished
-      // before this boundary. No read-time suppression or message injection.
-      await ctx.runMutation(note.deferredNoteDelete as FunctionHandle<"mutation">, {
-        messageIds: [note.messageId],
-      });
+      .withIndex("by_assignment_ready", (q) =>
+        q.eq("assignmentId", row._id).eq("passive", true).eq("noteEpoch", row.cancellationEpoch),
+      )
+      .take(row.limits?.notesPending ?? LIMITS.notesPending);
+    if (!notes.length) return false;
+    const unsaved = notes.filter((note) => note.noteText !== undefined);
+    if (unsaved.length) {
       const saved = (await ctx.runMutation(args.addMessages as FunctionHandle<"mutation">, {
         threadId: row.threadId,
-        order: message.order,
-        agentName: message.agentName,
-        messages: [{ message: message.message }],
+        order: await controlOrder(ctx, row, args.getMessages),
+        failPendingSteps: false,
+        messages: unsaved.map(() => ({
+          status: "success",
+          message: { role: "assistant", content: [] },
+        })),
       })) as { messages: MessageDoc[] };
-      await recordMessages(ctx, row, saved.messages);
+      const finalized: MessageDoc[] = [];
+      for (let index = 0; index < unsaved.length; index++) {
+        const note = unsaved[index];
+        const message = (await ctx.runMutation(args.updateMessage as FunctionHandle<"mutation">, {
+          messageId: saved.messages[index]._id,
+          patch: { message: noteMessage(note.noteText!, note.from!) },
+        })) as MessageDoc;
+        finalized.push(message);
+        await ctx.db.patch("inbox", note._id, {
+          messageId: message._id,
+          noteText: undefined,
+          passive: false,
+        });
+      }
+      await recordMessages(ctx, row, finalized);
     }
-    await ctx.db.delete("inbox", note._id);
-    await ctx.db.patch("assignments", row._id, {
-      notesTaken: (row.notesTaken ?? 0) + 1,
-      notesPending: row.notesPending - 1,
-    });
+    for (const note of notes) {
+      if (note.noteText === undefined) await ctx.db.patch("inbox", note._id, { passive: false });
+    }
+    await ctx.db.patch("assignments", row._id, { notesPending: 0 });
     return true;
   },
 });
@@ -142,6 +154,97 @@ async function controlOrder(ctx: MutationCtx, row: Doc<"assignments">, getMessag
   if (!message || message.threadId !== row.threadId) throw new Error("CONTROL_ANCHOR_MISSING");
   return message.order;
 }
+
+function noteMessage(text: string, from: string) {
+  const escape = (value: string) =>
+    value.replace(
+      /[&<>"']/g,
+      (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[char]!,
+    );
+  return { role: "user" as const, content: `<note from="${escape(from)}">${escape(text)}</note>` };
+}
+
+async function saveNote(
+  ctx: MutationCtx,
+  row: Doc<"assignments">,
+  addMessages: string,
+  order: number,
+  text: string,
+  from: string,
+) {
+  const saved = (await ctx.runMutation(addMessages as FunctionHandle<"mutation">, {
+    threadId: row.threadId,
+    order,
+    agentName: from,
+    messages: [{ message: noteMessage(text, from) }],
+  })) as { messages: MessageDoc[] };
+  return saved.messages[0];
+}
+
+/** Cancellation never loads the raw note bodies across all sixteen assignments.
+ * One finite job per assignment reads/deletes <=24*17 KiB twice +32 KiB
+ * assignment metadata =848 KiB (<864 KiB).
+ * Saved idle notes keep their origin; unsaved notes have never entered Agent.
+ * The epoch index fences a fresh send even when it precedes this job. Each
+ * cancelled epoch has <=24 notes, so no chain or history prefix is needed.
+ */
+export const cancelNotes = internalMutation({
+  args: { assignmentId: v.id("assignments"), epoch: v.number() },
+  handler: async (ctx, { assignmentId, epoch }) => {
+    const row = await ctx.db.get("assignments", assignmentId);
+    if (!row) return;
+    const notes = await ctx.db
+      .query("inbox")
+      .withIndex("by_assignment_ready", (q) =>
+        q.eq("assignmentId", assignmentId).eq("passive", true).eq("noteEpoch", epoch),
+      )
+      .take(row.limits?.notesPending ?? LIMITS.notesPending);
+    for (const note of notes) {
+      if (note.noteText !== undefined) await ctx.db.delete("inbox", note._id);
+      else await ctx.db.patch("inbox", note._id, { passive: false });
+    }
+  },
+});
+
+/** Page-local indexed lookups: <=100 controls *1 KiB +100 results *4 KiB
+ * +32 KiB ownership =532 KiB, <=201 documents and <=201 index queries.
+ * Control rows with a native id never retain bodies; no history prefix is read.
+ */
+export const origins = query({
+  args: { assignmentId: v.id("assignments"), subject: v.string(), messageIds: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    if (args.messageIds.length > LIMITS.messagePage) throw new Error("INVALID_PAGE");
+    const row = await ctx.db.get("assignments", args.assignmentId);
+    if (!row || row.subject !== args.subject) throw new Error("FORBIDDEN");
+    const origins: Record<
+      string,
+      { origin: "note" | "continue" | "result"; from?: string; runId?: string }
+    > = {};
+    for (const id of args.messageIds) {
+      const control = await ctx.db
+        .query("inbox")
+        .withIndex("by_message", (q) => q.eq("messageId", id))
+        .unique();
+      if (
+        control?.assignmentId === row._id &&
+        (control.kind === "note" || control.kind === "continue")
+      ) {
+        origins[id] = {
+          origin: control.kind,
+          ...(control.kind === "note" ? { from: control.from! } : {}),
+        };
+        continue;
+      }
+      const result = await ctx.db
+        .query("subagentRuns")
+        .withIndex("by_result_message", (q) => q.eq("resultMessageId", id))
+        .unique();
+      if (result?.actorAssignmentId === row._id)
+        origins[id] = { origin: "result", runId: result.runId };
+    }
+    return origins;
+  },
+});
 
 export const hookState = mutation({
   args: {
@@ -202,10 +305,19 @@ export const continueAdmission = mutation({
       messages: [{ message: { role: "user", content: args.prompt } }],
     })) as { messages: MessageDoc[] };
     const messageId = saved.messages[0]._id;
+    await ctx.db.insert("inbox", {
+      assignmentId: row._id,
+      messageId,
+      sequence: row.nextSequence,
+      runId: run._id,
+      kind: "continue",
+      passive: false,
+    });
     await recordMessages(ctx, row, saved.messages);
     await ctx.db.patch("runs", run._id, { continues: (run.continues ?? 0) + 1 });
     await ctx.db.patch("assignments", row._id, {
       hookContinue: true,
+      nextSequence: row.nextSequence + 1,
       logicalPromptMessageId: messageId,
     });
     return messageId;
@@ -272,8 +384,9 @@ export const reviewed = mutation({
   },
 });
 
-/** Called through queue.write's execution/epoch fence. Native addMessages and
- * passive admission are nested mutations in the SAME Convex transaction. */
+/** Called through queue.write's execution/epoch fence for running hook notes.
+ * Idle native saves and exact-id capture share the admission transaction;
+ * running notes retain only their bounded raw payload until a safe boundary. */
 export const addNote = mutation({
   args: {
     assignmentId: v.id("assignments"),
@@ -281,7 +394,6 @@ export const addNote = mutation({
     from: v.string(),
     addMessages: v.string(),
     getMessages: v.string(),
-    deleteMessages: v.string(),
   },
   returns: v.boolean(),
   handler: async (ctx, args): Promise<boolean> => {
@@ -295,45 +407,38 @@ export const addNote = mutation({
       args.from.length > LIMITS.requestKeyLength
     )
       throw new Error("INVALID_NOTE");
-    if (row.notesPending >= (row.limits?.notesPending ?? LIMITS.notesPending)) return false;
-    const escape = (text: string) =>
-      text.replace(
-        /[&<>"']/g,
-        (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[char]!,
-      );
-    const saved = (await ctx.runMutation(args.addMessages as FunctionHandle<"mutation">, {
-      threadId: row.threadId,
-      order: await controlOrder(ctx, row, args.getMessages),
-      agentName: args.from,
-      messages: [
-        {
-          // Agent reserves the assistant slot before model I/O and fills it
-          // later (vercel/client/start.ts:213-232,383-395). A successful note
-          // here could split that assistant tool call from its result. Keep
-          // only in-flight notes pending until the completed-step boundary.
-          ...(row.pendingGeneration ? { status: "pending" } : {}),
-          message: {
-            role: "user",
-            content: `<note from="${escape(args.from)}">${escape(args.text)}</note>`,
-          },
-        },
-      ],
-    })) as { messages: MessageDoc[] };
-    const message = saved.messages[0];
+    if (row.notesPending >= (row.limits?.notesPending ?? LIMITS.notesPending))
+      throw new ConvexError({ code: "NOTES_PENDING_LIMIT" });
+    // Running notes live only here until takeNotes observes a safe boundary.
+    // <=4,000 UTF-16 units => <=16 KiB plus <1 KiB metadata, never near 1 MiB.
+    // Idle notes are saved immediately; their small retained row provides origin.
+    const running = row.turnStatus === "running";
+    const message = running
+      ? undefined
+      : await saveNote(
+          ctx,
+          row,
+          args.addMessages,
+          await controlOrder(ctx, row, args.getMessages),
+          args.text,
+          args.from,
+        );
     await ctx.db.insert("inbox", {
       assignmentId: row._id,
-      messageId: message._id,
+      messageId: message?._id ?? "",
       sequence: row.nextSequence,
       runId: row.runId!,
       kind: "note",
       passive: true,
-      ...(row.pendingGeneration ? { deferredNoteDelete: args.deleteMessages } : {}),
+      from: args.from,
+      noteEpoch: row.cancellationEpoch,
+      ...(running ? { noteText: args.text } : {}),
     });
     await ctx.db.patch("assignments", row._id, {
       notesPending: row.notesPending + 1,
       nextSequence: row.nextSequence + 1,
     });
-    await recordMessages(ctx, row, saved.messages);
+    if (message) await recordMessages(ctx, row, [message]);
     return true;
   },
 });

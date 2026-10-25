@@ -31,3 +31,5 @@ export type { Limits } from "../component/limits.js";
 export { defineOnceTool } from "./once.js";
 export type { NoteArgs } from "./hooks.js";
 export type { ToolContext, ScopedMeter, MeterCharge } from "./once.js";
+
+export type { OriginMessage } from "./endpoints.js";

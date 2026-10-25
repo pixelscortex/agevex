@@ -142,18 +142,21 @@ a local tool execution function to intercept inside the action.
 
 Inside an authorized host mutation, call
 `runtime.note(ctx, { threadId, text, from })`. It authorizes operation `note`
-and returns false at capacity. Notes are escaped user-role `<note from="…">`
-messages, capped at 4,000 characters and 8 per turn (hard maximum 24).
-`limits.notesPending` separately bounds the passive backlog (default 8, hard
-maximum 24); notes never consume `queueLength` capacity. They
-enter context between slices, or on the next requested turn when idle. They
-never start a turn or schedule work.
+and throws a typed `NOTES_PENDING_LIMIT` error at capacity. Notes are escaped
+user-role `<note from="…">` messages, capped at 4,000 characters.
+`limits.notesPending` is the single admission cap (default 8, hard maximum 24),
+independent of `queueLength`. Idle notes save immediately in the latest
+request's native order group. Running notes stay in the bounded inbox until
+a safe completed-step boundary saves all pending notes atomically, in arrival
+order, after the tool call/result pair. Notes never start a turn or schedule work.
 
-Notes and hook continuation prompts are saved in the native transcript and
-recorded by exact id in the same transaction. During the claimed ready work,
-the runtime excludes those ids from native context and explicitly injects
-controls once, in native order, after the complete response group. The claimed
-ready-work anchor stays fixed, keeping future queued requests hidden.
+Notes and hook continuation prompts use the claimed request's native order
+group, keeping future queued requests hidden without context injection.
+The authorized `messages` reader adds `origin: user | result | note | continue`,
+`from` for notes and `runId` for results. Unclassified native messages (including
+assistant replies) use `user`. Page-local exact-id indexes add at most 201 small
+metadata reads (532 KiB); total message reads remain below 8.27 MiB.
+`delegations` and `runTree` include `side: boolean` for every public run.
 
 Side cadence uses completed turns or `{ minutes: N }` since the last review,
 checked after a turn without a cron. Deltas use exact recorded native ids and
@@ -162,7 +165,8 @@ Skipped reviews retain their delta. Side runs use the child lane and root run
 attribution, with a separate cap of 2 per run (hard maximum 8). Their replies
 become passive notes; empty replies and `NONE` add nothing. Side runs never
 hold a parent's settlement fence, never fail their parent, and cancel with the
-root. Their threads use the same authorized `messages` reader as other children.
+root. Side agents keep their own configured model; root model overrides do not
+apply to them. Their threads use the same authorized `messages` reader as other children.
 
 ## Delegation
 

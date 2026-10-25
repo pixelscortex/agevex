@@ -7,7 +7,7 @@ import {
   type FunctionReference,
 } from "convex/server";
 import { v } from "convex/values";
-import { HOST_LIMITS, LIMITS } from "../component/limits.js";
+import { LIMITS } from "../component/limits.js";
 const args = { lane: v.string(), module: v.string(), name: v.string(), args: v.any() };
 export const read = internalQueryGeneric({
   args,
@@ -45,7 +45,7 @@ export const recoveryJobs = internalQueryGeneric({
 export const queuedWork = internalQueryGeneric({
   args: {},
   handler: async (ctx) => ({
-    inbox: await ctx.db.query("inbox").collect(),
+    inbox: (await ctx.db.query("inbox").collect()).filter((row) => row.passive !== false),
     runs: await ctx.db.query("runs").collect(),
   }),
 });
@@ -91,7 +91,6 @@ export const fillHookMetadata = internalMutationGeneric({
       })),
       hookError: "\uFFFF".repeat(LIMITS.hookErrorLength),
       completedTurns: LIMITS.turnsPerLoop,
-      notesTaken: HOST_LIMITS.notesPerTurn.max,
       logicalPromptMessageId: crypto.randomUUID(),
     });
     return null;

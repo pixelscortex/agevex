@@ -2,6 +2,7 @@
 import { beforeEach, afterEach, it, expect, vi } from "vite-plus/test";
 import { convexTest } from "convex-test";
 import agent from "@convex-dev/agent/test";
+import { listMessages } from "@convex-dev/agent";
 import agevex from "../src/test.js";
 import schema from "./fixture/schema.js";
 import { fixture, reset, exports, api, critic, text, call } from "./hooks.host.js";
@@ -320,19 +321,19 @@ it("distinct identical requests and notes persist once across hook turns", async
 });
 
 it("maximum native control history fits platform limits across all eight hook continuations", async () => {
+  // Each turn posts one full pending backlog; all admitted notes reach native history.
   fixture.hooks.beforeTurn = async (hc) => {
     const row = await hc.ctx.runQuery(components.agevex.queue.assignment, {
       threadId: hc.threadId,
     });
     const addMessages = await createFunctionHandle(components.agent.messages.addMessages);
-    for (let n = 0; n < HOST_LIMITS.notesPerTurn.max; n++)
+    for (let n = 0; n < HOST_LIMITS.notesPending.max; n++)
       expect(
         await hc.ctx.runMutation(components.agevex.hooks.addNote, {
           assignmentId: row!.assignmentId,
           text: '"'.repeat(LIMITS.noteLength),
           from: '"'.repeat(LIMITS.requestKeyLength),
           addMessages,
-          deleteMessages: await createFunctionHandle(components.agent.messages.deleteByIds),
           getMessages: await createFunctionHandle(components.agent.messages.getMessagesByIds),
         }),
       ).toBe(true);
@@ -340,7 +341,6 @@ it("maximum native control history fits platform limits across all eight hook co
   fixture.hooks.afterTurn = () => ({ continue: "￿".repeat(LIMITS.messageLength) });
   const t = setup(
     {
-      notesPerTurn: HOST_LIMITS.notesPerTurn.max,
       notesPending: HOST_LIMITS.notesPending.max,
       continuesPerRun: HOST_LIMITS.continuesPerRun.max,
     },
@@ -352,13 +352,14 @@ it("maximum native control history fits platform limits across all eight hook co
   const prompt = calls()[HOST_LIMITS.continuesPerRun.max].args.prompt;
   expect(
     prompt.filter((message) => JSON.stringify(message.content).includes("<note from=")),
-  ).toHaveLength((HOST_LIMITS.continuesPerRun.max + 1) * HOST_LIMITS.notesPerTurn.max);
+  ).toHaveLength((HOST_LIMITS.continuesPerRun.max + 1) * HOST_LIMITS.notesPending.max);
   expect(prompt.filter((message) => JSON.stringify(message.content).includes("￿"))).toHaveLength(
     HOST_LIMITS.continuesPerRun.max,
   );
 }, 30_000);
 
 it("maximum in-flight notes retain tool adjacency and appear once within platform limits", async () => {
+  // Only pending admission bounds the batch, including the full escaped payload.
   const held = gate();
   fixture.steps.Main = async (n) => {
     if (n === 0) {
@@ -370,7 +371,6 @@ it("maximum in-flight notes retain tool adjacency and appear once within platfor
   const t = setup(
     {
       notesPending: HOST_LIMITS.notesPending.max,
-      notesPerTurn: HOST_LIMITS.notesPerTurn.max,
     },
     true,
   );
@@ -512,7 +512,7 @@ it("a running request receives its note across slices without exposing or execut
   ).toHaveLength(1);
 });
 
-it("pending notes have their own capacity even with a full ready queue and drain at the per-turn bound", async () => {
+it("two in-flight notes preserve the tool pair, arrival order and single delivery while the third gets a typed cap", async () => {
   const held = gate();
   fixture.steps.Main = async (n) => {
     if (n === 0) {
@@ -521,7 +521,8 @@ it("pending notes have their own capacity even with a full ready queue and drain
     }
     return text("done");
   };
-  const t = setup({ queueLength: 1, notesPending: 2, notesPerTurn: 1 });
+  // All admitted notes drain together; there is no second per-turn admission.
+  const t = setup({ queueLength: 1, notesPending: 2 }, true);
   const receipt = await open(t);
   await waitFor(t, () => calls().length === 1);
   expect(await send(t, receipt.threadId, "queued B")).toMatchObject({ status: "accepted" });
@@ -533,14 +534,153 @@ it("pending notes have their own capacity even with a full ready queue and drain
     });
   expect(await note("first passive note")).toBe(true);
   expect(await note("second passive note")).toBe(true);
-  expect(await note("over pending capacity")).toBe(false);
+  // In-flight payloads must never become provisional native messages.
+  expect(
+    (await messages(t, receipt.threadId)).page.filter((message) => message.origin === "note"),
+  ).toEqual([]);
+  await expect(note("over pending capacity")).rejects.toMatchObject({
+    data: { code: "NOTES_PENDING_LIMIT" },
+  });
   held.release();
   await drain(t);
   expect(calls()).toHaveLength(3);
   expect(JSON.stringify(calls()[1].args.prompt)).toContain("first passive note");
-  expect(JSON.stringify(calls()[1].args.prompt)).not.toContain("second passive note");
+  const prompt = JSON.stringify(calls()[1].args.prompt);
+  expect(prompt.match(/first passive note/g)).toHaveLength(1);
+  expect(prompt.match(/second passive note/g)).toHaveLength(1);
+  expect(prompt.indexOf("second passive note")).toBeGreaterThan(
+    prompt.indexOf("first passive note"),
+  );
+  const native = (
+    await t.run((ctx) =>
+      listMessages(ctx, components.agent, {
+        threadId: receipt.threadId,
+        paginationOpts: { cursor: null, numItems: 100 },
+      }),
+    )
+  ).page.sort((a, b) => a.order - b.order || a.stepOrder - b.stepOrder);
+  expect(native.every((message) => message.status === "success")).toBe(true);
+  expect(new Set(native.map((message) => `${message.order}:${message.stepOrder}`)).size).toBe(
+    native.length,
+  );
+  const callIndex = native.findIndex(
+    (message) =>
+      message.message?.role === "assistant" &&
+      Array.isArray(message.message.content) &&
+      message.message.content.some((part) => part.type === "tool-call"),
+  );
+  expect(callIndex).toBeGreaterThanOrEqual(0);
+  expect(native[callIndex + 1].message?.role).toBe("tool");
+  expect(native[callIndex + 2].text).toContain("first passive note");
+  expect(native[callIndex + 3].text).toContain("second passive note");
+  expect(native[callIndex + 3].order).toBe(native[callIndex].order);
+  const page = (await messages(t, receipt.threadId)).page;
+  expect(page.every((message) => message.status !== "failed")).toBe(true);
+  const controls = page
+    .filter((message) => message.origin === "note")
+    .sort((a, b) => a.stepOrder - b.stepOrder);
+  expect(controls.map((message) => message.text)).toEqual([
+    '<note from="critic">first passive note</note>',
+    '<note from="critic">second passive note</note>',
+  ]);
+  expect(new Set(page.map((message) => `${message.order}:${message.stepOrder}`)).size).toBe(
+    page.length,
+  );
   expect(JSON.stringify(calls()[2].args.prompt)).toContain("second passive note");
   expect(await note("capacity is reusable")).toBe(true);
+});
+
+it("two idle notes at capacity are saved immediately and delivered exactly once on the next request", async () => {
+  // The pending backlog is the only cap; idle notes have no unadmitted state.
+  const t = setup({ notesPending: 2 }, true);
+  const receipt = await open(t);
+  await drain(t);
+  for (const text of ["idle first", "idle second"]) {
+    await owner(t).mutation(api.agents.note, { threadId: receipt.threadId, text, from: "critic" });
+  }
+  const page = (await messages(t, receipt.threadId)).page;
+  expect(page.filter((message) => message.origin === "note")).toHaveLength(2);
+  expect(page.every((message) => message.status === "success")).toBe(true);
+  await expect(
+    owner(t).mutation(api.agents.note, {
+      threadId: receipt.threadId,
+      text: "third",
+      from: "critic",
+    }),
+  ).rejects.toMatchObject({ data: { code: "NOTES_PENDING_LIMIT" } });
+  await send(t, receipt.threadId, "read idle notes");
+  await drain(t);
+  const prompt = JSON.stringify(calls()[1].args.prompt);
+  expect(prompt.match(/idle first/g)).toHaveLength(1);
+  expect(prompt.match(/idle second/g)).toHaveLength(1);
+  expect(prompt.indexOf("idle second")).toBeGreaterThan(prompt.indexOf("idle first"));
+});
+
+it("authorized messages identify user, delegation result, note and continue origins from recorded ids", async () => {
+  fixture.steps.Main = (n) =>
+    n === 0 ? call("agevex_delegate", { agent: "Builder", task: "origin task" }) : text("done");
+  const t = setup(undefined, true);
+  const receipt = await open(t);
+  await drain(t);
+  await owner(t).mutation(api.agents.note, {
+    threadId: receipt.threadId,
+    text: "origin advice",
+    from: "critic",
+  });
+  let continued = false;
+  fixture.hooks.afterTurn = () => {
+    if (continued) return;
+    continued = true;
+    return { continue: "origin followup" };
+  };
+  await send(t, receipt.threadId, "read origins");
+  await drain(t);
+  const page = (await messages(t, receipt.threadId)).page;
+  expect(page.find((message) => message.text === "first request")).toMatchObject({
+    origin: "user",
+  });
+  expect(page.find((message) => message.text.includes("origin advice"))).toMatchObject({
+    origin: "note",
+    from: "critic",
+  });
+  expect(page.find((message) => message.text === "origin followup")).toMatchObject({
+    origin: "continue",
+  });
+  const runs = await owner(t).query(api.agents.delegations, {
+    threadId: receipt.threadId,
+    paginationOpts: { cursor: null, numItems: 100 },
+  });
+  const child = runs.page.find((run) => run.agent === "Builder")!;
+  expect(page.find((message) => message.id === child.resultMessageId)).toMatchObject({
+    origin: "result",
+    runId: child.runId,
+  });
+  await expect(
+    t.withIdentity({ subject: "mallory" }).query(api.agents.messages, {
+      threadId: receipt.threadId,
+      paginationOpts: { cursor: null, numItems: 100 },
+    }),
+  ).rejects.toThrow("FORBIDDEN");
+});
+
+it("delegations and runTree distinguish side runs from ordinary children", async () => {
+  fixture.sides = [{ agent: critic, every: { turns: 1 }, sees: "delta" }];
+  fixture.steps.Main = (n) =>
+    n === 0 ? call("agevex_delegate", { agent: "Builder", task: "ordinary task" }) : text("done");
+  const t = setup();
+  const receipt = await open(t);
+  await drain(t);
+  const tree = await owner(t).query(api.agents.runTree, { threadId: receipt.threadId });
+  const runs = (
+    await owner(t).query(api.agents.delegations, {
+      threadId: receipt.threadId,
+      paginationOpts: { cursor: null, numItems: 100 },
+    })
+  ).page;
+  for (const records of [tree, runs]) {
+    expect(records.find((run) => run.agent === "Builder")).toMatchObject({ side: false });
+    expect(records.some((run) => run.agent === "Critic" && run.side === true)).toBe(true);
+  }
 });
 
 it("a note arriving in a running slice becomes context in the next slice", async () => {
@@ -566,14 +706,14 @@ it("a note arriving in a running slice becomes context in the next slice", async
 });
 
 it("notes enforce their hard count and length bounds and authorize the watched thread", async () => {
+  // The pending maximum is the sole note count policy.
   const t = setup({
-    notesPerTurn: HOST_LIMITS.notesPerTurn.max,
     notesPending: HOST_LIMITS.notesPending.max,
     queueLength: HOST_LIMITS.queueLength.max,
   });
   const receipt = await open(t);
   await drain(t);
-  for (let i = 0; i < HOST_LIMITS.notesPerTurn.max; i++)
+  for (let i = 0; i < HOST_LIMITS.notesPending.max; i++)
     expect(
       await owner(t).mutation(api.agents.note, {
         threadId: receipt.threadId,
@@ -581,13 +721,13 @@ it("notes enforce their hard count and length bounds and authorize the watched t
         from: "critic",
       }),
     ).toBe(true);
-  expect(
-    await owner(t).mutation(api.agents.note, {
+  await expect(
+    owner(t).mutation(api.agents.note, {
       threadId: receipt.threadId,
       text: "overflow",
       from: "critic",
     }),
-  ).toBe(false);
+  ).rejects.toMatchObject({ data: { code: "NOTES_PENDING_LIMIT" } });
   await expect(
     t.withIdentity({ subject: "mallory" }).mutation(api.agents.note, {
       threadId: receipt.threadId,
@@ -755,10 +895,10 @@ it.each(
       complete: true,
     });
     const side = await launch(builder, "Critic", { side: true });
-    // Fill the passive-note allowance at the hard maximum. These real native
-    // saves leave inbox rows present throughout both settlement paths, under
+    // Fill the sole passive-note allowance; unsaved bodies stay bounded here.
+    // Inbox rows remain present throughout both settlement paths, under
     // the enforced 8 MiB transaction gate; R3 must inspect only ready work.
-    for (let n = 0; n < HOST_LIMITS.notesPerTurn.max; n++)
+    for (let n = 0; n < HOST_LIMITS.notesPending.max; n++)
       expect(
         await owner(t).mutation(api.agents.note, {
           threadId: builder.threadId,

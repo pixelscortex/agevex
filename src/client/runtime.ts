@@ -1067,9 +1067,6 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                     getMessages: await createFunctionHandle(
                       managed.component.messages.getMessagesByIds,
                     ),
-                    deleteMessages: await createFunctionHandle(
-                      managed.component.messages.deleteByIds,
-                    ),
                   });
                 return result;
               } catch (error) {
@@ -1291,17 +1288,15 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 const addMessages = await createFunctionHandle(
                   managed.component.messages.addMessages,
                 );
-                for (let n = 0; n < limits.notesPerTurn; n++) {
-                  if (
-                    !(await fencedCtx.runMutation(component.hooks.takeNotes, {
-                      assignmentId: claimed.assignmentId,
-                      executionId: args.turnToken,
-                      getMessages,
-                      addMessages,
-                    }))
-                  )
-                    break;
-                }
+                await fencedCtx.runMutation(component.hooks.takeNotes, {
+                  assignmentId: claimed.assignmentId,
+                  executionId: args.turnToken,
+                  getMessages,
+                  addMessages,
+                  updateMessage: await createFunctionHandle(
+                    managed.component.messages.updateMessage,
+                  ),
+                });
               };
               await drainNotes();
               const result = await managed.streamText(
