@@ -1,0 +1,72 @@
+src/component/hooks.ts
+  s_3cb8c4d6edfc03::t_133e6d576d2c1e 216-218,237,239-240,259-264
+tests/tasks.test.ts
+  s_3cb8c4d6edfc03::t_f218e74f40e6c5 1-196
+src/component/schema.ts
+  s_3cb8c4d6edfc03::t_fc5025262f0fb4 17,28,169-181,186-188
+src/component/_generated/component.ts
+  s_3cb8c4d6edfc03::t_e27f8a4e7e470b 11,39
+src/client/index.ts
+  s_3cb8c4d6edfc03::t_bd2d22ca94f00e 47
+README.md
+  s_3cb8c4d6edfc03::t_6d4e4cf8fd8487 156-234
+tests/hooks.host.ts
+  s_3cb8c4d6edfc03::t_895849034ac535 11,30-33,55-59,91-106,123,127-130,141,156-160
+src/component/limits.ts
+  s_3cb8c4d6edfc03::t_f1d2cb06b3f0bc 94-99
+src/client/types.ts
+  s_3cb8c4d6edfc03::t_448272e1598209 1,83,270,296,313-319
+src/client/agent.ts
+  s_3cb8c4d6edfc03::t_3cea98e249e8eb 22,49,64
+src/component/files.ts
+  s_3cb8c4d6edfc03::t_85ded6c6bffa3b 1-129
+tests/slots.test.ts
+  s_3cb8c4d6edfc03::t_791435cda7ab73 1-473
+src/component/_generated/api.ts
+  s_3cb8c4d6edfc03::t_bcc5aa8227f058 13,33
+src/component/queue.ts
+  s_3cb8c4d6edfc03::t_14ab71101ae022 804,910-916
+src/client/runtime.ts
+  s_3cb8c4d6edfc03::t_b5f2c729df445d 20-22,46-66,72-80,149-150,236-251,548-624,989-991,993,995,997-998,1001,1004-1025,1027-1077,1080-1110,1113-1240,1244,1246-1250,1252-1263,1265-1297,1299-1561,1563-1567,1570-1571,1573-1577,1582-1601,1603-1606,1608-1623,1625-1639,1642,1644-1654,1656-1663,1665-1668,1670-1688,1690-1696,1698-1711,1713-1723,1731-1748,1750-1756,1758-1767,1769-1772,1774-1778,1785-1790,1793-1800,1802-1811,1826-1851
+src/client/once.ts
+  s_3cb8c4d6edfc03::t_b5f06c8d270e53 7-9,14-15,78,85-89
+tests/live/convex/agents.ts
+  s_c65e939e588631::t_453633e6a65d61 12-14,28,69,103-119,259
+tests/live/runtime.live.ts
+  s_3cb8c4d6edfc03::t_23502702aaba1d 10-13,25-55,107-122,129-154,159-162
+  s_b39d195254f51a::t_a2b853882bfce6 21
+src/client/endpoints.ts
+  s_3cb8c4d6edfc03::t_5062e50ba1fdf5 149-220,228,242-249,256,261-262,265,301,310-317,329,332-333,336-343
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d4e7d796b8c217d6eb6732d9ff2f609f8499c95f",
+  "prompts": {},
+  "sessions": {
+    "s_3cb8c4d6edfc03": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a170b4-8b30-70a2-b7bc-60180de42f5c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_b39d195254f51a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17083-09f3-7672-a03e-e770d3b91c60",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_c65e939e588631": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a170b5-a3a0-7af0-9f5d-38cf77f1d3f2",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
