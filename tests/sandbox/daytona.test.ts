@@ -725,3 +725,51 @@ it("a hung status read cannot outlive the job deadline or prevent the Daytona gr
     }
   }
 });
+
+it("a timed-out Daytona exec returns a timeout result and kills the command's process group", async () => {
+  const { ctx, provider } = harness();
+  const directory = await mkdtemp(join(tmpdir(), "agevex-exec-"));
+  const pidFile = join(directory, "pid");
+  let pid = 0;
+  try {
+    // The harness kills the wrapper at Daytona's timeoutSeconds, like the real
+    // service. The wrapper must therefore enforce the command timeout earlier.
+    const result = await provider.exec(ctx, "local", `echo $$ > '${pidFile}'; exec sleep 30`, {
+      timeoutS: 1,
+      signal: new AbortController().signal,
+    });
+    pid = Number(await readFile(pidFile, "utf8"));
+    expect(result).toMatchObject({ exitCode: 124 });
+    expect(result.stderr).toContain("timed out after 1s");
+    expect(() => process.kill(pid, 0)).toThrow(/ESRCH/);
+  } finally {
+    if (pid)
+      try {
+        process.kill(-pid, "SIGKILL");
+      } catch {
+        /* already gone */
+      }
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 30_000);
+
+it("a background job whose directory is missing is settled as never started without polling to the deadline", async () => {
+  vi.useFakeTimers();
+  const s = adapterSetup({ pollMinMs: 10, pollMaxMs: 20, jobTimeoutMs: 60_000 });
+  try {
+    const result = (await s.t.action(api.host.invoke, {
+      op: "sandbox_run_background",
+      input: { command: "true" },
+    })) as { jobId: string };
+    const job = (await s.t.query(s.component.state.getJob, { jobId: result.jobId }))!;
+    await rm(job.directory, { recursive: true, force: true });
+    await vi.advanceTimersByTimeAsync(10);
+    await s.t.finishInProgressScheduledFunctions();
+    expect(await s.t.query(s.component.state.getJob, { jobId: result.jobId })).toMatchObject({
+      state: "failed",
+      logTail: "SANDBOX_JOB_NOT_STARTED",
+    });
+  } finally {
+    vi.useRealTimers();
+  }
+});

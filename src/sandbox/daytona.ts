@@ -157,14 +157,19 @@ export function daytona(
       // Provider run truncates the HEAD at 4M chars (process.ts:105). Collect
       // to temporary files inside the sandbox, then transfer bounded tails so
       // arbitrary command output never crosses the component boundary first.
-      // The command executes exactly once. A timeout kills its process group.
+      // The command executes exactly once. The wrapper owns the timeout: it
+      // kills the command's whole process group in `finally` (the command runs
+      // in its own session, so nothing else would), and reports a timeout as a
+      // normal result (exit 124, as coreutils `timeout`). Daytona's own limit
+      // is set LATER than the wrapper's, otherwise it kills the wrapper first
+      // and the command survives with an unknown outcome.
       const chars = HARD_LIMITS.outputChars;
       const result = JSON.parse(
         await python(
           ctx,
           sandboxId,
-          `import subprocess,tempfile,json,os,signal\no=tempfile.TemporaryFile()\ne=tempfile.TemporaryFile()\np=subprocess.Popen(${JSON.stringify(cmd)},shell=True,stdout=o,stderr=e,start_new_session=True)\ntry:\n p.wait(timeout=${timeoutS})\nexcept subprocess.TimeoutExpired:\n os.killpg(p.pid,signal.SIGKILL)\n p.wait()\ndef tail(f):\n f.seek(0,2)\n f.seek(max(0,f.tell()-${chars * LIMITS.utf8BytesPerChar}))\n return f.read().decode('utf-8',errors='replace')[-${chars}:]\nprint(json.dumps({'exitCode':p.returncode,'stdout':tail(o),'stderr':tail(e)}))`,
-          timeoutS,
+          `import subprocess,tempfile,json,os,signal\no=tempfile.TemporaryFile()\ne=tempfile.TemporaryFile()\np=subprocess.Popen(${JSON.stringify(cmd)},shell=True,stdout=o,stderr=e,start_new_session=True)\ndone=False\ntimed=False\ntry:\n p.wait(timeout=${timeoutS})\n done=True\nexcept subprocess.TimeoutExpired:\n timed=True\nfinally:\n if not done:\n  try: os.killpg(p.pid,signal.SIGKILL)\n  except ProcessLookupError: pass\n  p.wait()\ndef tail(f,extra=''):\n f.seek(0,2)\n f.seek(max(0,f.tell()-${chars * LIMITS.utf8BytesPerChar}))\n return (f.read().decode('utf-8',errors='replace')+extra)[-${chars}:]\nprint(json.dumps({'exitCode':124 if timed else p.returncode,'stdout':tail(o),'stderr':tail(e,'\\n[timed out after ${timeoutS}s]' if timed else '')}))`,
+          timeoutS + LIMITS.execKillMarginS,
         ),
       ) as { exitCode: number; stdout: string; stderr: string };
       signal.throwIfAborted();
@@ -244,6 +249,9 @@ assert os.path.exists(d+'/group.pid'),'background launch failed'`,
           `import os,json,subprocess
 d=${JSON.stringify(directory)}
 code=None
+if not os.path.isdir(d):
+ print(json.dumps({'state':'failed','logTail':'SANDBOX_JOB_NOT_STARTED'}))
+ raise SystemExit
 try:
  with open(d+'/status.exit') as f: raw=f.read(${LIMITS.identityChars})
  if raw.endswith('\\n'): code=int(raw)
