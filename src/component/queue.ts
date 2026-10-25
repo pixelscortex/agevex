@@ -26,15 +26,10 @@ import { approvalKey, callKey, keyString, saveResponses } from "./approvals.js";
 import { modelOverrides, validModelOverrides } from "./models.js";
 import { sealGroups } from "./subagents/groups.js";
 import { settleIdleParent, settlementBlocked } from "./subagents/settlement.js";
-import {
-  recordMessages,
-  recordRefs,
-  messageRef,
-  settleRouting,
-  claimNotes,
-  noteHandles,
-  awaitingApprovalResults,
-} from "./hooks.js";
+import { recordMessages, recordRefs, messageRef } from "./hooks/refs.js";
+import { claimNotes, noteHandles } from "./hooks/notes.js";
+import { settleRouting } from "./hooks/routing.js";
+import { awaitingApprovalResults } from "./queue/pause.js";
 
 async function existing(
   ctx: Pick<QueryCtx, "db">,
