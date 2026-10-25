@@ -4,7 +4,8 @@
  * A cohort is the set of `subagentRuns` one parent launched with the same
  * group name under one run budget. Its join state moves one way:
  * open (reserve) -> sealed (the launching slice ends, `sealGroups`) -> ready
- * (every member terminal and delivered, `markGroupReady`) -> joined (one
+ * (every member terminal and its delivery no longer pending: accepted, failed
+ * or blocked, `markGroupReady`) -> joined (one
  * inbox row carrying all accepted results is published, `releaseGroup`).
  * `releaseReadyCohort` (`subagents.releaseGroups`) finds one ready cohort
  * and releases it. Called by queue/ slice ends, delivery, wake and claim.

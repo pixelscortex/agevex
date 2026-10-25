@@ -7,8 +7,9 @@
  * `queue.betweenSlices`), and otherwise sleeps on a "ping" event that wake
  * sends. The *done* callback rotates finished loops before their journal grows
  * past 8 MiB. Step order here is the deployed journal format: never reorder it.
- * The lane managers and loop start live in workflows/lanes.ts. Touches only
- * `assignments` (workflowId, pinged, loopWaiting).
+ * The lane managers and loop start live in workflows/lanes.ts. Writes
+ * `assignments` (workflowId, pinged, loopWaiting); a failed loop's `done`
+ * also runs `queue.failWorkflow` for its in-flight turn.
  */
 import type { WorkflowManager, WorkflowCtx, WorkflowId } from "@convex-dev/workflow";
 import { v } from "convex/values";

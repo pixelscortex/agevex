@@ -6,8 +6,9 @@
  * thread (queue/wake.ts reserves the head and rings the loop); the loop
  * workflow calls `next` for the queued token; each slice's host action
  * `claim`s (queue/claim.ts), writes natively through `write` (queue/write.ts,
- * approval pauses in queue/pause.ts), and ends with `continueTurn` +
- * `betweenSlices` (queue/slice.ts) or `finish` (queue/finish.ts). Approval
+ * approval pauses in queue/pause.ts), and ends with `continueTurn`
+ * (queue/slice.ts) or `finish` (queue/finish.ts); between two slices the
+ * turn workflow's own step runs `betweenSlices` (queue/slice.ts). Approval
  * pauses resume via `respond`/`answer` (queue/responses.ts). Failures go
  * through `ambiguous`, `stalled`, `failWorkflow` and `sliceLimit`; `cancel`
  * (queue/cancel.ts) fences everything; `reconcile` re-rings a lost doorbell.

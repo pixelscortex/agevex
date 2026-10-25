@@ -2,15 +2,17 @@
  * Cancellation cleanup that cannot fit in `queue.cancel`'s own budget.
  * Entry file only: the native cleanup steps live in cancellation/cleanup.ts.
  *
- * Cancel schedules one `cleanup` per affected assignment. It aborts the
+ * Cancel schedules one `cleanup` per affected assignment that has a pending
+ * generation or an approval pause to clean up. It aborts the
  * execution's tracked native stream, fails its pending placeholder message,
  * and then denies the recorded approval/deferred requests one per transaction
  * (each reads one exact native message of up to 1 MiB), chaining itself until
  * none remain and finally releasing the pause. If a native write fails, the
  * assignment is parked in `recovery_required` with CLEANUP_FAILED rather than
  * left half-cleaned. `close` is the one stale write a lost turn may still do:
- * fail its own placeholder. Touches `assignments` only; native writes go
- * through the recorded Agent handles.
+ * fail its own placeholder. Writes `assignments`; native writes go through
+ * the recorded Agent handles. The final release calls `wake`, which can start
+ * or ring the assignment's loop workflow (a later send may have queued work).
  */
 import { v } from "convex/values";
 import { internalMutation } from "./_generated/server.js";

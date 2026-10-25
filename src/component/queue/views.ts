@@ -71,7 +71,7 @@ export const vExecution = v.object({
 
 /** Read execution metadata outside the Workflow journal; only ids cross steps.
  * The host polls this during generation, so it returns only the fields its
- * readers use (src/component/worker.ts dispatch, src/client/runtime.ts runTurn's
+ * readers use (src/component/worker.ts dispatch; in src/client/turn/, runTurn's
  * fence checks, cancel poll, usage capture and download bound), never the
  * context refs, approvals or recovery state of the whole row. */
 export function executionView(row: Doc<"assignments">) {

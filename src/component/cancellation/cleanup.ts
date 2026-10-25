@@ -135,7 +135,8 @@ async function cancelledDecision(
 }
 
 /** Drop the handled request; chain the next cleanup job, or release the
- * pause and wake the (cancelled) assignment when none remain. */
+ * pause and wake the assignment when none remain: a send accepted after the
+ * cancel may have queued work that the pause was holding back. */
 export async function continueOrRelease(
   ctx: MutationCtx,
   row: Doc<"assignments">,

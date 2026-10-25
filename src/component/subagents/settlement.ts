@@ -80,8 +80,9 @@ export async function settlementBlocked(ctx: QueryCtx | MutationCtx, parent: Doc
 
 /** Move a live run to its terminal status if its child is not fenced, release
  * the root's active slot, and re-check R3 on the ordinary parent. Returns
- * false (writing nothing) when already terminal or still blocked; settle and
- * escalate rely on that to notify exactly once. */
+ * false (writing nothing) when already terminal or still blocked;
+ * `settleIdleParent` and escalate rely on that to notify exactly once
+ * (`recordTurnOutcome` ignores it: its settle only records the outcome). */
 export async function settleRunState(
   ctx: MutationCtx,
   run: Doc<"subagentRuns">,

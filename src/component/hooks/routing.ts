@@ -5,10 +5,11 @@
  * (`runs.routingAgents`) while its hook chooses a model; sibling turns of the
  * same agent wait and then read the decided model. Ownership is recorded on
  * the owning assignment (`routingAgentIndex`) so every terminal fence can
- * release it without scanning siblings. Called by claim (acquire), hooks.ts
- * (`routing` -> `routingState`, `completeRouting` -> `completeRoutingFor`)
- * and queue/slice.ts (`disarmSlice`, release). Touches `runs` and
- * `assignments.routingAgentIndex`.
+ * release it without scanning siblings. Acquisition itself is inline in
+ * queue/claim.ts, which only calls `assertAgentIndex` from here. Called by
+ * hooks.ts (`routing` -> `routingState`, `completeRouting` ->
+ * `completeRoutingFor`) and queue/slice.ts (`disarmSlice`, release). Touches
+ * `runs` and `assignments.routingAgentIndex`.
  */
 import type { MutationCtx, QueryCtx } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
