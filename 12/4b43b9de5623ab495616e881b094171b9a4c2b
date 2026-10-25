@@ -1,0 +1,41 @@
+src/modules/extract/README.md
+  s_85f066bf84a49a::t_029dd8005e47de 3-5,7-57
+src/modules/extract/component/artifactAdmission.ts
+  s_85f066bf84a49a::t_1d66428d147b52 1-245
+src/modules/extract/component/artifacts.ts
+  s_85f066bf84a49a::t_573513bd0f0f99 1-5,8-12,16,21,72,102,105,110,156,304
+src/modules/extract/component/convex.config.ts
+  s_b2b63f9c265b94::t_f657341e03b25c 1-5,7
+src/modules/extract/component/indexing.ts
+  s_b2b63f9c265b94::t_339d9beeed5f1c 1-5,9-11,16,20,23
+src/modules/extract/component/schema.ts
+  s_b2b63f9c265b94::t_29bf8b608d3145 1-5
+src/modules/extract/component/workflows.ts
+  s_85f066bf84a49a::t_3da3f6760100bc 1-5,9-10,16,53
+src/modules/extract/test.ts
+  s_85f066bf84a49a::t_2dadf038be514a 2-6,9-10,14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "124b43b9de5623ab495616e881b094171b9a4c2b",
+  "prompts": {},
+  "sessions": {
+    "s_85f066bf84a49a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17570-9252-7242-8993-f524c34cf25d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_b2b63f9c265b94": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17570-7273-7bd3-b216-e1219745ca01",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
