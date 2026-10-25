@@ -1,0 +1,19 @@
+docs/site/content/docs/modules/telemetry.mdx
+  s_47c235535bda2f::t_3f91266197b3d0 10,52,127-130,134
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "681bb5f17c64b5c0e785c6a82600eeb66fc582be",
+  "prompts": {},
+  "sessions": {
+    "s_47c235535bda2f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17093-2880-7233-a7d4-c02ce83c3081",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}

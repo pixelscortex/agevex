@@ -1,0 +1,28 @@
+tests/telemetry/telemetry.test.ts
+  s_d863bd773ba186::t_338d14aa65e271 560
+  s_d863bd773ba186::t_859cf0b767965a 645-685
+docs/site/content/docs/modules/telemetry.mdx
+  s_d863bd773ba186::t_f24e08fc93f331 32-33,142,153-156
+src/telemetry/index.ts
+  s_d863bd773ba186::t_caad7527097760 4,51-56,101-102,155-170,175-180,182-186,189-195,261-276,283-287,289,320,344-352,358-367,410-418,455-457,460,504-521,561-565
+src/telemetry/limits.ts
+  s_d863bd773ba186::t_82e47cc04996f7 9-10,12
+tests/telemetry/slots.test.ts
+  s_d863bd773ba186::t_aa2f8013f6cc6b 13-19,306-330
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "09219bb91c6604f648bb9a9c75706a5e1389fa44",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}

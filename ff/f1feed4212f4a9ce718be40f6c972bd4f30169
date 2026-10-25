@@ -1,0 +1,41 @@
+README.md
+  s_34bb9d03c667d3::t_7e71a44cab3c4f 499-500
+  s_34bb9d03c667d3::t_ee4c560189b6d2 485-487,493-497
+tests/telemetry/telemetry.test.ts
+  s_34bb9d03c667d3::t_0e4152f7296ca3 5,209-217,394-397,410-419,421-430,445-446,463
+  s_34bb9d03c667d3::t_acaa2a24b321f4 398-407,620
+  s_34bb9d03c667d3::t_ad58a99b2ec28d 167-188,199-206,219,243-261,408-409,420,431-444,447-462,464-467
+  s_fb856f624e63c4::t_92889c0a70366a 218,262,468
+src/telemetry/index.ts
+  s_34bb9d03c667d3::t_ee4c560189b6d2 76-97,156-159,162,164-169,189,192-199,201-202,220,252,263,287-288,290-296,312,333-336,347-358,371-374,376,386,425
+  s_34bb9d03c667d3::t_89ee4d90a6ea41 426-427
+tests/telemetry/script.ts
+  s_34bb9d03c667d3::t_ad58a99b2ec28d 43-44,50,57,82
+  s_34bb9d03c667d3::t_acaa2a24b321f4 3-7,45,67-71
+src/telemetry/otlp.ts
+  s_34bb9d03c667d3::t_ee4c560189b6d2 18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fff1feed4212f4a9ce718be40f6c972bd4f30169",
+  "prompts": {},
+  "sessions": {
+    "s_34bb9d03c667d3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17066-d581-7f81-8865-2040a231b243",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_fb856f624e63c4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17064-4619-7842-a63f-68a1be944929",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
