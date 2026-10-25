@@ -17,7 +17,7 @@ import type { Generation, Turn } from "./context.js";
  * component; called when the run-start slice is done deciding (or failed).
  */
 export async function completeRouting(rt: RuntimeContext, turn: Turn) {
-  await turn.ctx.runMutation(rt.component.hooks.completeRouting, {
+  await turn.rawCtx.runMutation(rt.component.hooks.completeRouting, {
     assignmentId: turn.claimed.assignmentId,
     executionId: turn.args.turnToken,
     agentIndex: rt.agentIndexes.get(turn.claimed.agent)!,
@@ -45,7 +45,7 @@ export async function selectTurnModel(rt: RuntimeContext, gen: Generation) {
 async function runBeforeTurn(rt: RuntimeContext, gen: Generation) {
   const { turn, hc, hook, fence } = gen;
   const { claimed, managed } = turn;
-  const docs = await turn.ctx.runQuery(managed.component.messages.getMessagesByIds, {
+  const docs = await turn.rawCtx.runQuery(managed.component.messages.getMessagesByIds, {
     messageIds: [claimed.logicalPromptMessageId],
   });
   const before = await hook(
@@ -91,7 +91,7 @@ async function awaitRoutedModel(rt: RuntimeContext, gen: Generation) {
   if (claimed.isRunStart) await completeRouting(rt, turn);
 
   const readRouting = () =>
-    turn.ctx.runQuery(rt.component.hooks.routing, {
+    turn.rawCtx.runQuery(rt.component.hooks.routing, {
       assignmentId: claimed.assignmentId,
       agentIndex: rt.agentIndexes.get(claimed.agent)!,
     });

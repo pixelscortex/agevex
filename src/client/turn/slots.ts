@@ -53,7 +53,7 @@ export async function recordStepUsage(
   const step = messages.find((message) => message.usage && message.status === "success");
   if (!step?.usage) return;
 
-  const captured = await turn.ctx.runQuery(rt.component.queue.execution, {
+  const captured = await turn.rawCtx.runQuery(rt.component.queue.execution, {
     assignmentId: turn.claimed.assignmentId,
   });
   if (
@@ -66,7 +66,7 @@ export async function recordStepUsage(
 
   try {
     await usage
-      .scope(turn.ctx, { ...turn.facts, ...(step.model ? { model: step.model } : {}) })
+      .scope(turn.rawCtx, { ...turn.facts, ...(step.model ? { model: step.model } : {}) })
       .record(step.provider ?? "model", {
         key: await opaqueKey("model", turn.facts.threadId, step._id, step.stepOrder),
         usage: step.usage,

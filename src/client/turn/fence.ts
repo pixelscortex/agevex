@@ -6,7 +6,10 @@
 // and a fenced action context whose every native write goes through
 // `queue.write`, which re-checks the execution, token and epoch in the write's own
 // transaction (the transactional write fence). Built by `turn/generation.ts`;
-// every tool, hook, slot and native save of the turn uses `TurnFence.ctx`.
+// the model call, hooks, slot tools, extract admission and hook notes use
+// `TurnFence.ctx`. Receipt-bound tools (`bindOnceTool`) get the raw context plus
+// explicit fence args, and the runner's own control reads and writes (routing,
+// usage capture, the post-step snapshot, `continueAfterToolCalls`) use `Turn.rawCtx`.
 
 import { createFunctionHandle, getFunctionAddress } from "convex/server";
 import { ConvexError } from "convex/values";
@@ -50,7 +53,7 @@ export function startTurnFence(rt: RuntimeContext, turn: Turn): TurnFence {
 
   const timer = setTimeout(() => controller.abort(), LIMITS.generationAbortMs);
   const poll = setInterval(() => {
-    void turn.ctx
+    void turn.rawCtx
       .runQuery(rt.component.queue.execution, { assignmentId: turn.args.assignmentId })
       .then((row) => {
         if (!stillRunning(row, turn)) fenceOut();
@@ -63,7 +66,7 @@ export function startTurnFence(rt: RuntimeContext, turn: Turn): TurnFence {
   // uncooperative provider that returns after cancellation.
   const nativeCtx = nativeWriteContext(rt, turn, state);
   const assertActive = async () => {
-    const row = await turn.ctx.runQuery(rt.component.queue.execution, {
+    const row = await turn.rawCtx.runQuery(rt.component.queue.execution, {
       assignmentId: turn.args.assignmentId,
     });
     if (controller.signal.aborted || !stillRunning(row, turn)) {
@@ -92,15 +95,15 @@ export function startTurnFence(rt: RuntimeContext, turn: Turn): TurnFence {
  * recorded placeholder.
  */
 function nativeWriteContext(rt: RuntimeContext, turn: Turn, state: FenceState): RunnerCtx {
-  const { ctx, args, claimed, managed } = turn;
+  const { rawCtx, args, claimed, managed } = turn;
   const finalizeKey = functionKey(managed.component.messages.finalizeMessage);
   return {
-    ...ctx,
+    ...rawCtx,
     runMutation: (async (ref: Parameters<RunnerCtx["runMutation"]>[0], payload: unknown) => {
       // An abort listener may only close its own recorded placeholder.
       // queue.write verifies the exact handle, id, execution and epoch.
       if (state.fencedOut && functionKey(ref) !== finalizeKey) return null;
-      return ctx.runMutation(rt.component.queue.write, {
+      return rawCtx.runMutation(rt.component.queue.write, {
         assignmentId: args.assignmentId,
         executionId: args.turnToken,
         cancellationEpoch: claimed.cancellationEpoch,
@@ -132,7 +135,7 @@ function fencedContext(
   assertActive: () => Promise<void>,
   controller: AbortController,
 ): RunnerCtx {
-  const { ctx, managed } = turn;
+  const { rawCtx, managed } = turn;
   const nativeFinalizers = new Set(
     [managed.component.messages.finalizeMessage, managed.component.streams.abort].map(functionKey),
   );
@@ -142,13 +145,13 @@ function fencedContext(
     ...nativeCtx,
     runAction: (async (ref, ...payload) => {
       await assertActive();
-      return ctx.runAction(ref, ...payload);
+      return rawCtx.runAction(ref, ...payload);
     }) as RunnerCtx["runAction"],
     runMutation: (async (ref, payload) => {
       if (nativeFinalizers.has(functionKey(ref))) return nativeCtx.runMutation(ref, payload);
       await assertActive();
       try {
-        const saved = await ctx.runMutation(
+        const saved = await rawCtx.runMutation(
           rt.component.queue.write,
           await fencedWriteArgs(rt, turn, ref, payload),
         );

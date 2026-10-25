@@ -31,7 +31,7 @@ export async function admitExecution(
   turn: Turn,
 ): Promise<Activity["errorCode"]> {
   try {
-    await rt.config.authorizeExecution(turn.ctx, executionScope(turn));
+    await rt.config.authorizeExecution(turn.rawCtx, executionScope(turn));
   } catch {
     return "AUTHORIZATION_DENIED";
   }
@@ -73,13 +73,13 @@ function executionScope(turn: Turn): ExecutionScope {
  */
 async function withinBudget(rt: RuntimeContext, turn: Turn, budget: BudgetSlot) {
   try {
-    const verdict = await budget.check(turn.ctx, {
+    const verdict = await budget.check(turn.rawCtx, {
       subject: turn.facts.subject,
       runId: turn.facts.runId,
     });
     if (verdict.allowed) return true;
 
-    await turn.ctx.runMutation(rt.component.queue.write, {
+    await turn.rawCtx.runMutation(rt.component.queue.write, {
       assignmentId: turn.claimed.assignmentId,
       executionId: turn.args.turnToken,
       cancellationEpoch: turn.claimed.cancellationEpoch,

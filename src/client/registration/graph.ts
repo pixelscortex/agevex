@@ -3,8 +3,9 @@
 // `resolveGraph` walks every root's `subagents` and `sideAgents` once, at
 // `registerAgent` time, and rejects every shape the runtime cannot execute safely
 // (cycles, depth, duplicates, reserved tool names, invalid side cadences). The
-// resulting `Graph` is the only place the runtime later resolves an agent name to
-// an executable agent: the coordinator, the turn runner and delivery all read it.
+// coordinator, the turn runner, delivery and the host helpers resolve agent names
+// through the resulting `Graph`. The public endpoints keep their own index
+// (`endpoints/access.ts`), built from the same registration.
 // Touches no tables; it is pure registration-time validation.
 
 import { assertFact } from "../../component/facts.js";

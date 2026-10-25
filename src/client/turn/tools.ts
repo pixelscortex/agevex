@@ -20,7 +20,7 @@ import { slotToolBags } from "./slots.js";
 /** Build the complete tool set for one generation. */
 export async function buildTurnTools(rt: RuntimeContext, gen: Generation): Promise<ToolSet> {
   const { turn, hc, backend } = gen;
-  const { ctx, args, claimed, managed } = turn;
+  const { rawCtx, args, claimed, managed } = turn;
   const eligible = (rt.graph.edges.get(claimed.agent)?.size ?? 0) > 0;
 
   const merged = mergeSlotTools(managed.declaredTools, ...(await slotToolBags(rt, turn, hc)));
@@ -30,7 +30,7 @@ export async function buildTurnTools(rt: RuntimeContext, gen: Generation): Promi
       bindOnceTool(
         declared,
         rt.component,
-        ctx,
+        rawCtx,
         hc,
         {
           assignmentId: args.assignmentId,

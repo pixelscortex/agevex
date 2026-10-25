@@ -4,8 +4,8 @@
 // `refs.runTurn`) once per turn slice. The handler is a short composition of the
 // turn phases: load and claim (`claim.ts`), execution admission
 // (`admission.ts`), one generation (`generation.ts`), finalization
-// (`finish.ts`), and a bounded telemetry flush on every exit. Each phase is a
-// separate module; this file only fixes their order.
+// (`finish.ts`), and a bounded telemetry flush on every exit after a successful
+// claim. Each phase is a separate module; this file only fixes their order.
 
 import { internalActionGeneric, type RegisteredAction } from "convex/server";
 import { v } from "convex/values";
@@ -54,7 +54,7 @@ async function runTurn(rt: RuntimeContext, ctx: RunnerCtx, args: TurnArgs): Prom
  */
 async function executeTurn(rt: RuntimeContext, turn: Turn): Promise<null> {
   const { claimed, managed } = turn;
-  await observe(rt, turn.ctx, {
+  await observe(rt, turn.rawCtx, {
     type: "turn.claimed",
     assignmentId: claimed.assignmentId,
     threadId: claimed.threadId,

@@ -69,5 +69,5 @@ export async function claimTurn(
     runId: claimed.runId,
     agent: claimed.agent,
   };
-  return { ctx, args, queued, managed, claimed, child, turnKey, facts };
+  return { rawCtx: ctx, args, queued, managed, claimed, child, turnKey, facts };
 }

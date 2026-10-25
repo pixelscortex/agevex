@@ -1,9 +1,11 @@
 # Client (host runtime)
 
 The code a host imports as `agevex`. It runs inside the host's Convex functions
-and drives the component (`src/component`) through its public API. Every module
-receives the resolved registration explicitly (`rt: RuntimeContext`); nothing
-closes over `registerAgent`.
+and drives the component (`src/component`) through its public API. The runtime
+modules (`coordinate/`, `turn/`, `host/`) receive the resolved registration
+explicitly (`rt: RuntimeContext`). The public endpoints are built from
+`(component, config)` instead: `endpoints/access.ts` resolves its own limits and
+agent index, and `open` looks roots up in `config.agents`.
 
 ## Life of a turn
 

@@ -28,7 +28,7 @@ export async function completeGeneration(
 ): Promise<TurnOutcome | null> {
   const { turn, fence, state } = gen;
   const { args, child } = turn;
-  const snapshot = await turn.ctx.runQuery(rt.component.queue.execution, {
+  const snapshot = await turn.rawCtx.runQuery(rt.component.queue.execution, {
     assignmentId: args.assignmentId,
   });
   if (!stillOwns(snapshot, turn)) return null;
@@ -75,7 +75,7 @@ async function continueAfterToolCalls(rt: RuntimeContext, turn: Turn, result: St
   const last = result.savedMessages?.[result.savedMessages.length - 1];
   if (!last) return false;
 
-  await turn.ctx.runMutation(rt.component.queue.continueTurn, {
+  await turn.rawCtx.runMutation(rt.component.queue.continueTurn, {
     assignmentId: turn.args.assignmentId,
     executionId: turn.args.turnToken,
     cancellationEpoch: turn.claimed.cancellationEpoch,

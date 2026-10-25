@@ -3,9 +3,13 @@
 // `generateTurn` starts the cancellation fence, binds hook tasks to it, then runs
 // the phases in order: extract admission, model selection (`routing.ts`), tool
 // set (`tools.ts`), the native `streamText` call (`streamGeneration`), and the
-// post-step decisions (`completion.ts`). Any throw becomes a typed outcome
-// (HOOK_FAILED / HOOK_BLOCKED / GENERATION_FAILED); the fence is always stopped
-// and the routing attempt always completed. Called by `turn/run-turn.ts`.
+// post-step decisions (`completion.ts`). A throw from those phases becomes an
+// outcome: a hook failure is HOOK_FAILED; a `beforeTurn` block finishes a root
+// turn without an error code and settles a child run as EMPTY_RESULT; anything
+// else is GENERATION_FAILED. Once the phases start, the fence is always stopped
+// and, on a run-start slice of an agent with `beforeTurn`, the routing attempt
+// is completed. A throw while assembling the generation (`startGeneration`)
+// reaches neither and propagates. Called by `turn/run-turn.ts`.
 
 import { LIMITS } from "../../component/limits.js";
 import { boundedDownload } from "./download.js";

@@ -5,8 +5,9 @@
 // workflow's journal and replays it through Workflow's real engine (replaying a
 // clone avoids firing an old nested-workflow completion callback into the live
 // loop a second time); `result` reads the replay outcome. `expect-journal.ts`
-// drives these to prove the step order is unchanged. The fault-injection and
-// counting helpers below read Workflow's own tables.
+// drives these to prove the step order is unchanged. Below them, `dropPings`
+// injects a fault by deleting unconsumed `ping` events, and `events` counts
+// orphaned events, both directly on Workflow's own tables.
 
 import { internalMutationGeneric, internalQueryGeneric, type FunctionHandle } from "convex/server";
 import { v } from "convex/values";

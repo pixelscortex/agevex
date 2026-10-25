@@ -29,8 +29,13 @@ export type Claimed = NonNullable<FunctionReturnType<ComponentApi["queue"]["clai
 
 /** One claimed turn: everything later phases may assume. */
 export type Turn = {
-  /** The raw action context (unfenced; the fenced one lives on `Generation`). */
-  ctx: RunnerCtx;
+  /**
+   * The raw, unfenced action context. Right for the runner's own control reads
+   * and writes (claim checks, routing, finish, settle, fence polls) and for
+   * `bindOnceTool`, which fences by explicit args; model, tool, hook and slot
+   * work must use the fenced `Generation.fence.ctx` instead.
+   */
+  rawCtx: RunnerCtx;
   args: TurnArgs;
   queued: NonNullable<Execution>;
   managed: ManagedAgent;

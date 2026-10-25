@@ -23,7 +23,7 @@ export async function finishTurn(
   turn: Turn,
   outcome: TurnOutcome,
 ): Promise<null> {
-  const current = await turn.ctx.runQuery(rt.component.queue.execution, {
+  const current = await turn.rawCtx.runQuery(rt.component.queue.execution, {
     assignmentId: turn.args.assignmentId,
   });
   if (!stillOwns(current, turn)) return null;
@@ -73,7 +73,7 @@ async function finishChildTurn(
   // delivery independent of the finalization outcome, and it is still
   // bounded and one-shot — `deliver` no-ops once delivery is no longer
   // `pending`, so the ambiguity path cannot replay it.
-  await deliverTerminalRun(rt, turn.ctx, child.runId, child.deliveryToken);
+  await deliverTerminalRun(rt, turn.rawCtx, child.runId, child.deliveryToken);
   await finishQueueTurn(rt, turn, outcome.errorCode);
   await observeFinished(rt, turn, outcome.errorCode);
   return null;
@@ -89,7 +89,7 @@ async function settleChildRun(
   child: ChildRun,
   outcome: TurnOutcome,
 ): Promise<boolean> {
-  const settlement = await turn.ctx.runMutation(coordinateRef(rt), {
+  const settlement = await turn.rawCtx.runMutation(coordinateRef(rt), {
     op: "settle",
     assignmentId: turn.args.assignmentId,
     turnToken: turn.args.turnToken,
@@ -105,7 +105,7 @@ async function settleChildRun(
     return true;
   }
 
-  await observe(rt, turn.ctx, {
+  await observe(rt, turn.rawCtx, {
     type: "delegation.settled",
     runId: child.runId,
     rootAssignmentId: child.rootAssignmentId,
@@ -116,7 +116,7 @@ async function settleChildRun(
 }
 
 function finishQueueTurn(rt: RuntimeContext, turn: Turn, errorCode: Activity["errorCode"]) {
-  return turn.ctx.runMutation(rt.component.queue.finish, {
+  return turn.rawCtx.runMutation(rt.component.queue.finish, {
     assignmentId: turn.args.assignmentId,
     turnToken: turn.args.turnToken,
     errorCode,
@@ -124,7 +124,7 @@ function finishQueueTurn(rt: RuntimeContext, turn: Turn, errorCode: Activity["er
 }
 
 function observeFinished(rt: RuntimeContext, turn: Turn, errorCode: Activity["errorCode"]) {
-  return observe(rt, turn.ctx, {
+  return observe(rt, turn.rawCtx, {
     type: "turn.finished",
     assignmentId: turn.claimed.assignmentId,
     threadId: turn.claimed.threadId,
