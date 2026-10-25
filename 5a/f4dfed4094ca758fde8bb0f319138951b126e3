@@ -1,0 +1,45 @@
+src/component/hooks/refs.ts
+  s_d863bd773ba186::t_59872ab14d8bd3 1-150
+src/component/queue.ts
+  s_d863bd773ba186::t_9ab1c1fe227d21 27-28
+src/component/queue/assignments.ts
+  s_d863bd773ba186::t_7b7ac35cac7245 1-101
+src/component/queue/inbox.ts
+  s_d863bd773ba186::t_c1e6454581ecc3 1-40
+src/component/queue/recovery.ts
+  s_d863bd773ba186::t_826faf58276706 1-87
+src/component/queue/wake.ts
+  s_d863bd773ba186::t_6c2e7655cd3b6c 1-220
+src/component/subagents.ts
+  s_d863bd773ba186::t_953198e5263241 1-15,17,20-23,25-49,63,66,68,70,73-74,76,78,81,91-94,112,115-116,123,128-129,139,142,146,149-150,176,189,202-203,207,210,215,218,220,225,236,239,247,259,263,265-266
+src/component/subagents/delivery.ts
+  s_d863bd773ba186::t_e8ea083ea5106e 1-167
+src/component/subagents/groups.ts
+  s_d863bd773ba186::t_b8373b3c8f9c01 1-210
+src/component/subagents/interaction.ts
+  s_d863bd773ba186::t_907fbb686a9430 1-231
+src/component/subagents/launch.ts
+  s_d863bd773ba186::t_5d20b7df18421e 1-239
+src/component/subagents/runs.ts
+  s_d863bd773ba186::t_b25d3bc7fbbb70 1-110
+src/component/subagents/settlement.ts
+  s_d863bd773ba186::t_9a4a0e55178843 1-237
+src/component/subagents/views.ts
+  s_d863bd773ba186::t_2054861cd597cc 1-238
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5af4dfed4094ca758fde8bb0f319138951b126e3",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
