@@ -16,6 +16,7 @@ export const seed = mutationGeneric({
       turnStatus: "running",
       errorCode: null,
       queuedMessages: 0,
+      notesPending: 0,
       nextSequence: 0,
       nextTurn: 0,
       turnToken: "execution",

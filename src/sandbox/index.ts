@@ -12,8 +12,11 @@ import {
 import { v } from "convex/values";
 import { z } from "zod";
 import { defineOnceTool, fingerprint, type ToolContext } from "../client/once.js";
+import type { SandboxSlot } from "../client/slots.js";
+import type { SandboxCompletion } from "../client/index.js";
 import { LIMITS, bounded, integer, resolveLimits, tail } from "./limits.js";
 import type {
+  SandboxCall,
   SandboxContext,
   SandboxFacts,
   SandboxOptions,
@@ -31,6 +34,58 @@ export { LIMITS, HARD_LIMITS } from "./limits.js";
 export type { SandboxLimits } from "./limits.js";
 export type * from "./types.js";
 export type { ComponentApi } from "./component/_generated/component.js";
+
+/**
+ * Connect a finished background job to agevex: pass the result as
+ * `defineSandbox({ onComplete: sandboxCompletion(() => runtime) })`, where
+ * `runtime` is the `registerAgent` result (a thunk, because the sandbox is
+ * created before the runtime that uses its slot).
+ *
+ * The callback runs inside the sandbox's own terminal-state transaction, so the
+ * note and the job transition commit or roll back together. Core's
+ * `sandboxComplete` re-authorizes the stored owner and posts a passive note
+ * (delivered at the next safe turn claim). The payload is bounded here, not
+ * trusted to the provider: the log keeps its tail within
+ * LIMITS.completionLogChars, and an exit code outside the range core accepts is
+ * dropped, because core would reject it, roll back the settlement and leave
+ * the job retrying until its deadline.
+ */
+export function sandboxCompletion(
+  runtime:
+    | {
+        sandboxComplete(
+          ctx: GenericMutationCtx<GenericDataModel>,
+          event: SandboxCompletion,
+        ): unknown;
+      }
+    | (() => {
+        sandboxComplete(
+          ctx: GenericMutationCtx<GenericDataModel>,
+          event: SandboxCompletion,
+        ): unknown;
+      }),
+): NonNullable<SandboxOptions["onComplete"]> {
+  return async (ctx, event) => {
+    const target = typeof runtime === "function" ? runtime() : runtime;
+    // The deadline code is the one fact the model cannot infer from "unknown";
+    // keep it ahead of the log tail so truncation can only cut old output.
+    const header = event.code ? `[${event.code}]\n` : "";
+    const log = header + tail(event.logTail ?? "", LIMITS.completionLogChars - header.length);
+    await target.sandboxComplete(ctx, {
+      subject: event.subject,
+      threadId: event.threadId,
+      runId: event.runId,
+      jobId: event.jobId,
+      state: event.state,
+      ...(event.exitCode !== undefined &&
+      Number.isSafeInteger(event.exitCode) &&
+      Math.abs(event.exitCode) <= LIMITS.completionExitCodeMax
+        ? { exitCode: event.exitCode }
+        : {}),
+      ...(log ? { logTail: log } : {}),
+    });
+  };
+}
 
 /**
  * Bind sandboxes to trusted request facts. Mount this optional component on its
@@ -174,7 +229,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
   }
 
   /** Reserve once, save the provider id, then resume within the shared action deadline. */
-  async function prepare(tc: ToolContext) {
+  async function prepare(tc: SandboxCall) {
     tc.signal.throwIfAborted();
     remaining(tc.ctx);
     const trusted = facts(tc);
@@ -234,7 +289,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
     }
   }
 
-  async function exec(tc: ToolContext, input: { command: string }) {
+  async function exec(tc: SandboxCall, input: { command: string }) {
     bounded(input.command, LIMITS.commandChars, "COMMAND");
     const binding = await prepare(tc);
     const timeoutS = Math.min(
@@ -271,7 +326,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
   }
 
   /** Read a bounded tail without copying file content into a receipt or module row. */
-  async function readFile(tc: ToolContext, input: { path: string }) {
+  async function readFile(tc: SandboxCall, input: { path: string }) {
     bounded(input.path, LIMITS.pathChars, "PATH");
     const { sandboxId } = await prepare(tc);
     const content = await within(tc.ctx, () =>
@@ -283,7 +338,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
     return { content: tail(content, limits.fileReadChars) };
   }
 
-  async function writeFile(tc: ToolContext, input: { path: string; content: string }) {
+  async function writeFile(tc: SandboxCall, input: { path: string; content: string }) {
     bounded(input.path, LIMITS.pathChars, "PATH");
     if (typeof input.content !== "string" || input.content.length > limits.writeChars)
       throw new Error("SANDBOX_WRITE_TOO_LARGE");
@@ -301,7 +356,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
   }
 
   /** Return at most the registered entry count, with bounded names and finite sizes. */
-  async function list(tc: ToolContext, input: { path: string }) {
+  async function list(tc: SandboxCall, input: { path: string }) {
     bounded(input.path, LIMITS.pathChars, "PATH");
     const { sandboxId } = await prepare(tc);
     const entries = await within(tc.ctx, () =>
@@ -319,7 +374,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
     };
   }
 
-  async function background(tc: ToolContext, input: { command: string }) {
+  async function background(tc: SandboxCall, input: { command: string }) {
     bounded(input.command, LIMITS.commandChars, "COMMAND");
     if (!options.refs) throw new Error("SANDBOX_REFS_REQUIRED");
     const { sandboxId, scopeKey: key } = await prepare(tc);
@@ -372,12 +427,16 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
    * Plain SDK tools. Effects are bound by core's defineOnceTool ledger. Pure
    * reads accept trusted AI SDK `context` (or an explicit host ToolContext),
    * avoiding storing up to 640 KiB of file text in a 64 KiB receipt.
+   *
+   * `bind` chooses which trusted facts key the sandbox. It runs on every
+   * ToolContext the tools see (once-tool body, key function and read
+   * context), so no code path can reach a sandbox through unbound facts.
    */
-  function tools(context?: ToolContext) {
+  function buildTools(context: ToolContext | undefined, bind: (tc: ToolContext) => ToolContext) {
     const key = (_input: unknown, tc: ToolContext) => {
       // Validate attribution before core constructs a receipt scope, rather
       // than waiting until the effect body after admission has already written.
-      facts(tc);
+      facts(bind(tc));
       return bounded(tc.toolCallId, LIMITS.identityChars, "TOOL_CALL_ID");
     };
     const path = z
@@ -393,14 +452,14 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
     const readContext = (opts: ToolExecutionOptions<unknown>) => {
       const tc = context ?? (opts.context as ToolContext | undefined);
       if (!tc?.ctx || !tc.signal) throw new Error("MANAGED_TOOL_CONTEXT_REQUIRED");
-      return { ...tc, toolCallId: opts.toolCallId };
+      return bind({ ...tc, toolCallId: opts.toolCallId });
     };
     return {
       sandbox_exec: defineOnceTool({
         name: "sandbox_exec",
         key,
         input: z.object({ command }),
-        run: (input, tc) => exec(tc, input),
+        run: (input, tc) => exec(bind(tc), input),
       }),
       sandbox_read_file: tool({
         description: "Read the bounded tail of a sandbox file.",
@@ -411,7 +470,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
         name: "sandbox_write_file",
         key,
         input: z.object({ path, content: z.string().max(limits.writeChars) }),
-        run: (input, tc) => writeFile(tc, input),
+        run: (input, tc) => writeFile(bind(tc), input),
       }),
       sandbox_list: tool({
         description: "List a bounded directory in the request's sandbox.",
@@ -422,8 +481,31 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
         name: "sandbox_run_background",
         key,
         input: z.object({ command }),
-        run: (input, tc) => background(tc, input),
+        run: (input, tc) => background(bind(tc), input),
       }),
+    };
+  }
+
+  /** Standalone tools: the sandbox is keyed by the facts exactly as supplied. */
+  function tools(context?: ToolContext) {
+    return buildTools(context, (tc) => tc);
+  }
+
+  /**
+   * The agevex sandbox slot (`registerAgent({ sandbox: sandbox.slot() })`).
+   *
+   * Core calls `tools(context)` once per turn slice with that turn's trusted
+   * ToolContext; managed once-tools are then bound by core to the same facts.
+   * The sandbox is keyed by `rootThreadId` instead of the acting `threadId`:
+   * a delegated child runs on its own thread, but it works in its parent
+   * conversation's sandbox, and a background-job completion must name a thread
+   * that core's `sandboxComplete` can post a note to (the root conversation the
+   * user and the root agent are in). `subject` stays in every scope key, so one
+   * subject can never address another's sandbox, whatever the model sends.
+   */
+  function slot(): SandboxSlot {
+    return {
+      tools: (context) => buildTools(context, (tc) => ({ ...tc, threadId: tc.rootThreadId })),
     };
   }
 
@@ -588,6 +670,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
   return {
     limits,
     tools,
+    slot,
     scopeKey,
     prepare,
     readFile,
@@ -617,13 +700,13 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
       return ctx.scheduler.runAfter(0, options.refs.cleanup(), {});
     },
     /** Explicit host deletion. Automatic provider deletion is always disabled. */
-    async delete(tc: ToolContext) {
+    async delete(tc: SandboxCall) {
       const key = await scopeKey(tc);
       await authorize(tc.ctx, { operation: "delete", ...facts(tc), scopeKey: key });
       await remove(tc.ctx, key, false);
     },
     /** Stop preserves the sandbox identity and filesystem for the next use. */
-    async stop(tc: ToolContext) {
+    async stop(tc: SandboxCall) {
       const key = await scopeKey(tc);
       await authorize(tc.ctx, { operation: "stop", ...facts(tc), scopeKey: key });
       const row = await tc.ctx.runQuery(component.state.get, { scopeKey: key });
@@ -662,7 +745,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
       const key = await scopeKey(trusted);
       const row = await ctx.runQuery(component.state.get, { scopeKey: key });
       if (!row?.sandboxId) throw new Error("SANDBOX_NOT_FOUND");
-      const tc: ToolContext = {
+      const tc: SandboxCall = {
         ...trusted,
         ctx,
         signal: new AbortController().signal,

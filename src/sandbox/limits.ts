@@ -2,6 +2,13 @@
 export const LIMITS = {
   commandTimeoutS: 180,
   outputChars: 6_000,
+  // Core posts a completion as one passive note of at most 4,000 characters
+  // ("Job <id>: <state> (exit n)\n" + log). 3,000 leaves room for that header,
+  // so the tail kept here is never silently cut again downstream.
+  completionLogChars: 3_000,
+  // Core rejects an exit code above 2**31 - 1 in magnitude (and the rejection
+  // would roll the job's settlement back), so larger values are not forwarded.
+  completionExitCodeMax: 2 ** 31 - 1,
   fileReadChars: 160_000,
   writeChars: 160_000,
   listEntries: 100,

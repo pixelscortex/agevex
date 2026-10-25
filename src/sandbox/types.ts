@@ -11,6 +11,13 @@ import type { SandboxLimits } from "./limits.js";
 
 export type SandboxContext = GenericActionCtx<GenericDataModel>;
 export type SandboxFacts = Pick<ToolContext, "subject" | "threadId" | "runId">;
+/**
+ * The part of core's ToolContext this module reads. A full ToolContext (which
+ * also carries rootThreadId, agent and meter) satisfies it, so host code that
+ * already holds one passes it unchanged, while the module's own export path can
+ * build a call without fabricating facts it never uses.
+ */
+export type SandboxCall = SandboxFacts & Pick<ToolContext, "ctx" | "signal" | "toolCallId">;
 export type FileEntry = { name: string; isDir: boolean; size?: number };
 export type BackgroundLocation = { sandboxId: string; directory: string };
 export type BackgroundJob = BackgroundLocation & { jobId: string };
