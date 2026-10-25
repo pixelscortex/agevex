@@ -1,0 +1,23 @@
+src/meter/component/charges.ts
+  s_d863bd773ba186::t_5d5fdb1e6b45e9 109-110,112-118,129,133-135,517-519,527-531,563-564,631-638,641,643-644,646-662
+src/meter/component/schema.ts
+  s_d863bd773ba186::t_0613a5cd86a6bc 131-134
+tests/meter/delivery.test.ts
+  s_d863bd773ba186::t_bc3b6248e90290 4,17,27-28,44-48,58,94-158
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fdbe8ba3bdead43483c4783a8cd8478eb1cda4ee",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
