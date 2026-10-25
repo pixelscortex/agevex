@@ -407,8 +407,9 @@ export default defineSchema({
     // read by settlement verification: only the last turn may supply a result.
     childResultMessageId: v.optional(v.string()),
     // Host-verified outcome of the last ended turn, retained while descendants
-    // or inbox work fence settlement. Claim clears it before the next turn.
-    // Read by idle settlement; no native transcript is scanned or copied.
+    // or inbox work fence settlement. Claim clears it before the next turn and
+    // every terminal transition (settleRunState, cancel) clears it for good.
+    // Read only by idle settlement; no native transcript is scanned or copied.
     lastTurnResult: v.optional(
       v.object({
         messageId: v.optional(v.string()),

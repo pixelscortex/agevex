@@ -1618,6 +1618,7 @@ export const cancel = mutation({
         status: "failed",
         deliveryStatus: "blocked",
         errorCode: "ROOT_UNAVAILABLE",
+        lastTurnResult: undefined,
         finishedAt: Date.now(),
         deliveryAt: Date.now(),
         events: [
