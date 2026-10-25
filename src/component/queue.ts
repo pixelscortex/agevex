@@ -812,6 +812,7 @@ export const activity = query({
       turnStatus: row.turnStatus,
       queuedMessages: row.queuedMessages,
       errorCode: row.errorCode,
+      runId: row.runId,
       subagents: {
         active: row.activeRuns ?? 0,
         history: row.historyRuns ?? 0,

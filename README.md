@@ -193,8 +193,10 @@ the budget notice is omitted, existing notes wait for that claim, and the typed
 `BUDGET_EXCEEDED` still stops the turn; notices never displace notes or bypass
 admission. Pair this with the host's copied `continue-budget` registry tool:
 obtain explicit spending consent, update host budget policy, cancel the stopped
-run to clear its recovery state, and send a fresh request. Cancellation discards
-that run's pending notes. Core never resumes an uncertain paid step.
+run to clear its recovery state, and send a fresh request, all in one host
+mutation. `activity.runId` names the stopped run (the same id the budget check
+received), so the fresh request key can be derived from it. Cancellation
+discards that run's pending notes. Core never resumes an uncertain paid step.
 
 Semantic slot facts (subject, agent, root/thread/run ids) are nonempty and at most
 128 UTF-8 bytes (`LIMITS.factBytes`); invalid registration/endpoint facts throw a

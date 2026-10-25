@@ -123,6 +123,10 @@ export const activity = v.object({
   turnStatus,
   queuedMessages: v.number(),
   errorCode,
+  /** The thread's current (or last) user run: the same `runId` slot facts and
+   * budget checks receive, so a host can key a recovery step to the exact
+   * stopped run. Absent before the first request is admitted. */
+  runId: v.optional(v.string()),
   subagents: subagentCounts,
 });
 export const scope = v.object({

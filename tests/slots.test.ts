@@ -220,10 +220,12 @@ it.each([0, HOST_LIMITS.notesPending.max])(
   async (pending) => {
     const denial = gate();
     let checks = 0;
+    let checkedRun = "";
     fixture.slots.budget = {
       check: async (_ctx, args) => {
         expect(args.subject).toBe("alice");
         expect(args.runId).toBeTruthy();
+        checkedRun = args.runId;
         if (checks++ === 0) return { allowed: true };
         await denial.promise;
         return { allowed: false };
@@ -243,9 +245,12 @@ it.each([0, HOST_LIMITS.notesPending.max])(
     await drain(t);
     expect(fixture.calls).toHaveLength(1);
     expect(checks).toBe(2);
+    // Activity names the exact stopped run the budget check saw, so a host can
+    // key its recovery (cancel + fresh send) to that run.
     expect(await status(t, receipt.threadId)).toMatchObject({
       errorCode: "BUDGET_EXCEEDED",
       turnStatus: "recovery_required",
+      runId: checkedRun,
     });
     expect(
       (await transcript(t, receipt.threadId)).page.filter((message) => message.origin === "note"),
