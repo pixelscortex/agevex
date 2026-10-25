@@ -1,4 +1,8 @@
-// Component runtime source; keep host dependencies and environment access outside this boundary.
+/**
+ * Sandbox component tables, lifecycle validators and indexes.
+ * sandboxes owns scope bindings and idle deadlines; jobs owns fenced finite watchdogs.
+ * Hosts and providers retain commands, credentials and file payloads outside these tables.
+ */
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
