@@ -32,6 +32,7 @@ const sandbox = defineSandbox({
   agent: components.agent, // native Agent storeFile for exports
   authorize: hostSandboxPolicy,
   refs: {
+    wake: () => internal.sandboxes.wake, // scheduled mutation: claims, then schedules poll
     poll: () => internal.sandboxes.poll,
     settle: () => internal.sandboxes.settle,
     cleanup: () => internal.sandboxes.cleanup,
@@ -42,7 +43,7 @@ const sandbox = defineSandbox({
   },
   usage: { record: hostSandboxObservation }, // optional; estimate-only
 });
-export const { poll, settle, cleanup } = sandbox.internalFunctions();
+export const { wake, poll, settle, cleanup } = sandbox.internalFunctions();
 const tools = sandbox.tools();
 ```
 
@@ -52,7 +53,7 @@ const tools = sandbox.tools();
 must match the policy result. Expose host endpoints that call these helpers,
 not raw component references. For inference cycles, annotate exported host
 functions with `RegisteredAction`/`RegisteredMutation` using exported
-`PollArgs`, `SettleArgs` and `Record<string, never>` cleanup args.
+`PollArgs`, `PollActionArgs`, `SettleArgs` and `Record<string, never>` cleanup args.
 
 The five tools are `sandbox_exec`, `sandbox_read_file`, `sandbox_write_file`,
 `sandbox_list`, and `sandbox_run_background`. Effects use core's existing
@@ -119,8 +120,14 @@ actions. Successful callbacks and terminal state commit together, so callbacks
 must perform transactional writes rather than external effects. Callback
 failures are retried only until the job deadline; then the job becomes `unknown`
 and `sandbox.job(ctx, { jobId })` exposes its bounded reconciliation snapshot.
-Revoked background authority also stops polling and records `unknown` without
-calling the provider or the host callback.
+The scheduled `wake` is a mutation, so it runs exactly once: it claims the job
+(scheduling the lease backstop) and then schedules the `poll` action; if that
+action dies, the backstop retries it. Only a definite `FORBIDDEN` from
+`authorize` counts as revoked background authority, which stops polling and
+records `unknown` without calling the provider or the host callback; any other
+authorization error is transient and retried. A job whose directory vanished is
+`unknown` and is killed through its `AGEVEX_JOB` environment marker (no marked
+process counts as killed).
 
 Provider auto-delete is disabled. `sandbox.stop(tc)` preserves files and
 resumes on next use, including stopped, archived and recoverable error states.
@@ -133,9 +140,12 @@ creates retain an unknown reservation instead of risking a duplicate resource;
 after finding and deleting the possibly-created sandbox at the provider
 (Daytona label `agevexScope`, equal to `sandbox.scopeKey(facts)`), the host
 calls `sandbox.forget(ctx, facts)` to let the scope create again. A command that
-exceeds its timeout returns exit 124 and its process group is killed. A watchdog
+exceeds its timeout returns exit 124 with `timedOut: true` (a command's own
+exit 124 has `timedOut: false`) and its process group is killed; the timeout
+leaves five seconds of the action budget for that kill. Exporting a deleted
+scope is `SANDBOX_NOT_FOUND`. A watchdog
 claimed after the deadline kills the group and notifies the host once with
-`unknown` / `SANDBOX_JOB_DEADLINE`; only if two such attempts both die unsettled
+`unknown` / `SANDBOX_JOB_DEADLINE`; only if two such attempts (counted on the job) both die unsettled
 does the next wake end the job as `unknown` without a callback.
 
 `agevex/test` exports `fakeSandboxProvider`; `agevex/sandbox/test` registers the

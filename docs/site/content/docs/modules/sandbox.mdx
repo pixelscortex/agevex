@@ -28,7 +28,7 @@ export default app;
 Register host internal functions. `hostSandboxPolicy` below is host-owned.
 
 ```ts title="convex/sandboxes.ts"
-import { defineSandbox, daytona, type PollArgs, type SettleArgs } from "agevex/sandbox";
+import { defineSandbox, daytona, type PollArgs, type PollActionArgs, type SettleArgs } from "agevex/sandbox";
 import type { RegisteredAction, RegisteredMutation } from "convex/server";
 import { components, internal } from "./_generated/api";
 import { hostSandboxPolicy } from "./sandboxPolicy";
@@ -40,13 +40,15 @@ export const sandbox = defineSandbox({
   agent: components.agent,
   authorize: hostSandboxPolicy,
   refs: {
+    wake: () => internal.sandboxes.wake,
     poll: () => internal.sandboxes.poll,
     settle: () => internal.sandboxes.settle,
     cleanup: () => internal.sandboxes.cleanup,
   },
 });
 const functions = sandbox.internalFunctions();
-export const poll: RegisteredAction<"internal", PollArgs, null> = functions.poll;
+export const wake: RegisteredMutation<"internal", PollArgs, null> = functions.wake;
+export const poll: RegisteredAction<"internal", PollActionArgs, null> = functions.poll;
 export const settle: RegisteredMutation<"internal", SettleArgs, null> = functions.settle;
 export const cleanup: RegisteredAction<"internal", Record<string, never>, null> = functions.cleanup;
 export const tools = sandbox.tools(); // Add these to the host Agent's tools.
@@ -93,7 +95,7 @@ claim with `origin: "note"`, `from: "sandbox"`; the log is cut to its last 3,000
 | `sandbox.prepare` | `prepare(tc: ToolContext)` — authorizes, reserves, saves the sandbox ID, and resumes; returns `{ sandboxId, scopeKey, claim }`. |
 | `sandbox.readFile` | `readFile(tc: ToolContext, input: { path: string })` — returns `{ content }`, the bounded text tail. |
 | `sandbox.list` | `list(tc: ToolContext, input: { path: string })` — returns `{ entries: FileEntry[] }`. |
-| `sandbox.internalFunctions` | `internalFunctions()` — returns internal `poll({ jobId })` action, `settle(args: SettleArgs)` mutation, and `cleanup({})` action. |
+| `sandbox.internalFunctions` | `internalFunctions()` — returns internal `wake({ jobId })` mutation (the scheduled entry point: claims once, schedules the backstop and the poll), `poll({ jobId, claim })` action, `settle(args: SettleArgs)` mutation, and `cleanup({})` action. |
 | `sandbox.job` | `job(ctx: SandboxContext, input: PollArgs)` — authorized bounded snapshot or `null`, including unknown outcomes. |
 | `sandbox.export` | `export(ctx: SandboxContext, input: SandboxExportArgs): Promise<SandboxExportResult>` — exports an existing binding's file through native Agent `storeFile`. |
 | `sandbox.stop` | `stop(tc: ToolContext): Promise<void>` — stops the VM, preserving identity and files for next use. |
@@ -111,7 +113,7 @@ observer failures do not change effects.
 
 | Tool input | Result |
 | --- | --- |
-| `sandbox_exec({ command })` | `{ status: "done", exitCode, stdout, stderr, truncated }` or `{ status: "unknown" }`; stdout/stderr share a tail allowance, preferring stderr. |
+| `sandbox_exec({ command })` | `{ status: "done", exitCode, timedOut, stdout, stderr, truncated }` or `{ status: "unknown" }`; stdout/stderr share a tail allowance, preferring stderr. |
 | `sandbox_read_file({ path })` | `{ content }` — bounded text tail, outside the receipts ledger. |
 | `sandbox_write_file({ path, content })` | `{ status: "done" }` or `{ status: "unknown" }`. |
 | `sandbox_list({ path })` | `{ entries }` — bounded `{ name, isDir, size? }` entries, outside the ledger. |
@@ -129,10 +131,10 @@ Each method returns a Promise of the listed result.
 | `create(ctx, { scopeKey })` | `{ sandboxId }` before waiting for readiness. |
 | `resume(ctx, sandboxId)` | `void`; ready is a no-op; stopped, archived, and recoverable error states preserve files. |
 | `stop(ctx, sandboxId)`, `delete(ctx, sandboxId)` | `void`; VM lifecycle. |
-| `exec(ctx, sandboxId, cmd, { timeoutS, signal })` | `{ exitCode, stdout, stderr }`; no command retries. On timeout, kill the command's process group and return exit 124, not an error. |
+| `exec(ctx, sandboxId, cmd, { timeoutS, signal })` | `{ exitCode, stdout, stderr }`; no command retries. On timeout, kill the command's process group and return exit 124 with `timedOut: true`, not an error; the adapter's own limit must be later than `timeoutS` so it can kill first. |
 | `startBackground(ctx, sandboxId, cmd, job?)` | `BackgroundJob`; honor supplied persisted identity/location even if launch throws; no launch retries. |
-| `poll(ctx, jobId, location)` | `JobOutcome`: `state: "running" \| "done" \| "failed" \| "unknown"`, optional `exitCode`, `logTail`, `code`. |
-| `cancelBackground(ctx, jobId, location)` | `void`; bounded original-group cleanup, verifying ownership before fallback signaling. |
+| `poll(ctx, jobId, location)` | `JobOutcome`: `state: "running" \| "done" \| "failed" \| "unknown"`, optional `exitCode`, `logTail`, `code`. A vanished job directory is `unknown`, not `failed`: the command may still run. |
+| `cancelBackground(ctx, jobId, location)` | `void`; bounded original-group cleanup, verifying ownership before fallback signaling. With the job directory gone, kill every process carrying the `AGEVEX_JOB` marker; none found counts as killed. |
 | `readFile(ctx, sandboxId, path, { maxBytes })` | `string`; enforce byte bound before returning across Convex. |
 | `writeFile(ctx, sandboxId, path, content: string)` | `void`. |
 | `listFiles(ctx, sandboxId, path, { limit })` | `FileEntry[]`; enforce count before returning across Convex. |
@@ -146,7 +148,7 @@ Provider auto-delete is disabled with `autoDeleteInterval: -1`.
 
 ### Background completion
 
-Optional `onComplete(ctx, event)` commits atomically with terminal state and receives
+Only a definite `FORBIDDEN` from `authorize` counts as revoked authority; other errors are retried by the lease backstop. Optional `onComplete(ctx, event)` commits atomically with terminal state and receives
 `{ type: "sandbox.job.completed", jobId, providerJobId?, scopeKey, subject,
 threadId, runId, state: "done" | "failed" | "unknown", exitCode?, logTail?, code? }`.
 Use transactional writes in the callback. Status and callback failures retry until
@@ -166,8 +168,8 @@ These markers do not protect against hostile code inside the VM.
 ### File exports
 
 `sandbox.export(ctx, { threadId, path })` returns
-`{ fileId, storageId, bytes, sha256 }`. It requires `agent`, never creates a
-missing binding, and retains files on read failure. Run scope additionally
+`{ fileId, storageId, bytes, sha256 }`. It requires `agent`, never creates or revives a
+missing or deleted binding (`SANDBOX_NOT_FOUND`), and retains files on read failure. Run scope additionally
 requires `resolveThread(ctx, threadId): Promise<SandboxFacts>` from host-owned
 state; subject and thread must match authorization.
 
