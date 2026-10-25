@@ -615,6 +615,74 @@ A fresh send reopens a cancelled thread, preserving the existing cancellation
 contract. Failed cancellation cleanup blocks reopening with a typed `CANCELLED`
 receipt until a subsequent cancel successfully settles the recorded work.
 
+## Optional file extraction
+
+Mount `agevex/extract/convex.config` alongside the native Agent component. It
+works standalone, or under agevex via `registerAgent({ extract: extract.slot() })`
+with `authorize: authorizeAttached(() => runtime)`; see the
+extract docs page.
+
+```ts
+// convex/files.ts
+import { defineExtract, directText, firecrawlParse, visionOcr } from "agevex/extract";
+import { components, internal } from "./_generated/api.js";
+
+const extract = defineExtract(components.agevexExtract, {
+  agent: components.agent,
+  worker: internal.files.execute,
+  storageMetadata: internal.files.storageMetadata,
+  authorize: authorizeFileInThread,
+  backends: [
+    directText(),
+    firecrawlParse({ apiKey: () => process.env.FIRECRAWL_API_KEY! }),
+    visionOcr({ model: visionModel }),
+  ],
+});
+export const { execute, storageMetadata } = extract.internalFunctions();
+// Inside an authorized host action:
+// const job = await extract.run(ctx, { threadId, fileId });
+// const fileTools = extract.tools({ ctx, threadId });
+```
+
+The host must verify both access to `threadId` and the exact `fileId` attachment,
+including background `execute` calls with no user session. Keep an exact attachment
+reference; never scan messages. `fromUrl` returns a native Agent file that the host
+must attach before extraction. No public Convex endpoints are generated; host
+wrappers call the authorized helpers.
+
+Artifacts reuse `(fileId, backend, version, optionsHash)`; Agent dedupes by hash, so
+threads sharing bytes share one. Retryable failures (`PROVIDER_UNAVAILABLE`,
+`OBJECT_UNAVAILABLE`, `CHECKSUM_FAILED`) run again as the next attempt only on an
+explicit `run`, at most three attempts in total. Final failures and `unknown`
+outcomes never rerun, and a queued job never expires before it starts. `release`
+removes one namespace's index only; the admin `purge({ fileId })` tombstones the
+shared extraction, deletes payloads and every namespace's RAG entries (returns `{ more }`: loop; late output is fenced, usage survives). A paid result is published even if the file was detached mid-run.
+Change a backend version or supply a different SHA-256 `optionsHash` to request new work.
+
+Text cursors are UTF-8 byte offsets. `readText` and `readPages` return at most
+1 MiB text; pages also cap at 100. Resume pages with their `next` object. File
+tools return at most 64 KiB and references; full JSON stays in storage. Byte
+ceilings fit the default 64 MiB runtime (document 12 MiB, image 6 MiB, text 4 MiB,
+payload 6 MiB); the opt-in `"use node"` actions from `extractNodeExport` (registered
+as `options.node`) raise them to 50 MB / 10 MB / 8 MiB / 32 MiB. See the docs page.
+
+RAG is off by default. Pass `rag: { component, embedding, embeddingDimension,
+chunk?: { maxBytes } }` and mount `@convex-dev/rag` separately to enable
+`index`, `search`, and `search_files` (the agevex slot offers it only with
+`autoIndex: true`, which indexes each attached file into its thread). Use a
+dedicated mount/namespace for these
+bounded chunks. The host authorizes namespaces; tools use `threadId` as the
+namespace and recheck each result's attachment. Index text caps at 1 MiB;
+chunks are 1–8 KiB. Embedding models must be instantiated AI SDK v3/v4 models.
+Index calls for one (artifact, namespace) admit one embedding action; concurrent calls return
+`pending`, and completed calls reuse the recorded entry. Caller keys are scoped
+to the artifact. Explicit retries delete the exact prior native entry first.
+
+`bun run test:live:extract` loads keys from the main checkout's `.env.local` and
+makes two Firecrawl requests plus one `openrouter/free` OCR request. Explicit
+empty key environment values skip those paid probes. See the extract docs page
+for bounds and limits.
+
 ## Telemetry
 
 `agevex/telemetry` is an optional, action-scoped AI SDK 7 callback integration;
