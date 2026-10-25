@@ -5,7 +5,7 @@ import {
   observeProviderOutcome,
   type SinkEvent,
 } from "../../src/meter/index.js";
-import { setup, attribution } from "./setup.js";
+import { setup, attribution, allBreakdowns } from "./setup.js";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -120,7 +120,7 @@ it("expired unknown rejects corrections but accepts a late real provider result 
 });
 
 it("thread axes include root and children across agents models providers and unknowns", async () => {
-  const { t, meter } = setup();
+  const { t, meter } = setup({ breakdowns: allBreakdowns });
   await t.run(async (ctx) => {
     const root = meter.scope(ctx, { ...attribution, threadId: "root", agent: "A", model: "M1" });
     await root.record("openrouter", {
@@ -173,7 +173,7 @@ it("thread axes include root and children across agents models providers and unk
 });
 
 it("idempotent inline recording preserves exactly one settled charge including a zero cost", async () => {
-  const { t, meter, component } = setup();
+  const { t, meter, component } = setup({ breakdowns: allBreakdowns });
   for (let attempt = 0; attempt < 2; attempt++)
     await t.run(async (ctx) => {
       await meter.scope(ctx, attribution).record("openrouter", {
@@ -300,7 +300,7 @@ it("budget checks count estimates and isolate runs and subjects", async () => {
 });
 
 it("breakdowns cover each axis with UTC ranges and bounded continuation pages", async () => {
-  const { t, meter } = setup();
+  const { t, meter } = setup({ breakdowns: allBreakdowns });
   const start = Date.now();
   for (let index = 0; index < LIMITS.maxGroups + 1; index++)
     await t.run(async (ctx) => {

@@ -3,7 +3,7 @@ import { mutationGeneric, type FunctionReference } from "convex/server";
 import { v, compareValues, type GenericId, type Value } from "convex/values";
 import aggregate from "@convex-dev/aggregate/test";
 import { LIMITS, type SinkEvent } from "../../src/meter/index.js";
-import { setup } from "./setup.js";
+import { setup, allBreakdowns } from "./setup.js";
 
 const TEST_LIMITS = { seedBatch: 256, timeoutMs: 60_000, days: LIMITS.maxDays, idBytes: 64 };
 type Item = { k: Value; v: string; s: number };
@@ -204,6 +204,7 @@ it(
     const key = "é".repeat(LIMITS.maxKeyBytes / 2);
     const events: SinkEvent[] = [];
     const { t, meter } = setup({
+      breakdowns: allBreakdowns,
       providers: {
         [label]: {
           profiles: {
@@ -295,18 +296,18 @@ it(
         threadId: label,
         cursors: {
           agent: first.byAgent.cursor!,
-          model: first.byModel.cursor!,
-          provider: first.byProvider.cursor!,
+          model: first.byModel!.cursor!,
+          provider: first.byProvider!.cursor!,
         },
       }),
     );
     for (const axis of ["byAgent", "byModel", "byProvider"] as const) {
-      expect(first[axis].page).toHaveLength(LIMITS.maxGroups);
-      expect(first[axis].cursor).toBe(labels[LIMITS.maxGroups - 1]);
+      expect(first[axis]!.page).toHaveLength(LIMITS.maxGroups);
+      expect(first[axis]!.cursor).toBe(labels[LIMITS.maxGroups - 1]);
       expect(
-        [...first[axis].page, ...next[axis].page].reduce((sum, item) => sum + item.totalNanos, 0),
+        [...first[axis]!.page, ...next[axis]!.page].reduce((sum, item) => sum + item.totalNanos, 0),
       ).toBe(maxTotal);
-      expect(next[axis].cursor).toBeNull();
+      expect(next[axis]!.cursor).toBeNull();
     }
     await expect(
       t.run(async (ctx) => {

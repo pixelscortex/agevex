@@ -86,8 +86,9 @@ not an atomic reservation for future work.
 `threadCost(ctx, { threadId })` takes the root id and includes children whose
 attribution supplies that `rootThreadId`. Standalone hosts supply the root;
 the meter does not discover relationships by scanning Agent messages.
-It includes `byAgent`, `byModel`, and `byProvider`, each `{ page, cursor }`, with
-up to `limits.maxGroups` (hard maximum four) groups. Each page entry includes
+It always includes `byAgent`; `byModel` and `byProvider` are optional fields,
+present only with `breakdowns: ["thread.model", "thread.provider"]` respectively.
+Each is `{ page, cursor }`, with up to `limits.maxGroups` (hard maximum four) groups. Each page entry includes
 the same cost/unknown fields as the total. Continue independently with
 `threadCost(ctx, { threadId, cursors: { agent, model, provider } })`; omit a
 cursor to restart that axis. Missing agent/model labels are grouped under `""`.
@@ -98,6 +99,14 @@ agent, model, and provider grouping. Dates are UTC-midnight milliseconds,
 Other axes return up to four groups with an exclusive cursor; groups without
 charges in that date range have zero totals. Follow the cursor to enumerate
 all groups. These reads query aggregates, never scan charge documents.
+
+`defineMeter` defaults to `breakdowns: []`. Opt in to any of `"thread.model"`,
+`"thread.provider"`, `"subject.agent"`, `"subject.model"`, or `"subject.provider"`.
+Subject day reads always work; other subject axes require the matching option.
+A disabled subject axis or thread axis cursor throws `BreakdownDisabledError`
+with `code: "BREAKDOWN_DISABLED"` and `breakdown` naming the option to enable.
+The exported `ThreadCost` type makes model/provider pages optional.
+Enabling a breakdown later covers only charges recorded from then on; no backfill is performed.
 
 This library exposes no browser-facing host endpoints. Authorize every public
 wrapper using the host's ownership policy. The optional `authorize(ctx, scope)`
@@ -159,26 +168,27 @@ batch capacity. No in-process delivery buffer is used.
 
 Only `charges` is owned. Aggregate and Workpool own their own component state.
 
-| Field                                                      | Reader / purpose                                                                                          |
-| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `key`                                                      | Unique indexed lookup, replay detection, job addressing and first external id.                            |
-| `attribution.subject`                                      | Subject totals, budget gates, axis namespaces, sink customer id and retry authorization.                  |
-| `attribution.rootThreadId`, `threadId`                     | Root/child aggregate attribution and fallback for standalone root charges.                                |
-| `attribution.runId`                                        | Run-scoped aggregate namespace and budget gate.                                                           |
-| `attribution.agent`, `model`                               | Thread agent key, thread model grouping and subject axis projections.                                     |
-| `provider`                                                 | Registered decoder/lookup routing and provider breakdown/sink metadata.                                   |
-| `profile`, `quantity`                                      | Profile selection for quantity corrections and retained quantity on settlement; exact evidence via `get`. |
-| `status`, `source`                                         | State transitions, unknown fencing, estimated/settled aggregate classification and sink eligibility.      |
-| `nanos`, `credits`                                         | Exact aggregate summand / provider credit evidence and settlement result.                                 |
-| `providerRequestId`, `lookupUntil`                         | Lookup identity, reattach conflict detection, deadline and stale-result fencing.                          |
-| `revision`                                                 | Monotonic amount revision; rejects a correction from an older snapshot.                                   |
-| `lastStale.{operation,revision}`                           | Bounded stale-operation diagnostic via `get`; identical stale replay skips its write.                     |
-| `lookupAttempt`                                            | Next admissible lookup attempt; rejects duplicate retry admission and stale workers.                      |
-| `sinkState.name`                                           | Sink routing.                                                                                             |
-| `sinkState.deliveredNanos`, `revision`                     | Next signed delta and stable external id.                                                                 |
-| `sinkState.pending.{externalId,revision,nanos,totalNanos}` | Immutable delivery snapshot, acknowledgement fence and absolute delivered amount.                         |
-| `sinkState.attempts`, `failed`                             | Bounded backoff, terminal failure and explicit recovery.                                                  |
-| `_creationTime`                                            | UTC day ordinal, stable across corrections.                                                               |
+| Field                                                      | Reader / purpose                                                                                                   |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `key`                                                      | Unique indexed lookup, replay detection, job addressing and first external id.                                     |
+| `attribution.subject`                                      | Subject totals, budget gates, axis namespaces, sink customer id and retry authorization.                           |
+| `attribution.rootThreadId`, `threadId`                     | Root/child aggregate attribution and fallback for standalone root charges.                                         |
+| `attribution.runId`                                        | Run-scoped aggregate namespace and budget gate.                                                                    |
+| `attribution.agent`, `model`                               | Thread agent key, thread model grouping and subject axis projections.                                              |
+| `provider`                                                 | Registered decoder/lookup routing and provider breakdown/sink metadata.                                            |
+| `breakdowns`                                               | Frozen opt-ins used by corrections, settlement and workers to replace exactly the projections written at creation. |
+| `profile`, `quantity`                                      | Profile selection for quantity corrections and retained quantity on settlement; exact evidence via `get`.          |
+| `status`, `source`                                         | State transitions, unknown fencing, estimated/settled aggregate classification and sink eligibility.               |
+| `nanos`, `credits`                                         | Exact aggregate summand / provider credit evidence and settlement result.                                          |
+| `providerRequestId`, `lookupUntil`                         | Lookup identity, reattach conflict detection, deadline and stale-result fencing.                                   |
+| `revision`                                                 | Monotonic amount revision; rejects a correction from an older snapshot.                                            |
+| `lastStale.{operation,revision}`                           | Bounded stale-operation diagnostic via `get`; identical stale replay skips its write.                              |
+| `lookupAttempt`                                            | Next admissible lookup attempt; rejects duplicate retry admission and stale workers.                               |
+| `sinkState.name`                                           | Sink routing.                                                                                                      |
+| `sinkState.deliveredNanos`, `revision`                     | Next signed delta and stable external id.                                                                          |
+| `sinkState.pending.{externalId,revision,nanos,totalNanos}` | Immutable delivery snapshot, acknowledgement fence and absolute delivered amount.                                  |
+| `sinkState.attempts`, `failed`                             | Bounded backoff, terminal failure and explicit recovery.                                                           |
+| `_creationTime`                                            | UTC day ordinal, stable across corrections.                                                                        |
 
 `LIMITS` caps the entire mount at 100,000 charges, each at $10 (10 billion
 nanos), so even the maximum sum is exactly representable: **10^15 nanos**.
@@ -189,24 +199,31 @@ one million; four sinks; 16 providers; 32 profiles/provider. Overrides can only
 lower charge capacity, groups, days and attempts; registration rejects invalid
 limits, prices and missing worker references. Each charge stays below 8 KiB.
 
-Two aggregate mounts use status, axis and run namespaces, with at most **eight
-projections/charge**. `state` below is estimate, settled or unknown. Each row
-contributes once per projection, never once per state. The optional run is the
-only projection omitted when its attribution is absent.
+Two aggregate mounts use status, axis and run namespaces. Defaults write **three
+projections/charge**; all breakdowns write **eight**. Without run attribution,
+these become two and seven. `state` below is estimate, settled or unknown. Each
+row contributes once per projection, never once per state.
 
-| Mount / namespace                               | Key              | Why it exists                                | Per-charge write cost                     |
-| ----------------------------------------------- | ---------------- | -------------------------------------------- | ----------------------------------------- |
-| `costByThread / [cost,state]`                   | `[root,agent]`   | Root + children totals and agent prefixes.   | One insert / one replace.                 |
-| `costBySubject / [cost,state]`                  | `[subject,day]`  | Capacity, subject totals and UTC day ranges. | One insert / one replace.                 |
-| `costBySubject / [run,subject,runId,state]`     | `["",day]`       | Run totals and budget checks.                | One insert / one replace if runId exists. |
-| `costBySubject / [axis,subject,agent,state]`    | `[agent,day]`    | Subject agent/date pages.                    | One insert / one replace.                 |
-| `costBySubject / [axis,subject,model,state]`    | `[model,day]`    | Subject model/date pages.                    | One insert / one replace.                 |
-| `costBySubject / [axis,subject,provider,state]` | `[provider,day]` | Subject provider/date pages.                 | One insert / one replace.                 |
-| `costBySubject / [thread,root,model,state]`     | `[model,day]`    | Thread model prefixes across all agents.     | One insert / one replace.                 |
-| `costBySubject / [thread,root,provider,state]`  | `[provider,day]` | Thread provider prefixes across all agents.  | One insert / one replace.                 |
+| Mount / namespace                               | Key              | Why it exists                                | Per-charge write cost                         |
+| ----------------------------------------------- | ---------------- | -------------------------------------------- | --------------------------------------------- |
+| `costByThread / [cost,state]`                   | `[root,agent]`   | Root + children totals and agent prefixes.   | One insert / one replace.                     |
+| `costBySubject / [cost,state]`                  | `[subject,day]`  | Capacity, subject totals and UTC day ranges. | One insert / one replace.                     |
+| `costBySubject / [run,subject,runId,state]`     | `["",day]`       | Run totals and budget checks.                | One insert / one replace if runId exists.     |
+| `costBySubject / [axis,subject,agent,state]`    | `[agent,day]`    | Subject agent/date pages.                    | One insert / replace with `subject.agent`.    |
+| `costBySubject / [axis,subject,model,state]`    | `[model,day]`    | Subject model/date pages.                    | One insert / replace with `subject.model`.    |
+| `costBySubject / [axis,subject,provider,state]` | `[provider,day]` | Subject provider/date pages.                 | One insert / replace with `subject.provider`. |
+| `costBySubject / [thread,root,model,state]`     | `[model,day]`    | Thread model prefixes across all agents.     | One insert / replace with `thread.model`.     |
+| `costBySubject / [thread,root,provider,state]`  | `[provider,day]` | Thread provider prefixes across all agents.  | One insert / replace with `thread.provider`.  |
 
 Each insert is roughly 12 upstream document writes; replacement is roughly 24
-(delete + insert), so eight projections cost roughly 96 / 192 writes per charge.
+(delete + insert). Aggregate document writes per charge, excluding the charge
+row and optional Workpool admissions:
+
+| Configuration               | Projections with run / without run | Insert writes with run / without run | Replacement writes with run / without run |
+| --------------------------- | ---------------------------------- | ------------------------------------ | ----------------------------------------- |
+| Defaults (`breakdowns: []`) | 3 / 2                              | ~36 / ~24                            | ~72 / ~48                                 |
+| All five breakdowns enabled | 8 / 7                              | ~96 / ~84                            | ~192 / ~168                               |
+
 The conservative bound is 48 / 96 split/merge operations **per projection**;
 state movement is included in replacement, not another projection. Stale/replay
 operations do no aggregate writes (a new stale diagnostic patches one row).
@@ -247,8 +264,8 @@ Polar's ingest/dedup contract and the absence of per-request Fal/Daytona costs.
 ## Specification corrections
 
 - Two leading tuple keys alone cannot answer provider/run/non-leading date
-  breakdowns in O(log n). Additional namespaces/projections in the same two
-  mounts are necessary; the true replacement budget includes eight projections.
+  breakdowns in O(log n). Additional opt-in namespaces/projections in the same
+  two mounts are necessary; the maximum replacement budget includes eight projections.
   The thread key drops its redundant trailing model to keep two-field nodes
   bounded while separate model/provider projections support thread axes.
 - Agent 0.7.7's usage hook lacks message/step ids. `usageHandlerFor` therefore

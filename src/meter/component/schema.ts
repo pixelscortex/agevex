@@ -21,6 +21,15 @@ export const source = v.union(
   v.literal("settlement"),
   v.literal("lookup"),
 );
+export const breakdowns = v.array(
+  v.union(
+    v.literal("thread.model"),
+    v.literal("thread.provider"),
+    v.literal("subject.agent"),
+    v.literal("subject.model"),
+    v.literal("subject.provider"),
+  ),
+);
 export const event = v.object({
   externalId: v.string(),
   revision: v.number(),
@@ -43,6 +52,9 @@ export default defineSchema({
     key: v.string(),
     attribution,
     provider: v.string(),
+    // Freeze projection membership at creation: later opt-ins must not insert
+    // historical charges, and workers must replace exactly the entries that exist.
+    breakdowns,
     profile: v.optional(v.string()),
     quantity: v.optional(v.number()),
     status,

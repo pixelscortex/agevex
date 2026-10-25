@@ -40,20 +40,24 @@ function projections(row: Doc<"charges">) {
       key: ["", day],
       namespace: ["run", a.subject, a.runId, state],
     });
-  for (const axis of axes)
+  for (const axis of axes) {
+    if (!row.breakdowns.includes(`subject.${axis}`)) continue;
     entries.push({
       tree: bySubject,
       key: [axis === "provider" ? row.provider : (a[axis] ?? ""), day],
       namespace: ["axis", a.subject, axis, state],
     });
+  }
   // Agent grouping already has the leading [root, agent] thread prefix. Only
   // model/provider need extra projections; namespaces keep their keys small.
-  for (const axis of ["model", "provider"] as const)
+  for (const axis of ["model", "provider"] as const) {
+    if (!row.breakdowns.includes(`thread.${axis}`)) continue;
     entries.push({
       tree: bySubject,
       key: [axis === "provider" ? row.provider : (a.model ?? ""), day],
       namespace: ["thread", a.rootThreadId ?? a.threadId ?? "", axis, state],
     });
+  }
   return entries;
 }
 
@@ -63,7 +67,8 @@ function projections(row: Doc<"charges">) {
  * We cap the WHOLE mount at 100k charges, making each tree <=100k entries.
  * Node size 4 (min occupancy 2, branching >=3) needs <=12 levels. UTF-8 bounds
  * keep every node <=2 KiB, including temporary
- * split items. At most 8 projections per charge: the usual default-size
+ * split items. Defaults write 3 projections (2 without runId); all opt-ins
+ * write at most 8 projections per charge. The usual default-size
  * insert ~=12 writes / replace ~=24 becomes a conservative 2*12*4=96 split/merge operations
  * per projection, <=768 total. Allowing namespace initialization and helpers:
  * <3072 reads/queries (<12 MiB) and <1024 writes (<4 MiB), plus the <=8-KiB

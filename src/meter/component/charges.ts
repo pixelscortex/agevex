@@ -10,7 +10,8 @@ import {
 } from "./_generated/server.js";
 import { components, internal } from "./_generated/api.js";
 import type { Doc } from "./_generated/dataModel.js";
-import { attribution, status, source } from "./schema.js";
+import { attribution, status, source, breakdowns } from "./schema.js";
+import { resolveBreakdowns } from "../breakdowns.js";
 import { jobs, lookupJob, deliveryJob } from "./contracts.js";
 import { updateAggregates, chargeCount } from "./aggregates.js";
 import { LIMITS, integer, text, chargeKey } from "../limits.js";
@@ -104,6 +105,7 @@ export const create = mutation({
     key: v.string(),
     attribution,
     provider: v.string(),
+    breakdowns,
     profile: v.optional(v.string()),
     quantity: v.optional(v.number()),
     status,
@@ -115,6 +117,7 @@ export const create = mutation({
     jobs,
   },
   handler: async (ctx, args): Promise<Doc<"charges">> => {
+    const enabledBreakdowns = resolveBreakdowns(args.breakdowns);
     text(args.key, "KEY", LIMITS.maxKeyBytes);
     text(args.provider, "PROVIDER");
     for (const value of Object.values(args.attribution))
@@ -157,6 +160,7 @@ export const create = mutation({
       key: args.key,
       attribution: args.attribution,
       provider: args.provider,
+      breakdowns: enabledBreakdowns,
       profile: args.profile,
       quantity: args.quantity,
       status: args.status,

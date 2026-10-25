@@ -5,6 +5,13 @@ import { defineMeter, inline, type MeterOptions } from "../../src/meter/index.js
 import schema from "./fixture/schema.js";
 
 const modules = import.meta.glob("./fixture/**/*.ts");
+export const allBreakdowns: NonNullable<MeterOptions["breakdowns"]> = [
+  "thread.model",
+  "thread.provider",
+  "subject.agent",
+  "subject.model",
+  "subject.provider",
+];
 export function setup(overrides: Partial<MeterOptions> = {}) {
   const t = convexTest({
     schema,

@@ -10,6 +10,8 @@ import {
   type Tree,
 } from "./aggregates.js";
 import { integer, text, LIMITS } from "../limits.js";
+import { requireBreakdown, resolveBreakdowns } from "../breakdowns.js";
+import { breakdowns } from "./schema.js";
 
 /** Seek one next label per status, then aggregate the complete label prefix.
  * min/pageSize=1 follows <=two boundary paths plus one result path, <=36
@@ -72,6 +74,7 @@ async function threadPage(
 export const threadCost = query({
   args: {
     threadId: v.string(),
+    breakdowns,
     maxGroups: v.number(),
     cursors: v.optional(
       v.object({
@@ -81,18 +84,25 @@ export const threadCost = query({
       }),
     ),
   },
-  handler: async (ctx, { threadId, maxGroups, cursors }) => {
+  handler: async (ctx, { threadId, maxGroups, cursors, breakdowns }) => {
+    const enabled = resolveBreakdowns(breakdowns);
     text(threadId, "THREAD");
     integer(maxGroups, LIMITS.maxGroups, "GROUPS");
     if (!maxGroups) throw new Error("INVALID_GROUPS");
     // Empty labels are valid cursors for missing attribution, unlike user labels.
     for (const cursor of Object.values(cursors ?? {}))
       if (cursor !== undefined && cursor !== "") text(cursor, "CURSOR");
+    for (const axis of ["model", "provider"] as const)
+      if (cursors?.[axis] !== undefined) requireBreakdown(enabled, `thread.${axis}`);
     return {
       ...(await summary(ctx, byThread, ["cost"], { prefix: [threadId] })),
       byAgent: await threadPage(ctx, threadId, "agent", maxGroups, cursors?.agent),
-      byModel: await threadPage(ctx, threadId, "model", maxGroups, cursors?.model),
-      byProvider: await threadPage(ctx, threadId, "provider", maxGroups, cursors?.provider),
+      ...(enabled.includes("thread.model")
+        ? { byModel: await threadPage(ctx, threadId, "model", maxGroups, cursors?.model) }
+        : {}),
+      ...(enabled.includes("thread.provider")
+        ? { byProvider: await threadPage(ctx, threadId, "provider", maxGroups, cursors?.provider) }
+        : {}),
     };
   },
 });
@@ -110,6 +120,7 @@ export const cost = query({
 
 export const breakdown = query({
   args: {
+    breakdowns,
     subject: v.string(),
     from: v.number(),
     to: v.number(),
@@ -119,6 +130,8 @@ export const breakdown = query({
     maxDays: v.number(),
   },
   handler: async (ctx, args) => {
+    const enabled = resolveBreakdowns(args.breakdowns);
+    if (args.by !== "day") requireBreakdown(enabled, `subject.${args.by}`);
     text(args.subject, "SUBJECT");
     integer(args.from, LIMITS.maxTimestamp, "FROM");
     integer(args.to, LIMITS.maxTimestamp, "TO");

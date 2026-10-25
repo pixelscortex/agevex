@@ -1,6 +1,7 @@
 import type { GenericActionCtx, GenericDataModel, FunctionReference } from "convex/server";
 import type { Doc } from "./component/_generated/dataModel.js";
 import type { ResolvedLimits } from "./limits.js";
+import type { Breakdown } from "./breakdowns.js";
 
 export type ReadCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery" | "auth">;
 export type WriteCtx = Pick<
@@ -31,6 +32,8 @@ export type SinkEvent = {
 export type Sink = { name?: string; deliver: (batch: SinkEvent[]) => Promise<void> };
 export type MeterOptions = {
   providers: Record<string, Provider>;
+  /** Opt-in projections for new charges; enabling later does not backfill older charges. */
+  breakdowns?: Breakdown[];
   sinks?: Sink[];
   budgets?: (scope: {
     subject: string;

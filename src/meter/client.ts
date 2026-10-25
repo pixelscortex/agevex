@@ -15,6 +15,7 @@ import type {
 } from "./types.js";
 import { openRouterCost } from "./helpers.js";
 import { SinkDeliveryError } from "./sinks.js";
+import { requireBreakdown, resolveBreakdowns } from "./breakdowns.js";
 
 export function inline(
   decode: NonNullable<Provider["inline"]> = ({ providerMetadata }) => {
@@ -42,6 +43,7 @@ function costNanos(provider: Provider, cost: Cost) {
 
 export function defineMeter(component: ComponentApi, options: MeterOptions) {
   const limits = resolveLimits(options.limits);
+  const breakdowns = resolveBreakdowns(options.breakdowns);
   const providers = Object.entries(options.providers);
   if (!providers.length || providers.length > LIMITS.maxProviders)
     throw new Error("INVALID_PROVIDERS");
@@ -153,6 +155,7 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
           key: args.key,
           attribution,
           provider: name,
+          breakdowns,
           ...(args.profile ? { profile: args.profile } : {}),
           quantity: args.quantity,
           status: "estimate",
@@ -176,6 +179,7 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
           key: args.key,
           attribution,
           provider: name,
+          breakdowns,
           status: cost ? "settled" : "unknown",
           source: "inline",
           ...(cost ? costNanos(provider, cost) : {}),
@@ -195,8 +199,11 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
       args: { threadId: string; cursors?: Partial<Record<"agent" | "model" | "provider", string>> },
     ) => {
       await authorize(ctx, { threadId: args.threadId });
+      for (const axis of ["model", "provider"] as const)
+        if (args.cursors?.[axis] !== undefined) requireBreakdown(breakdowns, `thread.${axis}`);
       return await ctx.runQuery(component.reads.threadCost, {
         ...args,
+        breakdowns,
         maxGroups: limits.maxGroups,
       });
     },
@@ -215,8 +222,10 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
       },
     ) => {
       await authorize(ctx, { subject: args.subject });
+      if (args.by !== "day") requireBreakdown(breakdowns, `subject.${args.by}`);
       return await ctx.runQuery(component.reads.breakdown, {
         ...args,
+        breakdowns,
         maxGroups: limits.maxGroups,
         maxDays: limits.maxDays,
       });
@@ -321,3 +330,5 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
 }
 
 export type Meter = ReturnType<typeof defineMeter>;
+/** Agent pages are always present; model/provider pages are optional opt-ins. */
+export type ThreadCost = Awaited<ReturnType<Meter["threadCost"]>>;
