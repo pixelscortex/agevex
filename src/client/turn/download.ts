@@ -29,8 +29,10 @@ export function boundedDownload(
         results.push(null);
         continue;
       }
+
       const response = await fetch(url, { signal });
       if (!response.ok || !response.body) throw new Error("FILE_DOWNLOAD_FAILED");
+
       const reader = response.body.getReader();
       const chunks: Uint8Array[] = [];
       let size = 0;
@@ -49,6 +51,7 @@ export function boundedDownload(
       } finally {
         reader.releaseLock();
       }
+
       const data = new Uint8Array(size);
       let offset = 0;
       for (const chunk of chunks) {

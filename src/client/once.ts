@@ -84,6 +84,7 @@ export function bindOnceTool(
 ): Tool {
   const config = (declared as Tool & { [ONCE]?: OnceConfig<unknown, Value> })[ONCE];
   if (!config) return declared;
+
   return {
     ...declared,
     execute: async (input: unknown, options: ToolExecutionOptions<any>) => {
@@ -94,6 +95,7 @@ export function bindOnceTool(
           (options.context as ToolContext | undefined)?.nativeToolCallId ?? options.toolCallId,
         meter: scopedMeter(backend, options.toolCallId),
       };
+
       const scope = await opaqueKey("tool", tc.subject, tc.threadId, config.name);
       const key = await opaqueKey("once", config.key?.(input, tc) ?? tc.toolCallId);
       const common = { scope, key, ...fence };
@@ -108,6 +110,7 @@ export function bindOnceTool(
         return admission.status === "conflict"
           ? { status: "denied", code: "KEY_CONFLICT" }
           : { status: admission.status };
+
       try {
         const result = await config.run(input, tc);
         await rawCtx.runMutation(component.ledger.complete, {
