@@ -72,7 +72,8 @@ A root without children only needs `refs.runTurn`.
 `send({ threadId, text, requestKey })` return typed receipts immediately: `{ status: "accepted", position, threadId,
 assignmentId, receiptId }`, `{ status: "duplicate", position, threadId,
 assignmentId, receiptId }`, or `{ status: "rejected", code }`. Position is the
-zero-based inbox place at acceptance; duplicates retain that original position.
+zero-based inbox place at acceptance, including a reserved head until claim
+consumes it; duplicates retain that original position.
 Identical subject-scoped keys replay the receipt; changed input returns
 `KEY_CONFLICT` before native writes. Invalid input, a full queue (`QUEUE_FULL`),
 and recovery-required state also return rejections. Authorization failures throw. Up to 20 additional prompts queue while
@@ -254,3 +255,7 @@ calls share the 16-call pause bound; `respond` handles approval decisions and
 `answer` handles free text. Cancel settles only open recorded calls with native
 execution-denied results. Payloads remain in Agent storage; coordination stores
 only hashed call ids and exact message references.
+
+A fresh send reopens a cancelled thread, preserving the existing cancellation
+contract. Failed cancellation cleanup blocks reopening with a typed `CANCELLED`
+receipt until a subsequent cancel successfully settles the recorded work.

@@ -1,6 +1,6 @@
 // @vitest-environment edge-runtime
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
-import { setup, api } from "./setup.js";
+import { setup, api, components, state } from "./setup.js";
 import { requireReceipt } from "./receipt.js";
 
 beforeEach(() => vi.useFakeTimers());
@@ -18,7 +18,7 @@ it("accepted and duplicate receipts retain the original zero-based inbox positio
   const send = { threadId: first.threadId, text: "queued", requestKey: "queued" };
   await owner.mutation(api.agents.send, { ...send, requestKey: "ahead" });
   const queued = await owner.mutation(api.agents.send, send);
-  expect(queued).toMatchObject({ status: "accepted", position: 1 });
+  expect(queued).toMatchObject({ status: "accepted", position: 2 });
   await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100));
   expect(await owner.mutation(api.agents.open, input)).toEqual({ ...first, status: "duplicate" });
   expect(await owner.mutation(api.agents.send, send)).toEqual({ ...queued, status: "duplicate" });
@@ -70,3 +70,57 @@ it.each([
     await expect(t.mutation(api.agents.open, input)).rejects.toThrow("UNAUTHENTICATED");
   },
 );
+
+it("a running turn no longer occupies the inbox, so its first queued send has position zero", async () => {
+  const t = setup();
+  const owner = t.withIdentity({ subject: "alice" });
+  const first = await owner
+    .mutation(api.agents.open, { agent: "Main", prompt: "start", requestKey: "start" })
+    .then(requireReceipt);
+  const row = (await t.query(components.agevex.queue.execution, {
+    assignmentId: first.assignmentId,
+  }))!;
+  await t.mutation(components.agevex.queue.claim, {
+    assignmentId: first.assignmentId,
+    turnToken: row.turnToken!,
+  });
+  expect(
+    await owner.mutation(api.agents.send, {
+      threadId: first.threadId,
+      text: "queued",
+      requestKey: "queued",
+    }),
+  ).toMatchObject({ status: "accepted", position: 0 });
+  await owner.mutation(api.agents.cancel, { threadId: first.threadId });
+  await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100));
+});
+
+it("failed cancellation cleanup returns CANCELLED without saving a fresh prompt", async () => {
+  const t = setup("cleanupSave", undefined, true);
+  const owner = t.withIdentity({ subject: "alice" });
+  state.deferred = true;
+  const first = await owner
+    .mutation(api.agents.open, { agent: "Main", prompt: "ask", requestKey: "ask" })
+    .then(requireReceipt);
+  await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100));
+  state.cleanupFails = true;
+  await owner.mutation(api.agents.cancel, { threadId: first.threadId });
+  await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100));
+  const before = await owner.query(api.agents.messages, {
+    threadId: first.threadId,
+    paginationOpts: { cursor: null, numItems: 100 },
+  });
+  expect(
+    await owner.mutation(api.agents.send, {
+      threadId: first.threadId,
+      text: "must not save",
+      requestKey: "blocked",
+    }),
+  ).toEqual({ status: "rejected", code: "CANCELLED" });
+  expect(
+    await owner.query(api.agents.messages, {
+      threadId: first.threadId,
+      paginationOpts: { cursor: null, numItems: 100 },
+    }),
+  ).toEqual(before);
+});

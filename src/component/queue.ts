@@ -59,7 +59,10 @@ export const admission = query({
       .unique();
     if (!row || row.subject !== args.subject) throw new Error("FORBIDDEN");
     if (row.turnStatus === "recovery_required")
-      return { status: "rejected" as const, code: "RECOVERY_REQUIRED" as const };
+      return {
+        status: "rejected" as const,
+        code: row.cancelled ? ("CANCELLED" as const) : ("RECOVERY_REQUIRED" as const),
+      };
     if (row.queuedMessages >= (row.limits ?? LIMITS).queueLength)
       return { status: "rejected" as const, code: "QUEUE_FULL" as const };
     return null;
@@ -292,6 +295,10 @@ export const accept = mutation({
       await ctx.db.patch("assignments", row._id, { cancelled: false });
       row = { ...row, cancelled: false };
     }
+    // queuedMessages excludes the head reserved by wake until claim deletes
+    // its inbox row. Position counts that still-present row too; otherwise two
+    // successive accepted messages would both report position zero.
+    const position = row.queuedMessages + (row.inboxId ? 1 : 0);
     const models = args.models ?? row.models;
     const runId = await ctx.db.insert("runs", {
       models,
@@ -330,7 +337,7 @@ export const accept = mutation({
         threadId: args.threadId,
         receiptId,
         status: "accepted",
-        position: row.queuedMessages,
+        position,
       },
     });
     await wake(ctx, { ...row, queuedMessages: row.queuedMessages + 1 });
@@ -339,7 +346,7 @@ export const accept = mutation({
       threadId: args.threadId,
       receiptId,
       status: "accepted" as const,
-      position: row.queuedMessages,
+      position,
     };
   },
 });
