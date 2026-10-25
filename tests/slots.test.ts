@@ -8,7 +8,7 @@ import { z } from "zod";
 import agevex from "../src/test.js";
 import schema from "./fixture/schema.js";
 import { fixture, reset, exports, api, registration, text, call, main } from "./hooks.host.js";
-import { components } from "./fixture/api.js";
+import { components, rawAssignment } from "./fixture/api.js";
 import { requireReceipt } from "./receipt.js";
 import { LIMITS, registerAgent } from "../src/client/index.js";
 import { scopedMeter } from "../src/client/slots.js";
@@ -188,7 +188,7 @@ it("each saved model step records one exact-id charge and replay records none", 
   );
   expect(usage.operations[0].args.key).toMatch(/^[a-f0-9]{64}$/);
   expect(new Set(usage.operations.map((op) => op.args.key)).size).toBe(2);
-  const execution = (await t.query(components.agevex.queue.execution, {
+  const execution = (await t.query(rawAssignment, {
     assignmentId: receipt.assignmentId,
   }))!;
   await t.action(api.agents.runTurn, {
@@ -707,7 +707,7 @@ it.each(["admitted", "full before claim", "full during denial"])(
           await vi.advanceTimersByTimeAsync(100);
         });
         return (
-          await t.query(components.agevex.queue.execution, {
+          await t.query(rawAssignment, {
             assignmentId: builderRun.childAssignmentId!,
           })
         )?.turnStatus;

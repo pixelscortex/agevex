@@ -2,7 +2,7 @@
 import { opaqueKey } from "../src/client/keys.js";
 import { requireReceipt } from "./receipt.js";
 import { it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { setup, api, internal, components, state } from "./setup.js";
+import { setup, api, internal, components, rawAssignment, state } from "./setup.js";
 import { getConvexSize } from "convex/values";
 import { workflowCall } from "../src/testing/expect-journal.js";
 import { componentsGeneric, createFunctionHandle, type FunctionReference } from "convex/server";
@@ -124,7 +124,7 @@ it("40 large tool results allow a turn to start, block on recorded approval, and
   await drain(t);
   expect(state.calls).toHaveLength(1);
   const execution = () =>
-    t.query(components.agevex.queue.execution, {
+    t.query(rawAssignment, {
       assignmentId: receipt.assignmentId,
     });
   const paused = await execution();
@@ -279,8 +279,7 @@ it("purge keeps maximum-size receipt batches below an 8 MiB read budget", async 
 it("a lost ping during a 45s completion delay keeps exactly one recovery check armed until work completes", async () => {
   const t = setup("delayedWait");
   const receipt = await open(t);
-  const execution = () =>
-    t.query(components.agevex.queue.execution, { assignmentId: receipt.assignmentId });
+  const execution = () => t.query(rawAssignment, { assignmentId: receipt.assignmentId });
   await expect
     .poll(async () => {
       await tick(t, 100);
@@ -343,7 +342,7 @@ it("cancel closes the active pending placeholder behind a full inbox", async () 
   expect(placeholder).toHaveLength(1);
   expect(
     (
-      await t.query(components.agevex.queue.execution, {
+      await t.query(rawAssignment, {
         assignmentId: receipt.assignmentId,
       })
     )?.pendingGeneration,
@@ -629,7 +628,7 @@ it.each(["routing", "approval"])(
             ],
           },
         });
-        const paused = await t.query(components.agevex.queue.execution, {
+        const paused = await t.query(rawAssignment, {
           assignmentId: turn.assignmentId,
         });
         expect(paused?.approvals?.requests).toHaveLength(LIMITS.approvalsPerPause);
@@ -660,7 +659,7 @@ it.each(["routing", "approval"])(
       });
     }
     expect(
-      await t.query(components.agevex.queue.execution, {
+      await t.query(rawAssignment, {
         assignmentId: receipt.assignmentId,
       }),
     ).toMatchObject({ queuedMessages: HOST_LIMITS.queueLength.max });
@@ -683,7 +682,7 @@ it.each(["routing", "approval"])(
     );
     expect(before.runs.every((run: { cancelled: boolean }) => !run.cancelled)).toBe(true);
     for (const turn of turns) {
-      const row = await t.query(components.agevex.queue.execution, {
+      const row = await t.query(rawAssignment, {
         assignmentId: turn.assignmentId,
       });
       expect(getConvexSize(row)).toBeLessThan(LIMITS.assignmentBytes);
@@ -708,9 +707,7 @@ it.each(["routing", "approval"])(
       after.runs.every((run: { routingAgents?: bigint }) => (run.routingAgents ?? 0n) === 0n),
     ).toBe(true);
     for (const turn of turns)
-      expect(
-        await t.query(components.agevex.queue.execution, { assignmentId: turn.assignmentId }),
-      ).toMatchObject({
+      expect(await t.query(rawAssignment, { assignmentId: turn.assignmentId })).toMatchObject({
         cancelled: true,
         cancellationEpoch: 1,
         queuedMessages: 0,
@@ -727,7 +724,7 @@ it.each(["routing", "approval"])(
         await t.query(components.agent.messages.getMessagesByIds, { messageIds: [messageId] }),
       ).toMatchObject([{ status: "failed", error: "CANCELLED" }]);
     for (const turn of turns) {
-      const row = await t.query(components.agevex.queue.execution, {
+      const row = await t.query(rawAssignment, {
         assignmentId: turn.assignmentId,
       });
       expect(row?.pendingGeneration).toBeUndefined();
@@ -863,7 +860,7 @@ it.each(["failed", "blocked"] as const)(
     await t.mutation(components.agevex.queue.finish, { ...root, errorCode: null });
     await drain(t);
     expect(
-      await t.query(components.agevex.queue.execution, {
+      await t.query(rawAssignment, {
         assignmentId: receipt.assignmentId,
       }),
     ).toMatchObject({ loopWaiting: true, turnStatus: "idle" });
@@ -881,7 +878,7 @@ it.each(["failed", "blocked"] as const)(
       await send(i);
       await drain(t);
     }
-    const before = await t.query(components.agevex.queue.execution, {
+    const before = await t.query(rawAssignment, {
       assignmentId: receipt.assignmentId,
     });
     for (const delivery of deliveries)
@@ -895,7 +892,7 @@ it.each(["failed", "blocked"] as const)(
     await drain(t);
     expect(
       (
-        await t.query(components.agevex.queue.execution, {
+        await t.query(rawAssignment, {
           assignmentId: receipt.assignmentId,
         })
       )?.workflowId,
@@ -934,7 +931,7 @@ it("recovery never re-rings an active generation with queued inbox work", async 
   );
   await tick(t, LIMITS.reconcileIntervalMs * 2);
   expect(state.calls).toHaveLength(1);
-  const row = await t.query(components.agevex.queue.execution, {
+  const row = await t.query(rawAssignment, {
     assignmentId: receipt.assignmentId,
   });
   expect(row).toMatchObject({ turnStatus: "running", pinged: false });
@@ -1200,7 +1197,7 @@ it("registration lease limits expire an in-flight once tool without repeating it
     })
     .toBe(true);
   await tick(t, 26);
-  const execution = (await t.query(components.agevex.queue.execution, {
+  const execution = (await t.query(rawAssignment, {
     assignmentId: receipt.assignmentId,
   }))!;
   const admission = await t.mutation(components.agevex.ledger.begin, {
@@ -1308,7 +1305,7 @@ it("an approval response followed by a fresh send completes the approval-blocked
   state.approval = true;
   const receipt = await open(t);
   await drain(t);
-  const execution = await t.query(components.agevex.queue.execution, {
+  const execution = await t.query(rawAssignment, {
     assignmentId: receipt.assignmentId,
   });
   const [request] = await t.query(components.agent.messages.getMessagesByIds, {
@@ -1390,7 +1387,7 @@ it("consuming the first ping then losing the second keeps one check through coal
     text: "lost second ping",
     requestKey: "second-ping",
   });
-  const armed = await t.query(components.agevex.queue.execution, {
+  const armed = await t.query(rawAssignment, {
     assignmentId: receipt.assignmentId,
   });
   expect(armed?.pinged).toBe(true);
@@ -1404,7 +1401,7 @@ it("consuming the first ping then losing the second keeps one check through coal
     expect(await recoveryJobs(t)).toMatchObject({ pending: 1 });
     expect(
       (
-        await t.query(components.agevex.queue.execution, {
+        await t.query(rawAssignment, {
           assignmentId: receipt.assignmentId,
         })
       )?.recoveryAt,

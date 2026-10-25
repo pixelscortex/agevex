@@ -421,5 +421,5 @@ export function setup(
   }
   return t;
 }
-export { api, internal, components } from "./fixture/api.js";
+export { api, internal, components, rawAssignment } from "./fixture/api.js";
 export { state };

@@ -9,7 +9,7 @@ import { fixture, reset, exports, api, critic, text, call } from "./hooks.host.j
 import { requireReceipt } from "./receipt.js";
 import { createFunctionHandle } from "convex/server";
 import { HOST_LIMITS, LIMITS, type Limits } from "../src/component/limits.js";
-import { components } from "./fixture/api.js";
+import { components, rawAssignment } from "./fixture/api.js";
 const modules = import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]);
 function setup(limits?: Partial<Limits>, platformLimits = false) {
   const t = convexTest({
@@ -1385,7 +1385,7 @@ it("an in-flight note survives a failed child turn and is delivered once at the 
         await vi.advanceTimersByTimeAsync(100);
       });
       return (
-        await t.query(components.agevex.queue.execution, {
+        await t.query(rawAssignment, {
           assignmentId: builderRun.childAssignmentId!,
         })
       )?.turnStatus;
@@ -1462,7 +1462,7 @@ it("claim-time notes follow every result in a multi-tool step and precede the ne
 it("cancel discards a staged hook continuation and its notes before a fresh send", async () => {
   const t = setup({ notesPending: HOST_LIMITS.notesPending.max }, true);
   const receipt = await open(t);
-  const row = (await t.query(components.agevex.queue.execution, {
+  const row = (await t.query(rawAssignment, {
     assignmentId: receipt.assignmentId,
   }))!;
   await t.mutation(components.agevex.queue.claim, {
@@ -1508,7 +1508,7 @@ it.each([true, false])(
     const t = setup({ notesPending: 1 }, true);
     const receipt = await open(t);
     await drain(t);
-    const execution = await t.query(components.agevex.queue.execution, {
+    const execution = await t.query(rawAssignment, {
       assignmentId: receipt.assignmentId,
     });
     const [request] = await t.query(components.agent.messages.getMessagesByIds, {
@@ -1530,9 +1530,9 @@ it.each([true, false])(
     expect(
       (await messages(t, receipt.threadId)).page.filter((message) => message.origin === "note"),
     ).toHaveLength(0);
-    expect(
-      await t.query(components.agevex.queue.execution, { assignmentId: receipt.assignmentId }),
-    ).toMatchObject({ notesPending: 1 });
+    expect(await t.query(rawAssignment, { assignmentId: receipt.assignmentId })).toMatchObject({
+      notesPending: 1,
+    });
     await expect(
       owner(t).mutation(api.agents.note, {
         threadId: receipt.threadId,

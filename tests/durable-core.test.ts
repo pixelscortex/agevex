@@ -3,7 +3,7 @@ import { requireReceipt } from "./receipt.js";
 import { it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { listMessages } from "@convex-dev/agent";
 import { workflowCall } from "../src/testing/expect-journal.js";
-import { setup, api, components, state } from "./setup.js";
+import { setup, api, components, rawAssignment, state } from "./setup.js";
 import { expectJournalUnchanged } from "../src/test.js";
 import journals from "./fixtures/workflow-journals.json";
 
@@ -237,7 +237,7 @@ it("a lost or duplicate ping is harmless because the inbox owns work", async () 
     text: "second prompt",
     requestKey: "second",
   });
-  const execution = await t.query(components.agevex.queue.execution, {
+  const execution = await t.query(rawAssignment, {
     assignmentId: receipt.assignmentId,
   });
   // Drop all early doorbells, then send duplicates. Neither operation changes

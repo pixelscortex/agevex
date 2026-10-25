@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { getConvexSize } from "convex/values";
 import { createFunctionHandle } from "convex/server";
 import { listMessages } from "@convex-dev/agent";
-import { setup, api, components, state } from "./setup.js";
+import { setup, api, components, rawAssignment, state } from "./setup.js";
 import { requireReceipt } from "./receipt.js";
 import { LIMITS } from "../src/client/index.js";
 
@@ -269,7 +269,7 @@ it("mixed approval and free-text calls resume only after both native protocols a
   const receipt = await owner(t)
     .mutation(api.agents.open, { agent: "Main", prompt: "mixed", requestKey: "mixed" })
     .then(requireReceipt);
-  const row = (await t.query(components.agevex.queue.execution, {
+  const row = (await t.query(rawAssignment, {
     assignmentId: receipt.assignmentId,
   }))!;
   await t.mutation(components.agevex.queue.claim, {
@@ -358,7 +358,7 @@ it("sixteen maximum-size answers to a near-1 MiB call document stay in budget wi
   // 16*32,500*2 plus the envelope remains just below Convex's 1 MiB document cap.
   state.deferredQuestion = "x".repeat(32_500);
   const receipt = await pending(t, LIMITS.approvalsPerPause);
-  const row = (await t.query(components.agevex.queue.execution, {
+  const row = (await t.query(rawAssignment, {
     assignmentId: receipt.assignmentId,
   }))!;
   const [call] = await t.query(components.agent.messages.getMessagesByIds, {

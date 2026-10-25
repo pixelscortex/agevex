@@ -56,6 +56,16 @@ export const receiptCount = internalQueryGeneric({
   handler: async (ctx) => (await ctx.db.query("receipts").take(LIMITS.purgeBatch + 1)).length,
 });
 
+/** White-box tests read the whole coordination row; queue.execution returns
+ * only the projection the runtime reads. */
+export const assignment = internalQueryGeneric({
+  args: { assignmentId: v.string() },
+  handler: async (ctx, { assignmentId }) => {
+    const id = ctx.db.normalizeId("assignments", assignmentId);
+    return id ? await ctx.db.get(id) : null;
+  },
+});
+
 /** Inspect the exact child result recorded on one run, without native history. */
 export const childResultMessageId = internalQueryGeneric({
   args: { runId: v.string() },

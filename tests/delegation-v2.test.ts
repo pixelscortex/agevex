@@ -9,7 +9,7 @@ import { workflowCall } from "../src/testing/expect-journal.js";
 import agevex from "../src/test.js";
 import schema from "./fixture/schema.js";
 import { HOST_LIMITS, LIMITS } from "../src/component/limits.js";
-import { components } from "./fixture/api.js";
+import { components, rawAssignment } from "./fixture/api.js";
 import { coordinateReference, runTurnReference } from "./host.js";
 import {
   v2,
@@ -238,7 +238,7 @@ it("cancel while asking settles the run and a late answer cannot cross the root 
   const receipt = await open(t);
   await waitFor(t, () => calls("Main").length === 2);
   expect((await tree(t, receipt.threadId))[0].status).toBe("asking");
-  const actor = await t.query(components.agevex.queue.execution, {
+  const actor = await t.query(rawAssignment, {
     assignmentId: receipt.assignmentId,
   });
   const run = (await tree(t, receipt.threadId))[0];
@@ -339,11 +339,11 @@ async function launch(
     ...extra,
   });
   if (response?.status !== "queued") throw new Error(JSON.stringify(response));
-  const actor = (await t.query(components.agevex.queue.execution, {
+  const actor = (await t.query(rawAssignment, {
     assignmentId: parent.assignmentId,
   }))!;
   const root = actor.rootAssignmentId
-    ? (await t.query(components.agevex.queue.execution, { assignmentId: actor.rootAssignmentId }))!
+    ? (await t.query(rawAssignment, { assignmentId: actor.rootAssignmentId }))!
     : actor;
   const runs = await t.query(components.agevex.subagents.delegations, {
     threadId: root.threadId,
@@ -438,9 +438,10 @@ it("ask_parent denies ASK_WITH_CHILDREN until Reviewer settles, then answers res
     turnToken: builder.turnToken,
     errorCode: null,
   });
-  expect(
-    await t.query(components.agevex.queue.execution, { assignmentId: builder.assignmentId }),
-  ).toMatchObject({ turnStatus: "idle", queuedMessages: 1 });
+  expect(await t.query(rawAssignment, { assignmentId: builder.assignmentId })).toMatchObject({
+    turnStatus: "idle",
+    queuedMessages: 1,
+  });
   expect(
     await t.mutation(api.agents.coordinate, {
       op: "message",
@@ -474,7 +475,7 @@ it.each(["finish", "slice"] as const)(
     const second = await launch(t, root, "Reviewer", { group: "draft", wait: "all" });
     expect(
       (
-        await t.query(components.agevex.queue.execution, {
+        await t.query(rawAssignment, {
           assignmentId: root.assignmentId,
         })
       )?.queuedMessages,
@@ -512,7 +513,7 @@ it.each(["finish", "slice"] as const)(
       errorCode: null,
     });
     if (boundary === "finish") await complete(t, second, "second member");
-    const current = (await t.query(components.agevex.queue.execution, {
+    const current = (await t.query(rawAssignment, {
       assignmentId: root.assignmentId,
     }))!;
     expect(current.turnStatus).toBe("queued");
@@ -546,7 +547,7 @@ it.each(["finish", "slice"] as const)(
     ).toContain("second member");
     expect(
       (
-        await t.query(components.agevex.queue.execution, {
+        await t.query(rawAssignment, {
           assignmentId: root.assignmentId,
         })
       )?.queuedMessages,
@@ -568,7 +569,7 @@ it("a queued wait:all join reports its result messages as results, not notes", a
   });
   // The release is queued and reserved but not yet claimed: its inbox row is the
   // only record of the join, and that row is what labels the message.
-  const queued = (await t.query(components.agevex.queue.execution, {
+  const queued = (await t.query(rawAssignment, {
     assignmentId: root.assignmentId,
   }))!;
   expect(queued.turnStatus).toBe("queued");
@@ -603,9 +604,9 @@ it("a child that fails with a staged continuation under live descendants keeps n
   });
   // The live Reviewer's result wakes Builder with the result as its next prompt.
   await complete(t, reviewer, "review after the failed turn");
-  expect(
-    await t.query(components.agevex.queue.execution, { assignmentId: builder.assignmentId }),
-  ).toMatchObject({ turnStatus: "queued" });
+  expect(await t.query(rawAssignment, { assignmentId: builder.assignmentId })).toMatchObject({
+    turnStatus: "queued",
+  });
   // Cancel deletes each queued row once; a leftover continuation anchor made it
   // delete the woken result row twice and throw.
   await owner(t).mutation(api.agents.cancel, { threadId: root.threadId });
@@ -629,7 +630,7 @@ it.each(["join", "question"] as const)(
     await complete(t, first, "older each result");
     expect(
       (
-        await t.query(components.agevex.queue.execution, {
+        await t.query(rawAssignment, {
           assignmentId: root.assignmentId,
         })
       )?.turnStatus,
@@ -644,7 +645,7 @@ it.each(["join", "question"] as const)(
           question: "independent question",
         }),
       ).toMatchObject({ status: "accepted" });
-    let current = (await t.query(components.agevex.queue.execution, {
+    let current = (await t.query(rawAssignment, {
       assignmentId: root.assignmentId,
     }))!;
     expect(current.turnStatus).toBe("queued");
@@ -661,7 +662,7 @@ it.each(["join", "question"] as const)(
     ).toContain(kind === "join" ? "independent join result" : "independent question");
     expect(
       (
-        await t.query(components.agevex.queue.execution, {
+        await t.query(rawAssignment, {
           assignmentId: root.assignmentId,
         })
       )?.queuedMessages,
@@ -672,7 +673,7 @@ it.each(["join", "question"] as const)(
       errorCode: null,
     });
     await complete(t, slow, "last each result");
-    current = (await t.query(components.agevex.queue.execution, {
+    current = (await t.query(rawAssignment, {
       assignmentId: root.assignmentId,
     }))!;
     await t.mutation(components.agevex.queue.claim, {
@@ -685,7 +686,7 @@ it.each(["join", "question"] as const)(
       errorCode: null,
     });
     expect(
-      await t.query(components.agevex.queue.execution, {
+      await t.query(rawAssignment, {
         assignmentId: root.assignmentId,
       }),
     ).toMatchObject({ turnStatus: "idle", queuedMessages: 0 });
@@ -769,7 +770,7 @@ it("cancel at all maxima fences live loop → turn → Workpool dispatch chains 
     );
     const active = [];
     for (const turn of [root, ...descendants]) {
-      const row = await t.query(components.agevex.queue.execution, {
+      const row = await t.query(rawAssignment, {
         assignmentId: turn.assignmentId,
       });
       if (
@@ -806,7 +807,7 @@ it("cancel at all maxima fences live loop → turn → Workpool dispatch chains 
   expect(v2.calls).toHaveLength(callsAtCancel);
   for (const turn of [root, ...descendants]) {
     expect(
-      await t.query(components.agevex.queue.execution, {
+      await t.query(rawAssignment, {
         assignmentId: turn.assignmentId,
       }),
     ).toMatchObject({ cancelled: true, queuedMessages: 0, turnStatus: "idle" });
@@ -839,7 +840,7 @@ it("message_child reaches running and idle children, rejects foreign and finishe
     turnToken: child.turnToken,
     errorCode: null,
   });
-  const resumed = await t.query(components.agevex.queue.execution, {
+  const resumed = await t.query(rawAssignment, {
     assignmentId: child.assignmentId,
   });
   const claim = await t.mutation(components.agevex.queue.claim, {
@@ -858,10 +859,9 @@ it("message_child reaches running and idle children, rejects foreign and finishe
     turnToken: resumed!.turnToken!,
     errorCode: null,
   });
-  expect(
-    (await t.query(components.agevex.queue.execution, { assignmentId: child.assignmentId }))
-      ?.turnStatus,
-  ).toBe("idle");
+  expect((await t.query(rawAssignment, { assignmentId: child.assignmentId }))?.turnStatus).toBe(
+    "idle",
+  );
   expect(await send(child.runId, "idle message")).toMatchObject({ status: "accepted" });
   for (let i = 2; i < HOST_LIMITS.messagesPerChild.max; i++)
     expect(await send()).toMatchObject({ status: "accepted" });
@@ -971,9 +971,11 @@ it("the 15-descendant cap includes grandchildren and cancel fences maximum queue
   expect(metrics.documentsRead.used).toBeLessThan(4096);
   expect(metrics.documentsWritten.used).toBeLessThan(8000);
   for (const turn of [root, ...descendants])
-    expect(
-      await t.query(components.agevex.queue.execution, { assignmentId: turn.assignmentId }),
-    ).toMatchObject({ cancelled: true, cancellationEpoch: 1, queuedMessages: 0 });
+    expect(await t.query(rawAssignment, { assignmentId: turn.assignmentId })).toMatchObject({
+      cancelled: true,
+      cancellationEpoch: 1,
+      queuedMessages: 0,
+    });
   await drain(t);
   for (const messageId of placeholders)
     expect(
@@ -1041,7 +1043,7 @@ it("a 15-member closed group bounds native results and large call ids, rejects e
         }),
       ).toMatchObject({ status: "denied", code: "GROUP_CONFLICT" });
     }
-    const execution = await t.query(components.agevex.queue.execution, {
+    const execution = await t.query(rawAssignment, {
       assignmentId: root.assignmentId,
     });
     // Settled members cannot close membership while this launching turn is live.
@@ -1052,7 +1054,7 @@ it("a 15-member closed group bounds native results and large call ids, rejects e
     turnToken: root.turnToken,
     errorCode: null,
   });
-  const execution = await t.query(components.agevex.queue.execution, {
+  const execution = await t.query(rawAssignment, {
     assignmentId: root.assignmentId,
   });
   const claimed = await t.mutation(components.agevex.queue.claim, {
@@ -1060,10 +1062,9 @@ it("a 15-member closed group bounds native results and large call ids, rejects e
     turnToken: execution!.turnToken!,
   });
   expect(claimed).not.toBeNull();
-  expect(
-    (await t.query(components.agevex.queue.execution, { assignmentId: root.assignmentId }))
-      ?.queuedMessages,
-  ).toBe(0);
+  expect((await t.query(rawAssignment, { assignmentId: root.assignmentId }))?.queuedMessages).toBe(
+    0,
+  );
   expect(
     await t.mutation(api.agents.coordinate, {
       op: "launch",
@@ -1204,7 +1205,7 @@ it("a later user turn may message an active child of an earlier run on the same 
     turnToken: root.turnToken,
     errorCode: null,
   });
-  const current = (await t.query(components.agevex.queue.execution, {
+  const current = (await t.query(rawAssignment, {
     assignmentId: root.assignmentId,
   }))!;
   expect(
@@ -1295,7 +1296,7 @@ it("a joined group needs one queue slot and resumes after a full inbox without r
     turnToken: root.turnToken,
     errorCode: null,
   });
-  let current = (await t.query(components.agevex.queue.execution, {
+  let current = (await t.query(rawAssignment, {
     assignmentId: root.assignmentId,
   }))!;
   await t.mutation(components.agevex.queue.claim, {
@@ -1307,7 +1308,7 @@ it("a joined group needs one queue slot and resumes after a full inbox without r
     turnToken: current.turnToken!,
     errorCode: null,
   });
-  current = (await t.query(components.agevex.queue.execution, {
+  current = (await t.query(rawAssignment, {
     assignmentId: root.assignmentId,
   }))!;
   const claimed = await t.mutation(components.agevex.queue.claim, {
@@ -1327,10 +1328,9 @@ it("a joined group needs one queue slot and resumes after a full inbox without r
       runId: child.runId,
       deliveryToken: child.deliveryToken,
     });
-  expect(
-    (await t.query(components.agevex.queue.execution, { assignmentId: root.assignmentId }))
-      ?.queuedMessages,
-  ).toBe(0);
+  expect((await t.query(rawAssignment, { assignmentId: root.assignmentId }))?.queuedMessages).toBe(
+    0,
+  );
   await owner(t).mutation(api.agents.cancel, { threadId: root.threadId });
   await drain(t);
 });
@@ -1351,7 +1351,7 @@ it("cancel bounds every descendant inbox across fourteen independent maximum-lau
         text: "new independent run",
         requestKey: `independent-${p}`,
       });
-      const next = (await t.query(components.agevex.queue.execution, {
+      const next = (await t.query(rawAssignment, {
         assignmentId: root.assignmentId,
       }))!;
       root = { ...root, turnToken: next.turnToken! };
@@ -1422,9 +1422,10 @@ it("cancel bounds every descendant inbox across fourteen independent maximum-lau
   expect(metrics.documentsWritten.used).toBeLessThan(16000);
   expect(metrics.bytesRead.used).toBeLessThan(16 << 20);
   for (const turn of [root, ...parents])
-    expect(
-      await t.query(components.agevex.queue.execution, { assignmentId: turn.assignmentId }),
-    ).toMatchObject({ cancelled: true, queuedMessages: 0 });
+    expect(await t.query(rawAssignment, { assignmentId: turn.assignmentId })).toMatchObject({
+      cancelled: true,
+      queuedMessages: 0,
+    });
   await drain(t);
   for (const messageId of pending)
     expect(
@@ -1461,7 +1462,7 @@ it("cancelled groups cannot hide a fresh run's deferred join behind their archiv
     text: "fresh run",
     requestKey: "fresh-group",
   });
-  const fresh = (await t.query(components.agevex.queue.execution, {
+  const fresh = (await t.query(rawAssignment, {
     assignmentId: root.assignmentId,
   }))!;
   root = { ...root, turnToken: fresh.turnToken! };
@@ -1492,7 +1493,7 @@ it("cancelled groups cannot hide a fresh run's deferred join behind their archiv
     turnToken: root.turnToken,
     errorCode: null,
   });
-  const queued = (await t.query(components.agevex.queue.execution, {
+  const queued = (await t.query(rawAssignment, {
     assignmentId: root.assignmentId,
   }))!;
   await t.mutation(components.agevex.queue.claim, {
@@ -1504,7 +1505,7 @@ it("cancelled groups cannot hide a fresh run's deferred join behind their archiv
     turnToken: queued.turnToken!,
     errorCode: null,
   });
-  const released = (await t.query(components.agevex.queue.execution, {
+  const released = (await t.query(rawAssignment, {
     assignmentId: root.assignmentId,
   }))!;
   expect(released.turnStatus).toBe("queued");
@@ -1538,10 +1539,9 @@ it("the root epoch rejects a late native write from a child that settled immedia
   });
   await owner(t).mutation(api.agents.cancel, { threadId: root.threadId });
   // Settlement freed the active slot; the action has not released its token.
-  expect(
-    (await t.query(components.agevex.queue.execution, { assignmentId: child.assignmentId }))
-      ?.turnStatus,
-  ).toBe("running");
+  expect((await t.query(rawAssignment, { assignmentId: child.assignmentId }))?.turnStatus).toBe(
+    "running",
+  );
   await expect(
     t.run(async (ctx) =>
       ctx.runMutation(components.agevex.queue.write, {
@@ -1648,7 +1648,7 @@ it.each([false, true])(
     await expect
       .poll(async () => {
         await tick(t);
-        return t.query(components.agevex.queue.execution, {
+        return t.query(rawAssignment, {
           assignmentId: builderRun.childAssignmentId!,
         });
       })
@@ -1711,9 +1711,9 @@ it("an answer fits an asking child's full length-one follow-up inbox and the chi
     }),
   ).toMatchObject({ status: "accepted" });
   expect(await message("reserved answer")).toMatchObject({ status: "accepted" });
-  expect(
-    await t.query(components.agevex.queue.execution, { assignmentId: child.assignmentId }),
-  ).toMatchObject({ queuedMessages: 2 });
+  expect(await t.query(rawAssignment, { assignmentId: child.assignmentId })).toMatchObject({
+    queuedMessages: 2,
+  });
   await t.mutation(components.agevex.queue.finish, {
     assignmentId: child.assignmentId,
     turnToken: child.turnToken,
@@ -1745,7 +1745,7 @@ it("a newer each result cannot overtake an older each result from another reques
     text: "second budget",
     requestKey: "second",
   });
-  let current = (await t.query(components.agevex.queue.execution, {
+  let current = (await t.query(rawAssignment, {
     assignmentId: root.assignmentId,
   }))!;
   root = { ...root, turnToken: current.turnToken! };
@@ -1762,7 +1762,7 @@ it("a newer each result cannot overtake an older each result from another reques
     errorCode: null,
   });
   for (const expected of ["older each must run first", "newer each must run second"]) {
-    current = (await t.query(components.agevex.queue.execution, {
+    current = (await t.query(rawAssignment, {
       assignmentId: root.assignmentId,
     }))!;
     const claimed = await t.mutation(components.agevex.queue.claim, {
@@ -1834,7 +1834,7 @@ it("fifteen older unreleased group members cannot hide a ready group in the same
     turnToken: root.turnToken,
     errorCode: null,
   });
-  let current = (await t.query(components.agevex.queue.execution, {
+  let current = (await t.query(rawAssignment, {
     assignmentId: root.assignmentId,
   }))!;
   await t.mutation(components.agevex.queue.claim, {
@@ -1846,7 +1846,7 @@ it("fifteen older unreleased group members cannot hide a ready group in the same
     turnToken: current.turnToken!,
     errorCode: null,
   });
-  current = (await t.query(components.agevex.queue.execution, {
+  current = (await t.query(rawAssignment, {
     assignmentId: root.assignmentId,
   }))!;
   expect(current.turnStatus).toBe("queued");
@@ -1904,9 +1904,10 @@ it("cancel fences a reserved answer beyond a full follow-up queue within transac
   expect(metrics.documentsRead.used).toBeLessThan(8192);
   expect(metrics.documentsWritten.used).toBeLessThan(16000);
   expect(metrics.bytesRead.used).toBeLessThan(16 << 20);
-  expect(
-    await t.query(components.agevex.queue.execution, { assignmentId: child.assignmentId }),
-  ).toMatchObject({ cancelled: true, queuedMessages: 0 });
+  expect(await t.query(rawAssignment, { assignmentId: child.assignmentId })).toMatchObject({
+    cancelled: true,
+    queuedMessages: 0,
+  });
   await drain(t);
   expect(calls("Reviewer")).toHaveLength(0);
 });
@@ -1999,7 +2000,7 @@ it("a claim drains fifty ready deferred groups at the maximum launch and hop bud
     turnToken: root.turnToken,
     errorCode: null,
   });
-  let current = (await t.query(components.agevex.queue.execution, {
+  let current = (await t.query(rawAssignment, {
     assignmentId: root.assignmentId,
   }))!;
   await t.mutation(components.agevex.queue.claim, {
@@ -2011,7 +2012,7 @@ it("a claim drains fifty ready deferred groups at the maximum launch and hop bud
     turnToken: current.turnToken!,
     errorCode: null,
   });
-  current = (await t.query(components.agevex.queue.execution, {
+  current = (await t.query(rawAssignment, {
     assignmentId: root.assignmentId,
   }))!;
   const { claimed, metrics } = await t.run(async (ctx) => {
@@ -2031,17 +2032,18 @@ it("a claim drains fifty ready deferred groups at the maximum launch and hop bud
   expect(metrics.bytesRead.used).toBeLessThan(8 << 20);
   expect(metrics.documentsRead.used).toBeLessThan(4096);
   expect(metrics.documentsWritten.used).toBeLessThan(8000);
-  expect(
-    await t.query(components.agevex.queue.execution, { assignmentId: root.assignmentId }),
-  ).toMatchObject({ queuedMessages: 0 });
+  expect(await t.query(rawAssignment, { assignmentId: root.assignmentId })).toMatchObject({
+    queuedMessages: 0,
+  });
   await t.mutation(components.agevex.queue.finish, {
     assignmentId: root.assignmentId,
     turnToken: current.turnToken!,
     errorCode: null,
   });
-  expect(
-    await t.query(components.agevex.queue.execution, { assignmentId: root.assignmentId }),
-  ).toMatchObject({ turnStatus: "idle", queuedMessages: 0 });
+  expect(await t.query(rawAssignment, { assignmentId: root.assignmentId })).toMatchObject({
+    turnStatus: "idle",
+    queuedMessages: 0,
+  });
   await owner(t).mutation(api.agents.cancel, { threadId: root.threadId });
   await drain(t);
 }, 30_000);
@@ -2193,7 +2195,7 @@ it.each([1, HOST_LIMITS.queueLength.max])(
       });
       if (receipt?.status !== "queued") throw new Error(JSON.stringify(receipt));
       const run = (await tree(t, root.threadId)).find((run) => run.runId === receipt.runId)!;
-      const row = (await t.query(components.agevex.queue.execution, {
+      const row = (await t.query(rawAssignment, {
         assignmentId: run.childAssignmentId!,
       }))!;
       return { run, row };
@@ -2223,7 +2225,7 @@ it.each([1, HOST_LIMITS.queueLength.max])(
       await t.action(dispatch, args);
       // Duplicate dispatch completion must neither decrement nor escalate again.
       await t.action(dispatch, args);
-      const current = (await t.query(components.agevex.queue.execution, {
+      const current = (await t.query(rawAssignment, {
         assignmentId: row._id,
       }))!;
       expect(current.queuedMessages).toBe(0);
@@ -2260,7 +2262,7 @@ it.each([1, HOST_LIMITS.queueLength.max])(
           text: "independent child budget",
           requestKey: "live-child-" + i,
         });
-        const current = (await t.query(components.agevex.queue.execution, {
+        const current = (await t.query(rawAssignment, {
           assignmentId: root.assignmentId,
         }))!;
         root = { ...root, turnToken: current.turnToken! };
@@ -2296,7 +2298,7 @@ it.each([1, HOST_LIMITS.queueLength.max])(
       });
     const inbox = (await queuedWork()).inbox;
     for (const assignmentId of [root.assignmentId, ...live.map(({ row }) => row._id)]) {
-      const row = (await t.query(components.agevex.queue.execution, { assignmentId }))!;
+      const row = (await t.query(rawAssignment, { assignmentId }))!;
       expect(row.queuedMessages).toBe(
         inbox.filter((item) => item.assignmentId === assignmentId).length - (row.inboxId ? 1 : 0),
       );
@@ -2497,9 +2499,11 @@ it.each(
     expect(await resume()).toEqual({ ...receipt, replayed: true });
     if (delivery === "after") await failDelivery();
     expect((await tree(t, root.threadId))[0].status).toBe("running");
-    expect(
-      await t.query(components.agevex.queue.execution, { assignmentId: child.assignmentId }),
-    ).toMatchObject({ turnStatus: "queued", approvalBlocked: false, queuedMessages: 0 });
+    expect(await t.query(rawAssignment, { assignmentId: child.assignmentId })).toMatchObject({
+      turnStatus: "queued",
+      approvalBlocked: false,
+      queuedMessages: 0,
+    });
     v2.steps.Builder = () => text("final result after response");
     await t.mutation(components.agevex.queue.finish, {
       assignmentId: root.assignmentId,
@@ -2534,7 +2538,7 @@ it.each([1, HOST_LIMITS.messagesPerChild.max])(
       errorCode: null,
     });
     await complete(t, descendant, "review before deferred question");
-    const current = (await t.query(components.agevex.queue.execution, {
+    const current = (await t.query(rawAssignment, {
       assignmentId: child.assignmentId,
     }))!;
     expect(current.turnOrigin).toBe("subagent_result");
@@ -2587,9 +2591,10 @@ it.each([1, HOST_LIMITS.messagesPerChild.max])(
         },
       }),
     );
-    expect(
-      await t.query(components.agevex.queue.execution, { assignmentId: child.assignmentId }),
-    ).toMatchObject({ approvalBlocked: true, queuedMessages: queueLength + 1 });
+    expect(await t.query(rawAssignment, { assignmentId: child.assignmentId })).toMatchObject({
+      approvalBlocked: true,
+      queuedMessages: queueLength + 1,
+    });
     expect((await tree(t, root.threadId)).find((run) => run.runId === child.runId)?.status).toBe(
       "running",
     );
@@ -2640,8 +2645,7 @@ it("pending notes precede every claimed wait-all group member while generation k
     prompt.indexOf("earlier group result"),
   );
   expect(prompt.indexOf("earlier group result")).toBeLessThan(prompt.indexOf("later group result"));
-  expect(
-    (await t.query(components.agevex.queue.execution, { assignmentId: root.assignmentId }))
-      ?.queuedMessages,
-  ).toBe(0);
+  expect((await t.query(rawAssignment, { assignmentId: root.assignmentId }))?.queuedMessages).toBe(
+    0,
+  );
 });

@@ -1,6 +1,6 @@
 // @vitest-environment edge-runtime
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
-import { setup, api, components, state } from "./setup.js";
+import { setup, api, components, rawAssignment, state } from "./setup.js";
 import { requireReceipt } from "./receipt.js";
 
 beforeEach(() => vi.useFakeTimers());
@@ -77,7 +77,7 @@ it("a running turn no longer occupies the inbox, so its first queued send has po
   const first = await owner
     .mutation(api.agents.open, { agent: "Main", prompt: "start", requestKey: "start" })
     .then(requireReceipt);
-  const row = (await t.query(components.agevex.queue.execution, {
+  const row = (await t.query(rawAssignment, {
     assignmentId: first.assignmentId,
   }))!;
   await t.mutation(components.agevex.queue.claim, {

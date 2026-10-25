@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { createFunctionHandle, type PaginationResult } from "convex/server";
 import { getConvexSize } from "convex/values";
 import { listMessages, saveMessage } from "@convex-dev/agent";
-import { setup, api, components, state } from "./setup.js";
+import { setup, api, components, rawAssignment, state } from "./setup.js";
 import { main } from "./host.js";
 import type { ManagedAgent, OriginMessage } from "../src/client/index.js";
 import { LIMITS } from "../src/client/index.js";
@@ -27,8 +27,7 @@ const open = (t: Test, key = "bounded-reads") =>
       requestKey: key,
     })
     .then(requireReceipt);
-const execution = (t: Test, assignmentId: string) =>
-  t.query(components.agevex.queue.execution, { assignmentId });
+const execution = (t: Test, assignmentId: string) => t.query(rawAssignment, { assignmentId });
 // Test-only inspection of the small native fixtures; runtime never scans history.
 const nativePage = (t: Test, threadId: string) =>
   t.run((ctx) =>

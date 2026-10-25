@@ -19,6 +19,7 @@ import {
   scope,
   errorCode,
   turnOrigin as vTurnOrigin,
+  turnStatus as vTurnStatus,
 } from "./schema.js";
 import { LIMITS, limitsValidator } from "./limits.js";
 import { approvalKey, callKey, keyString, saveResponses } from "./approvals.js";
@@ -834,10 +835,48 @@ export const activity = query({
   },
 });
 
-/** Read execution metadata outside the Workflow journal; only ids cross steps. */
+/** Read execution metadata outside the Workflow journal; only ids cross steps.
+ * The host polls this during generation, so it returns only the fields its
+ * readers use (src/component/worker.ts dispatch, src/client/runtime.ts runTurn's
+ * fence checks, cancel poll, usage capture and download bound), never the
+ * context refs, approvals or recovery state of the whole row. */
 export const execution = query({
   args: { assignmentId: v.id("assignments") },
-  handler: (ctx, args) => ctx.db.get("assignments", args.assignmentId),
+  returns: v.union(
+    v.null(),
+    v.object({
+      // Read by runTurn to resolve the managed agent and its agent index.
+      agent: v.string(),
+      // Read by worker.dispatch: the host action that runs one slice.
+      runTurn: v.string(),
+      // Read by every client fence check alongside token and epoch.
+      turnStatus: vTurnStatus,
+      turnToken: v.optional(v.string()),
+      cancellationEpoch: v.number(),
+      cancelled: v.boolean(),
+      // Read by runTurn: a paused turn never claims (Agent auto-denies otherwise).
+      approvalBlocked: v.boolean(),
+      // Read by usage capture to match the exact step saved by queue.write.
+      modelStep: v.optional(v.object({ messageId: v.string(), stepOrder: v.number() })),
+      // Read by runTurn's bounded download of attached files.
+      attachmentBytes: v.number(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get("assignments", args.assignmentId);
+    if (!row) return null;
+    return {
+      agent: row.agent,
+      runTurn: row.runTurn,
+      turnStatus: row.turnStatus,
+      turnToken: row.turnToken,
+      cancellationEpoch: row.cancellationEpoch,
+      cancelled: row.cancelled,
+      approvalBlocked: !!row.approvalBlocked,
+      modelStep: row.modelStep,
+      attachmentBytes: row.limits.attachmentBytes,
+    };
+  },
 });
 
 export const next = internalMutation({
