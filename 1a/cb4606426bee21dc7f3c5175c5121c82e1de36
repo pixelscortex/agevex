@@ -1,0 +1,25 @@
+README.md
+  s_d863bd773ba186::t_a67ea7c48f1034 136-139
+docs/site/content/docs/modules/sandbox.mdx
+  s_d863bd773ba186::t_a7dead9303204d 154
+src/sandbox/component/state.ts
+  s_d863bd773ba186::t_809a3bfcdcdc19 349-358
+tests/sandbox/sandbox.test.ts
+  s_d863bd773ba186::t_bf82eb1c5ee084 755,766,768-773,778-786,788,791,801-819
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1acb4606426bee21dc7f3c5175c5121c82e1de36",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
