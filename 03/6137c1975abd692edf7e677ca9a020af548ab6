@@ -1,0 +1,33 @@
+docs/site/content/docs/recipes/critic.mdx
+  s_d863bd773ba186::t_b2f9e20196938b 9-11
+docs/site/content/docs/recipes/intent.mdx
+  s_d863bd773ba186::t_b792ba6236cc15 11,14-16,20-23,27-36
+docs/site/content/docs/recipes/quiz.mdx
+  s_d863bd773ba186::t_3b405d41b4e190 12-14,16-24,27-33
+docs/site/content/docs/recipes/studio.mdx
+  s_d863bd773ba186::t_01c71481fe07ea 16-20,28-30
+docs/site/content/docs/recipes/summary.mdx
+  s_d863bd773ba186::t_6ccd2299a329d0 18-19
+example/README.md
+  s_d863bd773ba186::t_063d16d7a80fe6 29-33,37-41
+example/scripts/smoke.ts
+  s_d863bd773ba186::t_51a50b9dbb6541 4,19-22,25-26,32,37,44-52,197-199,201-214,230-231,235,237,239-247,252-254,259,273,277-284,319
+example/src/lib/scenarios.ts
+  s_d863bd773ba186::t_d620efa3279736 33,42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "036137c1975abd692edf7e677ca9a020af548ab6",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
