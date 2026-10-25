@@ -102,6 +102,13 @@ export const cleanupBatch = internalMutation({
     const deniedCalls = [];
     if (message?.message?.role === "assistant" && Array.isArray(content)) {
       for (const part of content) {
+        if (request.deferred) {
+          if (part.type === "tool-call" && (await approvalKey(part.toolCallId)) === request.key) {
+            deniedCalls.push({ toolCallId: part.toolCallId, toolName: part.toolName });
+            break;
+          }
+          continue;
+        }
         if (part.type !== "tool-approval-request") continue;
         const key = await approvalKey(part.approvalId);
         if (key !== request.key) continue;

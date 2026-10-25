@@ -1,6 +1,8 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v, type Validator } from "convex/values";
 
+import { modelOverrides } from "./models.js";
+
 import { limitsValidator } from "./limits.js";
 
 export const turnOrigin = v.union(v.literal("user"), v.literal("subagent_result"));
@@ -76,12 +78,32 @@ export const runEvent = v.object({
   at: v.number(),
   errorCode: runErrorCode,
 });
-export const receipt = v.object({
+const receiptIdentity = {
   assignmentId: v.string(),
   threadId: v.string(),
   receiptId: v.string(),
-  status: v.literal("accepted"),
-});
+};
+export const receipt = v.union(
+  v.object({ ...receiptIdentity, status: v.literal("accepted"), position: v.number() }),
+  v.object({
+    ...receiptIdentity,
+    status: v.literal("duplicate"),
+    position: v.optional(v.number()),
+  }),
+  v.object({
+    status: v.literal("rejected"),
+    code: v.union(
+      v.literal("KEY_CONFLICT"),
+      v.literal("QUEUE_FULL"),
+      v.literal("CANCELLED"),
+      v.literal("INVALID_MESSAGE"),
+      v.literal("INVALID_REQUEST_KEY"),
+      v.literal("UNKNOWN_AGENT"),
+      v.literal("INVALID_MODELS"),
+      v.literal("RECOVERY_REQUIRED"),
+    ),
+  }),
+);
 export const subagentCounts = v.object({
   active: v.number(),
   history: v.number(),
@@ -145,6 +167,8 @@ export default defineSchema({
     subject: v.string(),
     agent: v.string(),
     threadId: v.string(),
+    // Latest accepted thread policy; read only when creating the next run.
+    models: v.optional(modelOverrides),
     runTurn: v.string(),
     workflowId: v.optional(v.string()),
     limits: v.optional(limitsValidator),
@@ -181,6 +205,9 @@ export default defineSchema({
         cleanupPending: v.optional(v.boolean()),
         requests: v.array(
           v.object({
+            // Deferred calls share the same bounded exact-id pause/cleanup path.
+            // Read by answer/respond/cancel to choose the native result protocol.
+            deferred: v.optional(v.boolean()),
             key: v.string(),
             messageId: v.string(),
             providerExecuted: v.boolean(),
@@ -227,6 +254,9 @@ export default defineSchema({
   // A run outlives an individual turn: results and subsequent delegations spend
   // the same launch/hop budget. Results are ready independently of siblings.
   runs: defineTable({
+    // Immutable run snapshot shared by every root/descendant/result turn.
+    // Read at claim, never replaced by a subsequent send's thread policy.
+    models: v.optional(modelOverrides),
     launches: v.number(),
     hops: v.number(),
     cancelled: v.boolean(),

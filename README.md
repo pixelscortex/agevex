@@ -45,8 +45,18 @@ const runtime = registerAgent(components.agevex, {
   authorizeExecution: hostExecutionPolicy,
 });
 export const { runTurn, coordinate } = runtime.internalFunctions();
-export const { open, send, respond, cancel, messages, activity, delegations, runTree } =
-  runtime.authorizedEndpoints();
+export const {
+  open,
+  send,
+  respond,
+  answer,
+  cancel,
+  messages,
+  streams,
+  activity,
+  delegations,
+  runTree,
+} = runtime.authorizedEndpoints();
 ```
 
 `languageModel`, `hostPolicy` and `hostExecutionPolicy` are host-owned. For
@@ -59,9 +69,14 @@ A root without children only needs `refs.runTurn`.
 ## Durable execution
 
 `open({ agent, prompt, requestKey })` and
-`send({ threadId, text, requestKey })` return acceptance receipts immediately.
-Identical subject-scoped keys replay the receipt; different input throws
-`KEY_CONFLICT` before native writes. Up to 20 additional prompts queue while
+`send({ threadId, text, requestKey })` return typed receipts immediately: `{ status: "accepted", position, threadId,
+assignmentId, receiptId }`, `{ status: "duplicate", position, threadId,
+assignmentId, receiptId }`, or `{ status: "rejected", code }`. Position is the
+zero-based inbox place at acceptance, including a reserved head until claim
+consumes it; duplicates retain that original position.
+Identical subject-scoped keys replay the receipt; changed input returns
+`KEY_CONFLICT` before native writes. Invalid input, a full queue (`QUEUE_FULL`),
+and recovery-required state also return rejections. Authorization failures throw. Up to 20 additional prompts queue while
 busy. Arrivals never silently enter an ongoing turn.
 
 Each thread has a component-internal loop workflow. It reads the durable
@@ -168,8 +183,17 @@ receipts are purged in scheduled batches after seven days.
 
 ## Reads, policy and limits
 
-`messages({ threadId, paginationOpts, streamArgs? })` reads roots and children
-with native pagination and stream sync. Find `childThreadId` in `delegations`.
+`messages({ threadId, paginationOpts })` returns only the native message page.
+`streams({ threadId, streamArgs })` returns `{ streams }` with native stream sync.
+Both queries authorize root and child ownership independently. Hosts using a
+`useThreadMessages`-style integration subscribe to the page query and the stream
+query separately, then merge deltas with the persisted page on the client; do
+not call both from one server query (that shares one transaction budget).
+Messages budget: 0.5 MiB page + 1 MiB overshoot + six 1 MiB prefetched heads +
+0.25 MiB coordination = 7.75 MiB. Stream delta budget: two 1 MiB metadata docs +
+8 MiB native deltas + 1 MiB overshoot + 0.25 MiB coordination = 11.25 MiB.
+Agent's `kind: "list"` retains the upstream 100-row metadata bound (§9b); its
+reader has no byte cap. Find `childThreadId` in `delegations`.
 `activity`, `delegations` and `runTree` are root coordination reads. Public sends and
 cancels cannot drive a child's lifecycle.
 
@@ -212,3 +236,26 @@ See [component ownership](src/component/README.md). Deferred: depth above two,
 peer messaging, approval UX, hooks, meter and other optional modules. Existing
 v1 Workflow step order is preserved; new delegation fields are optional on
 persisted v1 rows.
+
+`open` and `send` accept `models: { Main: "model-id", Researcher: "model-id" }`.
+Register `modelAllowlist: ["model-id"]` and `models: id => provider.chat(id)`.
+Only registered reachable agent names and allowed model ids are accepted. Each
+accepted user prompt starts a run with an immutable model snapshot, shared by
+all its descendant and result turns. A later send updates the next run only;
+omitting `models` inherits the last accepted thread policy; `{}` restores Agent
+defaults. Maps have at most 8 entries and 512 Convex-encoded bytes (ids ≤200
+characters), keeping cancel's per-run read budget at 1 KiB.
+
+Tools declared without `execute` use Agent's native deferred results. The owner
+calls `answer({ threadId, toolCallId, text })` to save a native text tool result
+and resume when all pending calls have answers. `answer` also supports owned
+child threads and rejects unrecorded, foreign, cancelled, or already answered
+calls. Text is non-empty and ≤16,000 UTF-16 units. Mixed approvals and deferred
+calls share the 16-call pause bound; `respond` handles approval decisions and
+`answer` handles free text. Cancel settles only open recorded calls with native
+execution-denied results. Payloads remain in Agent storage; coordination stores
+only hashed call ids and exact message references.
+
+A fresh send reopens a cancelled thread, preserving the existing cancellation
+contract. Failed cancellation cleanup blocks reopening with a typed `CANCELLED`
+receipt until a subsequent cancel successfully settles the recorded work.

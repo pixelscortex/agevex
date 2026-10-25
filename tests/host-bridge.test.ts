@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { requireReceipt } from "./receipt.js";
 import { describe, it, expect, vi, afterEach } from "vite-plus/test";
 import { setup, api, state } from "./setup.js";
 
@@ -11,11 +12,13 @@ describe("nested Workflow to host/native Agent bridge", () => {
     vi.useFakeTimers();
     const t = setup();
     const alice = t.withIdentity({ subject: "alice" });
-    const receipt = await alice.mutation(api.agents.open, {
-      agent: "Main",
-      prompt: "hello",
-      requestKey: "one",
-    });
+    const receipt = await alice
+      .mutation(api.agents.open, {
+        agent: "Main",
+        prompt: "hello",
+        requestKey: "one",
+      })
+      .then(requireReceipt);
     expect(receipt.status).toBe("accepted");
     await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100));
     expect(state.calls).toHaveLength(1);
@@ -28,10 +31,14 @@ describe("nested Workflow to host/native Agent bridge", () => {
     const messages = await alice.query(api.agents.messages, {
       threadId: receipt.threadId,
       paginationOpts: { cursor: null, numItems: 20 },
-      streamArgs: { kind: "list" },
     });
     expect(messages.page.map((m) => m.text)).toContain("DEMO deterministic native reply");
     expect(messages.page.map((m) => m.text)).toContain("hello");
-    expect(messages.streams).toMatchObject({ kind: "list" });
+    expect(
+      await alice.query(api.agents.streams, {
+        threadId: receipt.threadId,
+        streamArgs: { kind: "list" },
+      }),
+    ).toMatchObject({ streams: { kind: "list" } });
   });
 });

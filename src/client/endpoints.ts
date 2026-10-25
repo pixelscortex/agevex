@@ -22,6 +22,7 @@ import { ConvexError, v, type Validator } from "convex/values";
 import { fingerprint } from "./once.js";
 import { LIMITS, resolveLimits } from "../component/limits.js";
 import type { ComponentApi } from "../component/_generated/component.js";
+import { modelOverrides, validModelOverrides } from "../component/models.js";
 import { activity, receipt, subagentRun, vPaginationResult } from "../component/schema.js";
 import type { AgentEvent, ManagedAgent, Registration } from "./types.js";
 
@@ -66,13 +67,12 @@ const messagesReturn = v.object({
   pageStatus: v.optional(
     v.union(v.literal("SplitRecommended"), v.literal("SplitRequired"), v.null()),
   ),
-  streams: vStreamMessagesReturnValue.fields.streams,
 });
 
 function validateInput(text: string, requestKey: string) {
-  if (!text.trim() || text.length > LIMITS.messageLength) throw new Error("INVALID_MESSAGE");
+  if (!text.trim() || text.length > LIMITS.messageLength) return "INVALID_MESSAGE" as const;
   if (!requestKey || requestKey.length > LIMITS.requestKeyLength)
-    throw new Error("INVALID_REQUEST_KEY");
+    return "INVALID_REQUEST_KEY" as const;
 }
 
 export function authorizedEndpoints(component: ComponentApi, config: Registration) {
@@ -101,7 +101,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
   async function owned(
     ctx: GenericQueryCtx<GenericDataModel>,
     threadId: string,
-    operation: "send" | "respond" | "cancel" | "messages" | "activity",
+    operation: "send" | "respond" | "answer" | "cancel" | "messages" | "streams" | "activity",
   ) {
     const row = await ctx.runQuery(component.queue.assignment, { threadId });
     if (!row) throw new Error("FORBIDDEN");
@@ -117,23 +117,55 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
     // changing the role of any existing child thread. A name-based check would
     // grant send/activity access to those old threads (and previously also let
     // a shared Agent object registered as both root and child bypass the guard).
-    if (operation !== "messages" && operation !== "respond" && row.root === false)
+    if (
+      operation !== "messages" &&
+      operation !== "streams" &&
+      operation !== "respond" &&
+      operation !== "answer" &&
+      row.root === false
+    )
       throw new Error("FORBIDDEN");
     const native = managedAgents.get(row.agent);
     if (!native) throw new Error("UNKNOWN_AGENT");
     return { ...row, native };
   }
+  function validModels(models: Record<string, string> | undefined, root: ManagedAgent) {
+    if (models === undefined) return true;
+    const reachable = new Set<string>();
+    function visit(agent: ManagedAgent) {
+      if (reachable.has(agent.name)) return;
+      reachable.add(agent.name);
+      for (const child of agent.subagents) visit(child);
+    }
+    visit(root);
+    return (
+      validModelOverrides(models) &&
+      Object.entries(models).every(
+        ([name, id]) => reachable.has(name) && config.modelAllowlist?.includes(id),
+      )
+    );
+  }
   return {
     open: mutationGeneric({
-      args: { agent: v.string(), prompt: v.string(), requestKey: v.string() },
+      args: {
+        agent: v.string(),
+        prompt: v.string(),
+        requestKey: v.string(),
+        models: v.optional(modelOverrides),
+      },
       returns: receipt,
       handler: async (ctx, args) => {
-        validateInput(args.prompt, args.requestKey);
-        const native = agent(args.agent);
         const { subject } = await config.authorize(ctx, { operation: "open", agent: args.agent });
         if (!subject) throw new Error("FORBIDDEN");
+        const invalid = validateInput(args.prompt, args.requestKey);
+        if (invalid) return { status: "rejected" as const, code: invalid };
+        if (!config.agents.some((a) => a.name === args.agent))
+          return { status: "rejected" as const, code: "UNKNOWN_AGENT" as const };
+        const native = agent(args.agent);
+        if (!validModels(args.models, native))
+          return { status: "rejected" as const, code: "INVALID_MODELS" as const };
         if (subject.length > LIMITS.requestKeyLength) throw new Error("INVALID_SUBJECT");
-        const hash = await fingerprint(["open", args.agent, args.prompt]);
+        const hash = await fingerprint(["open", args.agent, args.prompt, args.models ?? null]);
         const duplicate = await ctx.runQuery(component.queue.lookupReceipt, {
           subject,
           requestKey: args.requestKey,
@@ -156,7 +188,9 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           promptMessageId: messageId,
           runTurn,
           limits,
+          models: args.models,
         });
+        if (accepted.status !== "accepted") throw new Error("ADMISSION_CHANGED");
         await observe(ctx, config, {
           type: "request.accepted",
           operation: "open",
@@ -168,18 +202,31 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
       },
     }),
     send: mutationGeneric({
-      args: { threadId: v.string(), text: v.string(), requestKey: v.string() },
+      args: {
+        threadId: v.string(),
+        text: v.string(),
+        requestKey: v.string(),
+        models: v.optional(modelOverrides),
+      },
       returns: receipt,
       handler: async (ctx, args) => {
-        validateInput(args.text, args.requestKey);
         const row = await owned(ctx, args.threadId, "send");
-        const hash = await fingerprint(["send", args.threadId, args.text]);
+        const invalid = validateInput(args.text, args.requestKey);
+        if (invalid) return { status: "rejected" as const, code: invalid };
+        if (!validModels(args.models, row.native))
+          return { status: "rejected" as const, code: "INVALID_MODELS" as const };
+        const hash = await fingerprint(["send", args.threadId, args.text, args.models ?? null]);
         const duplicate = await ctx.runQuery(component.queue.lookupReceipt, {
           subject: row.subject,
           requestKey: args.requestKey,
           fingerprint: hash,
         });
         if (duplicate) return duplicate;
+        const refusal = await ctx.runQuery(component.queue.admission, {
+          threadId: args.threadId,
+          subject: row.subject,
+        });
+        if (refusal) return refusal;
         const { messageId } = await saveMessage(ctx, row.native.component, {
           threadId: args.threadId,
           prompt: args.text,
@@ -194,7 +241,9 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           promptMessageId: messageId,
           runTurn: await createFunctionHandle(config.refs.runTurn()),
           limits,
+          models: args.models,
         });
+        if (accepted.status !== "accepted") throw new Error("ADMISSION_CHANGED");
         await observe(ctx, config, {
           type: "request.accepted",
           operation: "send",
@@ -225,6 +274,19 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
         });
       },
     }),
+    answer: mutationGeneric({
+      args: { threadId: v.string(), toolCallId: v.string(), text: v.string() },
+      returns: v.object({ messageId: v.string() }),
+      handler: async (ctx, args) => {
+        const row = await owned(ctx, args.threadId, "answer");
+        return ctx.runMutation(component.queue.answer, {
+          assignmentId: row.assignmentId,
+          subject: row.subject,
+          toolCallId: args.toolCallId,
+          text: args.text,
+        });
+      },
+    }),
     cancel: mutationGeneric({
       args: { threadId: v.string() },
       returns: v.null(),
@@ -241,7 +303,6 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
       args: {
         threadId: v.string(),
         paginationOpts: paginationOptsValidator,
-        streamArgs: v.optional(vStreamArgs),
       },
       returns: messagesReturn,
       handler: async (ctx, args) => {
@@ -266,8 +327,15 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           ...args,
           paginationOpts,
         });
-        const streams = await boundedStreams(ctx, row, args.streamArgs);
-        return { ...page, streams };
+        return page;
+      },
+    }),
+    streams: queryGeneric({
+      args: { threadId: v.string(), streamArgs: vStreamArgs },
+      returns: v.object({ streams: vStreamMessagesReturnValue.fields.streams }),
+      handler: async (ctx, args) => {
+        const row = await owned(ctx, args.threadId, "streams");
+        return { streams: await boundedStreams(ctx, row, args.streamArgs) };
       },
     }),
     activity: queryGeneric({
@@ -329,6 +397,11 @@ async function boundedStreams(
 ) {
   if (!args) return undefined;
   if (args.kind === "list") {
+    if (
+      args.startOrder !== undefined &&
+      (!Number.isSafeInteger(args.startOrder) || args.startOrder < 0)
+    )
+      throw new ConvexError({ code: "INVALID_STREAM_ORDER" });
     // Accepted upstream exception, like Agent's context reader (spec §9b):
     // Agent 0.7.7 streams.list reads at most 100 streaming-state metadata docs.
     return syncStreams(ctx, row.native.component, { threadId: row.threadId, streamArgs: args });

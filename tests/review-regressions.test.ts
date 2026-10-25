@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { requireReceipt } from "./receipt.js";
 import { it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { setup, api, internal, components, state } from "./setup.js";
 import { workflowCall } from "../src/testing/expect-journal.js";
@@ -30,11 +31,14 @@ const tick = (t: ReturnType<typeof setup>, ms: number) =>
 const drain = (t: ReturnType<typeof setup>) =>
   t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100), 2000);
 const open = (t: ReturnType<typeof setup>) =>
-  t.withIdentity({ subject: "alice" }).mutation(api.agents.open, {
-    agent: "Main",
-    prompt: "review regression",
-    requestKey: "review",
-  });
+  t
+    .withIdentity({ subject: "alice" })
+    .mutation(api.agents.open, {
+      agent: "Main",
+      prompt: "review regression",
+      requestKey: "review",
+    })
+    .then(requireReceipt);
 const activity = (t: ReturnType<typeof setup>, threadId: string) =>
   t.withIdentity({ subject: "alice" }).query(api.agents.activity, { threadId });
 const recoveryJobs = (t: ReturnType<typeof setup>) =>
@@ -519,7 +523,15 @@ it("cancel commits a full approval-blocked backlog with maximum limits, children
     documentsRead: 4_096,
     documentsWritten: 8_000,
   });
-  const receipt = await open(t);
+  const receipt = await t
+    .withIdentity({ subject: "alice" })
+    .mutation(api.agents.open, {
+      agent: "Main",
+      prompt: "maximal models and backlog",
+      requestKey: "max-models",
+      models: { Main: "😀".repeat(100), Researcher: "x".repeat(90) },
+    })
+    .then(requireReceipt);
   const root = { assignmentId: receipt.assignmentId, turnToken: receipt.assignmentId + ":0" };
   expect(await t.mutation(components.agevex.queue.claim, root)).not.toBeNull();
   const turns = [{ ...root, threadId: receipt.threadId }];
@@ -607,7 +619,9 @@ it("cancel commits a full approval-blocked backlog with maximum limits, children
       assignmentId: turn.assignmentId,
     });
     expect(paused?.approvals?.requests).toHaveLength(LIMITS.approvalsPerPause);
-    expect(new TextEncoder().encode(JSON.stringify(paused)).length).toBeLessThan(4 << 10);
+    // The max-size model snapshot is included in the documented 8 KiB
+    // assignment allowance, together with all sixteen pause references.
+    expect(new TextEncoder().encode(JSON.stringify(paused)).length).toBeLessThan(8 << 10);
   }
   const alice = t.withIdentity({ subject: "alice" });
   for (let i = 1; i < HOST_LIMITS.queueLength.max; i++) {
@@ -628,7 +642,7 @@ it("cancel commits a full approval-blocked backlog with maximum limits, children
       text: "over capacity",
       requestKey: "over-capacity",
     }),
-  ).rejects.toThrow("QUEUE_LIMIT");
+  ).resolves.toEqual({ status: "rejected", code: "QUEUE_FULL" });
   const queuedWork = () =>
     t.query(
       componentsGeneric().agevex.agevexTest.queuedWork as unknown as FunctionReference<"query">,
@@ -1077,7 +1091,7 @@ it("registration queue limits govern admission before native writes", async () =
       text: "over limit",
       requestKey: "denied",
     }),
-  ).rejects.toThrow("QUEUE_LIMIT");
+  ).resolves.toEqual({ status: "rejected", code: "QUEUE_FULL" });
   state.release!();
   state.gate = undefined;
   await drain(t);
@@ -1155,11 +1169,13 @@ it("registration root lane limits bound concurrent active model slices", async (
   });
   await open(t);
   const alice = t.withIdentity({ subject: "alice" });
-  await alice.mutation(api.agents.open, {
-    agent: "Main",
-    prompt: "second root",
-    requestKey: "second-root",
-  });
+  await alice
+    .mutation(api.agents.open, {
+      agent: "Main",
+      prompt: "second root",
+      requestKey: "second-root",
+    })
+    .then(requireReceipt);
   await expect
     .poll(async () => {
       await tick(t, 100);

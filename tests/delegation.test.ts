@@ -1,3 +1,4 @@
+import { requireReceipt } from "./receipt.js";
 // Bounded asynchronous delegation: Main -> Researcher -> Main.
 //
 // Every case runs against the real registered coordinator, the real component
@@ -36,11 +37,14 @@ type RunView = {
   events: { runId: string; agent: string; phase: string; at: number; errorCode: string | null }[];
 };
 const open = (t: Convex, prompt = "research this", requestKey = "r1") =>
-  t.withIdentity({ subject: "alice" }).mutation(api.agents.open, {
-    agent: "Main",
-    prompt,
-    requestKey,
-  });
+  t
+    .withIdentity({ subject: "alice" })
+    .mutation(api.agents.open, {
+      agent: "Main",
+      prompt,
+      requestKey,
+    })
+    .then(requireReceipt);
 const runs = (t: Convex, threadId: string, numItems = 20, cursor: string | null = null) =>
   t
     .withIdentity({ subject: "alice" })

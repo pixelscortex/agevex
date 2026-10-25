@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { requireReceipt } from "./receipt.js";
 import { it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { setup, api, internal, components, state } from "./setup.js";
 
@@ -16,7 +17,7 @@ it("continues a native tool step in a separate bounded slice", async () => {
   const t = setup();
   const alice = t.withIdentity({ subject: "alice" });
   state.tools = true;
-  const receipt = await alice.mutation(api.agents.open, input);
+  const receipt = await alice.mutation(api.agents.open, input).then(requireReceipt);
   await drain(t);
   expect(state.calls).toHaveLength(2);
   const messages = await alice.query(api.agents.messages, {
@@ -37,7 +38,7 @@ it("queues while running and wakes transactionally without losing a busy arrival
   state.gate = new Promise((resolve) => {
     state.release = resolve;
   });
-  const receipt = await alice.mutation(api.agents.open, input);
+  const receipt = await alice.mutation(api.agents.open, input).then(requireReceipt);
   const running = t.action(internal.agents.runTurn, {
     assignmentId: receipt.assignmentId,
     turnToken: `${receipt.assignmentId}:0`,
@@ -67,7 +68,7 @@ it("queues while running and wakes transactionally without losing a busy arrival
 it("serializes a finish versus arrival race into exactly one next owner", async () => {
   const t = setup();
   const alice = t.withIdentity({ subject: "alice" });
-  const receipt = await alice.mutation(api.agents.open, input);
+  const receipt = await alice.mutation(api.agents.open, input).then(requireReceipt);
   const args = { assignmentId: receipt.assignmentId, turnToken: `${receipt.assignmentId}:0` };
   await t.mutation(components.agevex.queue.claim, args);
   await Promise.all([
@@ -91,7 +92,7 @@ it("aborts a non-finishing provider at 90 seconds and does not retry", async () 
   const t = setup();
   const alice = t.withIdentity({ subject: "alice" });
   state.hang = true;
-  const receipt = await alice.mutation(api.agents.open, input);
+  const receipt = await alice.mutation(api.agents.open, input).then(requireReceipt);
   const running = t.action(internal.agents.runTurn, {
     assignmentId: receipt.assignmentId,
     turnToken: `${receipt.assignmentId}:0`,

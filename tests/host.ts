@@ -44,6 +44,11 @@ const toolNames = (tools: unknown): string[] =>
   Array.isArray(tools) ? tools.map((entry) => (entry as { name?: string }).name ?? "?") : [];
 
 export const state = {
+  deferred: false,
+  deferredCount: 1,
+  deferredQuestion: "Which option?",
+  overrideCalls: [] as string[],
+  overrideTools: false,
   dropPing: false,
   forbidTranscriptReads: false,
   transcriptReads: 0,
@@ -72,6 +77,7 @@ export const state = {
   echoGate: undefined as undefined | Promise<void>,
   cleanupFails: false,
   childApproval: false,
+  childDeferred: false,
   once: false,
   onceCalls: 0,
   onceContext: undefined as ToolContext | undefined,
@@ -184,6 +190,15 @@ model.doStream = async (args) => {
         input: '{"text":"echoed"}',
       })),
     ]).doStream(args);
+  if (state.deferred && state.calls.length === 1)
+    return scriptedModel([
+      Array.from({ length: state.deferredCount }, (_, i) => ({
+        type: "tool-call" as const,
+        toolCallId: `question-${i}`,
+        toolName: "askHuman",
+        input: JSON.stringify({ question: state.deferredQuestion }),
+      })),
+    ]).doStream(args);
   if (state.tools && state.calls.length === 1) return toolModel.doStream(args);
   const prompt = JSON.stringify(
     args.prompt
@@ -222,6 +237,20 @@ childModel.doStream = async (args) => {
   if (state.childGate) await state.childGate;
   if (state.childFail) throw new Error("private child provider error must not leak");
   if (
+    state.childDeferred &&
+    state.offers.filter((offer) => offer.agent === "Researcher").length === 1
+  )
+    return scriptedModel([
+      [
+        {
+          type: "tool-call",
+          toolCallId: "child-question",
+          toolName: "askHuman",
+          input: '{"question":"Child question?"}',
+        },
+      ],
+    ]).doStream(args);
+  if (
     (state.childApproval || state.childToolSlices > 0) &&
     JSON.stringify(args.prompt).includes("keep slicing") &&
     state.offers.filter((offer) => offer.agent === "Researcher").length <=
@@ -248,8 +277,9 @@ export const researcher = new Agent(components.agent, {
 // Opt-in fixture tools preserve the tool-less child promised by existing tests.
 Object.defineProperty(researcher, "declaredTools", {
   get: () =>
-    state.childApproval || state.childToolSlices > 0
+    state.childApproval || state.childToolSlices > 0 || state.childDeferred
       ? {
+          askHuman: tool({ inputSchema: z.object({ question: z.string() }) }),
           echo: tool({
             inputSchema: z.object({ text: z.string() }),
             needsApproval: () => state.childApproval,
@@ -262,6 +292,7 @@ export const main = new Agent(components.agent, {
   name: "Main",
   languageModel: model,
   tools: {
+    askHuman: tool({ inputSchema: z.object({ question: z.string() }) }),
     nativeNested: createTool({
       inputSchema: z.object({}),
       execute: async (ctx, _input, options) => {
@@ -333,10 +364,23 @@ const runTurnRef = makeFunctionReference<"action", TurnArgs, null>(
   "agents:runTurn",
 ) as unknown as FunctionReference<"action", "internal", TurnArgs, null>;
 
+const overrideModel = (id: string) => {
+  const override = mockModel({ content: [{ type: "text", text: `model ${id}` }] });
+  const native = override.doStream.bind(override);
+  override.doStream = async (args) => {
+    state.overrideCalls.push(id);
+    if (state.overrideTools && state.overrideCalls.length === 1) return toolModel.doStream(args);
+    return native(args);
+  };
+  return override;
+};
+
 export function fixtureRuntime(limits?: Registration["limits"]) {
   return registerAgent(components.agevex, {
     limits,
     agents: [main],
+    models: overrideModel,
+    modelAllowlist: ["first", "second", "😀".repeat(100), "x".repeat(90), "x".repeat(91)],
     refs: {
       runTurn: () => runTurnRef,
       // The fixture app's generated api is generic and enumerates no exported
@@ -387,7 +431,7 @@ export const nestedMutation: RegisteredMutation<"internal", {}, null> = internal
 });
 const { runTurn, coordinate } = runtime.internalFunctions();
 export { runTurn, coordinate };
-export const { open, send, respond, cancel, messages, activity, delegations } =
+export const { open, send, respond, answer, cancel, messages, streams, activity, delegations } =
   runtime.authorizedEndpoints();
 
 /**

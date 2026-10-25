@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { requireReceipt } from "./receipt.js";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { createFunctionHandle } from "convex/server";
 import { getConvexSize } from "convex/values";
@@ -18,11 +19,13 @@ afterEach(() => {
 const drain = (t: Test) => t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100), 2000);
 const owner = (t: Test) => t.withIdentity({ subject: "alice" });
 const open = (t: Test, key = "bounded-reads") =>
-  owner(t).mutation(api.agents.open, {
-    agent: "Main",
-    prompt: "bounded reads",
-    requestKey: key,
-  });
+  owner(t)
+    .mutation(api.agents.open, {
+      agent: "Main",
+      prompt: "bounded reads",
+      requestKey: key,
+    })
+    .then(requireReceipt);
 const execution = (t: Test, assignmentId: string) =>
   t.query(components.agevex.queue.execution, { assignmentId });
 // Test-only inspection of the small native fixtures; runtime never scans history.
@@ -177,7 +180,7 @@ it("respond resolves two approvals separately and resumes from the final native 
       approvalId: "approval-0",
       approved: true,
     }),
-  ).rejects.toThrow("APPROVAL_ALREADY_RESOLVED");
+  ).resolves.toEqual(first);
   const last = await alice.mutation(api.agents.respond, {
     threadId: turn.threadId,
     approvalId: "approval-1",
@@ -203,6 +206,46 @@ it("respond resolves two approvals separately and resumes from the final native 
     queuedMessages: 0,
     errorCode: null,
   });
+});
+
+it.each([true, false])(
+  "respond replays its original native result after a %s decision resumes the call",
+  async (approved) => {
+    const t = setup(undefined, undefined, true);
+    const turn = await request(t, 1);
+    const args = {
+      threadId: turn.threadId,
+      approvalId: "approval-0",
+      approved,
+      reason: "original reason",
+    };
+    const result = await owner(t).mutation(api.agents.respond, args);
+    await drain(t);
+    const before = await nativePage(t, turn.threadId);
+    const calls = state.calls.length;
+    await expect(owner(t).mutation(api.agents.respond, args)).resolves.toEqual(result);
+    expect(await nativePage(t, turn.threadId)).toEqual(before);
+    await drain(t);
+    expect(state.calls).toHaveLength(calls);
+  },
+);
+
+it("respond rejects a changed decision or reason with typed KEY_CONFLICT and preserves the original result", async () => {
+  const t = setup(undefined, undefined, true);
+  const turn = await request(t, 1);
+  const args = { threadId: turn.threadId, approvalId: "approval-0", approved: true };
+  const result = await owner(t).mutation(api.agents.respond, args);
+  await drain(t);
+  const before = await nativePage(t, turn.threadId);
+  for (const change of [{ approved: false }, { reason: "changed" }, { reason: "" }])
+    await expect(
+      owner(t).mutation(api.agents.respond, { ...args, ...change }),
+    ).rejects.toMatchObject({ data: { code: "KEY_CONFLICT" } });
+  await expect(owner(t).mutation(api.agents.respond, args)).resolves.toEqual(result);
+  await expect(
+    t.withIdentity({ subject: "bob" }).mutation(api.agents.respond, args),
+  ).rejects.toThrow("FORBIDDEN");
+  expect(await nativePage(t, turn.threadId)).toEqual(before);
 });
 
 it("respond preserves provider-executed flags and rejects other owners", async () => {
@@ -316,7 +359,7 @@ it("an oversized approval step commits APPROVAL_LIMIT before the native save and
       text: "must stay blocked",
       requestKey: "overflow-followup",
     }),
-  ).rejects.toThrow("RECOVERY_REQUIRED");
+  ).resolves.toEqual({ status: "rejected", code: "RECOVERY_REQUIRED" });
   await drain(t);
   expect(state.transcriptReads).toBe(0);
   expect(state.calls).toHaveLength(0);
@@ -687,9 +730,9 @@ it("kind list preserves Agent's 100-stream bound and startOrder", async () => {
       stepOrder: 0,
     });
   const read = (startOrder?: number) =>
-    owner(t).query(api.agents.messages, {
+    owner(t).query(api.agents.streams, {
       threadId: turn.threadId,
-      paginationOpts: { cursor: null, numItems: 1 },
+
       streamArgs: { kind: "list", ...(startOrder !== undefined ? { startOrder } : {}) },
     });
   const result = await read();
@@ -706,9 +749,9 @@ it("kind list preserves Agent's 100-stream bound and startOrder", async () => {
 it("40 repeated delta cursors read one owned stream within the metadata and delta budget", async () => {
   const t = setup(undefined, undefined, true);
   const turn = await activeStream(t);
-  const result = await owner(t).query(api.agents.messages, {
+  const result = await owner(t).query(api.agents.streams, {
     threadId: turn.threadId,
-    paginationOpts: { cursor: null, numItems: 1 },
+
     streamArgs: {
       kind: "deltas",
       cursors: Array.from({ length: 40 }, () => ({ streamId: turn.streamId, cursor: 0 })),
@@ -723,9 +766,9 @@ it("40 repeated delta cursors read one owned stream within the metadata and delt
     stepOrder: 0,
   });
   await expect(
-    owner(t).query(api.agents.messages, {
+    owner(t).query(api.agents.streams, {
       threadId: turn.threadId,
-      paginationOpts: { cursor: null, numItems: 1 },
+
       streamArgs: { kind: "deltas", cursors: [{ streamId: other, cursor: 0 }] },
     }),
   ).rejects.toThrow("Stream does not belong to the given thread");
@@ -753,9 +796,9 @@ it("forty distinct delta cursors read at most two native streams and retain the 
       end: 1,
       parts: [{ type: "text-delta", id: "text", delta: "chunk" }],
     });
-  const result = await owner(t).query(api.agents.messages, {
+  const result = await owner(t).query(api.agents.streams, {
     threadId: turn.threadId,
-    paginationOpts: { cursor: null, numItems: 1 },
+
     streamArgs: {
       kind: "deltas",
       cursors: [
@@ -794,9 +837,9 @@ it("eight 1020 KiB stream docs and nine large deltas stay within transaction rea
       end: i + 1,
       parts: [{ type: "text-delta", id: "text", delta: "x".repeat(1020 << 10) }],
     });
-  const result = await owner(t).query(api.agents.messages, {
+  const result = await owner(t).query(api.agents.streams, {
     threadId: turn.threadId,
-    paginationOpts: { cursor: null, numItems: 1 },
+
     streamArgs: { kind: "deltas", cursors: streamIds.map((streamId) => ({ streamId, cursor: 0 })) },
   });
   if (result.streams?.kind !== "deltas") throw new Error("EXPECTED_DELTAS");
@@ -810,78 +853,82 @@ it("eight 1020 KiB stream docs and nine large deltas stay within transaction rea
   await drain(t);
 });
 
-it.each([3, LIMITS.streamCursors - 1])(
-  "combined ten 850 KiB results four 1020 KiB streams and nine deltas on cursor %i leave 2 MiB margin",
-  async (deltaIndex) => {
-    // Enforce the promised headroom, rather than just Convex's 16 MiB ceiling.
-    const t = setup(undefined, undefined, { bytesRead: 14 << 20 });
+it.each(["messages", "streams"] as const)(
+  "%s has its own transaction budget with six near-1 MiB branch heads, two streams and nine deltas",
+  async (reader) => {
+    const t = setup(undefined, undefined, true);
     const turn = await activeStream(t, 1020 << 10);
-    const streamIds = [turn.streamId];
-    for (let i = 1; i < 4; i++)
-      streamIds.push(
-        await t.mutation(components.agent.streams.create, {
-          threadId: turn.threadId,
-          order: i + 1,
-          stepOrder: 0,
-          providerOptions: { huge: { value: "x".repeat(1020 << 10) } },
-        }),
-      );
+    const other = await t.mutation(components.agent.streams.create, {
+      threadId: turn.threadId,
+      order: 2,
+      stepOrder: 0,
+      providerOptions: { huge: { value: "x".repeat(1020 << 10) } },
+    });
     for (let i = 0; i < 9; i++)
       await t.mutation(components.agent.streams.addDelta, {
-        streamId: streamIds[deltaIndex],
+        streamId: other,
         start: i,
         end: i + 1,
         parts: [{ type: "text-delta", id: "text", delta: "x".repeat(1020 << 10) }],
       });
-    const calls = await t.run((ctx) =>
-      saveMessage(ctx, components.agent, {
-        threadId: turn.threadId,
-        order: "next",
-        message: {
-          role: "assistant",
-          content: Array.from({ length: 10 }, (_, i) => ({
-            type: "tool-call" as const,
-            toolCallId: `large-${i}`,
-            toolName: "echo",
-            input: {},
-          })),
-        },
-      }),
-    );
-    for (let i = 0; i < 10; i++)
-      await t.run((ctx) =>
-        saveMessage(ctx, components.agent, {
+    // One large document in EVERY native merge branch, not six documents in
+    // the same branch. Without counting all six prefetches the former combined
+    // query exceeds 16 MiB. Each save itself remains a separate transaction.
+    for (const status of ["success", "pending", "failed"] as const)
+      for (const tool of [false, true]) {
+        const saved = await t.mutation(components.agent.messages.addMessages, {
           threadId: turn.threadId,
-          promptMessageId: calls.messageId,
-          message: {
-            role: "tool",
-            content: [
-              {
-                type: "tool-result",
-                toolCallId: `large-${i}`,
-                toolName: "echo",
-                output: { type: "text", value: "x".repeat(850 << 10) },
-              },
-            ],
-          },
-        }),
-      );
-    const { result, metrics } = await owner(t).run(async (ctx) => {
-      const result = await ctx.runQuery(api.agents.messages, {
-        threadId: turn.threadId,
-        paginationOpts: { cursor: null, numItems: 100 },
-        streamArgs: {
-          kind: "deltas",
-          cursors: streamIds.map((streamId) => ({ streamId, cursor: 0 })),
-        },
+          order: "next",
+          failPendingSteps: false,
+          messages: [
+            {
+              status,
+              message: tool
+                ? {
+                    role: "tool",
+                    content: [
+                      {
+                        type: "tool-result",
+                        toolCallId: `large-${status}`,
+                        toolName: "echo",
+                        output: { type: "text", value: "x".repeat(1020 << 10) },
+                      },
+                    ],
+                  }
+                : { role: "user", content: "x".repeat(510 << 10) },
+            },
+          ],
+        });
+        expect(getConvexSize(saved.messages[0])).toBeGreaterThan(1010 << 10);
+        expect(getConvexSize(saved.messages[0])).toBeLessThan(1 << 20);
+      }
+    const streamArgs = {
+      kind: "deltas" as const,
+      cursors: [turn.streamId, other].map((streamId) => ({ streamId, cursor: 0 })),
+    };
+    if (reader === "messages") {
+      const { result, bytes } = await owner(t).run(async (ctx) => {
+        const result = await ctx.runQuery(api.agents.messages, {
+          threadId: turn.threadId,
+          paginationOpts: { cursor: null, numItems: LIMITS.messagePage },
+        });
+        return { result, bytes: (await ctx.meta.getTransactionMetrics()).bytesRead.used };
       });
-      return { result, metrics: await ctx.meta.getTransactionMetrics() };
-    });
-    expect(result.page.length).toBeGreaterThan(0);
-    expect(result.isDone).toBe(false);
-    expect(metrics.bytesRead.used).toBeLessThanOrEqual(13.75 * (1 << 20));
-    if (result.streams?.kind !== "deltas") throw new Error("EXPECTED_DELTAS");
-    expect(result.streams.deltas).toHaveLength(deltaIndex < LIMITS.streamCursors ? 9 : 0);
+      expect(result.page.length).toBeGreaterThan(0);
+      expect(result.isDone).toBe(false);
+      expect(bytes).toBeLessThanOrEqual(7.75 * (1 << 20));
+    } else {
+      const { result, bytes } = await owner(t).run(async (ctx) => {
+        const result = await ctx.runQuery(api.agents.streams, {
+          threadId: turn.threadId,
+          streamArgs,
+        });
+        return { result, bytes: (await ctx.meta.getTransactionMetrics()).bytesRead.used };
+      });
+      if (result.streams?.kind !== "deltas") throw new Error("EXPECTED_DELTAS");
+      expect(result.streams.deltas).toHaveLength(9);
+      expect(bytes).toBeLessThanOrEqual(11.25 * (1 << 20));
+    }
     await owner(t).mutation(api.agents.cancel, { threadId: turn.threadId });
     await drain(t);
   },
@@ -908,9 +955,9 @@ it("native byte-bounded delta pages preserve continuation", async () => {
   const seen = new Set<number>();
   let cursor = 0;
   for (let pages = 0; pages < 12; pages++) {
-    const result = await owner(t).query(api.agents.messages, {
+    const result = await owner(t).query(api.agents.streams, {
       threadId: turn.threadId,
-      paginationOpts: { cursor: null, numItems: 1 },
+
       streamArgs: { kind: "deltas", cursors: [{ streamId: turn.streamId, cursor }] },
     });
     if (result.streams?.kind !== "deltas") throw new Error("EXPECTED_DELTAS");
@@ -973,6 +1020,131 @@ it("endCursor [] over 151 messages respects the row cap and supports reactive sp
   expect(split.page.length).toBeGreaterThan(0);
   expect(split.page.length).toBeLessThanOrEqual(LIMITS.messagePage);
   expect(page.page.map((m) => m.id)).toEqual(expect.arrayContaining(split.page.map((m) => m.id)));
+  await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
+  await drain(t);
+});
+
+it("provider continuation consumes its decision atomically and permits a second approval", async () => {
+  const t = setup(undefined, undefined, true);
+  const turn = await request(t, 1, true);
+  await owner(t).mutation(api.agents.respond, {
+    threadId: turn.threadId,
+    approvalId: "approval-0",
+    approved: true,
+  });
+  const queued = (await execution(t, turn.assignmentId))!;
+  await t.mutation(components.agevex.queue.claim, {
+    assignmentId: turn.assignmentId,
+    turnToken: queued.turnToken!,
+  });
+  const args = {
+    assignmentId: turn.assignmentId,
+    executionId: queued.turnToken!,
+    cancellationEpoch: queued.cancellationEpoch,
+    ...(await nativeHandles(t)),
+    args: {
+      threadId: turn.threadId,
+      promptMessageId: queued.promptMessageId,
+      failPendingSteps: false,
+      messages: [
+        {
+          message: {
+            role: "assistant",
+            content: [
+              {
+                type: "tool-call",
+                toolCallId: "next-call",
+                toolName: "echo",
+                input: {},
+                providerExecuted: true,
+              },
+              {
+                type: "tool-approval-request",
+                approvalId: "next-approval",
+                toolCallId: "next-call",
+              },
+            ],
+          },
+        },
+      ],
+    },
+  };
+  await t.mutation(components.agevex.queue.write, args);
+  const next = (await execution(t, turn.assignmentId))!;
+  expect(next.errorCode).toBeNull();
+  expect(next.approvals?.requests).toHaveLength(1);
+  await owner(t).mutation(api.agents.respond, {
+    threadId: turn.threadId,
+    approvalId: "next-approval",
+    approved: false,
+  });
+  await owner(t).mutation(api.agents.cancel, { threadId: turn.threadId });
+  await drain(t);
+  const native = JSON.stringify((await nativePage(t, turn.threadId)).page);
+  expect(native).not.toContain('"toolCallId":"call-0","toolName":"echo","output"');
+  const results = (await nativePage(t, turn.threadId)).page.flatMap((doc) =>
+    doc.message?.role === "tool"
+      ? doc.message.content.filter((part) => part.type === "tool-result")
+      : [],
+  );
+  expect(results).toMatchObject([{ toolCallId: "next-call" }]);
+});
+
+it("cancel after a consumed provider approval appends no result or decision", async () => {
+  const t = setup(undefined, undefined, true);
+  const turn = await request(t, 1, true);
+  await owner(t).mutation(api.agents.respond, {
+    threadId: turn.threadId,
+    approvalId: "approval-0",
+    approved: false,
+  });
+  const queued = (await execution(t, turn.assignmentId))!;
+  await t.mutation(components.agevex.queue.claim, {
+    assignmentId: turn.assignmentId,
+    turnToken: queued.turnToken!,
+  });
+  await t.mutation(components.agevex.queue.write, {
+    assignmentId: turn.assignmentId,
+    executionId: queued.turnToken!,
+    cancellationEpoch: queued.cancellationEpoch,
+    ...(await nativeHandles(t)),
+    args: {
+      threadId: turn.threadId,
+      promptMessageId: queued.promptMessageId,
+      failPendingSteps: false,
+      messages: [
+        { message: { role: "assistant", content: [{ type: "text", text: "provider finished" }] } },
+      ],
+    },
+  });
+  const before = (await nativePage(t, turn.threadId)).page;
+  await owner(t).mutation(api.agents.cancel, { threadId: turn.threadId });
+  await drain(t);
+  expect((await nativePage(t, turn.threadId)).page).toEqual(before);
+});
+
+it("streams rejects non-finite, negative and fractional start orders and cursors", async () => {
+  const t = setup();
+  const receipt = await open(t);
+  const streamId = await t.mutation(components.agent.streams.create, {
+    threadId: receipt.threadId,
+    order: 1,
+    stepOrder: 0,
+  });
+  for (const value of [NaN, Infinity, -1, 1.5]) {
+    await expect(
+      owner(t).query(api.agents.streams, {
+        threadId: receipt.threadId,
+        streamArgs: { kind: "list", startOrder: value },
+      }),
+    ).rejects.toThrow("INVALID_STREAM_ORDER");
+    await expect(
+      owner(t).query(api.agents.streams, {
+        threadId: receipt.threadId,
+        streamArgs: { kind: "deltas", cursors: [{ streamId, cursor: value }] },
+      }),
+    ).rejects.toThrow("INVALID_STREAM_CURSOR");
+  }
   await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
   await drain(t);
 });

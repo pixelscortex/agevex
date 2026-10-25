@@ -1,3 +1,4 @@
+import { requireReceipt } from "../receipt.js";
 import { writeFile } from "node:fs/promises";
 import { it, expect } from "vite-plus/test";
 import { convexTest } from "convex-test";
@@ -32,15 +33,18 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
         live.reviewerCalls = 0;
         live.rootCalls = 0;
         live.childCalls = 0;
-        const receipt = await owner.mutation(api.agents.open, {
-          agent: "Main",
-          prompt: depth
-            ? "Do a depth-two task: delegate one short task to Builder, which delegates to Reviewer, then answer after Builder completes."
-            : delegation
-              ? "Delegate a short task to Researcher, then delegate one more short task after its result, then answer."
-              : "Say hello in three words.",
-          requestKey: scenario,
-        });
+        const receipt = await owner
+          .mutation(api.agents.open, {
+            agent: "Main",
+            prompt: depth
+              ? "Do a depth-two task: delegate one short task to Builder, which delegates to Reviewer, then answer after Builder completes."
+              : delegation
+                ? "Delegate a short task to Researcher, then delegate one more short task after its result, then answer."
+                : "Say hello in three words.",
+            requestKey: scenario,
+            ...(scenario === "plain" ? { models: { Main: modelId } } : {}),
+          })
+          .then(requireReceipt);
         await expect
           .poll(
             async () => {

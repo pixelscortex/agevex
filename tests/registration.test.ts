@@ -43,6 +43,7 @@ it("registers a Main -> Researcher graph and rejects an unusable one", () => {
   expect(Object.keys(runtime.internalFunctions()).sort()).toEqual(["coordinate", "runTurn"]);
   expect(Object.keys(runtime.authorizedEndpoints()).sort()).toEqual([
     "activity",
+    "answer",
     "cancel", // Phase 1a adds root-only cancellation.
     "delegations",
     "messages",
@@ -50,6 +51,7 @@ it("registers a Main -> Researcher graph and rejects an unusable one", () => {
     "respond",
     "runTree",
     "send",
+    "streams",
   ]);
   expect(() => registerAgent(components.agevex, { ...policy, agents: [main, main] })).toThrow(
     "DUPLICATE_AGENT_NAME",
@@ -188,3 +190,17 @@ it.each(Object.entries(HOST_LIMITS))(
     ).toThrow(`INVALID_LIMITS: ${key} exceeds maximum ${max}`);
   },
 );
+
+it("invalid model resolver registrations fail before accepting work", () => {
+  for (const options of [
+    { models: () => mockModel() },
+    { modelAllowlist: ["free"] },
+    { models: () => mockModel(), modelAllowlist: ["free", "free"] },
+    { models: () => mockModel(), modelAllowlist: [""] },
+    { models: () => mockModel(), modelAllowlist: ["x".repeat(201)] },
+    { models: () => mockModel(), modelAllowlist: Array.from({ length: 101 }, (_, i) => `m${i}`) },
+  ])
+    expect(() =>
+      registerAgent(components.agevex, { ...policy, agents: [main], ...options }),
+    ).toThrow("INVALID_MODEL_REGISTRATION");
+});

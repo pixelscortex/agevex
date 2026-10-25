@@ -23,10 +23,12 @@ import type {
   coordinate,
   delegations,
   messages,
+  streams,
   open,
   runTurn,
   send,
   respond,
+  answer,
 } from "../host.js";
 import type * as promoted from "./promoted.js";
 import {
@@ -60,8 +62,10 @@ export const api = generatedApi as unknown as {
     open: ReferenceOf<typeof open>;
     send: ReferenceOf<typeof send>;
     respond: ReferenceOf<typeof respond>;
+    answer: ReferenceOf<typeof answer>;
     cancel: ReferenceOf<typeof cancel>;
     messages: ReferenceOf<typeof messages>;
+    streams: ReferenceOf<typeof streams>;
     activity: ReferenceOf<typeof activity>;
     delegations: ReferenceOf<typeof delegations>;
   };

@@ -6,14 +6,17 @@ Workpool: root parallelism 2, child parallelism 4. Hosts export `runTurn` and
 `coordinate`; no host Workflow exports are required.
 
 - `assignments`: ownership, native thread references, workflow id, current run,
-  one execution token and cancellation epoch.
+  one execution token and cancellation epoch, the next-run model policy, and
+  bounded native approval/deferred-call references.
 - `inbox`: FIFO native message references and kinds. Only `user` and `result`
   are produced in Phase 1a. A reserved row stays here until claim, so approvals
   can block generation without losing work.
 - `runs`: one accepted user request and all caused work; launch/hop counters,
-  cancellation and outstanding result deliveries.
+  cancellation, outstanding result deliveries, and an immutable per-agent model
+  snapshot read by every turn claim.
 - `receipts`: one shared `(scope, key)` ledger for request acceptance and tools;
-  input fingerprint, claim fence, lease, status, bounded result and TTL.
+  input fingerprint, claim fence, lease, status, bounded result and TTL. Request
+  results retain the original inbox position for typed duplicate receipts.
 - `subagentRuns`: child linkage, verified native result reference, root epoch,
   delivery capability and bounded transition history.
 

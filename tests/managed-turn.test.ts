@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { requireReceipt } from "./receipt.js";
 import { it, expect, vi, afterEach, beforeEach } from "vite-plus/test";
 import { setup, api, internal, components, state } from "./setup.js";
 
@@ -15,20 +16,26 @@ const drain = (t: ReturnType<typeof setup>) =>
 it("deduplicates open/send and conflicts before a native write", async () => {
   const t = setup();
   const alice = t.withIdentity({ subject: "alice" });
-  const receipt = await alice.mutation(api.agents.open, input);
-  expect(await alice.mutation(api.agents.open, input)).toEqual(receipt);
-  await expect(alice.mutation(api.agents.open, { ...input, prompt: "changed" })).rejects.toThrow(
-    "KEY_CONFLICT",
-  );
+  const receipt = await alice.mutation(api.agents.open, input).then(requireReceipt);
+  expect(await alice.mutation(api.agents.open, input).then(requireReceipt)).toEqual({
+    ...receipt,
+    status: "duplicate",
+  });
+  await expect(alice.mutation(api.agents.open, { ...input, prompt: "changed" })).resolves.toEqual({
+    status: "rejected",
+    code: "KEY_CONFLICT",
+  });
   const send = { threadId: receipt.threadId, text: "second boundary", requestKey: "second" };
   const second = await alice.mutation(api.agents.send, send);
-  expect(await alice.mutation(api.agents.send, send)).toEqual(second);
-  await expect(alice.mutation(api.agents.send, { ...send, text: "changed" })).rejects.toThrow(
-    "KEY_CONFLICT",
-  );
-  await expect(alice.mutation(api.agents.send, { ...send, requestKey: "first" })).rejects.toThrow(
-    "KEY_CONFLICT",
-  );
+  expect(await alice.mutation(api.agents.send, send)).toEqual({ ...second, status: "duplicate" });
+  await expect(alice.mutation(api.agents.send, { ...send, text: "changed" })).resolves.toEqual({
+    status: "rejected",
+    code: "KEY_CONFLICT",
+  });
+  await expect(alice.mutation(api.agents.send, { ...send, requestKey: "first" })).resolves.toEqual({
+    status: "rejected",
+    code: "KEY_CONFLICT",
+  });
   const messages = await alice.query(api.agents.messages, {
     threadId: receipt.threadId,
     paginationOpts: { cursor: null, numItems: 20 },
@@ -40,7 +47,7 @@ it("queues busy/concurrent arrivals, anchors prompts and wakes after idle", asyn
   vi.useFakeTimers();
   const t = setup();
   const alice = t.withIdentity({ subject: "alice" });
-  const receipt = await alice.mutation(api.agents.open, input);
+  const receipt = await alice.mutation(api.agents.open, input).then(requireReceipt);
   await Promise.all(
     ["later two", "later three"].map((text, i) =>
       alice.mutation(api.agents.send, {
@@ -78,7 +85,7 @@ it("duplicate dispatch/finalization and stale tokens never take ownership", asyn
   vi.useFakeTimers();
   const t = setup();
   const alice = t.withIdentity({ subject: "alice" });
-  const receipt = await alice.mutation(api.agents.open, input);
+  const receipt = await alice.mutation(api.agents.open, input).then(requireReceipt);
   const args = { assignmentId: receipt.assignmentId, turnToken: `${receipt.assignmentId}:0` };
   await t.action(internal.agents.runTurn, { ...args, turnToken: "stale" });
   await Promise.all([t.action(internal.agents.runTurn, args), vi.advanceTimersByTimeAsync(100)]);
@@ -96,7 +103,7 @@ it("generation failure is sanitized, blocks sends and never retries", async () =
   const t = setup();
   const alice = t.withIdentity({ subject: "alice" });
   state.fail = true;
-  const receipt = await alice.mutation(api.agents.open, input);
+  const receipt = await alice.mutation(api.agents.open, input).then(requireReceipt);
   await drain(t);
   expect(state.calls).toHaveLength(1);
   expect(await alice.query(api.agents.activity, { threadId: receipt.threadId })).toMatchObject({
@@ -114,20 +121,23 @@ it("generation failure is sanitized, blocks sends and never retries", async () =
       text: "must rollback",
       requestKey: "blocked",
     }),
-  ).rejects.toThrow("RECOVERY_REQUIRED");
+  ).resolves.toEqual({ status: "rejected", code: "RECOVERY_REQUIRED" });
   const after = await alice.query(api.agents.messages, {
     threadId: receipt.threadId,
     paginationOpts: { cursor: null, numItems: 20 },
   });
   expect(after.page).toEqual(before.page);
-  expect(await alice.mutation(api.agents.open, input)).toEqual(receipt);
+  expect(await alice.mutation(api.agents.open, input).then(requireReceipt)).toEqual({
+    ...receipt,
+    status: "duplicate",
+  });
 });
 
 it("finalization failure becomes ambiguous without replaying native generation", async () => {
   vi.useFakeTimers();
   const t = setup("finish");
   const alice = t.withIdentity({ subject: "alice" });
-  const receipt = await alice.mutation(api.agents.open, input);
+  const receipt = await alice.mutation(api.agents.open, input).then(requireReceipt);
   await drain(t);
   expect(state.calls).toHaveLength(1);
   expect(await alice.query(api.agents.activity, { threadId: receipt.threadId })).toMatchObject({
@@ -145,7 +155,7 @@ it("stalled detection blocks an owner rather than stealing or replaying it", asy
   vi.useFakeTimers();
   const t = setup();
   const alice = t.withIdentity({ subject: "alice" });
-  const receipt = await alice.mutation(api.agents.open, input);
+  const receipt = await alice.mutation(api.agents.open, input).then(requireReceipt);
   const args = { assignmentId: receipt.assignmentId, turnToken: `${receipt.assignmentId}:0` };
   expect(await t.mutation(components.agevex.queue.claim, args)).not.toBeNull();
   await vi.advanceTimersByTimeAsync(120_000);

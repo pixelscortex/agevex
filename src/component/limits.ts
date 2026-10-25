@@ -64,7 +64,7 @@ export const HOST_LIMITS = {
  * 1 MiB placeholder) are NEVER read by cancel; cleanup runs separately.
  * Subagent rows stay <=4 KiB: names/subjects/groups <=200 UTF-16 units,
  * hashed tool-call dedup keys, ids, counters and <=4 small events. Assignments
- * allow <=8 KiB including the 16 recorded fixed-size approval keys.
+ * allow <=8 KiB including the 16 recorded fixed-size approval/deferred-call keys.
  *
  * Other proportional paths: claim drains <=152 consecutive ready rows,
  * including <=50 ready joins from its run, and reads no native bodies. Each
@@ -104,11 +104,16 @@ export const LIMITS = {
   // Bound approval coordination metadata even when native approval ids are huge:
   // requests store SHA-256 keys; resolved contains only their array offsets.
   approvalsPerPause: 16,
-  // One messages query, including BOTH transcript and streams (MiB):
-  // 0.5 transcript + 1 page overshoot + 1 merge lookahead + 2*1 stream docs
-  // + 8 Agent deltas + 1 delta overshoot + 0.25 ownership/coordination
-  // = 13.75 MiB <= 14 MiB, leaving >= 2.25 MiB below Convex's 16 MiB.
-  // Agent 0.7.7 listDeltas exposes no override for its fixed 8 MiB budget.
+  nativeCallIdLength: 1 << 20,
+  nativeEnvelopeBytes: 4 << 10,
+  // Separate read transactions, including Agent's SIX prefetched merge heads
+  // (3 statuses * tool/non-tool; Agent src/component/messages.ts:809-845).
+  // Messages: 0.5 MiB page + 1 MiB overshoot + 6*1 MiB heads + 0.25 MiB
+  // coordination = 7.75 MiB <16 MiB. Count: <=100 page rows + six heads.
+  // Stream deltas: 2*1 MiB metadata + 8 MiB native page + 1 MiB delta
+  // overshoot + 0.25 MiB coordination = 11.25 MiB <16 MiB. Agent's fixed
+  // 8 MiB page reads <=200 deltas (src/component/streams.ts:listDeltas).
+  // streams.list retains the upstream 100-metadata-row exception (spec §9b).
   streamCursors: 2,
   // The public `messages` reader takes its page size from the client. Without a
   // server-side clamp, one request for a huge page of large tool results would
@@ -129,6 +134,10 @@ export const LIMITS = {
   purgeIntervalMs: 60 * 60_000,
   streamThrottleMs: 0,
   modelRetries: 0,
+  modelOverrides: 8,
+  modelOverridesBytes: 512,
+  modelIdLength: 200,
+  modelAllowlist: 100,
 } as const;
 
 /** Only these policy bounds are tunable; internal safety/platform facts are not. */

@@ -1,3 +1,4 @@
+import { requireReceipt } from "./receipt.js";
 // One native transcript reader for every owned managed conversation.
 // These tests use the registered host endpoints and deterministic mock models;
 // no provider, key or network is involved.
@@ -28,11 +29,14 @@ const read = (t: Convex, threadId: string, subject = "alice") =>
 /** Complete one real managed delegation, then discover its child via the public query. */
 async function delegated(t: Convex) {
   state.delegate = true;
-  const { threadId } = await t.withIdentity({ subject: "alice" }).mutation(api.agents.open, {
-    agent: "Main",
-    prompt: "research this",
-    requestKey: "r1",
-  });
+  const { threadId } = await t
+    .withIdentity({ subject: "alice" })
+    .mutation(api.agents.open, {
+      agent: "Main",
+      prompt: "research this",
+      requestKey: "r1",
+    })
+    .then(requireReceipt);
   await drain(t);
   await drain(t);
   const children = await runs(t, threadId);
@@ -93,11 +97,14 @@ it("activity on a child thread is FORBIDDEN", async () => {
 it("open rejects an agent registered only as a child", async () => {
   const t = setup();
   await expect(
-    t.withIdentity({ subject: "alice" }).mutation(api.agents.open, {
-      agent: "Researcher",
-      prompt: "bypass delegation",
-      requestKey: "child-open",
-    }),
+    t
+      .withIdentity({ subject: "alice" })
+      .mutation(api.agents.open, {
+        agent: "Researcher",
+        prompt: "bypass delegation",
+        requestKey: "child-open",
+      })
+      .then(requireReceipt),
   ).rejects.toThrow("UNKNOWN_AGENT");
 });
 

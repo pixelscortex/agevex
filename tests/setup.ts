@@ -144,6 +144,11 @@ export function setup(
   limits?: Registration["limits"],
   transactionLimits: NonNullable<Parameters<typeof convexTest>[0]>["transactionLimits"] = false,
 ) {
+  state.deferred = false;
+  state.deferredCount = 1;
+  state.deferredQuestion = "Which option?";
+  state.overrideCalls.length = 0;
+  state.overrideTools = false;
   state.dropPing = false;
   state.forbidTranscriptReads = false;
   state.transcriptReads = 0;
@@ -171,6 +176,7 @@ export function setup(
   state.echoGate = undefined;
   state.cleanupFails = false;
   state.childApproval = false;
+  state.childDeferred = false;
   state.once = false;
   state.onceCalls = 0;
   state.onceContext = undefined;

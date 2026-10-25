@@ -178,6 +178,8 @@ const main = new Agent(native, {
 });
 const runtime = registerAgent(agevex, {
   agents: [main],
+  modelAllowlist: [modelId],
+  models: () => rootModel,
   refs: {
     runTurn: () =>
       makeFunctionReference<"action", TurnArgs, null>(
@@ -202,5 +204,5 @@ const runtime = registerAgent(agevex, {
   },
 });
 export const { runTurn, coordinate } = runtime.internalFunctions();
-export const { open, send, cancel, messages, activity, delegations, runTree } =
+export const { open, send, cancel, messages, streams, activity, delegations, runTree } =
   runtime.authorizedEndpoints();
