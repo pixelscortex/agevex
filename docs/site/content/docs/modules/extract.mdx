@@ -86,6 +86,42 @@ const embeddingModel = openai.embedding("text-embedding-3-small");
 Use a dedicated RAG mount/namespace containing only these bounded chunks.
 The host authorizes namespaces; file search tools use `threadId` as namespace.
 
+## Wire it into agevex
+
+Pass `extract.slot()` to `registerAgent`. With the slot set, files attached through
+`open`/`send({ files })` are no longer sent to the model as native file parts: the
+first slice of each turn admits one durable extraction per attached file (the
+module's own dedup makes replays and re-attachments free), and the model gets
+`read_file` (and `search_files` with RAG) bound to its thread and subject.
+
+```ts title="convex/agents.ts"
+import { registerAgent } from "agevex";
+import { authorizeAttached, defineExtract, directText } from "agevex/extract";
+
+export const extract = defineExtract(components.agevexExtract, {
+  agent: components.agent,
+  worker: internal.files.execute,
+  storageMetadata: internal.files.storageMetadata,
+  backends: [directText()],
+  // Lazy: `runtime` and `extract` reference each other.
+  authorize: authorizeAttached(() => runtime, components.agevex),
+});
+// The annotation breaks the circular type inference.
+export const runtime: ReturnType<typeof registerAgent> = registerAgent(components.agevex, {
+  agents: [main],
+  extract: extract.slot(),
+  // authorize, refs, ...
+});
+```
+
+`authorizeAttached` is the agevex policy for `authorize`: files must be attached to
+the exact thread (`runtime.fileAttached`, an indexed lookup, no scans) for the
+thread's own subject; thread-level operations need a matching `subject`, and the
+search namespace must equal the thread id. The durable worker has no session, so
+the owner is read from the thread's assignment. Upload with
+`runtime.registerFile(...)` in your trusted upload path. `read_file` returns
+`{ status }` until the extraction is `ready`; it never starts one.
+
 ## API
 
 Every helper taking `ctx` is async and uses a Convex action context.
@@ -157,7 +193,8 @@ for the next character throws `EXTRACT_WINDOW_TOO_SMALL`.
 
 - `extract.index(ctx, { threadId, artifactId, namespace, key })`: indexes ready artifact text; returns `{ entryId, status: "ready" | "pending", created, replacedEntry: null, usage: { tokens } }`; `entryId` may be absent while waiting.
 - `extract.search(ctx, { threadId, namespace, query, limit? })`: returns `{ text, references: { artifactId, fileId }[], usage }`; defaults to 10 results, no adjacent chunk context, and at most 64 KiB text.
-- `extract.tools({ ctx, threadId })`: returns AI SDK `read_file` and, only with RAG configured, `search_files`.
+- `extract.tools({ ctx, threadId, subject? })`: returns AI SDK `read_file` and, only with RAG configured, `search_files`. `subject` is forwarded to `authorize`.
+- `extract.slot(): ExtractSlot`: the agevex `extract` slot ([above](#wire-it-into-agevex)); `authorizeAttached(() => runtime, components.agevex)` builds the matching `authorize`.
 - `read_file({ fileId, page?, cursor? })`: reads an existing ready artifact in 64 KiB windows with file/artifact references and `next` arguments; otherwise returns `{ status }` (`missing` when absent). It does not start extraction.
 - `search_files({ query })`: searches the thread namespace with the same text bound and references as `search`.
 
@@ -259,7 +296,7 @@ than their hard maxima.
 
 ## Known limits
 
-- Hosts supply action wrappers, authorization, exact attachment records, worker/metadata exports and `tools({ ctx, threadId })` wiring.
+- Hosts supply action wrappers, authorization, exact attachment records, worker/metadata exports and `tools({ ctx, threadId })` wiring (or `extract.slot()` under agevex).
 - Failed, released and unknown extraction identities are reused without rerunning. Intentionally change a backend version or supply a different valid SHA-256 `optionsHash` to request new work. The default hash covers resolved extraction ceilings, excluding the indexing lease.
 - Windowed reads still load and parse the bounded full JSON payload in an action. Indexing covers only `doc.text`, up to 1 MiB, even when a larger artifact is readable.
 - A dedicated RAG mount/namespace is required for chunk bounds. Release hides indexed results through artifact checks; it does not delete native RAG entries. Prior-index cleanup happens on explicit replacement/recovery.

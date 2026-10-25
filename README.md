@@ -440,8 +440,10 @@ receipt until a subsequent cancel successfully settles the recorded work.
 
 ## Optional file extraction
 
-Mount `agevex/extract/convex.config` alongside the native Agent component. Core
-integration is separate; this module works independently.
+Mount `agevex/extract/convex.config` alongside the native Agent component. It
+works standalone, or under agevex via `registerAgent({ extract: extract.slot() })`
+with `authorize: authorizeAttached(() => runtime, components.agevex)`; see the
+extract docs page.
 
 ```ts
 // convex/files.ts
