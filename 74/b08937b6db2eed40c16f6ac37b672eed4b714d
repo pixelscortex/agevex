@@ -1,0 +1,24 @@
+tests/review-regressions.test.ts
+  s_d863bd773ba186::t_0ca4d872dd932a 1272,1276-1278,1292-1302
+  s_d863bd773ba186::t_fcb68bde8e8824 1303-1304
+src/component/queue.ts
+  s_d863bd773ba186::t_6cbb38d98e7aeb 434-436,544,682,780-784,1442-1443,1447-1448,1452,1469-1470
+src/component/schema.ts
+  s_d863bd773ba186::t_c1303786071546 220-223,273-275
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "74b08937b6db2eed40c16f6ac37b672eed4b714d",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
