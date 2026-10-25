@@ -22,15 +22,15 @@ distribution channel.
 
 ## What is implemented
 
-| Surface                          | What it is                                                                    |
-| -------------------------------- | ----------------------------------------------------------------------------- |
-| `Agent`                          | Additive subclass of the native Agent. Native behavior is unchanged.          |
-| `registerAgent`                  | One host registration: the managed runtime and its two internal entry points. |
-| `open` / `send`                  | Authorized acceptance of work. They return a receipt, never generated text.   |
-| `messages`                       | Authorized wrapper preserving native pagination and native stream sync.       |
-| `activity`                       | Authorized read of one thread's coordination state.                           |
-| `delegations`                    | Authorized newest-first page of one root's delegated child runs.              |
-| `agevex_delegate` + `coordinate` | The reserved managed tool and the only extra host entry point.                |
+| Surface                          | What it is                                                                            |
+| -------------------------------- | ------------------------------------------------------------------------------------- |
+| `Agent`                          | Additive subclass of the native Agent. Native behavior is unchanged.                  |
+| `registerAgent`                  | One host registration: the managed runtime and its two internal entry points.         |
+| `open` / `send`                  | Authorized acceptance of work. They return a receipt, never generated text.           |
+| `messages`                       | Authorized reader for root and child threads, with native pagination and stream sync. |
+| `activity`                       | Authorized read of one root thread's coordination state.                              |
+| `delegations`                    | Authorized newest-first page of one root's delegated child runs.                      |
+| `agevex_delegate` + `coordinate` | The reserved managed tool and the only extra host entry point.                        |
 
 `src/component` mounts **Workpool only** — not the native Agent component and
 not a Workflow. `src/test.ts`, exported as `agevex/test`, registers the
@@ -92,7 +92,7 @@ const main = new Agent(components.agent, {
 });
 
 const runtime = registerAgent(components.agevex, {
-  // Only roots are public. A child is resolved through its root's `subagents`.
+  // Only roots accept public work. Child transcripts use the same messages reader.
   agents: [main],
   refs: {
     runTurn: (): FunctionReference<"action", "internal", TurnArgs, null> => internal.agents.runTurn,
@@ -141,6 +141,27 @@ The host supplies two callbacks, and both are required:
 
 `subagents: []` with only `refs.runTurn` remains a supported root-only
 registration.
+
+## Reading root and child conversations
+
+Every managed conversation is a native Agent thread. Read root and child threads
+with the same `messages({ threadId, paginationOpts, streamArgs? })` endpoint;
+there is no opt-in flag. Get a child's `childThreadId` from its run in
+`delegations({ threadId: rootThreadId, paginationOpts })`, then pass that id to
+`messages`. `childThreadId` remains nullable defensively for the state between
+reservation and attachment, and for older rows; wait for a non-null id before
+reading it. The coordinator commits reservation and attachment together today.
+
+For either kind of thread, the host policy receives `{ operation: "messages",
+agent, threadId }` with that thread's own agent name and id. The subject returned
+by the policy must match the thread assignment's persisted owner. A child
+inherits its root owner's subject, so returning its id never grants another
+user access to its transcript.
+
+`send` and `activity` are root-only and return `FORBIDDEN` for child threads.
+Children execute through the managed coordinator; reading a child conversation
+does not let a caller enqueue another turn into it. `delegations` remains a
+root coordination read, authorized with the existing `activity` operation.
 
 ## Optional lifecycle observation
 

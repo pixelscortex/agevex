@@ -18,6 +18,7 @@ import type {
 import type { ComponentApi as AgentComponentApi } from "@convex-dev/agent/_generated/component.js";
 import type { ComponentApi } from "../../src/component/_generated/component.js";
 import type { activity, coordinate, delegations, messages, open, runTurn, send } from "../host.js";
+import type * as promoted from "./promoted.js";
 import {
   api as generatedApi,
   components as generatedComponents,
@@ -51,6 +52,12 @@ export const api = generatedApi as unknown as {
     messages: ReferenceOf<typeof messages>;
     activity: ReferenceOf<typeof activity>;
     delegations: ReferenceOf<typeof delegations>;
+  };
+  promoted: {
+    open: ReferenceOf<typeof promoted.open>;
+    send: ReferenceOf<typeof promoted.send>;
+    messages: ReferenceOf<typeof promoted.messages>;
+    activity: ReferenceOf<typeof promoted.activity>;
   };
 };
 

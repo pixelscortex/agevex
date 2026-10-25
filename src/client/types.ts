@@ -26,12 +26,12 @@ export type TurnOrigin = "user" | "subagent_result";
  * Authorization request handed to the host policy for every public read, write,
  * launch and delivery.
  *
- * The four original operations keep their meaning and normalized fields: `agent`
- * and `threadId` identify the **root** thread even in the background variants.
- * The background variants are added because a managed delegation and a result
- * delivery both act with no end user on the connection; they carry only
- * server-derived values read back out of persisted state, never anything the
- * client or the model chose.
+ * Public operations identify the thread being accessed: `messages` supplies
+ * that thread's own agent name and id for both roots and children. `open`,
+ * `send` and `activity` remain root-only. Background delegation and result
+ * delivery identify the root thread and act with no end user on the connection;
+ * they carry only server-derived values read back out of persisted state,
+ * never anything the client or the model chose.
  *
  * `ctx.auth` may be null for the background variants. A host policy must branch
  * on that explicitly and recheck the capability-validated stored principal

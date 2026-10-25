@@ -78,6 +78,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         null | {
           agent: string;
           assignmentId: string;
+          root: boolean;
           subject: string;
           threadId: string;
         },
@@ -178,6 +179,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           isDone: boolean;
           page: Array<{
             agent: string;
+            childThreadId: null | string;
             createdAt: number;
             deliveryAt: null | number;
             deliveryStatus: "pending" | "accepted" | "failed" | "blocked";

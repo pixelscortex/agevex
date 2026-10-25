@@ -20,7 +20,7 @@ import {
 import { v, type Validator } from "convex/values";
 import type { ComponentApi } from "../component/_generated/component.js";
 import { activity, receipt, subagentRun, vPaginationResult } from "../component/schema.js";
-import type { AgentEvent, Registration } from "./types.js";
+import type { AgentEvent, ManagedAgent, Registration } from "./types.js";
 
 async function observe(
   ctx: GenericMutationCtx<GenericDataModel>,
@@ -77,6 +77,22 @@ function validateInput(text: string, requestKey: string) {
 }
 
 export function authorizedEndpoints(component: ComponentApi, config: Registration) {
+  // A managed conversation is always a native thread, including a delegated
+  // conversation. Index the entire registered graph so a persisted assignment's
+  // agent name resolves to the correct native component for transcript reads.
+  // Walk recursively rather than baking today's delegation-depth limit into the
+  // reader, and visit shared agents once. Registration validates name uniqueness
+  // and graph shape before these endpoints are constructed.
+  const managedAgents = new Map<string, ManagedAgent>();
+  function include(managed: ManagedAgent) {
+    if (managedAgents.has(managed.name)) return;
+    managedAgents.set(managed.name, managed);
+    for (const child of managed.subagents) include(child);
+  }
+  for (const root of config.agents) include(root);
+
+  // Opening a new public conversation still resolves roots only. Merely being
+  // readable through an owned child thread must not expose a child as a root.
   function agent(name: string) {
     const found = config.agents.find((a) => a.name === name);
     if (!found) throw new Error("UNKNOWN_AGENT");
@@ -91,7 +107,20 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
     if (!row) throw new Error("FORBIDDEN");
     const trusted = await config.authorize(ctx, { operation, agent: row.agent, threadId });
     if (!trusted.subject || trusted.subject !== row.subject) throw new Error("FORBIDDEN");
-    return { ...row, native: agent(row.agent) };
+    // Ownership permits reading a child's transcript, not driving its managed
+    // lifecycle. Child turns belong to the coordinator's bounded delegation and
+    // settlement path; accepting a public send could start another child turn
+    // outside that path. Keep send and coordination reads (activity/delegations)
+    // root-only, while messages uses the same ownership check for every thread.
+    // The role must come from the persisted assignment, not today's root names:
+    // a later deployment can register a former child agent as a root without
+    // changing the role of any existing child thread. A name-based check would
+    // grant send/activity access to those old threads (and previously also let
+    // a shared Agent object registered as both root and child bypass the guard).
+    if (operation !== "messages" && row.root === false) throw new Error("FORBIDDEN");
+    const native = managedAgents.get(row.agent);
+    if (!native) throw new Error("UNKNOWN_AGENT");
+    return { ...row, native };
   }
   return {
     open: mutationGeneric({
@@ -211,10 +240,10 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
      * host policy first and re-checked against the persisted subject by the
      * component query.
      *
-     * Returns coordination records only. There is no child transcript endpoint,
-     * no child thread id and no execution or delivery token in the payload; the
-     * actual result text lives in the native parent transcript and is reachable
-     * through `resultMessageId`.
+     * Returns coordination records with the child's native thread id once it
+     * exists, so its owner can read that conversation through `messages`.
+     * Execution and delivery tokens stay private. The delivered result in the
+     * native parent transcript remains reachable through `resultMessageId`.
      */
     delegations: queryGeneric({
       args: { threadId: v.string(), paginationOpts: paginationOptsValidator },
