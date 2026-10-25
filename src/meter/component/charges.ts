@@ -633,8 +633,8 @@ export const deliveryResult = mutation({
  * for the rows still carrying its claim, exactly like deliveryResult(ok:false),
  * and charges no other row: a job that acknowledged its batch and then died
  * charges nothing. A job that died before claiming touched nothing, so it is
- * re-enqueued (no attempt charged) at most maxAttempts-1 consecutive times;
- * past that its due rows wait for the next event's job or retrySinks.
+ * re-enqueued (no attempt charged) up to maxAttempts-1 consecutive times; the
+ * last such crash charges one attempt to the sink's due rows (<=100).
  * Reads <=1 marker and <=100 outbox rows, never a charge row.
  */
 export const deliveryComplete = internalMutation({
@@ -660,6 +660,12 @@ export const deliveryComplete = internalMutation({
         Date.now() + backoff(context.crashes + 1),
         context.crashes + 1,
       );
+    // The last consecutive pre-claim crash: the job can evidently never run
+    // (e.g. a broken worker export), so the due rows it would have claimed
+    // take one attempt. Each such cycle is <=maxAttempts jobs and consumes an
+    // attempt, so rows still reach `failed` instead of staying due forever.
+    else
+      await failRows(ctx, await dueRows(ctx, context.sink), { rateLimited: false }, context.jobs);
     return null;
   },
 });

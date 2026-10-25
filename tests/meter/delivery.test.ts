@@ -156,3 +156,40 @@ it("a job that acknowledged its batch and then died charges no other pending row
     });
   expect(delivered.map((event) => event.externalId)).toEqual(["later"]);
 });
+
+it("a delivery worker that always dies before claiming still drives its rows to failed", async () => {
+  let runs = 0;
+  const { t, meter, component } = setup(
+    {
+      limits: { maxAttempts: 2 },
+      sinks: [{ name: "ledger", deliver: async () => {} }],
+    },
+    (functions) => ({
+      ...functions,
+      // E.g. a broken worker export after a deploy: it never reaches the claim.
+      meterDeliver: internalActionGeneric({
+        args: deliveryJob,
+        returns: v.null(),
+        handler: async () => {
+          runs++;
+          throw new Error("worker broken");
+        },
+      }),
+    }),
+  );
+  await t.run(async (ctx) => {
+    await meter
+      .scope(ctx, attribution)
+      .record("openrouter", { key: "stuck", providerMetadata: cost });
+  });
+  for (let round = 0; round < 8; round++) {
+    await drain(t);
+    await vi.advanceTimersByTimeAsync(LIMITS.maxBackoffMs);
+  }
+  expect((await t.query(component.charges.get, { key: "stuck" }))?.sinkState[0]).toMatchObject({
+    attempts: 2,
+    failed: true,
+  });
+  // Two cycles of (free retry, charged crash), then no job keeps running.
+  expect(runs).toBe(4);
+});
