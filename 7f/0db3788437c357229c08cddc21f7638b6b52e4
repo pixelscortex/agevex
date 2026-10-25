@@ -1,0 +1,345 @@
+.prettierignore
+  s_d863bd773ba186::t_4e6ab76cd59396 5
+docs/site/content/docs/meta.json
+  s_d863bd773ba186::t_0398c8c411fb24 15-16
+docs/site/content/docs/recipes/ask.mdx
+  s_d863bd773ba186::t_36da67e535e6b4 1-26
+docs/site/content/docs/recipes/critic.mdx
+  s_d863bd773ba186::t_0ef9f41092ce57 1-24
+docs/site/content/docs/recipes/intent.mdx
+  s_d863bd773ba186::t_dc4b4f1b485bbf 1-36
+docs/site/content/docs/recipes/meta.json
+  s_d863bd773ba186::t_80f31ca8c88cc4 1-4
+docs/site/content/docs/recipes/quiz.mdx
+  s_d863bd773ba186::t_7be1ff10c7e780 1-33
+docs/site/content/docs/recipes/studio.mdx
+  s_d863bd773ba186::t_23960488287031 1-31
+docs/site/content/docs/recipes/summary.mdx
+  s_d863bd773ba186::t_3e0fec8aad6f93 1-23
+example/.cta.json
+  s_d863bd773ba186::t_c0a740e7db2f77 1-17
+example/.gitignore
+  s_d863bd773ba186::t_4506a0c189e561 1-16
+example/.prettierignore
+  s_d863bd773ba186::t_e670f55611ca7d 1-8
+example/.prettierrc
+  s_d863bd773ba186::t_97c1fcc292b451 1-11
+example/README.md
+  s_d863bd773ba186::t_08a1c7fba169b3 1-56
+example/bun.lock
+  s_d863bd773ba186::t_a327cd0c3a7315 1-1720
+example/components.json
+  s_d863bd773ba186::t_89c86cca75d607 1-28
+example/convex/_generated/api.d.ts
+  s_d863bd773ba186::t_4b6d5befcc1457 1-62
+example/convex/_generated/api.js
+  s_d863bd773ba186::t_c1df3bc4aa78ed 1-23
+example/convex/_generated/dataModel.d.ts
+  s_d863bd773ba186::t_178d1c06a635eb 1-58
+example/convex/_generated/server.d.ts
+  s_d863bd773ba186::t_1776a4b2611105 1-162
+example/convex/_generated/server.js
+  s_d863bd773ba186::t_35be6dfa511d78 1-101
+example/convex/agents.ts
+  s_d863bd773ba186::t_063893999cd3bb 1-256
+example/convex/auth.ts
+  s_d863bd773ba186::t_eca8709e2228a1 1-13
+example/convex/convex.config.ts
+  s_d863bd773ba186::t_e843ee9fa4526f 1-8
+example/convex/intentRouting.ts
+  s_d863bd773ba186::t_4fcee987c15501 1-60
+example/convex/model.ts
+  s_d863bd773ba186::t_9261a5b432c0c9 1-35
+example/convex/quiz.ts
+  s_d863bd773ba186::t_16f70be2cc2637 1-28
+example/convex/threads.ts
+  s_d863bd773ba186::t_422a4460e56052 1-18
+example/convex/tsconfig.json
+  s_d863bd773ba186::t_985ca65a4ab572 1-26
+example/eslint.config.js
+  s_d863bd773ba186::t_358a9e587a4ed1 1-21
+example/package.json
+  s_d863bd773ba186::t_fc54d668ee7081 1-74
+example/public/manifest.json
+  s_d863bd773ba186::t_9548ea619b1931 1-9
+example/public/robots.txt
+  s_d863bd773ba186::t_b1be03da57abbe 1-3
+example/scripts/intent-routing.test.ts
+  s_d863bd773ba186::t_9ba81c2ef97192 1-34
+example/scripts/root-transcript.test.tsx
+  s_d863bd773ba186::t_0791c6c4ef37cb 1-102
+example/scripts/smoke.ts
+  s_d863bd773ba186::t_30c963b70dec21 1-348
+example/src/components/charts/animation.ts
+  s_d863bd773ba186::t_edebebed32e0cf 1-36
+example/src/components/charts/background.tsx
+  s_d863bd773ba186::t_e2062ab2e4d78f 1-200
+example/src/components/charts/bar-chart-loading.tsx
+  s_d863bd773ba186::t_0bc723fc06ec12 1-42
+example/src/components/charts/bar-chart.tsx
+  s_d863bd773ba186::t_1d17c71b83de39 1-702
+example/src/components/charts/bar-depth-geometry.ts
+  s_d863bd773ba186::t_1514f7e5a56fa1 1-34
+example/src/components/charts/bar-squares-layout.ts
+  s_d863bd773ba186::t_be511583e515d8 1-94
+example/src/components/charts/bar-squares.tsx
+  s_d863bd773ba186::t_5ec4c22784f498 1-618
+example/src/components/charts/bar-value-label-layout.ts
+  s_d863bd773ba186::t_b8ae514b5fa805 1-61
+example/src/components/charts/bar-x-axis.tsx
+  s_d863bd773ba186::t_cf4519fcf9e942 1-141
+example/src/components/charts/bar-y-axis.tsx
+  s_d863bd773ba186::t_880bd825b5e5a7 1-121
+example/src/components/charts/bar.tsx
+  s_d863bd773ba186::t_c05be03747407a 1-548
+example/src/components/charts/chart-child-passthrough.ts
+  s_d863bd773ba186::t_d7e4bda266d4a7 1-181
+example/src/components/charts/chart-config-context.tsx
+  s_d863bd773ba186::t_ffcc87d045ee29 1-81
+example/src/components/charts/chart-context.tsx
+  s_d863bd773ba186::t_499422c12ac6ec 1-467
+example/src/components/charts/chart-defs.ts
+  s_d863bd773ba186::t_041367994dc167 1-61
+example/src/components/charts/chart-formatters.ts
+  s_d863bd773ba186::t_645ec3b13f3b17 1-49
+example/src/components/charts/chart-legend-hover.tsx
+  s_d863bd773ba186::t_f22801d11eb677 1-41
+example/src/components/charts/chart-parent-size.tsx
+  s_d863bd773ba186::t_4633b3f9ea024b 1-29
+example/src/components/charts/chart-phase.ts
+  s_d863bd773ba186::t_41e61096031f06 1-52
+example/src/components/charts/chart-reveal-clip.tsx
+  s_d863bd773ba186::t_f4b95b886a5871 1-94
+example/src/components/charts/decimate-time-series.ts
+  s_d863bd773ba186::t_040fe98eb376dc 1-134
+example/src/components/charts/filter-data-by-x-domain.ts
+  s_d863bd773ba186::t_24c0eff0831bf7 1-59
+example/src/components/charts/generate-chart-skeleton-data.ts
+  s_d863bd773ba186::t_3f84ed0e505db1 1-42
+example/src/components/charts/grid.tsx
+  s_d863bd773ba186::t_f7706a6cf85db8 1-299
+example/src/components/charts/indicator-fade.ts
+  s_d863bd773ba186::t_6d66fe69777a34 1-62
+example/src/components/charts/line-loading-timing.ts
+  s_d863bd773ba186::t_45fdc25407021f 1-12
+example/src/components/charts/loading-sweep.tsx
+  s_d863bd773ba186::t_5bfe189fcb6db3 1-452
+example/src/components/charts/motion-utils.ts
+  s_d863bd773ba186::t_6c09897d9b7100 1-47
+example/src/components/charts/pattern-preset.tsx
+  s_d863bd773ba186::t_f9ed5db7933b66 1-183
+example/src/components/charts/patterns/LICENSE-visx-pattern
+  s_d863bd773ba186::t_4647af19176c79 1-21
+example/src/components/charts/patterns/circles.tsx
+  s_d863bd773ba186::t_1008c29f5cfdb6 1-79
+example/src/components/charts/patterns/constants.ts
+  s_d863bd773ba186::t_894f348e84bf27 1-8
+example/src/components/charts/patterns/hexagons.tsx
+  s_d863bd773ba186::t_5945c03d749df0 1-59
+example/src/components/charts/patterns/index.ts
+  s_d863bd773ba186::t_e77e975b97b727 1-14
+example/src/components/charts/patterns/lines.tsx
+  s_d863bd773ba186::t_09e3eca16f99c1 1-93
+example/src/components/charts/patterns/path.tsx
+  s_d863bd773ba186::t_215bc3e56b6ec9 1-60
+example/src/components/charts/patterns/pattern.tsx
+  s_d863bd773ba186::t_d36c6d922a16c0 1-22
+example/src/components/charts/patterns/waves.tsx
+  s_d863bd773ba186::t_f7c12c3e1105f6 1-61
+example/src/components/charts/reference-area-config.ts
+  s_d863bd773ba186::t_61ecced2e8d19b 1-59
+example/src/components/charts/responsive-chart-label-count.ts
+  s_d863bd773ba186::t_7ec2dd6fc45f45 1-32
+example/src/components/charts/sparkline-geometry.ts
+  s_d863bd773ba186::t_28e01825a881a2 1-312
+example/src/components/charts/sparkline.tsx
+  s_d863bd773ba186::t_093ce55be3a879 1-1100
+example/src/components/charts/static-chart-preview-context.tsx
+  s_d863bd773ba186::t_1aa9902fbe5165 1-16
+example/src/components/charts/tooltip/chart-tooltip.tsx
+  s_d863bd773ba186::t_c105fe6eda751c 1-576
+example/src/components/charts/tooltip/date-ticker.tsx
+  s_d863bd773ba186::t_eb90137942d500 1-252
+example/src/components/charts/tooltip/index.ts
+  s_d863bd773ba186::t_027e0bc52ed64f 1-16
+example/src/components/charts/tooltip/tooltip-box.tsx
+  s_d863bd773ba186::t_be3a1e722d2794 1-325
+example/src/components/charts/tooltip/tooltip-content.tsx
+  s_d863bd773ba186::t_2481a1d8638e75 1-88
+example/src/components/charts/tooltip/tooltip-dot.tsx
+  s_d863bd773ba186::t_ef7cc8961c0e81 1-205
+example/src/components/charts/tooltip/tooltip-indicator.tsx
+  s_d863bd773ba186::t_741c01c3a9443b 1-191
+example/src/components/charts/tooltip/use-delayed-tooltip-data.ts
+  s_d863bd773ba186::t_82d85223f2c7c0 1-64
+example/src/components/charts/use-animated-y-domains.ts
+  s_d863bd773ba186::t_c90cc5d723e669 1-233
+example/src/components/charts/use-chart-interaction.ts
+  s_d863bd773ba186::t_9a9998c23fa811 1-366
+example/src/components/charts/use-chart-phase-orchestrator.ts
+  s_d863bd773ba186::t_54fb40aa7f38ec 1-264
+example/src/components/charts/use-enter-complete.ts
+  s_d863bd773ba186::t_06741e31f6a0d1 1-28
+example/src/components/charts/use-grid-shimmer.ts
+  s_d863bd773ba186::t_036b3171ccff73 1-101
+example/src/components/charts/use-mount-progress.ts
+  s_d863bd773ba186::t_f436d24c127924 1-33
+example/src/components/charts/use-scheduled-tooltip.ts
+  s_d863bd773ba186::t_b95cf5eb18382f 1-103
+example/src/components/charts/visx-pattern.tsx
+  s_d863bd773ba186::t_107210ed44c608 1-29
+example/src/components/charts/y-axis-scales.ts
+  s_d863bd773ba186::t_3e63969aa00008 1-108
+example/src/components/charts/y-axis-ticks.ts
+  s_d863bd773ba186::t_ee188e8b227b5b 1-25
+example/src/components/charts/y-domain-utils.ts
+  s_d863bd773ba186::t_cdcd66738d9f79 1-239
+example/src/components/playground/activity-panel.tsx
+  s_d863bd773ba186::t_5cc7e60ed33c4d 1-223
+example/src/components/playground/app-sidebar.tsx
+  s_d863bd773ba186::t_0fcd2e3f9bb950 1-99
+example/src/components/playground/composer.tsx
+  s_d863bd773ba186::t_52165becb93634 1-222
+example/src/components/playground/labels.ts
+  s_d863bd773ba186::t_b2dc8dfb1f058c 1-75
+example/src/components/playground/markdown.tsx
+  s_d863bd773ba186::t_8d42628cf9b250 1-10
+example/src/components/playground/notes.tsx
+  s_d863bd773ba186::t_24a9372dc0d289 1-55
+example/src/components/playground/pending-question.tsx
+  s_d863bd773ba186::t_65bb3b7b6adf2a 1-57
+example/src/components/playground/playground.tsx
+  s_d863bd773ba186::t_c90ccaa7ead17e 1-285
+example/src/components/playground/quiz-card.tsx
+  s_d863bd773ba186::t_45844aec380d46 1-45
+example/src/components/playground/root-messages.ts
+  s_d863bd773ba186::t_ac4fe6e4eca344 1-35
+example/src/components/playground/run-inspector.tsx
+  s_d863bd773ba186::t_81ad5266e32e04 1-209
+example/src/components/playground/steps.tsx
+  s_d863bd773ba186::t_349003acb359b9 1-238
+example/src/components/playground/suggestions.tsx
+  s_d863bd773ba186::t_10c9974527a6b9 1-24
+example/src/components/playground/transcript.tsx
+  s_d863bd773ba186::t_191345cffa0492 1-234
+example/src/components/playground/types.ts
+  s_d863bd773ba186::t_7db325dbaf210c 1-36
+example/src/components/playground/use-messages.ts
+  s_d863bd773ba186::t_052ff69c52c9da 1-39
+example/src/components/playground/use-now.ts
+  s_d863bd773ba186::t_538f96392098e1 1-13
+example/src/components/playground/waterfall.tsx
+  s_d863bd773ba186::t_75dd2bc11a0e32 1-136
+example/src/components/theme/mode-toggle.tsx
+  s_d863bd773ba186::t_fe99b7a2a390f3 1-48
+example/src/components/theme/provider.tsx
+  s_d863bd773ba186::t_14eedfea835e66 1-70
+example/src/components/ui/attachment.tsx
+  s_d863bd773ba186::t_318cbca9491312 1-195
+example/src/components/ui/badge.tsx
+  s_d863bd773ba186::t_371e91e61f66ad 1-48
+example/src/components/ui/bubble.tsx
+  s_d863bd773ba186::t_dde83be94d439c 1-123
+example/src/components/ui/button.tsx
+  s_d863bd773ba186::t_2316aa6068bc20 1-57
+example/src/components/ui/card.tsx
+  s_d863bd773ba186::t_02f16955081e2a 1-87
+example/src/components/ui/code-block.tsx
+  s_d863bd773ba186::t_f3df5d2d50eacd 1-235
+example/src/components/ui/collapsible.tsx
+  s_d863bd773ba186::t_4a8a0f3bc3713a 1-15
+example/src/components/ui/dropdown-menu.tsx
+  s_d863bd773ba186::t_651b7da10b2d64 1-255
+example/src/components/ui/empty.tsx
+  s_d863bd773ba186::t_790eaee3317f58 1-93
+example/src/components/ui/hover-card.tsx
+  s_d863bd773ba186::t_5c6aed0d6ed621 1-45
+example/src/components/ui/input-group.tsx
+  s_d863bd773ba186::t_ae361996f3aeaa 1-146
+example/src/components/ui/input.tsx
+  s_d863bd773ba186::t_cc79244dc6eb61 1-19
+example/src/components/ui/item.tsx
+  s_d863bd773ba186::t_5e874deaeafdbc 1-188
+example/src/components/ui/kbd.tsx
+  s_d863bd773ba186::t_bacd8ab2c4d1d2 1-26
+example/src/components/ui/marker.tsx
+  s_d863bd773ba186::t_824c0493003909 1-67
+example/src/components/ui/message-scroller.tsx
+  s_d863bd773ba186::t_1dc29e9798c9ac 1-130
+example/src/components/ui/message.tsx
+  s_d863bd773ba186::t_d37141c629725f 1-84
+example/src/components/ui/progress.tsx
+  s_d863bd773ba186::t_b83eb099bffbfb 1-63
+example/src/components/ui/resizable.tsx
+  s_d863bd773ba186::t_c92b9223c0be5e 1-39
+example/src/components/ui/scroll-area.tsx
+  s_d863bd773ba186::t_49b8faa30a1e02 1-47
+example/src/components/ui/select.tsx
+  s_d863bd773ba186::t_7c2efa2c5a602a 1-187
+example/src/components/ui/separator.tsx
+  s_d863bd773ba186::t_37980b53fd94fe 1-20
+example/src/components/ui/sheet.tsx
+  s_d863bd773ba186::t_4b912f12b38c96 1-125
+example/src/components/ui/sidebar.tsx
+  s_d863bd773ba186::t_574218583ecf18 1-690
+example/src/components/ui/skeleton.tsx
+  s_d863bd773ba186::t_b21bb229b9ede1 1-13
+example/src/components/ui/skiper-ui/skiper41.tsx
+  s_d863bd773ba186::t_93ccd97351e22e 1-97
+example/src/components/ui/spinner.tsx
+  s_d863bd773ba186::t_8e8846e6413927 1-16
+example/src/components/ui/tabs.tsx
+  s_d863bd773ba186::t_84e223c56ecf4f 1-74
+example/src/components/ui/textarea.tsx
+  s_d863bd773ba186::t_6740af1fe5c613 1-17
+example/src/components/ui/tooltip.tsx
+  s_d863bd773ba186::t_f85c11f8321ebd 1-51
+example/src/components/ui/trace.tsx
+  s_d863bd773ba186::t_f14647faa4ddf0 1-149
+example/src/hooks/use-highlighted-code.ts
+  s_d863bd773ba186::t_c5865070fff186 1-72
+example/src/hooks/use-mobile.ts
+  s_d863bd773ba186::t_b66d9b4efce3c8 1-19
+example/src/lib/convex.tsx
+  s_d863bd773ba186::t_4da0fe9afc5b66 1-8
+example/src/lib/highlighter.tsx
+  s_d863bd773ba186::t_5248496c636fd4 1-115
+example/src/lib/local-threads.ts
+  s_d863bd773ba186::t_154b4003b07bc4 1-38
+example/src/lib/scenarios.ts
+  s_d863bd773ba186::t_995d73e0e90067 1-60
+example/src/lib/utils.ts
+  s_d863bd773ba186::t_d8f7fbefcf3708 1-6
+example/src/routeTree.gen.ts
+  s_d863bd773ba186::t_fdff1d3ac3b8fd 1-68
+example/src/router.tsx
+  s_d863bd773ba186::t_527d17f070d12c 1-20
+example/src/routes/__root.tsx
+  s_d863bd773ba186::t_0f019ea3f84a66 1-48
+example/src/routes/index.tsx
+  s_d863bd773ba186::t_4579cba090b64c 1-16
+example/src/styles.css
+  s_d863bd773ba186::t_24b5e25f15f576 1-274
+example/tsconfig.json
+  s_d863bd773ba186::t_508de5bf129d21 1-27
+example/tsr.config.json
+  s_d863bd773ba186::t_d54e3e98d9e280 1-3
+example/vite.config.ts
+  s_d863bd773ba186::t_1284e9077fccab 1-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7f0db3788437c357229c08cddc21f7638b6b52e4",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
