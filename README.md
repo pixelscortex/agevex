@@ -394,8 +394,9 @@ ceilings (8 MiB / 800 KiB). Workflow enforces those byte limits.
 
 Mount `agevex/meter/convex.config` and import `defineMeter` from `agevex/meter`
 for keyed cost recording, estimates/corrections, aggregate thread/subject/run
-reads, budget gates, request-id lookups, and Polar/webhook/custom sinks.
-Core wiring is separate. See the [meter API, limits and delivery semantics](src/meter/README.md).
+reads, fail-closed budget gates (unpriceable charges record `unknown`),
+request-id lookups, batched Polar/webhook/custom sinks and host-driven
+retention (`prune`). Core wiring is separate. See the [meter API, limits and delivery semantics](src/meter/README.md).
 
 ## Development
 

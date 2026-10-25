@@ -46,7 +46,9 @@ const runtime = registerAgent(components.agevex, {
 `usageSlot(): UsageSlot` passes core attribution and hashed keys unchanged to
 the meter. Managed tools get `tc.meter`; core records each saved model step
 once and adds no charges on replay. Register the model's provider name in
-`providers`. Do not also install `usageHandlerFor` on these managed agents.
+`providers` (core uses `message.provider`, else `"model"`); an unregistered
+name is recorded `unknown` and denies the next slice. Do not also install
+`usageHandlerFor` on these managed agents.
 
 `budgetSlot(policy?: MeterOptions["budgets"]): BudgetSlot` checks the run
 before each slice, using the configured policy unless overridden. Estimates
@@ -113,6 +115,12 @@ inline decoder. The default `inline()` reads
 `providerMetadata.openrouter.usage.cost`; a valid zero settles, absent evidence
 stays unknown. Alternate decoders can return `{ usd }` or `{ credits }`.
 `get()` reads one charge by its exact key.
+
+`record` and `estimate` never throw for a charge they cannot price: they record
+it `unknown` with `reason`, and `check` denies. Reasons: `NO_COST` (no
+evidence), `DECODE_FAILED`, `INVALID_COST`, `OVER_CAP` (above $90),
+`PROVIDER_NOT_REGISTERED`, `PROFILE_NOT_REGISTERED`, `THREAD_CAPACITY`. A
+later USD `settle` resolves it. Malformed keys, names and quantities still throw.
 
 Reads return integer `totalNanos`, `settledNanos`, `estimatedNanos`, `unknown`,
 `unknownNanos`, plus convenience USD fields. Unknowns retain their last known
@@ -183,11 +191,15 @@ already in flight may still settle the unknown exactly once. Replayed attempt
 callbacks cannot create duplicate retry chains. No
 provider operation that incurs cost is invoked by this module.
 
-Only settled/corrected charges enter the durable sink outbox. Delivery actions
-catch sink errors, honor `Retry-After`, and retry with stable external ids, at
-most eight attempts. Recording does not wait for the sink. Failed/uncertain
-pending deliveries remain on the charge; `retrySinks(ctx, { key, subject })`
-explicitly resumes them. Workers stop when no pending work remains.
+Only settled/corrected charges enter the durable sink outbox (`deliveries`).
+One delivery job drains up to 100 due events of one sink into one `deliver`
+call, i.e. one Polar ingest request; new events wait one second so bursts
+share a request. Sink errors retry with backoff and stable external ids, at
+most eight attempts. A 429 with `Retry-After` reschedules once at that delay
+without consuming an attempt; the next consecutive 429 consumes one. A
+crashed or cancelled job counts as one failed attempt (Workpool `onComplete`).
+Recording does not wait for the sink. Failed deliveries stay pending;
+`retrySinks(ctx, { key, subject })` resumes them. Jobs run only on demand.
 
 First delivery uses `externalId = charge.key`. Subsequent corrections send
 **signed nanodollar deltas** under `key:delta:revision`, with `totalNanos` for
@@ -199,13 +211,22 @@ Polar's meter to **sum numeric `metadata.nanos`**, including negative deltas;
 12 decimal places ([Polar cost metadata schema](https://polar.sh/docs/features/cost-insights/cost-events#cost-metadata-schema)).
 Integer division/remainder emits exact signed cents with at most seven places;
 290,000,000 nanos becomes `29`, without float conversion. Webhooks receive `{ events }` with
-the same ids/deltas. Built-in adapters split batches at 100; the worker delivers
-one charge event at a time, keeping transaction budgets independent of HTTP
-batch capacity. No in-process delivery buffer is used.
+the same ids/deltas. Acknowledgements are recorded 16 per mutation.
+
+## Retention
+
+`meter.prune(ctx, { before, limit? })` deletes up to `limit` (default 100,
+max 500) settled charges whose sinks all acknowledged, created before
+`before`, with their aggregate contributions; it returns `{ deleted, more }`
+and also stops early at its transaction budget. Call it from a host cron
+(server-only) until `more` is false; it never reschedules itself. Totals then
+cover retained charges only. Choose `before` past any replay window: a pruned
+key recorded again is a new charge.
 
 ## Owned schema and bounds
 
-Only `charges` is owned. Aggregate and Workpool own their own component state.
+`charges` and its sink outbox `deliveries` are owned. Aggregate and Workpool
+own their own component state.
 
 | Field                                                      | Reader / purpose                                                                                                   |
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
@@ -225,82 +246,69 @@ Only `charges` is owned. Aggregate and Workpool own their own component state.
 | `operations[].key`                                         | Bounded charge-wide replay lookup before any state change or worker admission.                                     |
 | `operations[].outcome`                                     | Original charge snapshot returned on replay; excludes operations to prevent recursive growth.                      |
 | `lookupAttempt`                                            | Next admissible lookup attempt; rejects duplicate retry admission and stale workers.                               |
+| `reason`                                                   | Why the charge was created unknown; routes `THREAD_CAPACITY` charges to the overflow namespace.                    |
 | `sinkState.name`                                           | Sink routing.                                                                                                      |
 | `sinkState.deliveredNanos`, `revision`                     | Next signed delta and stable external id.                                                                          |
 | `sinkState.pending.{externalId,revision,nanos,totalNanos}` | Immutable delivery snapshot, acknowledgement fence and absolute delivered amount.                                  |
-| `sinkState.attempts`, `failed`                             | Bounded backoff, terminal failure and explicit recovery.                                                           |
-| `_creationTime`                                            | UTC day ordinal, stable across corrections.                                                                        |
+| `terminal` (indexed)                                       | Settled with every sink acknowledged: the only rows `prune` reads.                                                 |
+| `_creationTime`                                            | UTC day ordinal, stable across corrections; `prune` cutoff.                                                        |
+| `deliveries.{sink,key,event,attribution,provider}`         | One row per pending (charge, sink) event: what a job sends, read without loading charges.                          |
+| `deliveries.{attempts,limited,failed,dueAt,claim}`         | Backoff, 429 allowance, terminal failure, due order and the job holding it (crash accounting).                     |
 
-`LIMITS` caps the entire mount at 100,000 charges, each at $10 (10 billion
-nanos), so even the maximum sum is exactly representable: **10^15 nanos**.
-At capacity, reads and existing-charge updates continue; new keys fail with
-`METER_CAPACITY`. Capacity management/retention is outside this module. Keys
-are at most 256 UTF-8 bytes; labels are at most 128; quantities/credits at most
-one million; four sinks; 16 providers; 32 profiles/provider. Overrides can only
-lower charge capacity, groups, days and attempts; registration rejects invalid
-limits, prices and missing worker references. A charge snapshot stays below 8 KiB.
-With receipts the stored row stays below 280 KiB:
+There is no deployment-wide capacity and no read of a shared tree. Every
+aggregate namespace belongs to one subject or one root thread. A root thread
+holds at most 100,000 charges in its paged trees (`limits.maxThreadCharges`);
+past that a charge is recorded `unknown` (`THREAD_CAPACITY`) in a count-only
+overflow namespace that `threadCost` totals still include, and `prune` frees
+room. A charge is at most $90 (90 billion nanos), so a capped tree sums to at
+most `100,000 × 9×10^10 = 9×10^15 < 2^53` nanos, exactly. Subject totals are
+exact below $9.007M of retained charges. Keys are at most 256 UTF-8 bytes;
+labels at most 128; quantities/credits at most one million; four sinks; 16
+providers; 32 profiles/provider. Overrides can only lower thread capacity,
+groups, days and attempts. A charge snapshot stays below 8 KiB; with receipts
+the row stays below 280 KiB:
 `32 × (8 KiB + 256-byte key + 128-byte wrapper) + 8 KiB = 276 KiB < 1 MiB`.
 
-Two aggregate mounts use status, axis and run namespaces. Defaults write **three
-projections/charge**; all breakdowns write **eight**. Without run attribution,
-these become two and seven. `state` below is estimate, settled or unknown. Each
-row contributes once per projection, never once per state.
+Defaults write **three projections/charge** (two without run, one without
+thread); all breakdowns write **eight**. `state` is estimate, settled or unknown.
 
-| Mount / namespace                               | Key              | Why it exists                                | Per-charge write cost                         |
-| ----------------------------------------------- | ---------------- | -------------------------------------------- | --------------------------------------------- |
-| `costByThread / [cost,state]`                   | `[root,agent]`   | Root + children totals and agent prefixes.   | One insert / one replace.                     |
-| `costBySubject / [cost,state]`                  | `[subject,day]`  | Capacity, subject totals and UTC day ranges. | One insert / one replace.                     |
-| `costBySubject / [run,subject,runId,state]`     | `["",day]`       | Run totals and budget checks.                | One insert / one replace if runId exists.     |
-| `costBySubject / [axis,subject,agent,state]`    | `[agent,day]`    | Subject agent/date pages.                    | One insert / replace with `subject.agent`.    |
-| `costBySubject / [axis,subject,model,state]`    | `[model,day]`    | Subject model/date pages.                    | One insert / replace with `subject.model`.    |
-| `costBySubject / [axis,subject,provider,state]` | `[provider,day]` | Subject provider/date pages.                 | One insert / replace with `subject.provider`. |
-| `costBySubject / [thread,root,model,state]`     | `[model,day]`    | Thread model prefixes across all agents.     | One insert / replace with `thread.model`.     |
-| `costBySubject / [thread,root,provider,state]`  | `[provider,day]` | Thread provider prefixes across all agents.  | One insert / replace with `thread.provider`.  |
+| Mount / namespace                           | Key           | Why it exists                                |
+| ------------------------------------------- | ------------- | -------------------------------------------- |
+| `costByThread / [thread,root,state]`        | `[agent,day]` | Root + children totals and agent pages.      |
+| `costByThread / [overflow,root,state]`      | `[agent,day]` | Counted totals of over-capacity charges.     |
+| `costBySubject / [subject,subject,state]`   | `["",day]`    | Subject totals and UTC day ranges.           |
+| `costBySubject / [run,subject,runId,state]` | `["",day]`    | Run totals and budget checks.                |
+| `costBySubject / [axis,subject,axis,state]` | `[label,day]` | Subject agent/model/provider pages (opt-in). |
+| `costBySubject / [thread,root,axis,state]`  | `[label,day]` | Thread model/provider pages (opt-in).        |
 
-Each insert is roughly 12 upstream document writes; replacement is roughly 24
-(delete + insert). Aggregate document writes per charge, excluding the charge
-row and optional Workpool admissions:
+Roots stay lazy (the Aggregate default); empty namespaces are initialized
+with four-item nodes (<=2 KiB) after a one-path emptiness probe. Totals and
+`check` read whole owned namespaces: the root plus <=5 children, independent
+of size. Thread trees have depth <=10; subject/run trees use a design ceiling
+of 24 (depth 25 needs ~5.6×10^11 charges for one subject). Worst cases:
 
-| Configuration               | Projections with run / without run | Insert writes with run / without run | Replacement writes with run / without run |
-| --------------------------- | ---------------------------------- | ------------------------------------ | ----------------------------------------- |
-| Defaults (`breakdowns: []`) | 3 / 2                              | ~36 / ~24                            | ~72 / ~48                                 |
-| All five breakdowns enabled | 8 / 7                              | ~96 / ~84                            | ~192 / ~168                               |
+- One status change, eight projections: <=1,706 node reads (<3.4 MiB) and
+  <=1,082 writes (<2.2 MiB), plus the <=280-KiB charge (<=3 patches), <=4 outbox
+  rows and Workpool admissions. **One charge per mutation**.
+- An axis page: 31 aggregate queries, <=5,952 node reads (<11.7 MiB). Seven
+  days: `7 × 4 × 192 × 1 KiB = 5.25 MiB`.
+- Thread pages: `3 × (15 × 30 + 16 × 80) × 2 KiB = 10.14 MiB`, plus O(1) totals.
+- A delivery job: claim <=100 outbox rows (<=200 KiB); acknowledge 16 per
+  mutation (`16 × 280 KiB = 4.4 MiB`). Crash accounting touches outbox rows only.
+- `prune`: each row costs its size plus `8·D+4` node reads per projection; the
+  batch stops below 16k docs / 12 MiB, i.e. >=9 default (476 nodes plus a
+  280-KiB row) or >=4 fully opted-in (1,232 nodes) charges per call at worst case.
 
-The conservative bound is 48 / 96 split/merge operations **per projection**;
-state movement is included in replacement, not another projection. Stale/replay
-operations do no aggregate writes (a new stale diagnostic patches one row).
-
-Default 16-item lazy nodes do not
-give a tight byte budget for many range queries, so empty namespaces are
-initialized with four-item nodes and eager aggregates. At 100k entries their
-depth is below 12. Two-field keys keep every node <=2 KiB. Conservative bounds:
-
-- One status change: eight replacements, up to `8 × 2 × 12 × 4 = 768`
-  split/merge operations; including initialization/helpers, fewer than 3,072
-  reads/queries (<12 MiB), 1,024 writes (<4 MiB), plus one <=280-KiB charge
-  (at most three row patches, <840 KiB written) and four small Workpool admissions. **One charge per mutation**.
-- An axis page: `4 × (3 seeks + 4 summaries) + 3 final seeks = 31`
-  aggregate queries, at most `31 × 2 × 12 × 4 = 2,976` bounded node reads
-  (<=5.82 MiB at 2 KiB/node). Helpers remain below 4,096 queries.
-- Seven days: `7 × 4 × 96 × 2 KiB = 5.25 MiB` bounded node reads.
-- Thread total plus three four-group pages: a seek visits at most three depth
-  paths (36 nodes); each axis uses `15 × 36 + 16 × 96 = 2,076` node reads.
-  Total `(3 × 2076 + 4 × 96) × 2 KiB = 12.92 MiB`, plus <0.5 MiB helpers;
-  fewer than 7,000 documents / 256 index queries, no writes.
-- HTTP sink batches <=100 contain no transcript/request payload. They do not
-  mutate 100 charges in a transaction. Acknowledgements update one <=280-KiB row.
-
-All fake tests enforce Convex transaction limits. The maximum test constructs
-valid 99,999-entry fixtures for **every projection**, spanning every status,
-five maximum-byte labels and seven days. It admits the last real charge,
-corrects/replaces/settles it at capacity with maximum UTF-8 fields, a full
-operation ledger and four sinks, reads maximum subject and thread axis pages
-with continuation and seven days, checks all totals, and proves that the next key is denied.
+All fake tests enforce Convex transaction limits. The maximum test builds
+99,999-entry fixtures for **every projection** of one root thread, spanning
+every status, five maximum-byte labels and seven days. It admits the last
+charge, corrects/settles it with maximum UTF-8 fields, a full receipt ledger
+and four sinks, reads maximum pages and seven days, records the next charge as
+`THREAD_CAPACITY`, and prunes the delivered maximum charge.
 
 Source references used: Aggregate `src/client/index.ts:866-915`,
-`src/component/btree.ts:120-138,216-225,333-415`; Workpool
-`src/client/index.ts:95-120,576-579`; Agent 0.7.7
+`src/component/btree.ts:56-138,333-415,590-805,1048-1084`; Workpool
+`src/client/index.ts:95-120,402-413,487-498,576-589`; Agent 0.7.7
 `src/vercel/client/types.ts:288-302`, `start.ts:425-437`. The scouts identify
 Polar's ingest/dedup contract and the absence of per-request Fal/Daytona costs.
 

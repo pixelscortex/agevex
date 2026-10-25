@@ -87,6 +87,12 @@ Providers are host-named `Provider` objects; capabilities can be combined.
 | `lookup: async (ctx, requestId) => Cost \| undefined` | Read-only billing evidence after attachment; never repeat a paid operation. `lookupFor` accepts milliseconds, `"1h"` or `"1d"`. |
 | No cost evidence | A record remains unknown; an unpriced estimate contributes an unknown to reads. |
 
+`record` and `estimate` never throw on a charge they cannot price: it is
+recorded `unknown` with a `reason` and `check` denies. Reasons: `NO_COST`,
+`DECODE_FAILED`, `INVALID_COST`, `OVER_CAP` (above $90), `PROVIDER_NOT_REGISTERED`
+(core records model steps under `message.provider ?? "model"`),
+`PROFILE_NOT_REGISTERED` and `THREAD_CAPACITY`. A USD `settle` can resolve it.
+
 ### Charge lifecycle and keys
 
 Inside a host action, supply attribution and stable keys explicitly:
@@ -152,13 +158,14 @@ from `@convex-dev/agent`.
 | `meter.breakdown(ctx: ReadCtx, args: { subject: string; from: number; to: number; by: "day" \| "agent" \| "model" \| "provider"; cursor?: string })` | Read bounded aggregate pages. |
 | `meter.check(ctx: ReadCtx, args: { subject: string; runId?: string })` | Return totals, `allowed` and `maxNanos` (null without a budget). |
 | `meter.retrySinks(ctx: WriteCtx, args: { key: string; subject: string }): Promise<null>` | Resume pending deliveries after checking the stored subject. |
+| `meter.prune(ctx: WriteCtx, args: { before: number; limit?: number }): Promise<{ deleted: number; more: boolean }>` | Retention for host crons: delete settled, fully delivered charges created before `before`. |
 | `meter.internalFunctions()` | Return internal `meterLookup` and `meterDeliver` actions for host export. |
 | `openRouterCost(providerMetadata: unknown): number \| undefined` | Extract finite nonnegative OpenRouter USD evidence, including zero. |
 | `usageHandlerFor(meter: Meter, options: { provider?: string; identity: (args: Parameters<UsageHandler>[1]) => Pick<Attribution, "subject" \| "rootThreadId" \| "runId"> & { messageId: string; step: number } }): UsageHandler` | Record saved Agent steps using host identity. |
 | `observeProviderOutcome<T>(options: { invoke: () => Promise<T>; onSuccess: (result: T) => void \| Promise<void>; onFailure?: (error: unknown) => void \| Promise<void>; onObservationError?: (error: unknown) => void \| Promise<void> }): Promise<T>` | Observe evidence while preserving the provider result or original error. |
 | `polarSink(options: { meter: string; accessToken: string; server?: "production" \| "sandbox"; name?: string; fetch?: typeof fetch }): Sink` | Deliver Polar ingest events; production is the default. |
 | `webhookSink(options: { url: string; name?: string; headers?: Record<string, string>; fetch?: typeof fetch }): Sink` | POST `{ events }` to an HTTP(S) endpoint. |
-| `new SinkDeliveryError(retryAfterMs?: number)` | Signal a sink failure with an optional retry delay. |
+| `new SinkDeliveryError(retryAfterMs?: number, rateLimited?: boolean)` | Signal a sink failure with an optional retry delay; `rateLimited` marks a 429. |
 | `new BreakdownDisabledError(breakdown: Breakdown)` | Identify a required projection with `code: "BREAKDOWN_DISABLED"`. |
 
 ### Reads and budget gates
@@ -206,32 +213,28 @@ throws `BreakdownDisabledError` with `code: "BREAKDOWN_DISABLED"` and
 when no cursor is requested. Enabling later does not backfill; each charge
 freezes its original projection membership for future updates and workers.
 
-| Configuration | Projections with / without run | Approximate insert writes with / without run | Approximate replacement writes with / without run |
-| --- | --- | --- | --- |
-| Default `breakdowns: []` | 3 / 2 | 36 / 24 | 72 / 48 |
-| All five enabled | 8 / 7 | 96 / 84 | 192 / 168 |
-
-These are aggregate document writes, excluding the charge row and optional
-Workpool admissions: roughly 12 per insert or 24 per replacement per projection.
-State movement is part of replacement, not an extra projection. The conservative
-split/merge bound is 96 operations per projection.
-Replays and stale operations do no aggregate writes; a new stale diagnostic may
-patch the charge row. Each mutation handles one charge.
+Every aggregate namespace belongs to one subject or one root thread; no write
+or read touches a deployment-wide tree. Roots stay lazy. Defaults write three
+projections per charge (two without run); all five breakdowns write eight.
+State movement is part of replacement, not an extra projection. Replays and
+stale operations do no aggregate writes. Each mutation handles one charge.
 
 ### Sinks
 
 Custom sinks implement `{ name?: string, deliver(batch: SinkEvent[]): Promise<void> }`.
 Keep unnamed sinks in stable array order; give multiple built-in sinks unique
 names. Corrected estimates and settled charges enter a durable outbox; recording
-does not wait for HTTP delivery. Workers catch failures, honor `Retry-After`
-and stop after `limits.maxAttempts`. Pending uncertain/failed events remain on
-the charge for explicit `retrySinks` recovery.
+does not wait for HTTP delivery. One delivery job sends up to 100 due events of
+one sink in one `deliver` call (one Polar request); new events wait one second
+so bursts share it. Failures back off and stop after `limits.maxAttempts`. A 429
+with `Retry-After` reschedules once without consuming an attempt; the next
+consecutive 429 consumes one. A crashed or cancelled job counts as one failed
+attempt. Failed events stay pending for explicit `retrySinks` recovery.
 
 The first external id is the charge key. Later events use `key:delta:revision`
 and signed `nanos` deltas, with `totalNanos` holding the new absolute amount.
 An in-flight event's id and amount remain frozen until acknowledgement; a later
 delta catches up. Recipients must durably deduplicate external ids across retries.
-Built-in sinks split batches at 100; the worker sends one charge event at a time.
 Webhooks receive `{ events }` with these same ids and deltas.
 
 Polar uses REST event ingestion with the subject as `external_customer_id`.
@@ -274,19 +277,28 @@ defaults to the hook's provider unless overridden. Set OpenRouter
 embeddings without a thread need an explicit scoped record. No transcript scan
 or random identity fallback is used.
 
+### Retention
+
+`meter.prune(ctx, { before, limit })` deletes up to `limit` (default 100, max
+500) settled charges whose sinks all acknowledged, created before `before`, and
+their aggregate contributions. It stops early at its transaction budget and
+returns `{ deleted, more }`; call it from a host cron until `more` is false. It
+never reschedules itself. Totals then cover retained charges only; pick `before`
+past any replay window, since a pruned key recorded again is a new charge.
+
 ## Limits
 
-From exported `LIMITS`; only `maxCharges`, `maxGroups`, `maxDays` and
+From exported `LIMITS`; only `maxThreadCharges`, `maxGroups`, `maxDays` and
 `maxAttempts` accept positive integer overrides, and only downward.
 
 | Limit | Default | Hard maximum |
 | --- | --- | --- |
-| `maxCharges` per mount | 100,000 | 100,000 |
+| `maxThreadCharges` per root thread (then `THREAD_CAPACITY`) | 100,000 | 100,000 |
 | `maxGroups` per axis page | 4 | 4 |
 | `maxDays` per day page | 7 | 7 |
 | `maxAttempts` per lookup/delivery sequence | 8 | 8 |
 | `maxOperations` receipts per charge | 32 | 32 |
-| `maxChargeNanos` | 10,000,000,000 ($10) | Same |
+| `maxChargeNanos` (then `OVER_CAP`) | 90,000,000,000 ($90) | Same |
 | `maxKeyBytes` (creation/operation keys) | 256 UTF-8 bytes | 256 |
 | `maxStringBytes` (labels/request ids) | 128 UTF-8 bytes | 128 |
 | `maxQuantity` (quantity/credits/step ordinal) | 1,000,000 | 1,000,000 |
@@ -296,7 +308,8 @@ From exported `LIMITS`; only `maxCharges`, `maxGroups`, `maxDays` and
 | Lookup window (`lookupMs` / `maxLookupMs`) | 3,600,000 ms (1h) | 86,400,000 ms (1d) |
 | Backoff (`backoffMs` / `maxBackoffMs`) | 1,000 ms base, multiplier 2 | 60,000 ms exponential delay |
 | `maxParallelism` (Workpool) | 4 | 4 |
-| `sinkBatch` | 100 events | 100 |
+| `sinkBatch` (events per delivery job) | 100 events | 100 |
+| `pruneLimit` / `maxPruneLimit` | 100 | 500 |
 | `maxResponseBytes` (Polar acknowledgement) | 16,384 bytes | 16,384 |
 | `requestTimeoutMs` (built-in HTTP sinks) | 30,000 ms | 30,000 |
 | `maxTimestamp` (breakdown endpoints) | 8,640,000,000,000,000 ms ceiling | Same |
@@ -304,7 +317,8 @@ From exported `LIMITS`; only `maxCharges`, `maxGroups`, `maxDays` and
 ## Guarantees
 
 - [Sink](#sinks) failures cannot roll back cost recording.
-- Maximum-capacity fixtures exercise all [projections](#projections-and-write-cost), full receipts, four sinks, updates and maximum reads within Convex transaction bounds; the next new key is rejected.
+- Unpriceable charges are recorded `unknown` and deny the next `check`; recording never throws for them.
+- Maximum-capacity fixtures exercise all [projections](#projections-and-write-cost), full receipts, four sinks, updates, maximum reads and `prune` within Convex transaction bounds; the next charge in the full thread is recorded `THREAD_CAPACITY`.
 
 ## Known limits
 
@@ -312,5 +326,5 @@ From exported `LIMITS`; only `maxCharges`, `maxGroups`, `maxDays` and
 - Root/child relationships are supplied by the host; Meter does not discover them from Agent messages.
 - Fal has no per-request cost endpoint. Profiles are assumptions; Firecrawl credits need an explicit plan rate.
 - Breakdown opt-ins have no backfill. Budget gates reserve no future spend, and HTTP delivery requires recipient deduplication.
-- Capacity management and retention are external. At `METER_CAPACITY`, existing-charge updates and reads continue, but new keys fail. Receipts have a lifetime cap and cannot be evicted.
+- Retention is host-driven through `prune`. Receipts have a per-charge cap and cannot be evicted.
 - There are no browser-facing host endpoints; ownership checks remain the host's responsibility.
