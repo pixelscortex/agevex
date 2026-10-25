@@ -1,5 +1,6 @@
 // @vitest-environment edge-runtime
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
+import { getConvexSize } from "convex/values";
 import { createFunctionHandle } from "convex/server";
 import { listMessages } from "@convex-dev/agent";
 import { setup, api, components, state } from "./setup.js";
@@ -325,4 +326,42 @@ it("answer reads only the exact recorded native message and never discovers call
   expect(state.transcriptReads).toBe(1);
   await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
   await drain(t);
+});
+
+it("sixteen maximum-size answers to a near-1 MiB call document stay in budget with a full inbox", async () => {
+  const t = setup(undefined, { queueLength: 100 }, true);
+  // Native saves preserve both parsed input and raw-input metadata.
+  // 16*32,500*2 plus the envelope remains just below Convex's 1 MiB document cap.
+  state.deferredQuestion = "x".repeat(32_500);
+  const receipt = await pending(t, LIMITS.approvalsPerPause);
+  const row = (await t.query(components.agevex.queue.execution, {
+    assignmentId: receipt.assignmentId,
+  }))!;
+  const [call] = await t.query(components.agent.messages.getMessagesByIds, {
+    messageIds: [row.approvals!.requests[0].messageId],
+  });
+  expect(getConvexSize(call)).toBeGreaterThan(1010 << 10);
+  expect(getConvexSize(call)).toBeLessThan(1 << 20);
+  for (let i = 1; i < 100; i++)
+    await owner(t).mutation(api.agents.send, {
+      threadId: receipt.threadId,
+      text: "queued",
+      requestKey: `queued-${i}`,
+    });
+  for (let i = 0; i < LIMITS.approvalsPerPause; i++) {
+    const metrics = await owner(t).run(async (ctx) => {
+      await ctx.runMutation(api.agents.answer, {
+        threadId: receipt.threadId,
+        toolCallId: `question-${i}`,
+        text: "\uffff".repeat(LIMITS.messageLength),
+      });
+      return ctx.meta.getTransactionMetrics();
+    });
+    expect(metrics.bytesRead.used).toBeLessThan(13 << 20);
+  }
+  // Fence before dispatch: this test verifies maximum control-path payloads,
+  // not Agent's separately documented unbounded model-context reader.
+  await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
+  await drain(t);
+  expect(state.calls).toHaveLength(1);
 });

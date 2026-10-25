@@ -46,6 +46,7 @@ const toolNames = (tools: unknown): string[] =>
 export const state = {
   deferred: false,
   deferredCount: 1,
+  deferredQuestion: "Which option?",
   overrideCalls: [] as string[],
   overrideTools: false,
   dropPing: false,
@@ -195,7 +196,7 @@ model.doStream = async (args) => {
         type: "tool-call" as const,
         toolCallId: `question-${i}`,
         toolName: "askHuman",
-        input: '{"question":"Which option?"}',
+        input: JSON.stringify({ question: state.deferredQuestion }),
       })),
     ]).doStream(args);
   if (state.tools && state.calls.length === 1) return toolModel.doStream(args);
@@ -379,7 +380,7 @@ export function fixtureRuntime(limits?: Registration["limits"]) {
     limits,
     agents: [main],
     models: overrideModel,
-    modelAllowlist: ["first", "second"],
+    modelAllowlist: ["first", "second", "😀".repeat(100), "x".repeat(90), "x".repeat(91)],
     refs: {
       runTurn: () => runTurnRef,
       // The fixture app's generated api is generic and enumerates no exported

@@ -2,9 +2,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { setup, api, state } from "./setup.js";
 import { requireReceipt } from "./receipt.js";
-import { LIMITS } from "../src/client/index.js";
 import { getConvexSize } from "convex/values";
-import { validModelOverrides } from "../src/component/models.js";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
@@ -100,22 +98,32 @@ it("changing models under a reused request key is a conflict", async () => {
   });
 });
 
-it("model map byte and count limits keep run metadata in the cancellation allowance", () => {
-  const models = Object.fromEntries(
-    Array.from({ length: LIMITS.modelOverrides }, (_, i) => [`a${i}`, "x".repeat(30)]),
-  );
-  expect(validModelOverrides(models)).toBe(true);
+it("a 512-byte model map is accepted and a 513-byte map is refused before a native write", async () => {
+  const t = setup(undefined, undefined, true);
+  const owner = t.withIdentity({ subject: "alice" });
+  const models = { Main: "😀".repeat(100), Researcher: "x".repeat(90) };
+  expect(getConvexSize(models)).toBe(512);
+  const first = await owner
+    .mutation(api.agents.open, { agent: "Main", prompt: "first", requestKey: "first", models })
+    .then(requireReceipt);
+  const before = await owner.query(api.agents.messages, {
+    threadId: first.threadId,
+    paginationOpts: { cursor: null, numItems: 100 },
+  });
   expect(
-    getConvexSize({
-      models,
-      launches: 0,
-      hops: 0,
-      pendingResults: 0,
-      cancelled: false,
-      _id: "x".repeat(32),
-      _creationTime: Date.now(),
+    await owner.mutation(api.agents.send, {
+      threadId: first.threadId,
+      text: "oversize",
+      requestKey: "oversize",
+      models: { ...models, Researcher: "x".repeat(91) },
     }),
-  ).toBeLessThan(1024);
-  expect(validModelOverrides({ ...models, ninth: "first" })).toBe(false);
-  expect(validModelOverrides({ a: "😀".repeat(100), b: "😀".repeat(100) })).toBe(false);
+  ).toEqual({ status: "rejected", code: "INVALID_MODELS" });
+  expect(
+    await owner.query(api.agents.messages, {
+      threadId: first.threadId,
+      paginationOpts: { cursor: null, numItems: 100 },
+    }),
+  ).toEqual(before);
+  await owner.mutation(api.agents.cancel, { threadId: first.threadId });
+  await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100));
 });

@@ -146,6 +146,7 @@ export function setup(
 ) {
   state.deferred = false;
   state.deferredCount = 1;
+  state.deferredQuestion = "Which option?";
   state.overrideCalls.length = 0;
   state.overrideTools = false;
   state.dropPing = false;
