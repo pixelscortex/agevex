@@ -1,0 +1,17 @@
+{
+  "title": "Documentation",
+  "icon": "BookOpen",
+  "root": true,
+  "pages": [
+    "---Start---",
+    "index",
+    "getting-started",
+    "---Concepts---",
+    "...concepts",
+    "---Modules---",
+    "...modules",
+    "---More---",
+    "testing",
+    "registry"
+  ]
+}

@@ -1,0 +1,42 @@
+---
+title: Testing
+icon: FlaskConical
+description: Planned fake and live backends with guarantee-focused tests.
+status: Planned
+---
+
+Every outside dependency sits behind a small backend interface. Run the same
+scenarios against a free fake by default or a real service explicitly.
+
+| Backend | Fake (default) | Real (opt-in) |
+| --- | --- | --- |
+| Model | Scripted `mockModel`: text, tools, failures, cost metadata | OpenRouter |
+| Sandbox | In-memory files and scripted exec results | Daytona |
+| Web fetch / parse | Fixtures | Firecrawl |
+| Usage ledger | In-memory fake | Host ledger |
+
+## Planned commands and harness
+
+These are the target testing commands, not scripts in the current root package:
+
+```sh title="Terminal"
+bun run test
+bun run test:live
+```
+
+The default command runs offline fakes only. Live tests require environment keys
+and a per-run cost cap, with small Firecrawl scenarios.
+
+The planned `sdk/test` exports `registerAgentSdk(t)`, fake backends,
+`expectJournalUnchanged` for Workflow journal replay checks, and a fake ledger.
+The current package already has a convex-test registration entry point; the
+expanded harness and Workflow replay check are planned.
+
+## Test the promise
+
+Assert behavior the package guarantees in the spec or README. Each test title
+names the guarantee it protects. Avoid tests of internals and mocks of mocks.
+Comments explain the rule, its limit and what breaks without it.
+
+Workflow step ordering must preserve existing journals. A replay check protects
+changes to durable workflows so new code does not break in-flight work.

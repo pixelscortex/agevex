@@ -8,7 +8,13 @@ export default defineConfig({
   lint: {
     // Loaded as an Oxlint JavaScript plugin; the ESLint runner is never invoked.
     jsPlugins: ["@convex-dev/eslint-plugin"],
-    ignorePatterns: ["node_modules/**", "dist/**", ".vite-plus/**", "**/_generated/**"],
+    ignorePatterns: [
+      "node_modules/**",
+      "dist/**",
+      ".vite-plus/**",
+      "**/_generated/**",
+      "docs/site/**",
+    ],
     overrides: [
       {
         // Covers this package's own component sources and the deterministic

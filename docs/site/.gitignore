@@ -1,0 +1,15 @@
+/node_modules
+
+# generated MDX, routes, and build output
+.source
+/src/routeTree.gen.ts
+.tanstack
+.output
+.nitro
+/dist
+/coverage
+*.tsbuildinfo
+
+.DS_Store
+.env*.local
+.vercel

@@ -1,0 +1,45 @@
+---
+title: Limits
+icon: Gauge
+description: Planned centralized bounds and current runtime limits.
+status: Planned
+---
+
+All draft limits belong in one exported `LIMITS` object. The export and the new
+run budgets are planned; these values describe the spec rather than today’s API.
+
+## Planned defaults
+
+| Bound | Value |
+| --- | --- |
+| Delegation depth | 2, host-configurable |
+| Active children per root | 5 |
+| Launches / hops per run | 12 / 24 |
+| Task length | 4,000 characters |
+| Pending queue | 20 messages per thread |
+| Workflow journal / step value | 8 MiB / 800 KiB |
+| Action time | 10 minutes Node / 30 minutes Convex |
+| Context injection | 24 rows / 1,800 tokens |
+| Forked parent snapshot | At most 48 KiB, tool outputs stripped |
+
+Starter Convex plans have eight concurrent scheduled jobs in the spec’s
+reference. Separate root and child lanes are sized so parents can run without
+queueing behind all their children. Parent turns batch child completions.
+
+A run budget covers every turn caused by one user prompt. Reaching the budget
+returns a typed denial instead of starting more work. The host supplies budget
+policy; the SDK supplies enforcement.
+
+## Available today
+
+| Bound | Current value |
+| --- | --- |
+| Delegation depth | 1 |
+| Launches per accepted user prompt | 3 |
+| Active children per root | 5 |
+| Task length | 4,000 characters |
+| Turn watchdog | 120 seconds |
+
+Module-specific limits are documented with [sandbox](/docs/modules/sandbox) and
+[extraction](/docs/modules/extract). Avoid copying these values into host code;
+the planned `LIMITS` export is the source of truth for runtime bounds.
