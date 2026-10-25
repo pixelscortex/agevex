@@ -1,0 +1,383 @@
+import type { Telemetry } from "ai";
+import { bestEffort, type Exporter } from "./exporters.js";
+import { LIMITS, truncate, validateString } from "./limits.js";
+import {
+  attributeWriter,
+  hash,
+  markTruncated,
+  now,
+  payload,
+  type Attribute,
+  type Sanitize,
+  type Span,
+} from "./otlp.js";
+
+export { braintrust, langfuse, type Exporter } from "./exporters.js";
+export { LIMITS } from "./limits.js";
+export type { Attribute, AttributeValue, OtlpPayload, Sanitize, Span } from "./otlp.js";
+
+export type Facts = {
+  subject: string;
+  rootThreadId: string;
+  threadId: string;
+  runId: string;
+  agent: string;
+  turnKey: string;
+};
+export type TelemetryOptions = {
+  exporters: readonly Exporter[];
+  recordInputs?: boolean;
+  recordOutputs?: boolean;
+  sanitize?: Sanitize;
+};
+export type TurnTelemetry = {
+  integration: (facts: Facts) => Telemetry;
+  flush: (signal?: AbortSignal) => Promise<void>;
+};
+type BufferedSpan = Omit<Span, "traceId" | "spanId" | "parentSpanId" | "endTimeUnixNano"> & {
+  seed: string;
+  path: string;
+  parent?: BufferedSpan;
+  endTimeUnixNano?: string;
+};
+type Call = {
+  root: BufferedSpan;
+  step?: BufferedSpan;
+  chat?: BufferedSpan;
+  modelAttempt: number;
+  toolOrdinal: number;
+  tools: Map<string, BufferedSpan>;
+};
+
+/**
+ * Action-scoped, one-shot buffer. Create a fresh instance for each turn, attach its
+ * integration to streamText, consume the stream, then await flush in finally.
+ *
+ * AI SDK 7's callback seam is ai/src/telemetry/telemetry.ts:136-360;
+ * telemetry-options.ts:24-76 contains integrations and has no tracer option.
+ * The observer-only failure guard follows the verified prior art in
+ * agents/src/runtime/tracing.ts:133-215, without its durable outbox/SDK layer.
+ */
+export function telemetry(options: TelemetryOptions): TurnTelemetry {
+  if (!Array.isArray(options.exporters) || options.exporters.length > LIMITS.maxExporters)
+    throw new Error("Invalid telemetry exporters");
+  for (const exporter of options.exporters)
+    if (!exporter || typeof exporter.export !== "function")
+      throw new Error("Invalid telemetry exporter");
+  for (const flag of [options.recordInputs, options.recordOutputs])
+    if (flag !== undefined && typeof flag !== "boolean")
+      throw new Error("Invalid telemetry recording option");
+  if (options.sanitize !== undefined && typeof options.sanitize !== "function")
+    throw new Error("Invalid telemetry sanitize");
+  const exporters = [...options.exporters];
+  const recordInputs = options.recordInputs === true;
+  const recordOutputs = options.recordOutputs === true;
+  const write = attributeWriter(options.sanitize);
+  let buffer: BufferedSpan[] = [];
+  let sealed = false;
+  let flushing: Promise<void> | undefined;
+
+  return {
+    integration(facts) {
+      const identity = { ...facts };
+      for (const key of [
+        "subject",
+        "rootThreadId",
+        "threadId",
+        "runId",
+        "agent",
+        "turnKey",
+      ] as const)
+        validateString(identity[key], key, LIMITS.maxFactBytes);
+      const seed = JSON.stringify([identity.runId, identity.turnKey]);
+      const calls = new Map<string, Call>();
+      let callOrdinal = 0;
+      const common = {
+        "langfuse.session.id": identity.rootThreadId,
+        "langfuse.user.id": identity.subject,
+        "langfuse.trace.name": identity.agent,
+        "langfuse.trace.metadata.thread_id": identity.threadId,
+        "langfuse.trace.metadata.run_id": identity.runId,
+        "langfuse.trace.metadata.agent": identity.agent,
+        "langfuse.trace.metadata.turn_key": identity.turnKey,
+      };
+      const add = (
+        name: string,
+        path: string,
+        operation: string,
+        observation: string,
+        parent?: BufferedSpan,
+        kind: Span["kind"] = 1,
+      ): BufferedSpan | undefined => {
+        if (sealed) return;
+        if (buffer.length >= LIMITS.maxSpansPerTurn) {
+          // Keep already-recorded ancestry; never emit an orphan for a dropped parent.
+          if (buffer[0]) markTruncated(buffer[0].attributes);
+          return;
+        }
+        const attributes: Attribute[] = [];
+        for (const [key, value] of Object.entries(common)) write(attributes, key, value);
+        write(attributes, "gen_ai.operation.name", operation);
+        write(attributes, "langfuse.observation.type", observation);
+        const span: BufferedSpan = {
+          seed,
+          path,
+          parent,
+          name: truncate(name, LIMITS.maxNameBytes),
+          kind,
+          startTimeUnixNano: now(),
+          attributes,
+          status: { code: 1 },
+        };
+        buffer.push(span);
+        return span;
+      };
+      const finish = (span?: BufferedSpan, failed = false) => {
+        if (!span) return;
+        span.endTimeUnixNano ??= now();
+        if (failed) span.status.code = 2;
+      };
+      const content = (
+        span: BufferedSpan | undefined,
+        key: string,
+        value: unknown,
+        enabled: boolean,
+      ) => {
+        if (span && enabled) write(span.attributes, key, value);
+      };
+      const usage = (span: BufferedSpan | undefined, value: unknown) => {
+        if (!span || !value || typeof value !== "object") return;
+        for (const [field, key] of [
+          ["inputTokens", "gen_ai.usage.input_tokens"],
+          ["outputTokens", "gen_ai.usage.output_tokens"],
+        ] as const) {
+          const count = (value as Record<string, unknown>)[field];
+          if (typeof count === "number" && Number.isSafeInteger(count) && count >= 0)
+            write(span.attributes, key, count);
+        }
+      };
+      const endCall = (callId: string, failed: boolean) => {
+        const call = calls.get(callId);
+        if (!call) return;
+        finish(call.root, failed);
+        finish(call.step, failed);
+        // A completed model call must not become an error because a later tool failed.
+        if (!call.chat?.endTimeUnixNano) finish(call.chat, failed);
+        for (const tool of call.tools.values()) finish(tool, failed);
+        calls.delete(callId);
+      };
+      const safe =
+        <E>(callback: (event: E) => void) =>
+        (event: E) => {
+          if (sealed) return;
+          try {
+            callback(event);
+          } catch {
+            /* Telemetry never changes paid execution. */
+          }
+        };
+      const integration: Telemetry = {
+        onStart: safe((event) => {
+          if (event.operationId !== "ai.streamText" && event.operationId !== "ai.generateText")
+            return;
+          const root = add(
+            `invoke_agent ${identity.agent}`,
+            `call:${callOrdinal++}`,
+            "invoke_agent",
+            "agent",
+          );
+          if (!root) return;
+          calls.set(event.callId, { root, modelAttempt: 0, toolOrdinal: 0, tools: new Map() });
+          write(root.attributes, "gen_ai.agent.name", identity.agent);
+          if ("modelId" in event) write(root.attributes, "gen_ai.request.model", event.modelId);
+          if ("provider" in event) write(root.attributes, "gen_ai.provider.name", event.provider);
+          if ("messages" in event)
+            content(
+              root,
+              "gen_ai.input.messages",
+              event.messages,
+              recordInputs && event.recordInputs !== false,
+            );
+          if ("instructions" in event)
+            content(
+              root,
+              "gen_ai.system_instructions",
+              event.instructions,
+              recordInputs && event.recordInputs !== false,
+            );
+        }),
+        onStepStart: safe((event) => {
+          const call = calls.get(event.callId);
+          if (!call) return;
+          call.chat = undefined;
+          call.modelAttempt = 0;
+          call.toolOrdinal = 0;
+          call.step = add(
+            `step ${event.stepNumber}`,
+            `${call.root.path}/step:${event.stepNumber}`,
+            "agent_step",
+            "span",
+            call.root,
+          );
+        }),
+        onLanguageModelCallStart: safe((event) => {
+          const call = calls.get(event.callId);
+          if (!call?.step) return;
+          call.chat = add(
+            `chat ${event.modelId}`,
+            `${call.step.path}/chat:${call.modelAttempt++}`,
+            "chat",
+            "generation",
+            call.step,
+            3,
+          );
+          if (!call.chat) return;
+          write(call.chat.attributes, "gen_ai.request.model", event.modelId);
+          write(call.chat.attributes, "gen_ai.provider.name", event.provider);
+          content(
+            call.chat,
+            "gen_ai.input.messages",
+            event.messages,
+            recordInputs && event.recordInputs !== false,
+          );
+          content(
+            call.chat,
+            "gen_ai.system_instructions",
+            event.instructions,
+            recordInputs && event.recordInputs !== false,
+          );
+        }),
+        onLanguageModelCallEnd: safe((event) => {
+          const chat = calls.get(event.callId)?.chat;
+          if (!chat) return;
+          finish(chat);
+          usage(chat, event.usage);
+          write(chat.attributes, "gen_ai.response.model", event.modelId);
+          write(chat.attributes, "gen_ai.response.id", event.responseId);
+          write(chat.attributes, "gen_ai.response.finish_reasons", [event.finishReason]);
+          content(
+            chat,
+            "gen_ai.output.messages",
+            event.content,
+            recordOutputs && event.recordOutputs !== false,
+          );
+        }),
+        onToolExecutionStart: safe((event) => {
+          const call = calls.get(event.callId);
+          if (!call?.step) return;
+          const tool = add(
+            `execute_tool ${event.toolCall.toolName}`,
+            `${call.step.path}/tool:${call.toolOrdinal++}`,
+            "execute_tool",
+            "tool",
+            call.chat ?? call.step,
+          );
+          if (!tool) return;
+          call.tools.set(event.toolCall.toolCallId, tool);
+          write(tool.attributes, "gen_ai.tool.name", event.toolCall.toolName);
+          write(tool.attributes, "gen_ai.tool.call.id", event.toolCall.toolCallId);
+          content(
+            tool,
+            "gen_ai.tool.call.arguments",
+            event.toolCall.input,
+            recordInputs && event.recordInputs !== false,
+          );
+        }),
+        onToolExecutionEnd: safe((event) => {
+          const call = calls.get(event.callId);
+          const tool = call?.tools.get(event.toolCall.toolCallId);
+          if (!tool) return;
+          finish(tool, event.toolOutput.type !== "tool-result");
+          if (event.toolOutput.type === "tool-result")
+            content(
+              tool,
+              "gen_ai.tool.call.result",
+              event.toolOutput.output,
+              recordOutputs && event.recordOutputs !== false,
+            );
+          call?.tools.delete(event.toolCall.toolCallId);
+        }),
+        onStepEnd: safe((event) => {
+          const step = calls.get(event.callId)?.step;
+          finish(step);
+          usage(step, event.usage);
+        }),
+        onEnd: safe((event) => {
+          const call = calls.get(event.callId);
+          if ("text" in event) usage(call?.root, event.usage);
+          if ("text" in event)
+            content(
+              call?.root,
+              "langfuse.observation.output",
+              event.text,
+              recordOutputs && event.recordOutputs !== false,
+            );
+          endCall(event.callId, false);
+        }),
+        onAbort: safe((event) => endCall(event.callId, true)),
+        onError: safe((event) => {
+          // AI SDK types this as unknown but stream-text.ts:2000,3283 supplies
+          // { callId, error }. Never record the arbitrary error (it can contain input).
+          if (
+            event &&
+            typeof event === "object" &&
+            "callId" in event &&
+            typeof event.callId === "string"
+          )
+            endCall(event.callId, true);
+        }),
+      };
+      return integration;
+    },
+    flush(signal) {
+      if (flushing) return flushing;
+      sealed = true;
+      const spans = buffer;
+      buffer = [];
+      flushing = (async () => {
+        try {
+          if (!spans.length || signal?.aborted) return;
+          // No Convex reads/writes. At the hard ceiling: 128 spans × 16 KiB
+          // encoded attributes = 2 MiB; names/ids/times/envelopes add < 256 KiB,
+          // so the single OTLP request is < 2.25 MiB. At most four exporters
+          // run concurrently under the same 3 s deadline; there is no retry.
+          const serialized = await Promise.all(
+            spans.map(async (span): Promise<Span> => {
+              const traceId = await hash(span.seed, LIMITS.traceIdHexLength);
+              const spanId = await hash(
+                JSON.stringify([span.seed, span.path]),
+                LIMITS.spanIdHexLength,
+              );
+              const parentSpanId = span.parent
+                ? await hash(
+                    JSON.stringify([span.parent.seed, span.parent.path]),
+                    LIMITS.spanIdHexLength,
+                  )
+                : undefined;
+              return {
+                traceId,
+                spanId,
+                ...(parentSpanId ? { parentSpanId } : {}),
+                name: span.name,
+                kind: span.kind,
+                startTimeUnixNano: span.startTimeUnixNano,
+                endTimeUnixNano: span.endTimeUnixNano ?? now(),
+                attributes: span.attributes,
+                status: span.endTimeUnixNano ? span.status : { code: 2 },
+              };
+            }),
+          );
+          const body = payload(serialized);
+          await Promise.all(
+            exporters.map((exporter) =>
+              bestEffort((exportSignal) => exporter.export(body, exportSignal), signal),
+            ),
+          );
+        } catch {
+          /* Even unavailable WebCrypto must not change the agent result. */
+        }
+      })();
+      return flushing;
+    },
+  };
+}

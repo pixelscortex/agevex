@@ -437,3 +437,69 @@ only hashed call ids and exact message references.
 A fresh send reopens a cancelled thread, preserving the existing cancellation
 contract. Failed cancellation cleanup blocks reopening with a typed `CANCELLED`
 receipt until a subsequent cancel successfully settles the recorded work.
+
+## Telemetry
+
+`agevex/telemetry` is an optional, action-scoped AI SDK 7 callback integration;
+no component mount, tables, Node APIs or new dependencies are required. Create
+one buffer per turn and consume the stream before flushing in `finally`:
+
+```ts
+import { telemetry, langfuse, braintrust } from "agevex/telemetry";
+
+const trace = telemetry({
+  exporters: [
+    langfuse({ baseUrl: "https://cloud.langfuse.com", publicKey, secretKey }),
+    // braintrust({ apiKey, projectId }),
+  ],
+});
+try {
+  const result = streamText({
+    model,
+    prompt,
+    maxRetries: 0,
+    telemetry: {
+      integrations: [
+        trace.integration({
+          subject,
+          rootThreadId,
+          threadId,
+          runId,
+          agent: "Main",
+          turnKey,
+        }),
+      ],
+    },
+  });
+  await result.consumeStream();
+} finally {
+  await trace.flush(); // optional AbortSignal; one attempt, at most 3 s for exports
+}
+```
+
+Agent 0.7.7 forwards the same `telemetry` option in its `streamText` arguments.
+Core registration wiring belongs to the separate telemetry slot integration.
+Per-call integrations replace AI SDK global integrations. AI SDK 7 has no
+`tracer` option.
+
+Prompts, instructions, model output and tool arguments/results are omitted by
+default. Opt in with `recordInputs: true` / `recordOutputs: true`; an optional
+`sanitize(value, attributeName)` transforms bounded attribute values before
+buffering (`undefined` omits a value; failures omit it). SDK recording flags
+can further disable recording. Raw error diagnostics are never recorded.
+User/session/run/agent facts are included on every span; sanitize them when needed.
+
+`LIMITS` from this subpath fixes the buffer at 128 spans, 16 KiB of encoded
+attributes per span and 4 KiB per value, with truncation markers. Reuse stable
+`runId` and `turnKey` on retries for deterministic SHA-256 trace/span ids.
+`flush` seals and drains its buffer once, including unfinished spans as errors;
+failures/timeouts are ignored and never retried. All configured exporters run
+concurrently with cancellation and a three-second deadline. Langfuse `baseUrl`
+is the host URL (an optional deployment path is preserved); Braintrust uses
+its US OTel endpoint and a project id.
+
+`bun run test:live` also runs the telemetry ingestion smoke test. It skips
+clearly unless all three `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` and
+`LANGFUSE_BASE_URL` entries exist in the main checkout's `.env.local`. This
+smoke test uses synthetic model events and one ingestion POST, with no paid
+model requests.
