@@ -1,0 +1,109 @@
+.agents/skills/convex-add/SKILL.md
+  s_1f280a640f436f::t_5f9d0f5fee42a3 1-26
+.agents/skills/convex-advisor/SKILL.md
+  s_1f280a640f436f::t_976efd2177cff5 1-32
+.agents/skills/convex-agent/SKILL.md
+  s_1f280a640f436f::t_89d6e8ae5355fb 1-25
+.agents/skills/convex-auth/SKILL.md
+  s_1f280a640f436f::t_b18f532ae273f4 1-29
+.agents/skills/convex-authz/SKILL.md
+  s_1f280a640f436f::t_5d314e4c891724 1-36
+.agents/skills/convex-backup/SKILL.md
+  s_1f280a640f436f::t_76e0a631a172b5 1-33
+.agents/skills/convex-billing/SKILL.md
+  s_1f280a640f436f::t_7ed4ffa390e833 1-69
+.agents/skills/convex-cost/SKILL.md
+  s_1f280a640f436f::t_a20a86f3c3f200 1-29
+.agents/skills/convex-create-component/SKILL.md
+  s_1f280a640f436f::t_1babbb9265ed59 1-325
+.agents/skills/convex-create-component/agents/openai.yaml
+  s_1f280a640f436f::t_dd9e8602d0fdce 1-14
+.agents/skills/convex-create-component/assets/icon.svg
+  s_1f280a640f436f::t_a5bc9e976c3fbd 1-3
+.agents/skills/convex-create-component/references/advanced-patterns.md
+  s_1f280a640f436f::t_aab3285f012f29 1-146
+.agents/skills/convex-create-component/references/hybrid-components.md
+  s_1f280a640f436f::t_70ebf5739b1c21 1-38
+.agents/skills/convex-create-component/references/local-components.md
+  s_1f280a640f436f::t_86886db12de805 1-39
+.agents/skills/convex-create-component/references/packaged-components.md
+  s_1f280a640f436f::t_de59cbc0a0a79c 1-54
+.agents/skills/convex-crons/SKILL.md
+  s_1f280a640f436f::t_9fa79a7fe43ab3 1-23
+.agents/skills/convex-deploy-guard/SKILL.md
+  s_1f280a640f436f::t_9f16d21080cf92 1-29
+.agents/skills/convex-design/SKILL.md
+  s_1f280a640f436f::t_45c7fbc23a68ae 1-30
+.agents/skills/convex-docs/SKILL.md
+  s_1f280a640f436f::t_58bc7e6eaeba1f 1-31
+.agents/skills/convex-domains/SKILL.md
+  s_1f280a640f436f::t_cff2e9a23d00e6 1-26
+.agents/skills/convex-env/SKILL.md
+  s_1f280a640f436f::t_e5fdd7f244394f 1-24
+.agents/skills/convex-expert/SKILL.md
+  s_1f280a640f436f::t_cf8bbdd492befc 1-38
+.agents/skills/convex-explain-app/SKILL.md
+  s_1f280a640f436f::t_9a6af5c7c2a8a3 1-29
+.agents/skills/convex-improve-convex-plugin/SKILL.md
+  s_1f280a640f436f::t_0ef7fbe49773a5 1-24
+.agents/skills/convex-insights/SKILL.md
+  s_1f280a640f436f::t_d1389861726664 1-32
+.agents/skills/convex-launch-readiness/SKILL.md
+  s_1f280a640f436f::t_323aaf674ebe4b 1-35
+.agents/skills/convex-migrate-rehearse/SKILL.md
+  s_1f280a640f436f::t_1b19b5027cb0c3 1-31
+.agents/skills/convex-migrate/SKILL.md
+  s_1f280a640f436f::t_bbf439b875750e 1-23
+.agents/skills/convex-monitor/SKILL.md
+  s_1f280a640f436f::t_e2517453bc43c7 1-22
+.agents/skills/convex-optimize/SKILL.md
+  s_1f280a640f436f::t_1a2b3e13d0ab5e 1-26
+.agents/skills/convex-quickstart/SKILL.md
+  s_1f280a640f436f::t_a7fde6ae28b155 1-29
+.agents/skills/convex-quickstart/agents/openai.yaml
+  s_1f280a640f436f::t_8997a90dc9895f 1-14
+.agents/skills/convex-quickstart/assets/icon.svg
+  s_1f280a640f436f::t_8b0f003caca03b 1-4
+.agents/skills/convex-reviewer/SKILL.md
+  s_1f280a640f436f::t_c3ed0efe93e26b 1-26
+.agents/skills/convex-seed/SKILL.md
+  s_1f280a640f436f::t_ef35fc0c323178 1-23
+.agents/skills/convex-self-heal/SKILL.md
+  s_1f280a640f436f::t_650ab6310971b9 1-38
+.agents/skills/convex-sentinel/SKILL.md
+  s_1f280a640f436f::t_61d8bc3439da4f 1-25
+.agents/skills/convex-suggest/SKILL.md
+  s_1f280a640f436f::t_4336b99de27e3b 1-27
+.agents/skills/convex-test/SKILL.md
+  s_1f280a640f436f::t_fac1613e59bcfc 1-23
+.agents/skills/convex-verify/SKILL.md
+  s_1f280a640f436f::t_c96bb5172979e7 1-34
+.agents/skills/convex/SKILL.md
+  s_1f280a640f436f::t_b3adf3a410a65d 1-69
+.claude/skills
+  s_1f280a640f436f::t_93784dbec64a82 1
+AGENTS.md
+  s_1f280a640f436f::t_0e8686c64e0497 1-67
+CLAUDE.md
+  s_1f280a640f436f::t_80d2b7c91e2cb4 1
+docs/layout-tooling-report.txt
+  s_1f280a640f436f::t_92aecc3425d8be 1-338
+skills-lock.json
+  s_1f280a640f436f::t_a604de73c2b4dd 1-203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "aab2d01a5584fe9062b5acb1b01c8bc51b9172f3",
+  "prompts": {},
+  "sessions": {
+    "s_1f280a640f436f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1755e-2e63-7e62-a6b9-53797af18e96",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
