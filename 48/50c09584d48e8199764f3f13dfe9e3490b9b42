@@ -1,0 +1,75 @@
+README.md
+  s_d863bd773ba186::t_14e611ce931bdc 677-744
+bun.lock
+  s_d863bd773ba186::t_da0526b81a5639 8,11,30-31,33,70-71,166-167
+docs/site/content/docs/modules/extract.mdx
+  s_d863bd773ba186::t_cf886eb17efd28 4-5,8-121,124-156,158,160-166,169-330,333-337,339-361,363,365-372,374,376-380
+package.json
+  s_d863bd773ba186::t_609fc758ad60c5 64-74,88,90-91,98-99
+src/extract/adapter.ts
+  s_d863bd773ba186::t_468e2cd44b9d63 1-147
+src/extract/backends.ts
+  s_d863bd773ba186::t_0dd2ce4602d8aa 1-239
+src/extract/component/_generated/api.ts
+  s_d863bd773ba186::t_5a069d7f517238 1-12
+src/extract/component/_generated/component.ts
+  s_d863bd773ba186::t_6da804164543ab 1-15
+src/extract/component/_generated/dataModel.ts
+  s_d863bd773ba186::t_0874fb5cd46913 1-8
+src/extract/component/_generated/server.ts
+  s_d863bd773ba186::t_46d9c112aefd73 1-8
+src/extract/component/artifacts.ts
+  s_d863bd773ba186::t_a4102323100511 1-421
+src/extract/component/convex.config.ts
+  s_d863bd773ba186::t_1ea77c2eb50b27 1-5
+src/extract/component/indexing.ts
+  s_d863bd773ba186::t_66eb9aab956d42 1-300
+src/extract/component/schema.ts
+  s_d863bd773ba186::t_dc5a8b767ca5fe 1-80
+src/extract/component/workflows.ts
+  s_d863bd773ba186::t_f0197a8521ab69 1-90
+src/extract/index.ts
+  s_d863bd773ba186::t_326e8cdee30e2d 1-979
+src/extract/limits.ts
+  s_d863bd773ba186::t_3d075196db575a 1-140
+src/extract/payload.ts
+  s_d863bd773ba186::t_08f2490c430e27 1-135
+src/extract/types.ts
+  s_d863bd773ba186::t_70612360561b91 1-121
+tests/extract/backends.test.ts
+  s_d863bd773ba186::t_60eb56727fb4fb 1-136
+tests/extract/extract.live.ts
+  s_d863bd773ba186::t_e471de5b8439d0 1-120
+tests/extract/extract.test.ts
+  s_d863bd773ba186::t_740a9056d19d60 1-797
+tests/extract/fixture/_generated/api.ts
+  s_d863bd773ba186::t_4e9a1568fa2f0d 1-2
+tests/extract/fixture/host.ts
+  s_d863bd773ba186::t_c0cd13f8e34883 1-2
+tests/extract/fixtures/generate.ts
+  s_d863bd773ba186::t_28e889e8069bd2 1-61
+tests/extract/rag.test.ts
+  s_d863bd773ba186::t_425a345561a951 1-785
+tests/extract/setup.ts
+  s_d863bd773ba186::t_0d530d4ebbebcb 1-171
+tests/extract/slot.test.ts
+  s_d863bd773ba186::t_b971e7a965352b 1-394
+tests/extract/vite.live.config.ts
+  s_d863bd773ba186::t_a6aad37ff7260d 1-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4850c09584d48e8199764f3f13dfe9e3490b9b42",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
