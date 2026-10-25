@@ -1,0 +1,164 @@
+docs/site/src/routes/llms[.]txt.ts
+  s_1f280a640f436f::t_0821b7d19c946b 1-2,4,7-12
+docs/site/content/docs/concepts/slots.mdx
+  s_1f280a640f436f::t_199154ae17a127 27
+src/modules/meter/API.md
+  s_1f280a640f436f::t_0b8bd661ac2e40 1-366
+docs/site/src/components/mdx.tsx
+  s_1f280a640f436f::t_7bdca7e82f1703 1
+docs/site/src/router.tsx
+  s_1f280a640f436f::t_f396201a990ff9 1-3,8
+docs/site/src/lib/shared.ts
+  s_1f280a640f436f::t_4eef10d21eaae8 1,3,6,12,14,16,27-31
+docs/site/bun.lock
+  s_1f280a640f436f::t_26ef8fbcbead41 24,35,39-41,111-112,213-307,321,323,325,327,329,331,379,381,383,385,409,411,431-434,437-438,441-442,445-446,515-546,557,559,561,563,565,567,591-592,597-600,637-638,727-728,755-756,763,797-798,819-820,829-830,839,979,981,983,985,987,989,991,993,995,997,999,1001,1013-1015,1155-1156,1181-1182,1199-1204,1235-1236,1245-1246,1267-1268,1361-1362,1379-1380,1407-1408,1413-1416,1421-1422,1493-1495,1499-1500,1507-1508,1511-1512,1531-1532,1563-1573,1579-1586,1589-1600,1619-1620,1637-1638,1643-1644,1649-1652,1669,1671,1673,1675,1677,1679,1681,1683,1685,1687,1689,1694-1715
+docs/site/src/routes/index.tsx
+  s_1f280a640f436f::t_2d89e04772bd6d 1,3,5
+docs/site/tsconfig.json
+  s_1f280a640f436f::t_8356fd601a9ecf 2,9-10,18-19,23
+docs/site/src/routes/llms[.]mdx/docs/$.ts
+  s_1f280a640f436f::t_fc29f065e31edf 1-2,5,9-12,14,18
+docs/site/content/docs/modules/extract.mdx
+  s_1f280a640f436f::t_66fb0c6d58a9cc 225-230,249-263,265,269-278,339-361
+tests/hooks.test.ts
+  s_1f280a640f436f::t_6728619093a5d3 224
+  s_1dd580de6aa067::t_81758c23ae68b4 1800
+  s_1f280a640f436f::t_ab3e280f5b2a64 1798-1799
+.oxlintrc.json
+  s_1f280a640f436f::t_bf82d96054492a 1-79
+docs/site/content/docs/concepts/receipts.mdx
+  s_1f280a640f436f::t_26179693047089 13-27
+docs/site/src/routes/docs/{$}[.]md.ts
+  s_1f280a640f436f::t_94b3d92fd6d42e 1-3,5,9,11,16
+docs/site/vite.config.ts
+  s_1f280a640f436f::t_8e54eb41424ba5 1-7,10-11,24,26,32-34
+docs/site/src/routes/__root.tsx
+  s_1f280a640f436f::t_0c8e82b6e96d4c 1-4,10,13-14,19-20,22
+tests/tools/install.test.ts
+  s_1f280a640f436f::t_7c9f69a42ca8fe 209
+docs/site/content/docs/modules/meta.json
+  s_1f280a640f436f::t_9d331cb8c05864 4
+oxfmt.config.ts
+  s_1f280a640f436f::t_dfaf92b53f4c62 1-31
+vite.config.ts
+  s_1f280a640f436f::t_b890d4735fa127 9
+docs/site/content/docs/concepts/runtime.mdx
+  s_1f280a640f436f::t_149a6a816926ca 78-84
+docs/site/README.md
+  s_1f280a640f436f::t_9794c5d936d1b5 5,18,83-95
+package.json
+  s_1f280a640f436f::t_88747fe60968cc 87-89,91,122
+docs/site/site.config.ts
+  s_1f280a640f436f::t_e20244b48f86a4 2,7,9
+README.md
+  s_1f280a640f436f::t_7fa57c3e0895ee 19-26
+docs/site/src/lib/layout.shared.tsx
+  s_1f280a640f436f::t_19f5fbb51732b4 1-2,6
+docs/site/src/styles/app.css
+  s_1f280a640f436f::t_e809cd7ec3e4de 1-4,21-23
+src/component/turns/cancel.ts
+  s_1f280a640f436f::t_b36df9099f0cbd 41-42
+docs/site/src/start.ts
+  s_1f280a640f436f::t_8b363b3b7b073c 1-4,7,15,20,22,26
+tests/extract/fixtures/generate.ts
+  s_1f280a640f436f::t_c7953de8620a34 25,27
+tests/live/convex/agents.ts
+  s_1f280a640f436f::t_160c200ae42066 72
+docs/site/src/routes/docs/$.tsx
+  s_1f280a640f436f::t_a7aceb3037da7b 1-4,11-19,22,24,26,33,40,45,59
+docs/site/package.json
+  s_1f280a640f436f::t_defd56cfe8e97f 3,8-16,35-36,43,46,48-50
+docs/site/scripts/build-registry.ts
+  s_1f280a640f436f::t_8908e00d07b116 1,6,8,13-16,18,22
+docs/site/content/docs/modules/tools.mdx
+  s_1f280a640f436f::t_bfa6c7c90085fb 12-16
+docs/site/content/docs/concepts/meta.json
+  s_1f280a640f436f::t_c4cbf7acc5ebcd 4
+docs/site/src/routes/llms-full[.]txt.ts
+  s_1f280a640f436f::t_e7726c445f8d9b 1-2,4,7-10
+scripts/check-convex-lint.ts
+  s_1f280a640f436f::t_a4d21c01290001 3,11-18,24-25,41-44,61,69-71,73-77,79-83,85-87,89,91-95,97-98
+docs/site/content/docs/modules/sandbox.mdx
+  s_1f280a640f436f::t_0b75ae730785e0 31-37,82-85,97-113,123-129,138-151,215-229
+docs/site/content/docs/getting-started.mdx
+  s_1f280a640f436f::t_19a1eb52b8a17a 56-62,64-65,68
+bun.lock
+  s_1f280a640f436f::t_48479d61cc2dab 8,12,22,29,71-73,83-84,177-178,183,185,187,189,191,193,195,197,199,201,203,205,207,209,211,213,215,217,219,541,637-638,650-689
+docs/site/src/lib/source.ts
+  s_1f280a640f436f::t_05e6bfec2e0af7 1-6,9,13,36
+docs/site/content/docs/concepts/limits.mdx
+  s_1f280a640f436f::t_3eb5277e0b29e7 11-76
+tests/meter/openrouter.live.ts
+  s_1f280a640f436f::t_06305f98cc2301 54-56
+docs/site/content/docs/concepts/hooks.mdx
+  s_1f280a640f436f::t_3eeb0d16467cc0 19,29
+src/modules/sandbox/component/state.ts
+  s_1f280a640f436f::t_8b2d6f12420b3b 55,77,89,135,170,232,240,247,327,329,346,358,371,387,396,416,453,469,483,501
+src/modules/meter/component/charges.ts
+  s_1f280a640f436f::t_85c10f77941925 87,192,317,337,364-366,480,522,574,590,630,666,682,764,813,884
+docs/site/content/docs/concepts/delegation.mdx
+  s_1f280a640f436f::t_fe64f88d187f4a 81
+docs/site/src/routes/api/search.ts
+  s_1f280a640f436f::t_a1f75dbcb7efe0 1-3,7,10
+src/modules/telemetry/client/exporters.ts
+  s_1f280a640f436f::t_9d0ad299a0560d 16
+src/modules/extract/component/schema.ts
+  s_1f280a640f436f::t_760a059271d025 58-59
+docs/site/content/docs/modules/meter.mdx
+  s_1f280a640f436f::t_58b0461fc1f773 32-37,70-72,103-109,130-135,138-140,175-201,234-239,314,328-350
+docs/site/src/lib/cn.ts
+  s_1f280a640f436f::t_bead419e706271 1
+tests/extract/extract.live.ts
+  s_1f280a640f436f::t_eb4042a77bfc55 58
+docs/site/content/docs/modules/telemetry.mdx
+  s_1f280a640f436f::t_682eda9144a4bc 23-29,138-152
+docs/site/content/docs/index.mdx
+  s_1f280a640f436f::t_c18f3c5bd7d62b 46-52,54-55,58
+src/modules/meter/README.md
+  s_d863bd773ba186::t_dbc2126888685f 9
+  s_777d0e4888eea0::t_e7611669a4d07d 7
+docs/site/scripts/typecheck.ts
+  s_1f280a640f436f::t_778165034d46dd 1-19
+tests/meter/sinks.test.ts
+  s_1f280a640f436f::t_af75cef52a65f1 51,89,165-167
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "86650fc39dc34ab00006b11dab39afa1f5033275",
+  "prompts": {},
+  "sessions": {
+    "s_1dd580de6aa067": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17100-56df-7790-b457-6caa8b85b2be",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_1f280a640f436f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1755e-2e63-7e62-a6b9-53797af18e96",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_777d0e4888eea0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1704c-16b7-79d2-99bd-1e66f2fdad3c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
