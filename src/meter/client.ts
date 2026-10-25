@@ -351,7 +351,10 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
       ctx: WriteCtx,
       args: { before: number; limit?: number },
     ): Promise<{ deleted: number; more: boolean }> =>
-      await ctx.runMutation(component.charges.prune, args),
+      await ctx.runMutation(component.charges.prune, {
+        ...args,
+        minAgeMs: limits.pruneMinAgeMs,
+      }),
     retrySinks: async (ctx: WriteCtx, args: { key: string; subject: string }) => {
       await authorize(ctx, { subject: args.subject });
       const row = await ctx.runQuery(component.charges.get, { key: args.key });

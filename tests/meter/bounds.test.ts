@@ -208,6 +208,7 @@ it(
     const events: SinkEvent[] = [];
     const { t, meter } = setup({
       breakdowns: allBreakdowns,
+      limits: { pruneMinAgeMs: 1 },
       providers: {
         [label]: {
           profiles: {
@@ -347,7 +348,7 @@ it(
     // with all eight projections in maximally populated trees.
     expect(
       await t.run((ctx) =>
-        meter.prune(ctx, { before: Date.now() + 1, limit: LIMITS.maxPruneLimit }),
+        meter.prune(ctx, { before: Date.now() - 1, limit: LIMITS.maxPruneLimit }),
       ),
     ).toEqual({ deleted: 1, more: false });
     expect(await t.run((ctx) => meter.subjectCost(ctx, { subject: label }))).toMatchObject({

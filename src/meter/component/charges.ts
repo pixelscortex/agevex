@@ -678,9 +678,13 @@ export const retrySinks = mutation({
  * opted-in one (8: 3*84 + 5*196) <=1,232 nodes (2.4 MiB): >=4. `limit` caps the count.
  */
 export const prune = mutation({
-  args: { before: v.number(), limit: v.optional(v.number()) },
-  handler: async (ctx, { before, limit = LIMITS.pruneLimit }) => {
+  args: { before: v.number(), limit: v.optional(v.number()), minAgeMs: v.number() },
+  handler: async (ctx, { before, limit = LIMITS.pruneLimit, minAgeMs }) => {
     integer(before, LIMITS.maxTimestamp, "BEFORE");
+    integer(minAgeMs, LIMITS.pruneMinAgeMs, "MIN_AGE");
+    // Guard: pruning lowers run and subject totals, so a cutoff inside an
+    // active run or budget window would re-admit spend. Hosts may lower it.
+    if (before > Date.now() - minAgeMs) throw new Error("PRUNE_TOO_RECENT");
     integer(limit, LIMITS.maxPruneLimit, "LIMIT");
     if (!limit) throw new Error("INVALID_LIMIT");
     let deleted = 0;

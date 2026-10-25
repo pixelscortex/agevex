@@ -15,7 +15,8 @@ it("prune deletes only settled, fully delivered charges before the cutoff, honou
   let offline = false;
   const { t, meter, component } = setup({
     breakdowns: allBreakdowns,
-    limits: { maxAttempts: 1 },
+    // The age guard is tested separately; this test prunes a just-past cutoff.
+    limits: { maxAttempts: 1, pruneMinAgeMs: 1 },
     sinks: [
       {
         name: "ledger",
@@ -84,4 +85,22 @@ it("prune deletes only settled, fully delivered charges before the cutoff, honou
     meter.breakdown(ctx, { subject: "owner", from: day, to: day + LIMITS.dayMs, by: "model" }),
   );
   expect(models.page).toEqual([expect.objectContaining({ key: "model", ...remaining })]);
+});
+
+it("prune refuses a cutoff inside the minimum age so active run and budget totals cannot drop", async () => {
+  const { t, meter } = setup();
+  await t.run(async (ctx) => {
+    await meter
+      .scope(ctx, attribution)
+      .record("openrouter", { key: "live", providerMetadata: cost(0.1) });
+  });
+  await expect(t.run((ctx) => meter.prune(ctx, { before: Date.now() }))).rejects.toThrow(
+    "PRUNE_TOO_RECENT",
+  );
+  expect(
+    await t.run((ctx) => meter.prune(ctx, { before: Date.now() - LIMITS.pruneMinAgeMs })),
+  ).toEqual({ deleted: 0, more: false });
+  expect(await t.run((ctx) => meter.check(ctx, { subject: "owner", runId: "run" }))).toMatchObject({
+    settledNanos: 100_000_000,
+  });
 });

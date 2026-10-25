@@ -52,6 +52,9 @@ export const LIMITS = {
   /** New sink events wait this long so a burst shares one delivery request. */
   deliveryWindowMs: 1_000,
   pruneLimit: 100,
+  /** prune refuses a cutoff newer than now minus this (hosts may lower it):
+   * pruning lowers run totals, so it must never reach an active budget window. */
+  pruneMinAgeMs: 7 * 86_400_000,
   maxPruneLimit: 500,
   /**
    * Worst-case prune accounting (charges.ts prune). Thread-scoped trees hold
@@ -71,10 +74,10 @@ export const LIMITS = {
 
 export type Limits = Pick<
   typeof LIMITS,
-  "maxThreadCharges" | "maxGroups" | "maxDays" | "maxAttempts"
+  "maxThreadCharges" | "maxGroups" | "maxDays" | "maxAttempts" | "pruneMinAgeMs"
 >;
 export type ResolvedLimits = { [K in keyof Limits]: number };
-const overridable = ["maxThreadCharges", "maxGroups", "maxDays", "maxAttempts"];
+const overridable = ["maxThreadCharges", "maxGroups", "maxDays", "maxAttempts", "pruneMinAgeMs"];
 
 export function integer(value: number, max: number, name: string) {
   if (!Number.isSafeInteger(value) || value < 0 || value > max) throw new Error(`INVALID_${name}`);
@@ -112,6 +115,7 @@ export function resolveLimits(overrides: Partial<ResolvedLimits> = {}): Resolved
     maxGroups: LIMITS.maxGroups,
     maxDays: LIMITS.maxDays,
     maxAttempts: LIMITS.maxAttempts,
+    pruneMinAgeMs: LIMITS.pruneMinAgeMs,
     ...overrides,
   };
 }
