@@ -1,7 +1,7 @@
 // `registerAgent`: the host's single entry point to the managed runtime.
 //
 // It resolves one registration into a `RuntimeContext` (`registration/`) and
-// returns what the host exports: the public endpoints (`endpoints.ts`), the two
+// returns what the host exports: the public endpoints (`endpoints/`), the two
 // internal functions the component dispatches to (`runTurn` from `turn/` and the
 // collaboration coordinator from `coordinate/`), and trusted server-side helpers
 // (`host/`, `tasks.ts`). Nothing here reads or writes tables directly; every
@@ -10,7 +10,7 @@
 
 import type { ComponentApi } from "../component/_generated/component.js";
 import { buildCoordinate } from "./coordinate/coordinator.js";
-import { authorizedEndpoints } from "./endpoints.js";
+import { authorizedEndpoints } from "./endpoints/index.js";
 import type { NoteArgs } from "./hooks.js";
 import {
   fileAttached,
