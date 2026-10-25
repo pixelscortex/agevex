@@ -43,6 +43,7 @@ it("registers a Main -> Researcher graph and rejects an unusable one", () => {
   expect(Object.keys(runtime.internalFunctions()).sort()).toEqual(["coordinate", "runTurn"]);
   expect(Object.keys(runtime.authorizedEndpoints()).sort()).toEqual([
     "activity",
+    "answer",
     "cancel", // Phase 1a adds root-only cancellation.
     "delegations",
     "messages",

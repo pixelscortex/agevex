@@ -104,6 +104,8 @@ export const LIMITS = {
   // Bound approval coordination metadata even when native approval ids are huge:
   // requests store SHA-256 keys; resolved contains only their array offsets.
   approvalsPerPause: 16,
+  nativeCallIdLength: 1 << 20,
+  nativeEnvelopeBytes: 4 << 10,
   // Separate read transactions, including Agent's SIX prefetched merge heads
   // (3 statuses * tool/non-tool; Agent src/component/messages.ts:809-845).
   // Messages: 0.5 MiB page + 1 MiB overshoot + 6*1 MiB heads + 0.25 MiB

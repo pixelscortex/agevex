@@ -44,6 +44,8 @@ const toolNames = (tools: unknown): string[] =>
   Array.isArray(tools) ? tools.map((entry) => (entry as { name?: string }).name ?? "?") : [];
 
 export const state = {
+  deferred: false,
+  deferredCount: 1,
   overrideCalls: [] as string[],
   overrideTools: false,
   dropPing: false,
@@ -74,6 +76,7 @@ export const state = {
   echoGate: undefined as undefined | Promise<void>,
   cleanupFails: false,
   childApproval: false,
+  childDeferred: false,
   once: false,
   onceCalls: 0,
   onceContext: undefined as ToolContext | undefined,
@@ -186,6 +189,15 @@ model.doStream = async (args) => {
         input: '{"text":"echoed"}',
       })),
     ]).doStream(args);
+  if (state.deferred && state.calls.length === 1)
+    return scriptedModel([
+      Array.from({ length: state.deferredCount }, (_, i) => ({
+        type: "tool-call" as const,
+        toolCallId: `question-${i}`,
+        toolName: "askHuman",
+        input: '{"question":"Which option?"}',
+      })),
+    ]).doStream(args);
   if (state.tools && state.calls.length === 1) return toolModel.doStream(args);
   const prompt = JSON.stringify(
     args.prompt
@@ -224,6 +236,20 @@ childModel.doStream = async (args) => {
   if (state.childGate) await state.childGate;
   if (state.childFail) throw new Error("private child provider error must not leak");
   if (
+    state.childDeferred &&
+    state.offers.filter((offer) => offer.agent === "Researcher").length === 1
+  )
+    return scriptedModel([
+      [
+        {
+          type: "tool-call",
+          toolCallId: "child-question",
+          toolName: "askHuman",
+          input: '{"question":"Child question?"}',
+        },
+      ],
+    ]).doStream(args);
+  if (
     (state.childApproval || state.childToolSlices > 0) &&
     JSON.stringify(args.prompt).includes("keep slicing") &&
     state.offers.filter((offer) => offer.agent === "Researcher").length <=
@@ -250,8 +276,9 @@ export const researcher = new Agent(components.agent, {
 // Opt-in fixture tools preserve the tool-less child promised by existing tests.
 Object.defineProperty(researcher, "declaredTools", {
   get: () =>
-    state.childApproval || state.childToolSlices > 0
+    state.childApproval || state.childToolSlices > 0 || state.childDeferred
       ? {
+          askHuman: tool({ inputSchema: z.object({ question: z.string() }) }),
           echo: tool({
             inputSchema: z.object({ text: z.string() }),
             needsApproval: () => state.childApproval,
@@ -264,6 +291,7 @@ export const main = new Agent(components.agent, {
   name: "Main",
   languageModel: model,
   tools: {
+    askHuman: tool({ inputSchema: z.object({ question: z.string() }) }),
     nativeNested: createTool({
       inputSchema: z.object({}),
       execute: async (ctx, _input, options) => {
@@ -402,7 +430,7 @@ export const nestedMutation: RegisteredMutation<"internal", {}, null> = internal
 });
 const { runTurn, coordinate } = runtime.internalFunctions();
 export { runTurn, coordinate };
-export const { open, send, respond, cancel, messages, streams, activity, delegations } =
+export const { open, send, respond, answer, cancel, messages, streams, activity, delegations } =
   runtime.authorizedEndpoints();
 
 /**

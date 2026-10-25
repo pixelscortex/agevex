@@ -101,7 +101,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
   async function owned(
     ctx: GenericQueryCtx<GenericDataModel>,
     threadId: string,
-    operation: "send" | "respond" | "cancel" | "messages" | "streams" | "activity",
+    operation: "send" | "respond" | "answer" | "cancel" | "messages" | "streams" | "activity",
   ) {
     const row = await ctx.runQuery(component.queue.assignment, { threadId });
     if (!row) throw new Error("FORBIDDEN");
@@ -121,6 +121,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
       operation !== "messages" &&
       operation !== "streams" &&
       operation !== "respond" &&
+      operation !== "answer" &&
       row.root === false
     )
       throw new Error("FORBIDDEN");
@@ -270,6 +271,19 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           approved: args.approved,
           ...(args.reason !== undefined ? { reason: args.reason } : {}),
           addMessages: await createFunctionHandle(row.native.component.messages.addMessages),
+        });
+      },
+    }),
+    answer: mutationGeneric({
+      args: { threadId: v.string(), toolCallId: v.string(), text: v.string() },
+      returns: v.object({ messageId: v.string() }),
+      handler: async (ctx, args) => {
+        const row = await owned(ctx, args.threadId, "answer");
+        return ctx.runMutation(component.queue.answer, {
+          assignmentId: row.assignmentId,
+          subject: row.subject,
+          toolCallId: args.toolCallId,
+          text: args.text,
         });
       },
     }),

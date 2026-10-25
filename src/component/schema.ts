@@ -205,6 +205,9 @@ export default defineSchema({
         cleanupPending: v.optional(v.boolean()),
         requests: v.array(
           v.object({
+            // Deferred calls share the same bounded exact-id pause/cleanup path.
+            // Read by answer/respond/cancel to choose the native result protocol.
+            deferred: v.optional(v.boolean()),
             key: v.string(),
             messageId: v.string(),
             providerExecuted: v.boolean(),

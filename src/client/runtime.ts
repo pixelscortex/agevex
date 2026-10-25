@@ -183,6 +183,16 @@ export function registerAgent(component: ComponentApi, config: Registration) {
         config.modelAllowlist.some((id) => !id || id.length > LIMITS.modelIdLength)))
   )
     throw new Error("INVALID_MODEL_REGISTRATION");
+  for (const agent of graph.byName.values()) {
+    const deferred = Object.entries(agent.declaredTools).filter(
+      ([, tool]) => !tool.execute && tool.type !== "provider",
+    );
+    if (
+      deferred.length > LIMITS.approvalsPerPause ||
+      deferred.some(([name]) => !name || name.length > LIMITS.requestKeyLength)
+    )
+      throw new Error("INVALID_DEFERRED_TOOLS");
+  }
   const collaboration = [...graph.edges.values()].some((allowed) => allowed.size > 0);
   if (collaboration && !config.refs.coordinate) throw new Error("COORDINATE_REF_REQUIRED");
 
@@ -826,6 +836,12 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                     ...(JSON.stringify(getFunctionAddress(ref)) ===
                     JSON.stringify(getFunctionAddress(managed.component.messages.addMessages))
                       ? {
+                          // Tools without execute are native deferred calls (Agent
+                          // 0.7.7 example/convex/chat/human.ts:125-157). Supply
+                          // names only at the native-save seam; no transcript scan.
+                          deferredTools: Object.entries(managed.declaredTools)
+                            .filter(([, tool]) => !tool.execute && tool.type !== "provider")
+                            .map(([name]) => name),
                           nativeMessages: {
                             getMessages: await createFunctionHandle(
                               managed.component.messages.getMessagesByIds,

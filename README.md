@@ -45,8 +45,18 @@ const runtime = registerAgent(components.agevex, {
   authorizeExecution: hostExecutionPolicy,
 });
 export const { runTurn, coordinate } = runtime.internalFunctions();
-export const { open, send, respond, cancel, messages, activity, delegations, runTree } =
-  runtime.authorizedEndpoints();
+export const {
+  open,
+  send,
+  respond,
+  answer,
+  cancel,
+  messages,
+  streams,
+  activity,
+  delegations,
+  runTree,
+} = runtime.authorizedEndpoints();
 ```
 
 `languageModel`, `hostPolicy` and `hostExecutionPolicy` are host-owned. For
@@ -234,3 +244,13 @@ all its descendant and result turns. A later send updates the next run only;
 omitting `models` inherits the last accepted thread policy; `{}` restores Agent
 defaults. Maps have at most 8 entries and 512 Convex-encoded bytes (ids ≤200
 characters), keeping cancel's per-run read budget at 1 KiB.
+
+Tools declared without `execute` use Agent's native deferred results. The owner
+calls `answer({ threadId, toolCallId, text })` to save a native text tool result
+and resume when all pending calls have answers. `answer` also supports owned
+child threads and rejects unrecorded, foreign, cancelled, or already answered
+calls. Text is non-empty and ≤16,000 UTF-16 units. Mixed approvals and deferred
+calls share the 16-call pause bound; `respond` handles approval decisions and
+`answer` handles free text. Cancel settles only open recorded calls with native
+execution-denied results. Payloads remain in Agent storage; coordination stores
+only hashed call ids and exact message references.

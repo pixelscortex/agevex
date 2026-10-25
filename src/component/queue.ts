@@ -3,7 +3,7 @@ import type { FunctionHandle } from "convex/server";
 import type { WorkflowId } from "@convex-dev/workflow";
 import { rootLane, childLane, laneManager } from "./workflows.js";
 import { findReceipt, armPurge } from "./ledger.js";
-import { ConvexError, v } from "convex/values";
+import { ConvexError, getConvexSize, v } from "convex/values";
 import { api, internal } from "./_generated/api.js";
 import {
   mutation,
@@ -749,6 +749,7 @@ export const write = mutation({
     args: v.any(),
     rejectStale: v.optional(v.boolean()),
     nativeStream: v.optional(v.string()),
+    deferredTools: v.optional(v.array(v.string())),
     nativeMessages: v.optional(
       v.object({
         getMessages: v.string(),
@@ -800,16 +801,33 @@ export const write = mutation({
       if (args.rejectStale) throw new ConvexError({ code: "CANCELLED" });
       return null; // Agent's asynchronous void abort listeners must resolve.
     }
+    const deferredTools = new Set(args.deferredTools ?? []);
+    if (
+      deferredTools.size > LIMITS.approvalsPerPause ||
+      [...deferredTools].some((name) => !name || name.length > LIMITS.requestKeyLength)
+    )
+      throw new Error("INVALID_DEFERRED_TOOLS");
     if (args.nativeMessages) {
       const messages = args.args.messages as { message?: MessageDoc["message"] }[];
-      const count = messages.reduce(
-        (total, { message }) =>
+      const count = messages.reduce((total, { message }) => {
+        if (message?.role !== "assistant" || !Array.isArray(message.content)) return total;
+        const content = message.content;
+        return (
           total +
-          (message?.role === "assistant" && Array.isArray(message.content)
-            ? message.content.filter((part) => part.type === "tool-approval-request").length
-            : 0),
-        0,
-      );
+          content.filter(
+            (part) =>
+              part.type === "tool-approval-request" ||
+              (part.type === "tool-call" &&
+                !part.providerExecuted &&
+                deferredTools.has(part.toolName) &&
+                !content.some(
+                  (candidate) =>
+                    candidate.type === "tool-approval-request" &&
+                    candidate.toolCallId === part.toolCallId,
+                )),
+          ).length
+        );
+      }, 0);
       if (count > LIMITS.approvalsPerPause) {
         // Reject the entire step BEFORE its native save: overflow approvals must
         // never exist without bounded coordination references. Return null so
@@ -922,6 +940,57 @@ export const write = mutation({
           });
         }
       }
+      // Only calls from declared no-execute tools can become host-answerable.
+      // Record hashes + the exact native message id in the SAME transaction as
+      // that assistant save. Payload/tool name stays in Agent's document.
+      for (const message of messages) {
+        if (message.message?.role !== "assistant" || !Array.isArray(message.message.content))
+          continue;
+        const content = message.message.content;
+        for (const part of content) {
+          if (
+            part.type !== "tool-call" ||
+            part.providerExecuted ||
+            !deferredTools.has(part.toolName) ||
+            content.some(
+              (candidate) =>
+                candidate.type === "tool-approval-request" &&
+                candidate.toolCallId === part.toolCallId,
+            )
+          )
+            continue;
+          const key = await approvalKey(part.toolCallId);
+          const alreadyResulted = messages.some(
+            (doc) =>
+              doc.message?.role === "tool" &&
+              doc.message.content.some(
+                (result) => result.type === "tool-result" && result.toolCallId === part.toolCallId,
+              ),
+          );
+          if (
+            alreadyResulted ||
+            requests.some((request) => request.key === key && request.deferred)
+          )
+            continue;
+          // The cancellation result repeats the native ids. Refuse an id/name
+          // envelope that cannot be settled in one bounded cleanup document.
+          if (
+            getConvexSize({ toolCallId: part.toolCallId, toolName: part.toolName }) +
+              LIMITS.nativeEnvelopeBytes >
+            LIMITS.cleanupMessageBytes
+          )
+            throw new Error("DEFERRED_CALL_TOO_LARGE");
+          requests.push({
+            key,
+            messageId: message._id,
+            toolCallKey: await callKey(part.toolCallId),
+            providerExecuted: false,
+            deferred: true,
+          });
+          requestMessageId ??= message._id;
+          count++;
+        }
+      }
       if (count) {
         await disarmSlice(ctx, row);
         await disarmRecovery(ctx, row);
@@ -998,7 +1067,8 @@ export const respond = mutation({
     if (!row || row.subject !== args.subject) throw new ConvexError({ code: "FORBIDDEN" });
     const approvals = row.approvals;
     const key = await approvalKey(args.approvalId);
-    const index = approvals?.requests.findIndex((request) => request.key === key) ?? -1;
+    const index =
+      approvals?.requests.findIndex((request) => !request.deferred && request.key === key) ?? -1;
     const decision = approvals?.requests[index];
     if (
       !row.approvalBlocked ||
@@ -1039,6 +1109,100 @@ export const respond = mutation({
       await ctx.db.patch("assignments", row._id, { approvalBlocked: false });
       await wake(ctx, { ...row, approvalBlocked: false });
     }
+    return { messageId };
+  },
+});
+
+/** Save a deferred native result and release its continuation atomically.
+ * One exact <=1 MiB call + native prompt <=1 MiB + six <=1 MiB merge
+ * heads (Agent messages.ts:436-477) + <=64 KiB saved result + <4.75 MiB
+ * bounded readiness/group-release/wake metadata (readyInbox, releaseGroups):
+ * <13 MiB <16 MiB. Approval/deferred counts never multiply native reads.
+ * At most 16 fixed-size references are reindexed per answer.
+ * No tool payload is copied into coordination state, even for large inputs.
+ */
+export const answer = mutation({
+  args: {
+    assignmentId: v.id("assignments"),
+    subject: v.string(),
+    toolCallId: v.string(),
+    text: v.string(),
+  },
+  returns: v.object({ messageId: v.string() }),
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get("assignments", args.assignmentId);
+    if (!row || row.subject !== args.subject) throw new ConvexError({ code: "FORBIDDEN" });
+    if (!args.text.trim() || args.text.length > LIMITS.messageLength)
+      throw new ConvexError({ code: "INVALID_MESSAGE" });
+    if (!args.toolCallId || args.toolCallId.length > LIMITS.nativeCallIdLength)
+      throw new ConvexError({ code: "TOOL_CALL_NOT_FOUND" });
+    const pause = row.approvals;
+    const key = await approvalKey(args.toolCallId);
+    const index =
+      pause?.requests.findIndex((request) => request.deferred && request.key === key) ?? -1;
+    const request = pause?.requests[index];
+    if (
+      !pause ||
+      !request ||
+      !row.approvalBlocked ||
+      row.cancelled ||
+      pause.cleanupPending ||
+      pause.epoch !== row.cancellationEpoch
+    )
+      throw new ConvexError({ code: "TOOL_CALL_NOT_FOUND" });
+    const [message]: (MessageDoc | null)[] = await ctx.runQuery(
+      pause.getMessages as FunctionHandle<"query">,
+      { messageIds: [request.messageId] },
+    );
+    const content = message?.message?.content;
+    const call =
+      message?.threadId === row.threadId &&
+      message.message?.role === "assistant" &&
+      Array.isArray(content)
+        ? content.find((part) => part.type === "tool-call" && part.toolCallId === args.toolCallId)
+        : undefined;
+    if (!call || call.type !== "tool-call" || call.providerExecuted)
+      throw new ConvexError({ code: "TOOL_CALL_NOT_FOUND" });
+    // Agent 0.7.7 example/convex/chat/human.ts:135-148 uses exactly this
+    // native tool-result. Our mutation also releases the existing inbox anchor.
+    const saved = (await ctx.runMutation(pause.addMessages as FunctionHandle<"mutation">, {
+      threadId: row.threadId,
+      agentName: row.agent,
+      promptMessageId: request.messageId,
+      failPendingSteps: false,
+      messages: [
+        {
+          message: {
+            role: "tool",
+            content: [
+              {
+                type: "tool-result",
+                toolCallId: args.toolCallId,
+                toolName: call.toolName,
+                output: { type: "text", value: args.text },
+              },
+            ],
+          },
+        },
+      ],
+    })) as { messages: MessageDoc[] };
+    const messageId = saved.messages[0]._id;
+    const remaining = pause.requests
+      .map((request, offset) => ({ request, resolved: pause.resolved.includes(offset) }))
+      .filter((_, offset) => offset !== index);
+    const approvals = remaining.length
+      ? {
+          ...pause,
+          requests: remaining.map((entry) => entry.request),
+          resolved: remaining.flatMap((entry, offset) => (entry.resolved ? [offset] : [])),
+        }
+      : undefined;
+    const blocked = remaining.some((entry) => !entry.resolved);
+    await ctx.db.patch("assignments", row._id, { approvals, approvalBlocked: blocked });
+    // Always retain the last saved result as the future prompt, including a
+    // partial answer. A concurrent answer/respond serializes on this same row.
+    await ctx.db.patch("inbox", pause.inboxId, { messageId });
+    if (!blocked) await wake(ctx, { ...row, approvals, approvalBlocked: false });
     return { messageId };
   },
 });
