@@ -1,0 +1,26 @@
+tests/delegation-v2.test.ts
+  s_0cda34007f7713::t_30bc6d32e08061 2394-2404,2411-2447,2455-2513,2517-2526
+  s_0cda34007f7713::t_986433e86196cb 2515
+  s_0cda34007f7713::t_e41153c281a229 2405-2410,2448-2454,2514,2516
+src/component/queue.ts
+  s_0cda34007f7713::t_94a3eb6fdde2df 191-194
+  s_0cda34007f7713::t_5853b351209d42 190
+tests/delegation-v2.host.ts
+  s_0cda34007f7713::t_94a3eb6fdde2df 115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bc4c12c33426f59bba1418b9db283c0ffb45953f",
+  "prompts": {},
+  "sessions": {
+    "s_0cda34007f7713": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17088-de20-7471-80bc-aff5ee496962",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
