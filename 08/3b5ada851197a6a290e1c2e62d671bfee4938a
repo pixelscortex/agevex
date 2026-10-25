@@ -1,0 +1,27 @@
+tests/extract/slot.test.ts
+  s_d863bd773ba186::t_d7512d1b0e71ee 1-224
+  s_d863bd773ba186::t_15a03619063acb 225-235
+src/extract/adapter.ts
+  s_d863bd773ba186::t_2463d060c48787 1-99
+  s_d863bd773ba186::t_cb9750f0ccb685 100-105
+src/extract/index.ts
+  s_d863bd773ba186::t_d9e857e1ae98bd 3,23-24,28,44-53,116,164-169,315-320,331-336,400,423-430,453,455-456,466-470,476,498,506,511,520,638,655
+src/extract/types.ts
+  s_d863bd773ba186::t_d87af0dbb160fb 42-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "083b5ada851197a6a290e1c2e62d671bfee4938a",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
