@@ -21,7 +21,13 @@ export type FileInfo = {
   filename?: string;
   hash: string;
 };
-export type BackendInput = { bytes: () => Promise<Blob>; file: FileInfo; signal: AbortSignal };
+export type BackendInput = {
+  bytes: () => Promise<Blob>;
+  file: FileInfo;
+  signal: AbortSignal;
+  /** Largest serialized payload this runtime accepts; bound provider responses by it. */
+  payloadBytes?: number;
+};
 export type BackendResult =
   | { ok: true; doc: ExtractedDoc; usage?: ProviderUsage }
   | { ok: false; failure: ExtractFailure; usage?: ProviderUsage };
@@ -31,7 +37,7 @@ export type ExtractBackend = {
   accepts(file: Pick<FileInfo, "mimeType" | "byteSize">): boolean;
   run(input: BackendInput): Promise<BackendResult>;
   /** Firecrawl URL acquisition is separate from parsing an already stored file. */
-  fromUrl?: (url: string, signal: AbortSignal) => Promise<BackendResult>;
+  fromUrl?: (url: string, signal: AbortSignal, payloadBytes?: number) => Promise<BackendResult>;
 };
 export type ActionCtx = GenericActionCtx<GenericDataModel>;
 export type Scope = {
@@ -50,6 +56,17 @@ export type WorkerArgs = {
   /** The subject given to `run`, carried in the workflow args (not the artifacts table). */
   subject?: string;
 };
+/** Arguments of the Node runtime's windowed read (see extractNodeExport). */
+export type NodeReadArgs = {
+  kind: "text" | "pages";
+  threadId: string;
+  subject?: string;
+  artifactId: string;
+  cursor?: number;
+  maxBytes?: number;
+  from?: number;
+  count?: number;
+};
 export type ExtractOptions = {
   agent: AgentComponent;
   backends: readonly ExtractBackend[];
@@ -60,6 +77,23 @@ export type ExtractOptions = {
     { size: number } | null
   >;
   worker: FunctionReference<"action", "internal", WorkerArgs, null>;
+  /**
+   * Opt-in "use node" (512 MiB) actions from `extractNodeExport`. Files above
+   * the default runtime's byte ceilings are dispatched to `execute`, and
+   * payloads above its read ceiling are read by `read`. Registering them also
+   * raises the hard maxima of `limits` to LIMITS.node (50 MB / 32 MiB).
+   */
+  node?: {
+    execute: FunctionReference<"action", "internal", WorkerArgs, null>;
+    read: FunctionReference<"action", "internal", NodeReadArgs, unknown>;
+  };
+  /**
+   * With `rag`, index each file into the thread's namespace as soon as its
+   * extraction is ready (in the worker after a fresh extraction, in
+   * `slot.run` when the extraction already exists), so the slot's
+   * `search_files` has something to search. Default false.
+   */
+  autoIndex?: boolean;
   /** Must verify thread access AND the exact file attachment, without listing transcripts. */
   authorize: (ctx: ActionCtx, scope: Scope) => Promise<void>;
   route?: (file: FileInfo) => string | undefined;

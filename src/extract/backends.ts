@@ -130,6 +130,7 @@ export function firecrawlParse({ apiKey }: { apiKey: string | (() => string) }):
     path: string,
     body: BodyInit,
     signal: AbortSignal,
+    payloadBytes: number,
     json = false,
   ): Promise<BackendResult> {
     const response = await fetch(`https://api.firecrawl.dev/v2/${path}`, {
@@ -141,7 +142,7 @@ export function firecrawlParse({ apiKey }: { apiKey: string | (() => string) }):
       body,
       signal,
     });
-    const bytes = await readResponse(response, LIMITS.payloadBytes);
+    const bytes = await readResponse(response, payloadBytes);
     let envelope: unknown;
     try {
       envelope = JSON.parse(new TextDecoder().decode(bytes));
@@ -168,7 +169,7 @@ export function firecrawlParse({ apiKey }: { apiKey: string | (() => string) }):
     id: "firecrawl-parse",
     version: "1",
     accepts: (file) => documentTypes.has(file.mimeType),
-    run: async ({ bytes, file, signal }) => {
+    run: async ({ bytes, file, signal, payloadBytes }) => {
       const body = new FormData();
       body.append("file", await bytes(), file.filename ?? "document.pdf");
       body.append(
@@ -179,13 +180,14 @@ export function firecrawlParse({ apiKey }: { apiKey: string | (() => string) }):
           timeout: LIMITS.providerMs,
         }),
       );
-      return request("parse", body, signal);
+      return request("parse", body, signal, payloadBytes ?? LIMITS.payloadBytes);
     },
-    fromUrl: (url, signal) =>
+    fromUrl: (url, signal, payloadBytes) =>
       request(
         "scrape",
         JSON.stringify({ url, formats: ["markdown"], timeout: LIMITS.providerMs }),
         signal,
+        payloadBytes ?? LIMITS.payloadBytes,
         true,
       ),
   };

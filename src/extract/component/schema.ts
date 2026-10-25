@@ -46,19 +46,30 @@ export default defineSchema({
     payloadStorageId: v.optional(v.string()),
     failure: v.optional(failure),
     usage: v.optional(usage),
-    indexStatus: v.optional(
-      v.union(
-        v.literal("cleaning"),
-        v.literal("running"),
-        v.literal("unknown"),
-        v.literal("failed"),
-        v.literal("ready"),
-      ),
+  })
+    .index("by_identity", ["fileId", "backend", "version", "optionsHash"])
+    // Host-only purge walks every extraction of one native file.
+    .index("by_file", ["fileId"]),
+  /**
+   * One row per (artifact, namespace). Agent dedupes uploads by hash, so several
+   * threads or uploaders legitimately share one artifact; each gets its own
+   * index record and native RAG entry, and none can clean up another's.
+   * Written only by the optional RAG phase; every field is read by it.
+   */
+  indexes: defineTable({
+    artifactId: v.id("artifacts"),
+    namespace: v.string(),
+    key: v.string(),
+    status: v.union(
+      v.literal("cleaning"),
+      v.literal("running"),
+      v.literal("unknown"),
+      v.literal("failed"),
+      v.literal("ready"),
+      v.literal("released"),
     ),
-    indexClaim: v.optional(v.string()),
-    indexLeaseUntil: v.optional(v.number()),
-    indexEntryId: v.optional(v.string()),
-    indexNamespace: v.optional(v.string()),
-    indexKey: v.optional(v.string()),
-  }).index("by_identity", ["fileId", "backend", "version", "optionsHash"]),
+    claim: v.string(),
+    leaseUntil: v.number(),
+    entryId: v.optional(v.string()),
+  }).index("by_artifact_namespace", ["artifactId", "namespace"]),
 });

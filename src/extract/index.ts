@@ -6,6 +6,8 @@ import type { FunctionReference } from "convex/server";
 import { v } from "convex/values";
 import type { GenericId } from "convex/values";
 import { z } from "zod";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
 import { fingerprint } from "../client/once.js";
 import type { ComponentApi } from "./component/_generated/component.js";
 import type {
@@ -14,13 +16,14 @@ import type {
   FileInfo,
   Scope,
   WorkerArgs,
+  NodeReadArgs,
   ProviderUsage,
   BackendResult,
 } from "./types.js";
 import { LIMITS, bounded, integer, resolveLimits, sliceText, utf8 } from "./limits.js";
 import { ExtractError, isTextMime } from "./backends.js";
-import { cleanUsage, document, parseDocument, textWindow } from "./payload.js";
-import { extractSlot } from "./adapter.js";
+import { cleanUsage, document, readDocument, textWindow } from "./payload.js";
+import { AUTO_INDEX_KEY, extractSlot } from "./adapter.js";
 import type { ExtractSlot } from "../client/slots.js";
 
 export { directText, firecrawlParse, visionOcr, ExtractError } from "./backends.js";
@@ -38,6 +41,7 @@ export type {
   ExtractOptions,
   Scope,
   WorkerArgs,
+  NodeReadArgs,
 } from "./types.js";
 export type { ComponentApi } from "./component/_generated/component.js";
 
@@ -56,6 +60,9 @@ type ArtifactArgs = Scoped & { artifactId: string };
 type Completion = FunctionReference<"mutation", "internal", { artifactId: string }, null | void>;
 const storageId = (id: string) => id as GenericId<"_storage">;
 const retryable = new Set(["PROVIDER_UNAVAILABLE", "OBJECT_UNAVAILABLE", "CHECKSUM_FAILED"]);
+/** The runtime-specific byte ceiling (see LIMITS) is chosen by input kind. */
+const kindOf = (mimeType: string): "document" | "image" | "text" =>
+  mimeType.startsWith("image/") ? "image" : isTextMime(mimeType) ? "text" : "document";
 
 /**
  * Standalone host helper. Export internalFunctions().execute as the worker
@@ -63,7 +70,51 @@ const retryable = new Set(["PROVIDER_UNAVAILABLE", "OBJECT_UNAVAILABLE", "CHECKS
  * claim. Public host wrappers call these methods with the owning thread.
  */
 export function defineExtract(component: ComponentApi, options: ExtractOptions) {
-  const limits = resolveLimits(options.limits);
+  return extractRuntime(component, options, false);
+}
+
+/**
+ * Opt-in Node variant, exported from a host file beginning with "use node"
+ * (512 MiB instead of 64 MiB):
+ *
+ * ```ts
+ * "use node";
+ * export const { execute, read } = extractNodeExport(components.agevexExtract, extractOptions);
+ * ```
+ *
+ * Register those two references as `options.node` of `defineExtract`. Files
+ * above the default byte ceilings are then extracted by `execute`, and
+ * payloads above the default read ceiling are windowed by `read`; both repeat
+ * authorization. See LIMITS for the memory arithmetic behind each runtime.
+ */
+export function extractNodeExport(component: ComponentApi, options: ExtractOptions) {
+  const runtime = extractRuntime(component, options, true);
+  return {
+    execute: runtime.internalFunctions().execute,
+    read: internalActionGeneric({
+      args: {
+        kind: v.union(v.literal("text"), v.literal("pages")),
+        threadId: v.string(),
+        subject: v.optional(v.string()),
+        artifactId: v.string(),
+        cursor: v.optional(v.number()),
+        maxBytes: v.optional(v.number()),
+        from: v.optional(v.number()),
+        count: v.optional(v.number()),
+      },
+      handler: (ctx, args) => runtime.nodeRead(ctx, args as NodeReadArgs),
+    }),
+  };
+}
+
+function extractRuntime(component: ComponentApi, options: ExtractOptions, nodeRuntime: boolean) {
+  // Registering the Node actions (or being one) lifts the hard maxima of the
+  // configurable byte limits; each runtime still enforces only its own ceiling.
+  const limits = resolveLimits(options.limits, nodeRuntime || !!options.node);
+  const runtimeMax = nodeRuntime ? LIMITS.node : LIMITS;
+  const ceiling = (kind: "document" | "image" | "text") =>
+    Math.min(limits.maxBytes[kind], runtimeMax.maxBytes[kind]);
+  const payloadCeiling = Math.min(limits.payloadBytes, runtimeMax.payloadBytes);
   integer(options.backends.length, LIMITS.backends, 1);
   const backends = [...options.backends];
   const ids = new Set<string>();
@@ -74,6 +125,7 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
     ids.add(backend.id);
   }
   if (typeof options.authorize !== "function") throw new Error("EXTRACT_AUTHORIZE_REQUIRED");
+  if (options.autoIndex && !options.rag) throw new Error("EXTRACT_RAG_DISABLED");
   if (options.rag) {
     integer(options.rag.embeddingDimension, LIMITS.embeddingDimension, 1);
     integer(
@@ -157,7 +209,12 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
       key: { fileId: args.fileId, backend: backend.id, version: backend.version, optionsHash },
     };
   }
-  async function raw(ctx: ActionCtx, args: ArtifactArgs, operation: Scope["operation"] = "read") {
+  async function raw(
+    ctx: ActionCtx,
+    args: ArtifactArgs,
+    operation: Scope["operation"] = "read",
+    namespace?: string,
+  ) {
     bounded(args.artifactId);
     const row = await ctx.runQuery(component.artifacts.get, { artifactId: args.artifactId });
     if (!row) throw new ExtractError("OBJECT_UNAVAILABLE");
@@ -165,6 +222,7 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
       operation,
       threadId: args.threadId,
       fileId: row.fileId,
+      ...(namespace === undefined ? {} : { namespace }),
       ...subjectOf(args),
     });
     return row;
@@ -185,22 +243,31 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
       ...(row.usage ? { usage: row.usage } : {}),
     };
   }
-  async function load(ctx: ActionCtx, args: ArtifactArgs) {
+  /** Authorize, require `ready`, and learn the payload size without reading the payload. */
+  async function payloadRef(ctx: ActionCtx, args: ArtifactArgs) {
     const row = await raw(ctx, args);
     if (row.status !== "ready" || !row.payloadStorageId) throw new Error("EXTRACT_NOT_READY");
     const meta = await ctx.runQuery(options.storageMetadata, { storageId: row.payloadStorageId });
     if (!meta) throw new ExtractError("OBJECT_UNAVAILABLE");
-    if (meta.size > limits.payloadBytes) throw new ExtractError("TOO_LARGE");
-    const blob = await ctx.storage.get(storageId(row.payloadStorageId));
+    return { row, storage: row.payloadStorageId, size: meta.size };
+  }
+  /**
+   * One blob read, one UTF-8 decode and one JSON parse; nothing else copies the
+   * payload. Size is checked from metadata before the read and again on the
+   * actual blob, against this runtime's ceiling (LIMITS has the arithmetic).
+   */
+  async function readPayload(ctx: ActionCtx, ref: Awaited<ReturnType<typeof payloadRef>>) {
+    if (ref.size > payloadCeiling) throw new ExtractError("TOO_LARGE");
+    const blob = await ctx.storage.get(storageId(ref.storage));
     if (!blob) throw new ExtractError("OBJECT_UNAVAILABLE");
-    if (blob.size > limits.payloadBytes) throw new ExtractError("TOO_LARGE");
+    if (blob.size > payloadCeiling) throw new ExtractError("TOO_LARGE");
     let value: unknown;
     try {
       value = JSON.parse(await blob.text());
     } catch {
       throw new ExtractError("INVALID_OUTPUT");
     }
-    return { row, doc: parseDocument(value) };
+    return readDocument(value);
   }
   async function record(
     ctx: ActionCtx,
@@ -208,6 +275,29 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
     usage?: ProviderUsage,
   ) {
     if (usage && options.usage) await options.usage.record(ctx, { ...args, usage });
+  }
+  /**
+   * Hash a stored blob in streamed chunks. `crypto.subtle.digest` needs the
+   * whole file as one more ArrayBuffer (N extra bytes); the incremental hasher
+   * is constant space, so the checksum adds nothing to the arithmetic in LIMITS.
+   */
+  async function verifiedBlob(
+    ctx: ActionCtx,
+    file: { info: FileInfo; storage: string },
+    max: number,
+  ) {
+    const blob = await ctx.storage.get(storageId(file.storage));
+    if (!blob) throw new ExtractError("OBJECT_UNAVAILABLE");
+    if (blob.size > max) throw new ExtractError("TOO_LARGE");
+    const hash = sha256.create();
+    const reader = blob.stream().getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      hash.update(value);
+    }
+    if (bytesToHex(hash.digest()) !== file.info.hash) throw new ExtractError("CHECKSUM_FAILED");
+    return blob;
   }
   async function execute(ctx: ActionCtx, args: WorkerArgs): Promise<null> {
     const fence = { artifactId: args.artifactId, attempt: args.attempt, claim: args.claim };
@@ -217,53 +307,45 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
     let committed = false;
     let fileId: string | undefined;
     let backendId = "unavailable";
+    // A host refusal here (file detached, policy unavailable, transient host
+    // error) is not an unknown paid outcome: it is a retryable object failure.
+    // Mapping it keeps the row `failed` so an explicit admission can try again,
+    // instead of stranding it in `unknown`, which is never rerun.
+    const allowed = async (id: string) => {
+      try {
+        await authorize(ctx, {
+          operation: "execute",
+          threadId: args.threadId,
+          fileId: id,
+          ...subjectOf(args),
+        });
+      } catch {
+        throw new ExtractError("OBJECT_UNAVAILABLE");
+      }
+    };
     try {
       const row = await ctx.runQuery(component.artifacts.get, { artifactId: args.artifactId });
       if (!row) throw new ExtractError("OBJECT_UNAVAILABLE");
       fileId = row.fileId;
       backendId = row.backend;
-      await authorize(ctx, {
-        operation: "execute",
-        threadId: args.threadId,
-        fileId,
-        ...subjectOf(args),
-      });
+      await allowed(fileId);
       const backend = backends.find(
         (value) => value.id === row.backend && value.version === row.version,
       );
       if (!backend) throw new ExtractError("UNSUPPORTED_TYPE");
       const file = await fileInfo(ctx, fileId);
-      const kind = file.info.mimeType.startsWith("image/")
-        ? "image"
-        : isTextMime(file.info.mimeType)
-          ? "text"
-          : "document";
-      if (file.info.byteSize > limits.maxBytes[kind]) throw new ExtractError("TOO_LARGE");
+      const max = ceiling(kindOf(file.info.mimeType));
+      if (file.info.byteSize > max) throw new ExtractError("TOO_LARGE");
       let cached: Promise<Blob> | undefined;
-      const bytes = () =>
-        (cached ??= (async () => {
-          const blob = await ctx.storage.get(file.storage);
-          if (!blob) throw new ExtractError("OBJECT_UNAVAILABLE");
-          if (blob.size > limits.maxBytes[kind]) throw new ExtractError("TOO_LARGE");
-          const digest = await crypto.subtle.digest("SHA-256", await blob.arrayBuffer());
-          const hash = Array.from(new Uint8Array(digest), (byte) =>
-            byte.toString(16).padStart(2, "0"),
-          ).join("");
-          if (hash !== file.info.hash) throw new ExtractError("CHECKSUM_FAILED");
-          return blob;
-        })());
+      const bytes = () => (cached ??= verifiedBlob(ctx, file, max));
       const result: BackendResult = await backend.run({
         bytes,
         file: file.info,
         signal: AbortSignal.timeout(LIMITS.providerMs),
+        payloadBytes: payloadCeiling,
       });
       usage = cleanUsage(result.usage);
-      await authorize(ctx, {
-        operation: "execute",
-        threadId: args.threadId,
-        fileId,
-        ...subjectOf(args),
-      });
+      await allowed(fileId);
       if (!result.ok) {
         // Validate the closed vocabulary before it crosses the component wire;
         // an untrusted backend's arbitrary message never becomes durable state.
@@ -284,7 +366,7 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
           ...(usage ? { usage } : {}),
         });
       } else {
-        const { doc, blob } = document(result.doc, limits.payloadBytes);
+        const { doc, blob } = document(result.doc, payloadCeiling);
         payloadStorageId = await ctx.storage.store(blob);
         committed = await ctx.runMutation(component.artifacts.complete, {
           ...fence,
@@ -318,7 +400,71 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
         usage,
       );
     }
+    if (options.autoIndex && committed) {
+      // Index into the admitting thread's namespace. A failure leaves the
+      // extraction ready and is recorded on the index row; search simply
+      // returns nothing until an explicit `index` or a later `run` retries.
+      try {
+        await api.index(ctx, {
+          artifactId: args.artifactId,
+          threadId: args.threadId,
+          ...subjectOf(args),
+          namespace: args.threadId,
+          key: AUTO_INDEX_KEY,
+        });
+      } catch {
+        // Intentionally ignored: see above.
+      }
+    }
     return null;
+  }
+  /** Validate and run one windowed read; delegates oversized payloads to the Node runtime. */
+  async function readWindow(ctx: ActionCtx, request: NodeReadArgs): Promise<unknown> {
+    bounded(request.artifactId);
+    const max = integer(request.maxBytes ?? LIMITS.readBytes, LIMITS.readBytes, 1);
+    if (request.kind === "text") integer(request.cursor ?? 0, LIMITS.node.payloadBytes);
+    const from = integer(request.from ?? 1, LIMITS.totalPages, 1);
+    const count = integer(request.count ?? LIMITS.pages, LIMITS.pages, 1);
+    const cursor = integer(request.cursor ?? 0, LIMITS.node.payloadBytes);
+    const ref = await payloadRef(ctx, request);
+    if (!nodeRuntime && options.node && ref.size > LIMITS.payloadBytes)
+      return ctx.runAction(options.node.read, request);
+    const doc = await readPayload(ctx, ref);
+    if (request.kind === "text") return textWindow(doc.text, cursor, max);
+    const source = doc.pages?.length ? doc.pages : [{ number: 1, text: doc.text }];
+    const pages: { number: number; text: string }[] = [];
+    let remaining = max;
+    let next: { from: number; cursor: number } | null = null;
+    // At most 100 pages AND 1 MiB text total, even when a single page is huge.
+    // Payload parsing is an action storage read, not a DB transaction.
+    for (const page of source.slice(from - 1, from - 1 + count)) {
+      if (remaining === 0) {
+        next = { from: page.number, cursor: 0 };
+        break;
+      }
+      let window;
+      try {
+        window = textWindow(page.text, page.number === from ? cursor : 0, remaining);
+      } catch (error) {
+        if (
+          pages.length &&
+          error instanceof Error &&
+          error.message === "EXTRACT_WINDOW_TOO_SMALL"
+        ) {
+          next = { from: page.number, cursor: 0 };
+          break;
+        }
+        throw error;
+      }
+      pages.push({ number: page.number, text: window.text });
+      remaining -= utf8(window.text).length;
+      if (!window.done) {
+        next = { from: page.number, cursor: window.cursor! };
+        break;
+      }
+      next = page.number < source.length ? { from: page.number + 1, cursor: 0 } : null;
+    }
+    return { pages, next };
   }
   const api = {
     async run(ctx: ActionCtx, args: FileArgs & { onComplete?: Completion }) {
@@ -328,12 +474,18 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
         fileId: args.fileId,
         ...subjectOf(args),
       });
-      const { key } = await identity(ctx, args);
+      const { key, file } = await identity(ctx, args);
+      // Files above the default runtime's ceiling can only be extracted by the
+      // opt-in Node worker; without one the default worker records TOO_LARGE.
+      const worker =
+        options.node && file.info.byteSize > LIMITS.maxBytes[kindOf(file.info.mimeType)]
+          ? options.node.execute
+          : options.worker;
       return ctx.runMutation(component.artifacts.admit, {
         ...key,
         threadId: args.threadId,
         ...subjectOf(args),
-        worker: await createFunctionHandle(options.worker),
+        worker: await createFunctionHandle(worker),
         ...(args.onComplete ? { onComplete: await createFunctionHandle(args.onComplete) } : {}),
       });
     },
@@ -349,80 +501,93 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
       const row = await ctx.runQuery(component.artifacts.lookup, key);
       return row ? view(row) : null;
     },
-    async release(ctx: ActionCtx, args: ArtifactArgs) {
-      await raw(ctx, args, "release");
-      const id = await ctx.runMutation(component.artifacts.release, {
-        artifactId: args.artifactId,
+    /**
+     * Remove one namespace's index of a shared extraction: the caller's thread
+     * namespace by default. The extraction and every other namespace's index
+     * stay. Use `purge` for storage cleanup.
+     */
+    async release(ctx: ActionCtx, args: ArtifactArgs & { namespace?: string }) {
+      const namespace = bounded(args.namespace ?? args.threadId);
+      const row = await raw(ctx, args, "release", namespace);
+      const released = await ctx.runMutation(component.indexing.release, {
+        artifactId: row._id,
+        namespace,
       });
-      if (id) await ctx.storage.delete(storageId(id));
+      if (!released) return null;
+      // Exact-id native deletion, then drop the fenced record. A crash between
+      // the two leaves a `released` record whose entry id is still known, so a
+      // repeated release (or a later index admission) finishes the cleanup.
+      if (released.entryId && rag) {
+        const entry = { entryId: released.entryId as EntryId };
+        if (await rag.getEntry(ctx, entry)) await rag.delete(ctx, entry);
+      }
+      await ctx.runMutation(component.indexing.forget, released);
+      return null;
+    },
+    /**
+     * ADMIN operation, not an agent or per-thread one. Agent dedupes uploads by
+     * hash, so every thread and uploader that attached the same bytes shares
+     * these extractions. Purge tombstones all extractions of `fileId` (the
+     * no-repeat receipt and reported usage stay) and deletes their payload
+     * blobs. It performs no `authorize` call: expose it only behind your own
+     * admin check. RAG entries are not deleted; they are hidden because search
+     * requires a ready extraction. Call `release` per namespace first to remove
+     * them.
+     */
+    async purge(ctx: ActionCtx, args: { fileId: string }) {
+      bounded(args.fileId);
+      let after: number | null = 0;
+      do {
+        const page: { storageIds: string[]; next: number | null } = await ctx.runMutation(
+          component.artifacts.purge,
+          { fileId: args.fileId, after },
+        );
+        for (const id of page.storageIds) await ctx.storage.delete(storageId(id));
+        after = page.next;
+      } while (after !== null);
       return null;
     },
     async readText(ctx: ActionCtx, args: ArtifactArgs & { cursor?: number; maxBytes?: number }) {
-      const max = integer(args.maxBytes ?? LIMITS.readBytes, LIMITS.readBytes, 1);
-      integer(args.cursor ?? 0, LIMITS.payloadBytes);
-      const { doc } = await load(ctx, args);
-      return textWindow(doc.text, args.cursor ?? 0, max);
+      return (await readWindow(ctx, { kind: "text", ...args })) as {
+        text: string;
+        cursor: number | null;
+        done: boolean;
+      };
     },
     async readPages(
       ctx: ActionCtx,
       args: ArtifactArgs & { from?: number; count?: number; cursor?: number; maxBytes?: number },
     ) {
-      const from = integer(args.from ?? 1, LIMITS.totalPages, 1);
-      const count = integer(args.count ?? LIMITS.pages, LIMITS.pages, 1);
-      const max = integer(args.maxBytes ?? LIMITS.readBytes, LIMITS.readBytes, 1);
-      const cursor = integer(args.cursor ?? 0, LIMITS.payloadBytes);
-      const { doc } = await load(ctx, args);
-      const source = doc.pages?.length ? doc.pages : [{ number: 1, text: doc.text }];
-      const pages: { number: number; text: string }[] = [];
-      let remaining = max;
-      let next: { from: number; cursor: number } | null = null;
-      // At most 100 pages AND 1 MiB text total, even when a single page is huge.
-      // Payload parsing is a <=32 MiB action storage read, not a DB transaction.
-      for (const page of source.slice(from - 1, from - 1 + count)) {
-        if (remaining === 0) {
-          next = { from: page.number, cursor: 0 };
-          break;
-        }
-        let window;
-        try {
-          window = textWindow(page.text, page.number === from ? cursor : 0, remaining);
-        } catch (error) {
-          if (
-            pages.length &&
-            error instanceof Error &&
-            error.message === "EXTRACT_WINDOW_TOO_SMALL"
-          ) {
-            next = { from: page.number, cursor: 0 };
-            break;
-          }
-          throw error;
-        }
-        pages.push({ number: page.number, text: window.text });
-        remaining -= utf8(window.text).length;
-        if (!window.done) {
-          next = { from: page.number, cursor: window.cursor! };
-          break;
-        }
-        next = page.number < source.length ? { from: page.number + 1, cursor: 0 } : null;
-      }
-      return { pages, next };
+      return (await readWindow(ctx, { kind: "pages", ...args })) as {
+        pages: { number: number; text: string }[];
+        next: { from: number; cursor: number } | null;
+      };
     },
     async fromUrl(ctx: ActionCtx, args: Scoped & { url: string }) {
       await authorize(ctx, { operation: "fromUrl", threadId: args.threadId, ...subjectOf(args) });
       bounded(args.url, LIMITS.urlBytes);
-      const url = new URL(args.url);
+      let url: URL;
+      try {
+        url = new URL(args.url);
+      } catch {
+        throw new Error("INVALID_EXTRACT_ARGUMENT");
+      }
       if (url.protocol !== "https:" && url.protocol !== "http:")
         throw new Error("INVALID_EXTRACT_ARGUMENT");
       const backend = backends.find((value) => value.fromUrl);
       if (!backend?.fromUrl) throw new ExtractError("UNSUPPORTED_TYPE");
-      const result = await backend.fromUrl(args.url, AbortSignal.timeout(LIMITS.providerMs));
+      const result = await backend.fromUrl(
+        args.url,
+        AbortSignal.timeout(LIMITS.providerMs),
+        payloadCeiling,
+      );
       const usage = cleanUsage(result.usage);
       // Account before validation/storage: a failed parse or oversized fetched
       // result still consumed the provider's reported credits.
       await record(ctx, { threadId: args.threadId, backend: backend.id }, usage);
       if (!result.ok) throw new ExtractError(result.failure);
-      const { doc } = document(result.doc, limits.payloadBytes);
-      if (utf8(doc.text).length > limits.maxBytes.text) throw new ExtractError("TOO_LARGE");
+      const { doc } = document(result.doc, payloadCeiling);
+      if (utf8(doc.text).length > ceiling("text")) throw new ExtractError("TOO_LARGE");
       const saved = await storeFile(
         ctx,
         options.agent,
@@ -430,14 +595,6 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
         { filename: "web-page.md" },
       );
       return { fileId: saved.file.fileId, ...(usage ? { usage } : {}) };
-    },
-    /**
-     * The agevex `extract` slot (`registerAgent(..., { extract: extract.slot() })`).
-     * Core calls `run` once per attached file at the first slice of a turn and
-     * binds `tools` to the running thread and subject; see ./adapter.ts.
-     */
-    slot(): ExtractSlot {
-      return extractSlot(api);
     },
     internalFunctions() {
       return {
@@ -462,6 +619,18 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
         }),
       };
     },
+    /** The Node runtime's windowed read; see extractNodeExport. */
+    nodeRead: (ctx: ActionCtx, request: NodeReadArgs) => readWindow(ctx, request),
+    /**
+     * The agevex `extract` slot (`registerAgent(..., { extract: extract.slot() })`).
+     * Core calls `run` once per attached file at the first slice of a turn and
+     * binds `tools` to the running thread and subject; see ./adapter.ts.
+     * `search_files` is offered only with `autoIndex`: without it nothing would
+     * ever fill the thread's namespace.
+     */
+    slot(): ExtractSlot {
+      return extractSlot(api, !!options.autoIndex);
+    },
     tools(context: Scoped & { ctx: ActionCtx }): ToolSet {
       bounded(context.threadId);
       if (context.subject !== undefined) bounded(context.subject);
@@ -472,7 +641,7 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
         inputSchema: z.object({
           fileId: z.string().min(1).max(LIMITS.identifierBytes),
           page: z.number().int().min(1).max(LIMITS.totalPages).optional(),
-          cursor: z.number().int().nonnegative().max(LIMITS.payloadBytes).optional(),
+          cursor: z.number().int().nonnegative().max(LIMITS.node.payloadBytes).optional(),
         }),
         execute: async ({ fileId, page, cursor }) => {
           const artifact = await api.get(context.ctx, {
@@ -531,16 +700,20 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
         namespace: args.namespace,
         ...subjectOf(args),
       });
-      const { row, doc } = await load(ctx, args);
-      if (utf8(doc.text).length > LIMITS.indexBytes) throw new ExtractError("TOO_LARGE");
+      const ref = await payloadRef(ctx, args);
+      const row = ref.row;
+      // Decide from the stored summary BEFORE reading the payload: an artifact
+      // whose text exceeds the index ceiling must not cost a full payload load.
+      if ((row.summary?.textBytes ?? 0) > LIMITS.indexBytes) throw new ExtractError("TOO_LARGE");
+      const doc = await readPayload(ctx, ref);
+      // Encode once and window over the bytes; re-encoding the text per chunk
+      // would cost up to 1,024 full encodings of a 1 MiB text.
+      const bytes = utf8(doc.text);
+      if (bytes.length > LIMITS.indexBytes) throw new ExtractError("TOO_LARGE");
       const chunks: { text: string }[] = [];
       let cursor: number | null = 0;
       do {
-        const window = textWindow(
-          doc.text,
-          cursor,
-          options.rag?.chunk?.maxBytes ?? LIMITS.chunkBytes,
-        );
+        const window = textWindow(bytes, cursor, options.rag?.chunk?.maxBytes ?? LIMITS.chunkBytes);
         chunks.push({ text: window.text });
         cursor = window.cursor;
         if (chunks.length > LIMITS.indexChunks) throw new ExtractError("TOO_LARGE");
@@ -559,13 +732,15 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
           replacedEntry: null,
           usage: { tokens: 0 },
         };
-      const fence = { artifactId: row._id, claim: admitted.claim };
+      const fence = { indexId: admitted.indexId, claim: admitted.claim };
       try {
         if (admitted.entryId) {
           // RAG 0.7.8 src/client/index.ts:768-786 deletes by exact entry id;
           // entries.ts:511-529 pages chunk deletion before deleting that entry.
           // Await it before creating a replacement; even a partially failed
           // deletion remains addressable on our row for the next explicit retry.
+          // The id is this namespace's own record: other namespaces' entries
+          // of the same shared extraction are never touched.
           const previous = { entryId: admitted.entryId as EntryId };
           if (await rag.getEntry(ctx, previous)) await rag.delete(ctx, previous);
         }
@@ -579,7 +754,7 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
           namespaceId,
           // Caller keys are scoped to the artifact: otherwise independent
           // artifacts using one key could rebuild the same unbounded pending
-          // history despite each artifact's own admission fence.
+          // history despite each index record's own admission fence.
           key: await fingerprint({ artifactId: row._id, key: args.key }),
           contentHash: await fingerprint({ artifactId: row._id, claim: row.claim }),
         });
@@ -611,11 +786,15 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
           });
           if (!inserted) throw new Error("EXTRACT_INDEX_FENCED");
         }
+        // The embedding is already paid for. Re-authorize with the SAME scope
+        // facts as the first check: without the subject a subject-requiring
+        // policy would refuse here and discard the paid index.
         await authorize(ctx, {
           operation: "index",
           threadId: args.threadId,
           fileId: row.fileId,
           namespace: args.namespace,
+          ...subjectOf(args),
         });
         if (
           !(await ctx.runMutation(component.indexing.complete, {
@@ -664,14 +843,27 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
         const artifactId = entry.metadata?.artifactId;
         const fileId = entry.metadata?.fileId;
         if (typeof artifactId !== "string" || typeof fileId !== "string") continue;
-        const row = await raw(ctx, { artifactId, threadId: args.threadId, ...subjectOf(args) });
-        if (
-          row.status !== "ready" ||
-          row.fileId !== fileId ||
-          row.indexStatus !== "ready" ||
-          row.indexEntryId !== entry.entryId
-        )
+        // A hit whose file is no longer attached (or whose extraction is gone)
+        // is skipped, not an error: one stale entry must not fail the whole
+        // search and hide the still-attached results.
+        try {
+          const row = await ctx.runQuery(component.artifacts.get, { artifactId });
+          if (!row || row.status !== "ready" || row.fileId !== fileId) continue;
+          await authorize(ctx, {
+            operation: "search",
+            threadId: args.threadId,
+            fileId: row.fileId,
+            namespace: args.namespace,
+            ...subjectOf(args),
+          });
+          const index = await ctx.runQuery(component.indexing.lookup, {
+            artifactId: row._id,
+            namespace: args.namespace,
+          });
+          if (index?.status !== "ready" || index.entryId !== entry.entryId) continue;
+        } catch {
           continue;
+        }
         const remaining = LIMITS.toolBytes - utf8(text).length;
         if (!remaining) break;
         text += sliceText((text ? "\n" : "") + entry.text, remaining);

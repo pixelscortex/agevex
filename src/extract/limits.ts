@@ -1,8 +1,40 @@
-/** Hard ceilings keep provider bodies out of rows and every tool response bounded. */
+const MiB = 2 ** 20;
+/**
+ * Hard ceilings keep provider bodies out of rows and every tool response bounded.
+ *
+ * Memory arithmetic (why the byte ceilings differ per runtime). A default
+ * Convex action has 64 MiB; a "use node" action has 512 MiB. Reserve 16 MiB for
+ * code, zod, the AI SDK and runtime overhead, leaving a 48 MiB working set. No
+ * garbage-collection timing is assumed: every copy that can be live at once is
+ * counted. N is input bytes and P is serialized payload bytes.
+ *
+ * - Request phase (Firecrawl multipart): storage Blob N + serialized request
+ *   body N + fetch/runtime buffer N = 3N. Vision OCR holds Blob N, its
+ *   Uint8Array N and about three base64/JSON copies of 4/3 N = 5N.
+ * - Output phase: the Blob stays cached for the checksum and backend, N, plus
+ *   response chunks and their merge 2P, decoded string up to 2P (UTF-16),
+ *   parsed object up to 2P, = N + 6P. Serializing the result (text 2P + JSON
+ *   string 2P + Blob P = 5P) is smaller. Direct text is the extreme: blob N,
+ *   arrayBuffer N, string 2N, JSON 2N, output Blob N = 7N.
+ * - Reads: Blob P + string 2P + parsed 2P + one UTF-8 window encoding P = 6P.
+ *   The hash is computed in streamed chunks, so it adds no whole-file copy.
+ *
+ * Default runtime: document 12 MiB -> 3N = 36 MiB; image 6 MiB -> 5N = 30 MiB;
+ * text 4 MiB -> 7N = 28 MiB; payload 6 MiB -> N + 6P = 12 + 36 = 48 MiB (the
+ * whole working set, hence exactly 64 MiB with the reserve) and reads 36 MiB.
+ * Node runtime: document 50 MB -> 3N = 150 MB; image 10 MB -> 5N = 50 MB;
+ * text 8 MiB -> 7N = 56 MiB; payload 32 MiB -> N + 6P = 50 + 192 = 242 MB;
+ * reads 192 MiB; all well under 496 MiB. Files above a default ceiling run in
+ * the optional Node worker, never in the default one.
+ */
 export const LIMITS = {
-  maxBytes: { document: 50_000_000, image: 10_000_000, text: 8 * 2 ** 20 },
-  payloadBytes: 32 * 2 ** 20,
-  readBytes: 2 ** 20,
+  maxBytes: { document: 12 * MiB, image: 6 * MiB, text: 4 * MiB },
+  payloadBytes: 6 * MiB,
+  node: {
+    maxBytes: { document: 50_000_000, image: 10_000_000, text: 8 * MiB },
+    payloadBytes: 32 * MiB,
+  },
+  readBytes: MiB,
   pages: 100,
   totalPages: 10_000,
   toolBytes: 64 * 2 ** 10,
@@ -13,7 +45,23 @@ export const LIMITS = {
   queryBytes: 4096,
   optionsBytes: 4096,
   backends: 32,
+  /** A started extraction may run this long before its outcome becomes unknown. */
   leaseMs: 10 * 60 * 1000,
+  /**
+   * A queued (pending) extraction has done no paid work. After this long an
+   * admission may dispatch it again with a new claim; the old dispatch can no
+   * longer start. It never turns a queued job into `unknown`.
+   */
+  queueMs: 10 * 60 * 1000,
+  /**
+   * Retryable failures (PROVIDER_UNAVAILABLE, OBJECT_UNAVAILABLE,
+   * CHECKSUM_FAILED) may be admitted again, each time by an explicit `run`, up
+   * to this many attempts in total. This is a hard bound on paid repeats: the
+   * module never retries by itself, and the fourth failure is final.
+   */
+  maxAttempts: 3,
+  /** Artifact rows per `purge` transaction: 32 * < 4 KiB read and written. */
+  purgeBatch: 32,
   indexLeaseMs: 10 * 60 * 1000,
   providerMs: 5 * 60 * 1000,
   outputTokens: 4096,
@@ -24,7 +72,7 @@ export const LIMITS = {
   ragBatch: 100,
   vectorNumberBytes: 8,
   embeddingDimensions: [128, 256, 512, 768, 1024, 1408, 1536, 2048, 3072, 4096],
-  indexBytes: 2 ** 20,
+  indexBytes: MiB,
   embeddingDimension: 4096,
   workflowVersion: 1,
   initialAttempt: 1,
@@ -45,22 +93,28 @@ export function bounded(value: string, max: number = LIMITS.identifierBytes): st
     throw new Error("INVALID_EXTRACT_ARGUMENT");
   return value;
 }
+/**
+ * `node` registrations (a Node worker is configured) may raise the byte ceilings
+ * up to LIMITS.node; otherwise the default-runtime maxima are hard.
+ */
 export function resolveLimits(
   value?: Partial<Omit<ExtractLimits, "maxBytes">> & {
     maxBytes?: Partial<ExtractLimits["maxBytes"]>;
   },
+  node = false,
 ): ExtractLimits {
+  const max = node ? LIMITS.node : LIMITS;
   return {
     maxBytes: {
       document: integer(
-        value?.maxBytes?.document ?? LIMITS.maxBytes.document,
-        LIMITS.maxBytes.document,
+        value?.maxBytes?.document ?? max.maxBytes.document,
+        max.maxBytes.document,
         1,
       ),
-      image: integer(value?.maxBytes?.image ?? LIMITS.maxBytes.image, LIMITS.maxBytes.image, 1),
-      text: integer(value?.maxBytes?.text ?? LIMITS.maxBytes.text, LIMITS.maxBytes.text, 1),
+      image: integer(value?.maxBytes?.image ?? max.maxBytes.image, max.maxBytes.image, 1),
+      text: integer(value?.maxBytes?.text ?? max.maxBytes.text, max.maxBytes.text, 1),
     },
-    payloadBytes: integer(value?.payloadBytes ?? LIMITS.payloadBytes, LIMITS.payloadBytes, 1),
+    payloadBytes: integer(value?.payloadBytes ?? max.payloadBytes, max.payloadBytes, 1),
     indexLeaseMs: integer(value?.indexLeaseMs ?? LIMITS.indexLeaseMs, LIMITS.indexLeaseMs, 1),
   };
 }
