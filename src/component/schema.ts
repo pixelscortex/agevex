@@ -343,8 +343,12 @@ export default defineSchema({
           v.literal("failed"),
           v.literal("unknown"),
         ),
-        claim: v.string(),
-        leaseUntil: v.number(),
+        // Present only while status is "running": the action's fencing token and
+        // lease horizon, read by ledger begin/complete/unknown. Every transition
+        // out of running clears both, so done/failed/unknown rows carry neither.
+        claim: v.optional(v.string()),
+        leaseUntil: v.optional(v.number()),
+        // Read by ledger begin on replay and by request/response receipt lookups.
         result: v.optional(v.any()),
         expiresAt: v.number(),
       }),

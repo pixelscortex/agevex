@@ -10,6 +10,11 @@ import {
 import { LIMITS } from "./limits.js";
 import type { Id } from "./_generated/dataModel.js";
 
+/** A receipt only carries its fencing token and lease while running; every
+ * transition out of running spreads this to drop them, and a late holder's
+ * claim then no longer matches anything. */
+const unclaimed = { claim: undefined, leaseUntil: undefined } as const;
+
 export async function findReceipt(ctx: Pick<QueryCtx, "db">, scope: string, key: string) {
   const row = await ctx.db
     .query("receipts")
@@ -52,10 +57,11 @@ export const begin = mutation({
       return { status: "conflict" as const, code: "KEY_CONFLICT" as const };
     if (row?.status === "done" || row?.status === "failed")
       return { status: row.status, result: row.result ?? null };
-    if (row?.status === "running" && row.leaseUntil > Date.now())
+    if (row?.status === "running" && row.leaseUntil! > Date.now())
       return { status: "running" as const };
     if (row && !args.repeatSafe) {
-      if (row.status === "running") await ctx.db.patch("receipts", row._id, { status: "unknown" });
+      if (row.status === "running")
+        await ctx.db.patch("receipts", row._id, { ...unclaimed, status: "unknown" });
       return { status: "unknown" as const };
     }
     const leaseMs = args.leaseMs ?? LIMITS.leaseMs;
@@ -120,12 +126,13 @@ export const complete = mutation({
     // Lease expiry is an unknown outcome even if a late action subsequently
     // answers. A repeat-safe reclaim rotates the claim, fencing the old action.
     if (!row || row.claim !== args.claim || row.status !== "running") return null;
-    if (row.leaseUntil <= Date.now()) {
-      await ctx.db.patch("receipts", row._id, { status: "unknown" });
+    if (row.leaseUntil! <= Date.now()) {
+      await ctx.db.patch("receipts", row._id, { ...unclaimed, status: "unknown" });
       return null;
     }
     if (getConvexSize(args.result) > LIMITS.receiptResultBytes) throw new Error("RESULT_TOO_LARGE");
     await ctx.db.patch("receipts", row._id, {
+      ...unclaimed,
       status: args.failed ? "failed" : "done",
       result: args.result,
     });
@@ -179,7 +186,7 @@ export const unknown = mutation({
       return null;
     const row = await findReceipt(ctx, args.scope, args.key);
     if (row?.status === "running" && row.claim === args.claim)
-      await ctx.db.patch("receipts", row._id, { status: "unknown" });
+      await ctx.db.patch("receipts", row._id, { ...unclaimed, status: "unknown" });
     return null;
   },
 });

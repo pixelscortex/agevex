@@ -44,8 +44,10 @@ async function existing(
   if (!row) return null;
   if (row.fingerprint !== fingerprint)
     return { status: "rejected" as const, code: "KEY_CONFLICT" as const };
-  const accepted = row.result as Extract<typeof vReceipt.type, { status: "accepted" }>;
-  return { ...accepted, status: "duplicate" as const };
+  // The stored result omits receiptId and status: both are properties of the
+  // ledger row itself, so they are derived here rather than written twice.
+  const stored = row.result as { assignmentId: string; threadId: string; position: number };
+  return { ...stored, receiptId: row._id, status: "duplicate" as const };
 }
 
 export const lookupReceipt = query({
@@ -359,18 +361,8 @@ export const accept = mutation({
       key: args.requestKey,
       fingerprint: args.fingerprint,
       status: "done",
-      claim: crypto.randomUUID(),
-      leaseUntil: Date.now(),
+      result: { assignmentId: row._id, threadId: args.threadId, position },
       expiresAt: Date.now() + LIMITS.receiptRetentionMs,
-    });
-    await ctx.db.patch("receipts", receiptId, {
-      result: {
-        assignmentId: row._id,
-        threadId: args.threadId,
-        receiptId,
-        status: "accepted",
-        position,
-      },
     });
     await wake(ctx, { ...row, queuedMessages: row.queuedMessages + 1 });
     return {
@@ -1245,8 +1237,6 @@ async function saveResponseReceipt(
     key: receipt.key,
     fingerprint: receipt.fingerprint,
     status: "done",
-    claim: crypto.randomUUID(),
-    leaseUntil: Date.now(),
     result: messageId,
     expiresAt: Date.now() + LIMITS.receiptRetentionMs,
   });
