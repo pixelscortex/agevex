@@ -1,0 +1,27 @@
+---
+title: Registry tools
+description: Copy bounded tools and their host-owned state into your app.
+status: Available
+---
+
+Install only the source you need. The host owns its copied code, authorization
+policy and state retention. Every item works on an agevex-managed Agent using
+the native Agent 0.7.7 tool pipeline.
+
+- [Todo](/docs/tools/todo): a persistent list for one owner and thread.
+- [Goals](/docs/tools/goals): one explicit goal per thread.
+- [Ask the user](/docs/tools/ask-user): a deferred question answered with free text.
+- [Continue budget](/docs/tools/continue-budget): spending consent and the `BUDGET_EXCEEDED` continue flow.
+
+The local registry serves `/r/todo.json`, `/r/goals.json`, `/r/ask-user.json`
+and `/r/continue-budget.json`. Start `bun run dev` from `docs/site`, or use your
+own deployed origin. `@agevex` is a provisional namespace: configure its URL
+in your host's `components.json` before using `bunx shadcn add @agevex/todo`.
+
+From the repository root, `bun run registry:build` rebuilds the committed JSON
+with the shadcn CLI. `bun run test:tools` runs the deterministic tools suite.
+The CLI installation smoke test denies network access and clearly skips when
+shadcn requires its remote catalogue; a separate test still type-checks all
+payloads together in an independent host.
+To exercise real CLI installs when network is available, run
+`AGEVEX_TOOLS_INSTALL_NETWORK=1 bun run test:tools`.

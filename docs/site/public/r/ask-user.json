@@ -1,0 +1,21 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "ask-user",
+  "title": "Ask the user",
+  "description": "ask_user is a deferred tool (no execute): the model asks one nonblank question up to 2000 characters and the turn waits. The owner answers with core answer({ threadId, toolCallId, text }); the model sees the text. No item tables; native pending-call state and core hold it.",
+  "dependencies": [
+    "ai@^7.0.153",
+    "zod@^4.6.7",
+    "convex@^1.47.0"
+  ],
+  "files": [
+    {
+      "path": "registry/ask-user/askUser.ts",
+      "content": "import { tool } from \"ai\";\nimport { z } from \"zod\";\n\nexport const ASK_USER_LIMITS = { minChars: 1, questionChars: 2000 } as const;\nexport const questionInput = z.strictObject({\n  question: z.string().trim().min(ASK_USER_LIMITS.minChars).max(ASK_USER_LIMITS.questionChars),\n});\n\n/**\n * A deferred tool: it has no `execute`, so the model's call is recorded by core\n * as a pending native tool call and the turn ends idle until a human answers.\n * The owner answers through the core endpoint\n * `answer({ threadId, toolCallId, text })`; core authorizes the owner, saves the\n * text as the native tool result and resumes the turn once every pending call on\n * the thread is answered. The model sees the text verbatim as the tool result.\n *\n * Why no `defineOnceTool`: there is no effect to run, so there is nothing for\n * the receipts ledger to deduplicate. Core's `answer` is itself idempotent per\n * `toolCallId` (same text replays the original result; different text is a\n * typed KEY_CONFLICT) and refuses foreign, unrecorded or already answered calls.\n *\n * Bounds: the question is validated by AI SDK before the call is recorded\n * (blank or oversized input becomes an ordinary tool error and never pauses the\n * thread). The answer is bounded by core: non-empty, at most 16,000 UTF-16 units\n * (`LIMITS.messageLength`). Deferred calls share core's 16-call pause bound\n * (`LIMITS.approvalsPerPause`) with approvals.\n */\nexport function createAskUserTool() {\n  return tool({\n    description:\n      \"Ask the user one question and wait for their free-text answer, which is returned as this tool's result.\",\n    inputSchema: questionInput,\n  });\n}\n",
+      "type": "registry:file",
+      "target": "~/convex/agevexTools/askUser.ts"
+    }
+  ],
+  "docs": "Use a TypeScript host with tsx: true in components.json before installing. Register createAskUserTool() on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. Answer with core answer, never by saving a native tool result directly. See /docs/tools/ask-user.",
+  "type": "registry:lib"
+}
