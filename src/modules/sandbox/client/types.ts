@@ -1,14 +1,18 @@
-// Host-side module API and helpers; this code is imported by the installing app.
-import type {
-  FunctionReference,
-  GenericActionCtx,
-  GenericDataModel,
-  GenericMutationCtx,
+/**
+ * Host contracts for sandbox providers, authorization and completion callbacks.
+ * The public factory and concrete adapters use these types on the host side.
+ * Provider methods enforce source-side bounds and never retry uncertain paid effects.
+ */
+import {
+  type FunctionReference,
+  type GenericActionCtx,
+  type GenericDataModel,
+  type GenericMutationCtx,
 } from "convex/server";
-import type { AgentComponent } from "@convex-dev/agent";
-import type { ToolContext } from "../../../client/once.js";
-import type { ComponentApi } from "../component/_generated/component.js";
-import type { SandboxLimits } from "../shared/limits.js";
+import { type AgentComponent } from "@convex-dev/agent";
+import { type ToolContext } from "../../../client/once.js";
+import { type ComponentApi } from "../component/_generated/component.js";
+import { type SandboxLimits } from "../shared/limits.js";
 
 export type SandboxContext = GenericActionCtx<GenericDataModel>;
 export type SandboxFacts = Pick<ToolContext, "subject" | "threadId" | "runId">;
