@@ -1,0 +1,29 @@
+src/modules/sandbox/component/admission.ts
+  s_f1cad8af89a48f::t_a43751bb642c59 1-211
+src/modules/sandbox/component/convex.config.ts
+  s_f1cad8af89a48f::t_21f5adde7d2b9f 1-5
+src/modules/sandbox/component/schema.ts
+  s_f1cad8af89a48f::t_99c900d71bafe9 1-5
+src/modules/sandbox/component/state-helpers.ts
+  s_f1cad8af89a48f::t_fb84a30ca673f4 1-82
+src/modules/sandbox/component/state.ts
+  s_f1cad8af89a48f::t_7fee28a595c7e9 1-5,7-12,14,29,153,166,169,198,256
+src/modules/sandbox/shared/limits.ts
+  s_f1cad8af89a48f::t_5135edeca24bd4 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6a8135d6d7421654789a1b0d15fec4faad3d7745",
+  "prompts": {},
+  "sessions": {
+    "s_f1cad8af89a48f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17570-7cb3-7221-932c-c7dfa6479d9e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
