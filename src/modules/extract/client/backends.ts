@@ -1,4 +1,8 @@
-// Host-side module API and helpers; this code is imported by the installing app.
+/**
+ * Provider adapters for direct text, Firecrawl parsing and URL fetches, and vision OCR.
+ * Host execution calls these after authorization; adapters return a closed failure vocabulary.
+ * Responses are bounded before decoding and provider retries stay disabled.
+ */
 import { generateText, type LanguageModel } from "ai";
 import { LIMITS, bounded } from "../shared/limits.js";
 import type { BackendResult, ExtractBackend, ExtractFailure, ProviderUsage } from "./types.js";
@@ -72,6 +76,7 @@ const documentTypes = new Set([
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ]);
 
+/** Decode supported local text without provider calls; malformed UTF-8 becomes a typed failure. */
 export function directText(): ExtractBackend {
   return {
     id: "direct-text",
@@ -95,11 +100,13 @@ export function directText(): ExtractBackend {
   };
 }
 
+/** Read only object envelopes; arbitrary provider fields never become durable state. */
 const record = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
 
+/** Retain finite nonnegative provider credits even when the extraction itself failed. */
 function credits(value: unknown): ProviderUsage | undefined {
   return typeof value === "number" &&
     Number.isFinite(value) &&
@@ -108,6 +115,7 @@ function credits(value: unknown): ProviderUsage | undefined {
     ? { credits: value }
     : undefined;
 }
+/** Normalize bounded Firecrawl output into the closed extraction contract and preserve usage. */
 function parseFirecrawl(envelope: unknown, kind: "document" | "text"): BackendResult {
   const root = record(envelope);
   const data = record(root.data);
@@ -155,6 +163,7 @@ function parseFirecrawl(envelope: unknown, kind: "document" | "text"): BackendRe
 export function firecrawlParse({ apiKey }: { apiKey: string | (() => string) }): ExtractBackend {
   const key = () => bounded(typeof apiKey === "function" ? apiKey() : apiKey, LIMITS.urlBytes);
 
+  /** Make one bounded request; provider failures never trigger an automatic paid repeat. */
   async function request(
     path: string,
     body: BodyInit,
@@ -230,6 +239,7 @@ export function firecrawlParse({ apiKey }: { apiKey: string | (() => string) }):
       ),
   };
 }
+/** Bind OCR identity to an instantiated model and run each paid image request without retries. */
 export function visionOcr({ model }: { model: LanguageModel }): ExtractBackend {
   // An opaque string cannot freeze a gateway's changing default. Require an
   // instantiated model and include provider/model id in identity so replacing

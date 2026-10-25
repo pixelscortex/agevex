@@ -1,8 +1,12 @@
-// Host-side module API and helpers; this code is imported by the installing app.
+/**
+ * Core slot admission and thread-bound tools, plus the exact-attachment policy.
+ * Installing hosts call these adapters; core depends only on the slot contract.
+ * Authorization resolves exact file attachments without transcript scans.
+ */
 import type { ToolSet } from "ai";
-import type { ExtractSlot, SlotActionCtx } from "../../../client/slots.js";
 import type { ToolContext } from "../../../client/once.js";
-import type { ExtractOptions, ActionCtx } from "./types.js";
+import type { ExtractSlot, SlotActionCtx } from "../../../client/slots.js";
+import type { ActionCtx, ExtractOptions } from "./types.js";
 
 /**
  * agevex adapter for the `extract` slot.

@@ -1,4 +1,8 @@
-// Pure shared contracts and bounds used by the host and component; no function registrations.
+/**
+ * Pure hard ceilings, configurable-limit validation, and UTF-8 byte helpers.
+ * Both the Convex component and host actions use these bounds.
+ * The memory and transaction arithmetic below explains why each runtime stays bounded.
+ */
 const MiB = 2 ** 20;
 
 /**
@@ -97,13 +101,16 @@ export type ExtractLimits = {
   payloadBytes: number;
   indexLeaseMs: number;
 };
+/** Reject non-integer or out-of-bound host overrides before they affect resource budgets. */
 export function integer(value: number, max: number, min = 0): number {
   if (!Number.isSafeInteger(value) || value < min || value > max)
     throw new Error("INVALID_EXTRACT_ARGUMENT");
 
   return value;
 }
+/** Encode once so every text bound measures bytes rather than UTF-16 code units. */
 export const utf8 = (text: string) => new TextEncoder().encode(text);
+/** Validate a nonempty identifier or text field against its hard UTF-8 byte ceiling. */
 export function bounded(value: string, max: number = LIMITS.identifierBytes): string {
   if (typeof value !== "string" || !value.length || utf8(value).length > max)
     throw new Error("INVALID_EXTRACT_ARGUMENT");
