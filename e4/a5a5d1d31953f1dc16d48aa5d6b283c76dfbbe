@@ -1,0 +1,29 @@
+docs/site/content/docs/concepts/delegation.mdx
+  s_d863bd773ba186::t_8a656fd7107af4 4-5,8-11,13-26,28,30-36,38-39,41,43-46,48,50-53,55,57-61,63-80
+docs/site/content/docs/concepts/hooks.mdx
+  s_d863bd773ba186::t_b3a8a4618deceb 1-79
+docs/site/content/docs/concepts/limits.mdx
+  s_d863bd773ba186::t_7fcfd09759e1e8 4-5,8-9,11-77,79-80
+docs/site/content/docs/concepts/meta.json
+  s_d863bd773ba186::t_1e40fa40405159 7-9
+docs/site/content/docs/concepts/receipts.mdx
+  s_d863bd773ba186::t_95c3cd3b7a7591 1-69
+docs/site/content/docs/concepts/slots.mdx
+  s_d863bd773ba186::t_acadef34e1f295 1-80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e4a5a5d1d31953f1dc16d48aa5d6b283c76dfbbe",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
