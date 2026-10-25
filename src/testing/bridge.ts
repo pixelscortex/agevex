@@ -75,7 +75,6 @@ export const fillHookMetadata = internalMutationGeneric({
   returns: v.null(),
   handler: async (ctx, { assignmentId }) => {
     await ctx.db.patch("assignments", assignmentId, {
-      contextSequence: LIMITS.contextMessages,
       contextMessages: Array.from({ length: LIMITS.contextMessages }, (_, order) => ({
         id: crypto.randomUUID(),
         order,

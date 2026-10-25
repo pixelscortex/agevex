@@ -737,7 +737,6 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 wait: args.wait,
                 side: args.side,
                 coordinateHandle: await createFunctionHandle(config.refs.coordinate!()),
-                runTurn: await createFunctionHandle(config.refs.runTurn()),
               });
               if (reservation.kind === "denied") {
                 return { status: "denied" as const, code: reservation.code };

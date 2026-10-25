@@ -14,6 +14,13 @@ export const messageRef = v.object({
   bytes: v.number(),
 });
 
+/** The newest ref always carries the highest sequence: every push takes
+ * ++sequence, the list is sorted by it, and the bounded ring keeps the tail.
+ * Hence no separate counter is stored; 0 means nothing was ever recorded. */
+export function latestSequence(refs: { sequence: number }[] | undefined) {
+  return refs && refs.length ? refs[refs.length - 1].sequence : 0;
+}
+
 export async function recordRefs(
   ctx: MutationCtx,
   row: Doc<"assignments">,
@@ -23,7 +30,7 @@ export async function recordRefs(
   // metadata write to every native save in delegation-only applications.
   if (!row.contextMessages || !messages.length) return;
   const refs = [...row.contextMessages];
-  let sequence = row.contextSequence ?? 0;
+  let sequence = latestSequence(row.contextMessages);
   for (const message of messages) {
     const existing = refs.findIndex((ref) => ref.id === message.id);
     if (existing >= 0) refs.splice(existing, 1);
@@ -32,7 +39,6 @@ export async function recordRefs(
   refs.sort((a, b) => a.sequence - b.sequence);
   await ctx.db.patch("assignments", row._id, {
     contextMessages: refs.slice(-LIMITS.contextMessages),
-    contextSequence: sequence,
   });
 }
 
@@ -350,7 +356,7 @@ export const reviewContext = query({
     // queued when an earlier assistant response commits. A monotonic capture
     // boundary retains that response for the next review rather than losing it.
     refs.sort((a, b) => a.order - b.order || a.stepOrder - b.stepOrder);
-    return { refs, boundary: row.contextSequence ?? 0 };
+    return { refs, boundary: latestSequence(row.contextMessages) };
   },
 });
 

@@ -23,18 +23,15 @@ export const errorCode = v.union(
   v.literal("AUTHORIZATION_DENIED"),
   v.literal("EXECUTION_AMBIGUOUS"),
 );
+// A run reports every turn failure code, plus the four outcomes that only a
+// delegated run can have. Deriving from errorCode keeps one source of truth, so
+// a new turn failure code can never be missing from run reports.
+const [, ...turnFailureCodes] = errorCode.members;
 export const runErrorCode = v.union(
   v.null(),
-  v.literal("BUDGET_EXCEEDED"),
-  v.literal("HOOK_FAILED"),
-  v.literal("GENERATION_FAILED"),
-  v.literal("SLICE_LIMIT"),
-  v.literal("APPROVAL_LIMIT"),
-  v.literal("CLEANUP_FAILED"),
-  v.literal("EXECUTION_AMBIGUOUS"),
+  ...turnFailureCodes,
   v.literal("EMPTY_RESULT"),
   v.literal("RESULT_UNVERIFIED"),
-  v.literal("AUTHORIZATION_DENIED"),
   v.literal("ROOT_UNAVAILABLE"),
   v.literal("DELIVERY_FAILED"),
 );
@@ -171,7 +168,6 @@ export default defineSchema({
     // Exact step identity captured with the native save, consumed by usage
     // recording. Scalar reference only, never a copy of model output.
     modelStep: v.optional(v.object({ messageId: v.string(), stepOrder: v.number() })),
-    contextSequence: v.optional(v.number()),
     contextMessages: v.optional(
       v.array(
         v.object({
@@ -272,11 +268,12 @@ export default defineSchema({
     ),
     continueSlice: v.optional(v.boolean()),
     lastSlice: v.optional(v.string()),
-    // Roots only (0 elsewhere): live child count read by reserve admission and
-    // activity; nextRunSequence orders delegations for reads and is
-    // activity's history baseline. Both are written by reserve and settle.
+    // Roots only (0 elsewhere). activeRuns is the live (queued, running or
+    // asking) run count, read by reserve admission, delegateContext and activity.
+    // nextRunSequence is the count of runs ever reserved, read by reserve (the
+    // next delegation sequence) and activity. Every settle or cancel moves one run
+    // from active to history, so history is nextRunSequence - activeRuns.
     activeRuns: v.number(),
-    historyRuns: v.optional(v.number()),
     nextRunSequence: v.number(),
   }).index("by_thread", ["threadId"]),
   inbox: defineTable({
@@ -407,15 +404,12 @@ export default defineSchema({
       }),
     ),
     agent: v.string(),
-    rootAgent: v.string(),
     actorAgent: v.string(),
-    subject: v.string(),
     status: runStatus,
     deliveryStatus,
     errorCode: runErrorCode,
     deliveryToken: v.string(),
     coordinateHandle: v.string(),
-    runTurn: v.string(),
     createdAt: v.number(),
     sequence: v.number(),
     startedAt: v.optional(v.number()),

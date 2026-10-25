@@ -645,9 +645,9 @@ export const claim = mutation({
       subagent: {
         runId: run.runId,
         agent: run.agent,
-        rootAgent: run.rootAgent,
+        rootAgent: root.agent,
         actorAgent: run.actorAgent,
-        subject: run.subject,
+        subject: root.subject,
         rootAssignmentId: root._id,
         rootThreadId: root.threadId,
         childThreadId: row.threadId,
@@ -831,10 +831,12 @@ export const activity = query({
       queuedMessages: row.queuedMessages,
       errorCode: row.errorCode,
       runId: row.runId,
+      // Every reserved run is either live or settled, and settle/cancel move runs
+      // one for one, so the history count follows from the two stored counters.
       subagents: {
         active: row.activeRuns,
-        history: row.historyRuns ?? 0,
-        total: row.activeRuns + (row.historyRuns ?? 0),
+        history: row.nextRunSequence - row.activeRuns,
+        total: row.nextRunSequence,
       },
     };
   },
@@ -1597,7 +1599,6 @@ export const cancel = mutation({
     }
     await ctx.db.patch("assignments", root._id, {
       activeRuns: 0,
-      historyRuns: (root.historyRuns ?? 0) + children.length,
     });
     return affected.map((row) => ({ threadId: row.threadId, agent: row.agent }));
   },

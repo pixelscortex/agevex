@@ -8,7 +8,7 @@ import { it, expect, vi, afterEach, beforeEach } from "vite-plus/test";
 import { createThread, listMessages, saveMessage } from "@convex-dev/agent";
 import { createFunctionHandle } from "convex/server";
 import { setup, api, components, state } from "./setup.js";
-import { delegationsQuery, coordinateReference, runTurnReference, releaseChild } from "./host.js";
+import { delegationsQuery, coordinateReference, releaseChild } from "./host.js";
 import { LIMITS } from "../src/component/limits.js";
 
 beforeEach(() => vi.useFakeTimers());
@@ -125,7 +125,6 @@ async function reserveAndAttachChild(
       agent: "Researcher",
       payloadFingerprint: toolCallId,
       coordinateHandle: await createFunctionHandle(coordinateReference()),
-      runTurn: await createFunctionHandle(runTurnReference()),
     });
     if (reserved.kind !== "reserved") throw new Error(`RESERVE_${reserved.kind}`);
     await ctx.runMutation(components.agevex.subagents.attach, {
@@ -211,7 +210,6 @@ async function probeReserve(
         agent: "Researcher",
         payloadFingerprint: toolCallId,
         coordinateHandle: await createFunctionHandle(coordinateReference()),
-        runTurn: await createFunctionHandle(runTurnReference()),
       });
       outcome =
         reserved.kind === "reserved"

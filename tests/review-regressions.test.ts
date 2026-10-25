@@ -7,7 +7,7 @@ import { getConvexSize } from "convex/values";
 import { workflowCall } from "../src/testing/expect-journal.js";
 import { componentsGeneric, createFunctionHandle, type FunctionReference } from "convex/server";
 import { createThread, listMessages, saveMessage } from "@convex-dev/agent";
-import { main, coordinateReference, runTurnReference, fixtureRuntime } from "./host.js";
+import { main, coordinateReference, fixtureRuntime } from "./host.js";
 import { HOST_LIMITS } from "../src/component/limits.js";
 import { LIMITS } from "../src/client/index.js";
 
@@ -550,7 +550,6 @@ it.each(["routing", "approval"])(
           agent: "Researcher",
           payloadFingerprint: "large-child-" + i,
           coordinateHandle: await createFunctionHandle(coordinateReference()),
-          runTurn: await createFunctionHandle(runTurnReference()),
         });
         if (reserved.kind !== "reserved") throw new Error("RESERVATION_FAILED");
         const threadId = await createThread(ctx, components.agent, { userId: "alice" });
@@ -833,7 +832,6 @@ it.each(["failed", "blocked"] as const)(
           agent: "Researcher",
           payloadFingerprint: "empty-delivery-" + i,
           coordinateHandle: await createFunctionHandle(coordinateReference()),
-          runTurn: await createFunctionHandle(runTurnReference()),
         });
         if (reserved.kind !== "reserved") throw new Error("RESERVATION_FAILED");
         const threadId = await createThread(ctx, components.agent, { userId: "alice" });

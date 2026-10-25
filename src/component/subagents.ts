@@ -142,7 +142,6 @@ async function settleRunState(
   if (root) {
     await ctx.db.patch("assignments", root._id, {
       activeRuns: Math.max(0, root.activeRuns - 1),
-      historyRuns: (root.historyRuns ?? 0) + 1,
     });
   }
   // Side reviews never hold their watched parent behind R3, so their
@@ -239,7 +238,6 @@ export const reserve = mutation({
     agent: v.string(),
     payloadFingerprint: v.string(),
     coordinateHandle: v.string(),
-    runTurn: v.string(),
     side: v.optional(v.boolean()),
     group: v.optional(v.string()),
     wait: v.optional(v.union(v.literal("each"), v.literal("all"))),
@@ -337,15 +335,12 @@ export const reserve = mutation({
       rootAssignmentId: root._id,
       actorAssignmentId: row._id,
       agent: args.agent,
-      rootAgent: root.agent,
       actorAgent: row.agent,
-      subject: row.subject,
       status: "queued",
       deliveryStatus: "pending",
       errorCode: null,
       deliveryToken: crypto.randomUUID(),
       coordinateHandle: args.coordinateHandle,
-      runTurn: args.runTurn,
       createdAt: now,
       events: [{ phase: "queued", at: now, errorCode: null }],
     });
@@ -381,10 +376,10 @@ export const attach = mutation({
       throw new Error("ROOT_UNAVAILABLE");
     const childId = await ctx.db.insert("assignments", {
       contextMessages: args.trackContext ? [] : undefined,
-      subject: run.subject,
+      subject: root.subject,
       agent: run.agent,
       threadId: args.childThreadId,
-      runTurn: run.runTurn,
+      runTurn: root.runTurn,
       limits: root.limits,
       turnStatus: "idle",
       errorCode: null,
@@ -458,7 +453,7 @@ export const settlementContext = query({
     return {
       runId: run.runId,
       agent: run.agent,
-      subject: run.subject,
+      subject: child.subject,
       childThreadId: run.childThreadId,
       childResultMessageId: run.childResultMessageId ?? null,
       blocked: await settlementBlocked(ctx, child),
@@ -486,10 +481,10 @@ async function terminalContext(ctx: QueryCtx, run: Doc<"subagentRuns">) {
     runId: run.runId,
     side: run.side,
     agent: run.agent,
-    rootAgent: run.rootAgent,
+    rootAgent: root.agent,
     parentAgent: parent.agent,
     actorAgent: run.actorAgent,
-    subject: run.subject,
+    subject: root.subject,
     rootAssignmentId: root._id,
     rootThreadId: root.threadId,
     parentThreadId: parent.threadId,
@@ -1035,7 +1030,7 @@ export const interactionContext = query({
       kind: "ready" as const,
       runId: run.runId,
       agent: run.agent,
-      subject: run.subject,
+      subject: root.subject,
       childThreadId: child.threadId,
       parentThreadId: parent.threadId,
       rootThreadId: root.threadId,
