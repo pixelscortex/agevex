@@ -1,0 +1,62 @@
+tests/sandbox/fixture/daytona.ts
+  s_62f9da7bfda341::t_0aacc6b96c5fe7 3,6-7,13-17,38-45
+  s_62f9da7bfda341::t_964c4de69546e5 46-78
+tests/sandbox/daytona.live.ts
+  s_62f9da7bfda341::t_0aacc6b96c5fe7 5-7,15,19-20,38-60
+  s_62f9da7bfda341::t_67ff889f9f827a 61-64,80-81
+tests/sandbox/sandbox.test.ts
+  s_62f9da7bfda341::t_8d428a0d3883e1 306-313,320,324-326,330-343,349,360-361,363-367,372-373,397,406,409,452
+  s_62f9da7bfda341::t_9e4c2bc2770ef9 225,402-404
+  s_62f9da7bfda341::t_415bd522926fe7 314-319,321-323,327-329,344-348,350-359,362,368-371,389-392,394
+  s_62f9da7bfda341::t_9443bbdae600ae 393,395-396,398-401,405,407-408,410-412,564
+tests/sandbox/daytona.test.ts
+  s_62f9da7bfda341::t_936798db687e3e 23-26,37-49,66-70,72-76,78-82,85-88,97-100,118-122,129-136,145-149,153,171-176,182,200-204,213-217,220-225
+  s_62f9da7bfda341::t_1facf3185dbe3e 11-12,52-65,71,77,83-84,89-96,101-117,123-128,137-141
+  s_62f9da7bfda341::t_d186f1158e267d 1-2,6-8,10,13-18,27-36,50-51,142-144,150-152,154-168,177-181,184-186,228-229
+  s_62f9da7bfda341::t_4359a059b20a03 3-5,9,19-22,169-170,183,187-199,205-212,218-219,226-227
+src/sandbox/types.ts
+  s_62f9da7bfda341::t_9904735163c13d 15-16,21,53-54,73,85,110
+  s_62f9da7bfda341::t_f8b6a34521e8f1 29-33,47-52
+src/sandbox/daytona.ts
+  s_62f9da7bfda341::t_a3316a306eb767 240,244-245,247-251
+  s_62f9da7bfda341::t_4359a059b20a03 246
+  s_62f9da7bfda341::t_bf0426937730c5 25-26,33-35,173-191,193-206,209,214,243,253
+  s_62f9da7bfda341::t_613694b7b0520a 207-208,210-213,215-216,252,254-269
+src/sandbox/component/state.ts
+  s_62f9da7bfda341::t_9f9eca33ca21b2 211-213,320
+  s_62f9da7bfda341::t_f8b6a34521e8f1 230-236,248-249,277-280
+src/sandbox/index.ts
+  s_62f9da7bfda341::t_9f9eca33ca21b2 2-3,291,295-297,312-318,434,436-448,465,483,497,549,619-628,639,647
+  s_62f9da7bfda341::t_a3316a306eb767 298,629-635,640-642
+  s_62f9da7bfda341::t_c1bf323f9e7c59 311
+  s_62f9da7bfda341::t_9e4c2bc2770ef9 433,435
+  s_62f9da7bfda341::t_1441a445bae846 299,303,319-324,636-638,643-646,648-651,655,658,663
+src/sandbox/limits.ts
+  s_62f9da7bfda341::t_a3316a306eb767 12
+  s_62f9da7bfda341::t_9904735163c13d 8-11,70
+README.md
+  s_62f9da7bfda341::t_769337a16675c0 66,69,76-79,83-88
+src/testing/sandbox.ts
+  s_62f9da7bfda341::t_9e4c2bc2770ef9 80
+  s_62f9da7bfda341::t_9904735163c13d 28,77,88,96-99,126,128-129
+src/sandbox/component/schema.ts
+  s_62f9da7bfda341::t_9f9eca33ca21b2 45-48,60
+package.json
+  s_62f9da7bfda341::t_a3a43b81ae4e05 66-67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "33e77a9b927c3fc0b8086a8158ca2d7deac75aa5",
+  "prompts": {},
+  "sessions": {
+    "s_62f9da7bfda341": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17066-3401-7dc0-a9c1-6ac7ab1d53a0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}

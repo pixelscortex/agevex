@@ -1,0 +1,19 @@
+docs/site/content/docs/modules/sandbox.mdx
+  s_3e4b5c926f407a::t_ce22d71fc86f5c 4-5,8-172,175-213,215,217-223,225,227-229
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ed4c3d1c34761e7a8136b6b8e14e2e995e50c29c",
+  "prompts": {},
+  "sessions": {
+    "s_3e4b5c926f407a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17089-f314-7363-973b-fb051820b215",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
