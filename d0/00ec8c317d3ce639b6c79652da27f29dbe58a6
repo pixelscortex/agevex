@@ -1,0 +1,47 @@
+src/client/README.md
+  s_d863bd773ba186::t_76c0e8d2d2b94d 4-8
+src/client/registration/graph.ts
+  s_d863bd773ba186::t_eb9464080c355f 6-8
+src/client/runtime.ts
+  s_d863bd773ba186::t_bbe44738c036a5 53,55
+src/client/turn/admission.ts
+  s_d863bd773ba186::t_3885c36f5b5d1f 34,76,82
+src/client/turn/claim.ts
+  s_d863bd773ba186::t_df0e0bb8e6bf1f 72
+src/client/turn/completion.ts
+  s_d863bd773ba186::t_88c70f0b93c64d 31,78
+src/client/turn/context.ts
+  s_d863bd773ba186::t_92b100fc2b916c 32-38
+src/client/turn/fence.ts
+  s_d863bd773ba186::t_eebd24b5071416 9-12,56,69,98,101,106,138,148,154
+src/client/turn/finish.ts
+  s_d863bd773ba186::t_18b8dd10f9442a 26,76,92,108,119,127
+src/client/turn/generation.ts
+  s_d863bd773ba186::t_c5691699f16d2d 6-12
+src/client/turn/routing.ts
+  s_d863bd773ba186::t_fc023272369db2 20,48,94
+src/client/turn/run-turn.ts
+  s_d863bd773ba186::t_aa06b8b0d7ade6 7-8,57
+src/client/turn/slots.ts
+  s_d863bd773ba186::t_2bf0f3aa858263 56,69
+src/client/turn/tools.ts
+  s_d863bd773ba186::t_5745f04dc96728 23,33
+src/testing/journal.ts
+  s_d863bd773ba186::t_082cc7b9e7969e 8-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d000ec8c317d3ce639b6c79652da27f29dbe58a6",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
