@@ -457,28 +457,32 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
     return {
       sandbox_exec: defineOnceTool({
         name: "sandbox_exec",
+        description: `Run one shell command in your sandbox; returns the exit code and the last ${limits.outputChars} characters of output (timeout ${limits.commandTimeoutS}s).`,
         key,
         input: z.object({ command }),
         run: (input, tc) => exec(bind(tc), input),
       }),
       sandbox_read_file: tool({
-        description: "Read the bounded tail of a sandbox file.",
+        description: `Read a text file from your sandbox; only the last ${limits.fileReadChars} characters are returned.`,
         inputSchema: z.object({ path }),
         execute: (input, opts) => readFile(readContext(opts), input),
       }),
       sandbox_write_file: defineOnceTool({
         name: "sandbox_write_file",
+        description: `Write a text file in your sandbox, replacing it if it exists (at most ${limits.writeChars} characters).`,
         key,
         input: z.object({ path, content: z.string().max(limits.writeChars) }),
         run: (input, tc) => writeFile(bind(tc), input),
       }),
       sandbox_list: tool({
-        description: "List a bounded directory in the request's sandbox.",
+        description: `List a directory in your sandbox (name, isDir, size); at most ${limits.listEntries} entries.`,
         inputSchema: z.object({ path }),
         execute: (input, opts) => list(readContext(opts), input),
       }),
       sandbox_run_background: defineOnceTool({
         name: "sandbox_run_background",
+        description:
+          "Start a long-running shell command in your sandbox and return a job id at once; you are notified when it finishes, with its exit code and the end of its log.",
         key,
         input: z.object({ command }),
         run: (input, tc) => background(bind(tc), input),

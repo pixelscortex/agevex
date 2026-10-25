@@ -71,6 +71,10 @@ it("sandbox tools reach only agents registered with sandbox: true", async () => 
     "sandbox_write_file",
   ]);
   expect(offered("Plain")).toEqual([]);
+  // Each tool tells the model what it does, not just its own name.
+  const tools = fixture.calls.find((entry) => entry.agent === "Main")!.args.tools!;
+  for (const tool of tools.filter((tool) => tool.name.startsWith("sandbox_")))
+    expect("description" in tool && tool.description!.length > 40).toBe(true);
 });
 
 it("a managed sandbox_exec runs in the sandbox bound to the turn's subject and thread", async () => {
@@ -206,4 +210,39 @@ it("a second subject cannot reach the first subject's sandbox", async () => {
       path: "/secret.txt",
     }),
   ).toMatchObject({ bytes: "alice-only".length });
+});
+
+it("a job started by an opted-in child posts its note to a root agent that has not opted in", async () => {
+  fixture.steps.Lead = (n) =>
+    n === 0 ? call("agevex_delegate", { agent: "Builder", task: "build it" }) : text("lead done");
+  fixture.steps.Builder = (n) =>
+    n === 0 ? call("sandbox_run_background", { command: "make" }) : text("started");
+  const s = setup();
+  const receipt = await open(s, "alice", "Lead");
+  await drain(s);
+  // The root offers no sandbox tools; only the child could start the job.
+  expect(offered("Lead")).toEqual([]);
+  expect(fixture.fake.calls.background).toEqual(["make"]);
+  // The delegation result starts another root turn, a safe claim that delivers it.
+  await send(s, "alice", receipt.threadId, "second");
+  await drain(s);
+  const delivered = await notes(s, "alice", receipt.threadId);
+  expect(delivered).toHaveLength(1);
+  expect(delivered[0]).toMatchObject({ from: "sandbox", role: "user", status: "success" });
+  expect(delivered[0].text).toMatch(/Job \S+: done \(exit 0\)/);
+});
+
+it("a deadline-expired job's note starts with the SANDBOX_JOB_DEADLINE reason", async () => {
+  fixture.fake = fakeSandboxProvider({ background: () => [{ state: "running" }] });
+  fixture.limits = { pollMinMs: 100, pollMaxMs: 400, jobTimeoutMs: 1_000 };
+  fixture.steps.Main = (n) =>
+    n === 0 ? call("sandbox_run_background", { command: "forever" }) : text("started");
+  const s = setup();
+  const receipt = await open(s);
+  await drain(s);
+  await send(s, "alice", receipt.threadId, "second");
+  await drain(s);
+  const [note] = await notes(s, "alice", receipt.threadId);
+  expect(note.text).toMatch(/Job \S+: unknown\n\[SANDBOX_JOB_DEADLINE\]/);
+  expect(fixture.fake.calls.cancel).toHaveLength(1);
 });

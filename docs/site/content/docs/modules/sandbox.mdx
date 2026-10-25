@@ -75,9 +75,9 @@ export const runtime = registerAgent(components.agevex, { agents, sandbox: sandb
 ```
 
 The slot keys each sandbox by the turn's `subject` and **root** thread (a delegated child shares
-its parent's sandbox) and never by anything the model sends. The note is posted to that root
-thread, so its agent must also have `sandbox: true`. Core delivers it at the next safe turn claim
-with `origin: "note"`, `from: "sandbox"`; the log is cut to its last 3,000 characters.
+its parent's sandbox) and never by anything the model sends. A job's note is posted to that root
+thread even when only the child agent has `sandbox: true`. Core delivers it at the next safe turn
+claim with `origin: "note"`, `from: "sandbox"`; the log is cut to its last 3,000 characters.
 
 ## API
 

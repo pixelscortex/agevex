@@ -54,6 +54,7 @@ export const call = (name: string, input: unknown): LanguageModelV4Content[] => 
 export function reset(fake = fakeSandboxProvider(), scope: typeof fixture.scope = "thread") {
   fixture.scope = scope;
   fixture.fake = fake;
+  fixture.limits = { pollMinMs: 100, pollMaxMs: 400 };
   fixture.calls = [];
   fixture.steps = {};
   current = undefined;
@@ -80,6 +81,12 @@ const main = new Agent(components.agent, {
   languageModel: model("Main"),
   subagents: [builder],
   sandbox: true,
+});
+// A root that has NOT opted in: only its delegated child has.
+const lead = new Agent(components.agent, {
+  name: "Lead",
+  languageModel: model("Lead"),
+  subagents: [builder],
 });
 // No `sandbox: true`: the slot is registered, but this agent must not see it.
 const plain = new Agent(components.agent, { name: "Plain", languageModel: model("Plain") });
@@ -125,7 +132,7 @@ function build() {
     onComplete: sandboxCompletion(() => runtime),
   });
   runtime = registerAgent(components.agevex, {
-    agents: [main, plain],
+    agents: [main, plain, lead],
     sandbox: sandbox.slot(),
     refs: {
       runTurn: () => hostRef<"action", TurnArgs, null>("runTurn"),
