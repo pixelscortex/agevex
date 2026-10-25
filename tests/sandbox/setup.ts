@@ -22,6 +22,8 @@ export function setup(
   state.scope = scope;
   state.limits = limits;
   state.authorized = true;
+  state.deniedWith = "HOST_DENIED";
+  state.crashPolls = 0;
   state.callbackFails = false;
   state.usageFails = false;
   state.usage = [];

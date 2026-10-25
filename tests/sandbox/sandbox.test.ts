@@ -18,8 +18,13 @@ const keyFor = (facts: SandboxFacts = { subject: "owner", threadId: "thread", ru
 async function row(s: Setup) {
   return s.t.query(s.component.state.get, { scopeKey: await keyFor() });
 }
+/** convex-test runs `runAfter(0)` one millisecond after the scheduling mutation. */
+const WAKE_TO_POLL_MS = 1;
 async function advance(t: Setup["t"], ms: number) {
   await vi.advanceTimersByTimeAsync(ms);
+  await t.finishInProgressScheduledFunctions();
+  // A wake (mutation) schedules its poll action one tick later; let it run.
+  await vi.advanceTimersByTimeAsync(WAKE_TO_POLL_MS);
   await t.finishInProgressScheduledFunctions();
 }
 
@@ -130,6 +135,7 @@ it("exec retains the output tail within a shared stdout/stderr allowance and reu
     stdout: "x:end",
     stderr: "bad",
     truncated: true,
+    timedOut: false,
   });
   expect(await invoke(s.t, "sandbox_exec", input, { key: "same" })).toEqual(result);
   expect(await invoke(s.t, "sandbox_exec", { command: "different" }, { key: "same" })).toEqual({
@@ -279,7 +285,7 @@ it("an interrupted launch is detected by its persisted watchdog and becomes unkn
   const s = setup();
   await invoke(s.t, "prepare");
   const pollHandle = await s.t.run(() =>
-    createFunctionHandle(makeFunctionReference<"action">("host:poll")),
+    createFunctionHandle(makeFunctionReference<"mutation">("host:wake")),
   );
   const admitted = await s.t.mutation(s.component.state.reserveJob, {
     scopeKey: await keyFor(),
@@ -604,6 +610,7 @@ it("revoked background authority records unknown and stops before provider polli
     jobId: string;
   };
   state.authorized = false;
+  state.deniedWith = "FORBIDDEN";
   await advance(s.t, 10);
   state.authorized = true;
   expect(await invoke(s.t, "job", { jobId: result.jobId })).toMatchObject({ state: "unknown" });
@@ -668,7 +675,7 @@ it("hard-maximum active job admission stays within enforced transaction limits",
   await invoke(s.t, "prepare");
   const key = await keyFor();
   const pollHandle = await s.t.run(() =>
-    createFunctionHandle(makeFunctionReference<"action">("host:poll")),
+    createFunctionHandle(makeFunctionReference<"mutation">("host:wake")),
   );
   // Seed through the same public component admission path the tool uses.
   // Max-size attribution tests row byte bounds as well as document counts.
@@ -805,9 +812,11 @@ it("a final attempt that also never settles ends the job directly instead of cla
     jobId: string;
   };
   const stages = LIMITS.backgroundKillBudgetMs + LIMITS.backgroundLeaseMarginMs;
-  // Two consecutive attempts take the claim and die; the third wake ends it.
+  // Two attempts claimed at or after the deadline die unsettled; the next ends it.
   expect(await s.t.mutation(s.component.state.claimPoll, { jobId })).not.toBeNull();
   vi.setSystemTime(Date.now() + 1_000 + stages + 1);
+  expect(await s.t.mutation(s.component.state.claimPoll, { jobId })).not.toBeNull();
+  vi.setSystemTime(Date.now() + stages + 1);
   expect(await s.t.mutation(s.component.state.claimPoll, { jobId })).not.toBeNull();
   vi.setSystemTime(Date.now() + stages + 1);
   expect(await s.t.mutation(s.component.state.claimPoll, { jobId })).toBeNull();
@@ -833,8 +842,13 @@ it("cleanup defers a delete the remaining action budget cannot finish instead of
     await remove(ctx, id);
   };
   await invoke(s.t, "cleanup");
-  await advance(s.t, 0);
-  await advance(s.t, 10_000);
+  // First sweep: deletes one row, defers the other and reschedules itself.
+  await vi.advanceTimersByTimeAsync(0);
+  await s.t.finishInProgressScheduledFunctions();
+  // Second sweep: its delete waits on a fake 5 s timer, so advance concurrently.
+  await vi.advanceTimersByTimeAsync(1);
+  await vi.advanceTimersByTimeAsync(10_000);
+  await s.t.finishInProgressScheduledFunctions();
   const rows = await Promise.all(
     ["a", "b"].map(async (threadId) =>
       s.t.query(s.component.state.get, {
@@ -864,4 +878,121 @@ it("forget clears a lost create so the scope can create again, but never a known
   expect(fake.calls.create).toBe(2);
   expect(await invoke(s.t, "forget", facts)).toBe(false);
   expect(await row(s)).toMatchObject({ sandboxId: "fake-sandbox-1", state: "ready" });
+});
+
+it("a poll action that dies right after its wake is retried by the lease backstop and notifies once", async () => {
+  const fake = fakeSandboxProvider({
+    background: () => [{ state: "done", exitCode: 0, logTail: "ok" }],
+  });
+  const s = setup("thread", { pollMinMs: 100, pollMaxMs: 400 }, fake);
+  const { jobId } = (await invoke(s.t, "sandbox_run_background", { command: "work" })) as {
+    jobId: string;
+  };
+  // The scheduled wake (a mutation) commits its claim and the backstop; the
+  // action it schedules then dies before doing any work.
+  state.crashPolls = 1;
+  await advance(s.t, 100);
+  expect(fake.calls.poll).toHaveLength(0);
+  expect(await s.t.query(s.component.state.getJob, { jobId })).toMatchObject({ state: "running" });
+  await advance(s.t, LIMITS.actionBudgetMs + LIMITS.backgroundKillBudgetMs);
+  await advance(s.t, LIMITS.backgroundLeaseMarginMs);
+  expect(await s.t.query(s.component.state.getJob, { jobId })).toMatchObject({ state: "done" });
+  expect(await s.t.query(api.host.events, {})).toHaveLength(1);
+  expect(fake.calls.background).toHaveLength(1);
+});
+
+it("a transient authorization failure at wake time is retried, while only FORBIDDEN revokes", async () => {
+  const fake = fakeSandboxProvider({
+    background: () => [{ state: "done", exitCode: 0, logTail: "ok" }],
+  });
+  const s = setup("thread", { pollMinMs: 100, pollMaxMs: 400 }, fake);
+  const { jobId } = (await invoke(s.t, "sandbox_run_background", { command: "work" })) as {
+    jobId: string;
+  };
+  state.authorized = false;
+  state.deniedWith = "HOST_POLICY_OUTAGE";
+  await advance(s.t, 100);
+  state.authorized = true;
+  // Not revoked: still running, claim left to expire.
+  expect(await s.t.query(s.component.state.getJob, { jobId })).toMatchObject({ state: "running" });
+  await advance(s.t, LIMITS.actionBudgetMs + LIMITS.backgroundKillBudgetMs);
+  await advance(s.t, LIMITS.backgroundLeaseMarginMs);
+  expect(await s.t.query(s.component.state.getJob, { jobId })).toMatchObject({ state: "done" });
+  expect(await s.t.query(api.host.events, {})).toHaveLength(1);
+});
+
+it("one dead post-deadline attempt still gets the kill and the host notification", async () => {
+  const fake = fakeSandboxProvider({ background: () => [{ state: "running" }] });
+  const s = setup("thread", { pollMinMs: 100, pollMaxMs: 400, jobTimeoutMs: 1_000 }, fake);
+  const { jobId } = (await invoke(s.t, "sandbox_run_background", { command: "forever" })) as {
+    jobId: string;
+  };
+  // An early attempt dies; the first wake after the deadline is the first
+  // late attempt and its action dies too (one dead post-deadline attempt).
+  expect(await s.t.mutation(s.component.state.claimPoll, { jobId })).not.toBeNull();
+  state.crashPolls = 1;
+  const stages = LIMITS.backgroundKillBudgetMs + LIMITS.backgroundLeaseMarginMs;
+  await advance(s.t, 1_000 + stages + 1);
+  expect(await s.t.query(s.component.state.getJob, { jobId })).toMatchObject({ state: "running" });
+  // The next wake must still run the normal path, not end the job silently.
+  await advance(s.t, stages + 1);
+  expect(await s.t.query(s.component.state.getJob, { jobId })).toMatchObject({
+    state: "unknown",
+    code: "SANDBOX_JOB_DEADLINE",
+  });
+  const events = await s.t.query(api.host.events, {});
+  expect(events).toHaveLength(1);
+  expect(events[0].value).toMatchObject({ state: "unknown", code: "SANDBOX_JOB_DEADLINE" });
+  expect(fake.calls.cancel).toHaveLength(1);
+});
+
+it("export of a TTL-deleted scope is not found and never revives or pays for a sandbox", async () => {
+  const s = setup("thread", { ttl: 1 });
+  await invoke(s.t, "sandbox_write_file", { path: "/f", content: "x" });
+  await advance(s.t, LIMITS.actionBudgetMs + 1);
+  await invoke(s.t, "cleanup");
+  await advance(s.t, 0);
+  expect(await row(s)).toMatchObject({ state: "deleted" });
+  await expect(invoke(s.t, "export", { path: "/f" })).rejects.toThrow("SANDBOX_NOT_FOUND");
+  expect(s.fake.calls.create).toBe(1);
+  expect(await row(s)).toMatchObject({ state: "deleted" });
+});
+
+it("exec leaves the provider time to kill the command inside the shared action budget", async () => {
+  let shifted = false;
+  const fake = fakeSandboxProvider({
+    // The cold start eats all but 20.5 s of the 540 s action budget.
+    beforeReady: async () => {
+      if (shifted) return;
+      shifted = true;
+      vi.setSystemTime(Date.now() + LIMITS.actionBudgetMs - 20_500);
+    },
+  });
+  const seen: number[] = [];
+  const exec = fake.provider.exec;
+  fake.provider.exec = (ctx, id, command, opts) => {
+    seen.push(opts.timeoutS);
+    return exec(ctx, id, command, opts);
+  };
+  const s = setup("thread", {}, fake);
+  await invoke(s.t, "sandbox_exec", { command: "echo" });
+  // 20.5 s remain; 5 are reserved for the kill, so the command gets at most 15.
+  expect(seen).toEqual([15]);
+});
+
+it("exec reports timedOut from the provider, so a real exit 124 is not mistaken for a timeout", async () => {
+  let timedOut = true;
+  const fake = fakeSandboxProvider({
+    exec: () => ({ exitCode: 124, stdout: "", stderr: "", timedOut }),
+  });
+  const s = setup("thread", {}, fake);
+  expect(await invoke(s.t, "sandbox_exec", { command: "a" }, { key: "a" })).toMatchObject({
+    exitCode: 124,
+    timedOut: true,
+  });
+  timedOut = false;
+  expect(await invoke(s.t, "sandbox_exec", { command: "b" }, { key: "b" })).toMatchObject({
+    exitCode: 124,
+    timedOut: false,
+  });
 });

@@ -54,6 +54,8 @@ export default defineSchema({
     pollHandle: v.string(),
     claim: v.string(),
     leaseUntil: v.number(),
+    // Claims made at or after the deadline; read by claimPoll to bound them.
+    lateAttempts: v.optional(v.number()),
     wakeId: v.optional(v.id("_scheduled_functions")),
     exitCode: v.optional(v.number()),
     logTail: v.optional(v.string()),

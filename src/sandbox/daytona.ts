@@ -160,7 +160,8 @@ export function daytona(
       // The command executes exactly once. The wrapper owns the timeout: it
       // kills the command's whole process group in `finally` (the command runs
       // in its own session, so nothing else would), and reports a timeout as a
-      // normal result (exit 124, as coreutils `timeout`). Daytona's own limit
+      // normal result (exit 124 as coreutils `timeout`, plus the structured
+      // `timedOut` flag, since a command may itself exit 124). Daytona's own limit
       // is set LATER than the wrapper's, otherwise it kills the wrapper first
       // and the command survives with an unknown outcome.
       const chars = HARD_LIMITS.outputChars;
@@ -168,10 +169,10 @@ export function daytona(
         await python(
           ctx,
           sandboxId,
-          `import subprocess,tempfile,json,os,signal\no=tempfile.TemporaryFile()\ne=tempfile.TemporaryFile()\np=subprocess.Popen(${JSON.stringify(cmd)},shell=True,stdout=o,stderr=e,start_new_session=True)\ndone=False\ntimed=False\ntry:\n p.wait(timeout=${timeoutS})\n done=True\nexcept subprocess.TimeoutExpired:\n timed=True\nfinally:\n if not done:\n  try: os.killpg(p.pid,signal.SIGKILL)\n  except ProcessLookupError: pass\n  p.wait()\ndef tail(f,extra=''):\n f.seek(0,2)\n f.seek(max(0,f.tell()-${chars * LIMITS.utf8BytesPerChar}))\n return (f.read().decode('utf-8',errors='replace')+extra)[-${chars}:]\nprint(json.dumps({'exitCode':124 if timed else p.returncode,'stdout':tail(o),'stderr':tail(e,'\\n[timed out after ${timeoutS}s]' if timed else '')}))`,
+          `import subprocess,tempfile,json,os,signal\no=tempfile.TemporaryFile()\ne=tempfile.TemporaryFile()\np=subprocess.Popen(${JSON.stringify(cmd)},shell=True,stdout=o,stderr=e,start_new_session=True)\ndone=False\ntimed=False\ntry:\n p.wait(timeout=${timeoutS})\n done=True\nexcept subprocess.TimeoutExpired:\n timed=True\nfinally:\n if not done:\n  try: os.killpg(p.pid,signal.SIGKILL)\n  except ProcessLookupError: pass\n  p.wait()\ndef tail(f,extra=''):\n f.seek(0,2)\n f.seek(max(0,f.tell()-${chars * LIMITS.utf8BytesPerChar}))\n return (f.read().decode('utf-8',errors='replace')+extra)[-${chars}:]\nprint(json.dumps({'timedOut':timed,'exitCode':124 if timed else p.returncode,'stdout':tail(o),'stderr':tail(e,'\\n[timed out after ${timeoutS}s]' if timed else '')}))`,
           timeoutS + LIMITS.execKillMarginS,
         ),
-      ) as { exitCode: number; stdout: string; stderr: string };
+      ) as { exitCode: number; stdout: string; stderr: string; timedOut: boolean };
       signal.throwIfAborted();
       return result;
     },
@@ -250,7 +251,7 @@ assert os.path.exists(d+'/group.pid'),'background launch failed'`,
 d=${JSON.stringify(directory)}
 code=None
 if not os.path.isdir(d):
- print(json.dumps({'state':'failed','logTail':'SANDBOX_JOB_NOT_STARTED'}))
+ print(json.dumps({'state':'unknown'}))
  raise SystemExit
 try:
  with open(d+'/status.exit') as f: raw=f.read(${LIMITS.identityChars})
@@ -270,6 +271,10 @@ else:
     async cancelBackground(ctx, jobId, { sandboxId, directory }) {
       bounded(jobId, LIMITS.identityChars, "JOB_ID");
       bounded(directory, LIMITS.pathChars, "JOB_DIRECTORY");
+      // A missing job directory does not mean the command never ran: poll() is
+      // only reached after the launch was confirmed, so the command (or a
+      // person) removed it while the group may still be alive. Fall back to
+      // the environment marker alone; no marked process counts as killed.
       // Request cleanup through the job-owned supervisor, never a bare saved
       // PGID. Unique temporary files + rename make concurrent cancels atomic.
       // If acknowledgement is lost (including a dead supervisor), inspect all
@@ -281,6 +286,21 @@ else:
         sandboxId,
         `import os,signal,time,tempfile
 d=${JSON.stringify(directory)}
+if not os.path.isdir(d):
+ marker=${JSON.stringify(`AGEVEX_JOB=${jobId}`)}.encode()
+ victims=[]
+ with os.scandir('/proc') as entries:
+  for entry in entries:
+   if not entry.name.isdigit(): continue
+   try:
+    with open('/proc/'+entry.name+'/environ','rb') as f: env=f.read(${LIMITS.backgroundEnvironmentBytes + 1})
+   except (FileNotFoundError,ProcessLookupError,PermissionError): continue
+   if len(env)>${LIMITS.backgroundEnvironmentBytes}: raise ValueError('unverified process')
+   if marker in env.split(b'\\0'): victims.append(int(entry.name))
+ for pid in victims:
+  try: os.kill(pid,signal.SIGKILL)
+  except ProcessLookupError: pass
+ raise SystemExit
 if not os.path.exists(d+'/status.exit') and not os.path.exists(d+'/cancelled'):
  fd,path=tempfile.mkstemp(dir=d)
  with os.fdopen(fd,'w') as f: f.write('deadline\\n')

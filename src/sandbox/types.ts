@@ -55,7 +55,7 @@ export interface SandboxProvider {
     sandboxId: string,
     cmd: string,
     opts: { timeoutS: number; signal: AbortSignal },
-  ): Promise<{ exitCode: number; stdout: string; stderr: string }>;
+  ): Promise<{ exitCode: number; stdout: string; stderr: string; timedOut?: boolean }>;
   startBackground(
     ctx: SandboxContext,
     sandboxId: string,
@@ -114,6 +114,8 @@ export type SandboxUsageEvent = Partial<SandboxFacts> & {
 };
 
 export type PollArgs = { jobId: string };
+/** The claim a wake mutation took for the poll action it schedules. */
+export type PollActionArgs = PollArgs & { claim: string };
 export type SandboxExportArgs = { threadId: string; path: string };
 export type SandboxExportResult = {
   fileId: string;
@@ -131,7 +133,9 @@ export type SettleArgs = PollArgs & {
 
 /** Host references keep provider configuration and secrets out of scheduled args. */
 export type SandboxRefs = {
-  poll: () => FunctionReference<"action", "internal", PollArgs, null>;
+  /** The scheduled entry point: a mutation, so it runs exactly once. */
+  wake: () => FunctionReference<"mutation", "internal", PollArgs, null>;
+  poll: () => FunctionReference<"action", "internal", PollActionArgs, null>;
   settle: () => FunctionReference<"mutation", "internal", SettleArgs, null>;
   cleanup: () => FunctionReference<"action", "internal", Record<string, never>, null>;
 };

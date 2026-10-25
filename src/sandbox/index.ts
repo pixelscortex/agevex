@@ -9,7 +9,7 @@ import {
   type GenericMutationCtx,
   type GenericDataModel,
 } from "convex/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { z } from "zod";
 import { defineOnceTool, fingerprint, type ToolContext } from "../client/once.js";
 import type { SandboxSlot } from "../client/slots.js";
@@ -24,6 +24,7 @@ import type {
   SandboxUsageEvent,
   SandboxJobEvent,
   PollArgs,
+  PollActionArgs,
   SettleArgs,
   SandboxExportArgs,
   SandboxExportResult,
@@ -103,6 +104,13 @@ export function sandboxNodeExport(options: SandboxOptions) {
     args: { threadId: v.string(), path: v.string() },
     handler: (ctx, args): Promise<SandboxExportResult> => sandbox.export(ctx, args),
   });
+}
+
+/** A definite host denial, as opposed to an outage or timeout while checking. */
+function isForbidden(error: unknown) {
+  if (error instanceof ConvexError)
+    return (error.data as { code?: unknown } | undefined)?.code === "FORBIDDEN";
+  return error instanceof Error && /^(SANDBOX_)?FORBIDDEN\b/.test(error.message);
 }
 
 function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
@@ -292,9 +300,15 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
   async function exec(tc: SandboxCall, input: { command: string }) {
     bounded(input.command, LIMITS.commandChars, "COMMAND");
     const binding = await prepare(tc);
+    // Leave execKillMarginS of the shared budget for the provider to kill the
+    // command's process group after its timeout; without it a command that
+    // times out exactly at the action deadline is cut off un-killed.
     const timeoutS = Math.min(
       limits.commandTimeoutS,
-      Math.floor(remaining(tc.ctx) / LIMITS.millisecondsPerSecond),
+      Math.floor(
+        (remaining(tc.ctx) - LIMITS.execKillMarginS * LIMITS.millisecondsPerSecond) /
+          LIMITS.millisecondsPerSecond,
+      ),
     );
     if (timeoutS < 1) throw new Error("SANDBOX_ACTION_DEADLINE");
     tc.signal.throwIfAborted();
@@ -315,6 +329,9 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
       return {
         status: "done" as const,
         exitCode: result.exitCode,
+        // True only when the sandbox killed the command for exceeding the
+        // timeout, so a command that itself exits 124 is not mistaken for it.
+        timedOut: result.timedOut === true,
         stdout,
         stderr,
         truncated: stdout.length < result.stdout.length || stderr.length < result.stderr.length,
@@ -381,7 +398,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
     const admitted = await tc.ctx.runMutation(component.state.reserveJob, {
       scopeKey: key,
       ...facts(tc),
-      pollHandle: await createFunctionHandle(options.refs.poll()),
+      pollHandle: await createFunctionHandle(options.refs.wake()),
       pollMinMs: limits.pollMinMs,
       pollMaxMs: limits.pollMaxMs,
       jobTimeoutMs: limits.jobTimeoutMs,
@@ -552,29 +569,57 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
 
   /** Internal host actions retain provider configuration in code, never scheduled args. */
   function internalFunctions() {
-    const poll = internalActionGeneric({
+    /**
+     * The only function the scheduler calls for a job. It is a MUTATION, which
+     * Convex runs exactly once: claiming the job (and thereby scheduling the
+     * lease backstop wake) commits atomically with scheduling the poll action.
+     * If that action later dies, the backstop wake retries; there is no window
+     * in which the consumed wake leaves nothing scheduled.
+     */
+    const wake = internalMutationGeneric({
       args: { jobId: v.string() },
       returns: v.null(),
       handler: async (ctx, args: PollArgs): Promise<null> => {
         if (!options.refs) throw new Error("SANDBOX_REFS_REQUIRED");
         const known = await ctx.runQuery(component.state.getJob, args);
         if (!known || !["starting", "running"].includes(known.state)) return null;
+        const job = await ctx.runMutation(component.state.claimPoll, args);
+        if (!job) return null;
         try {
           await authorize(ctx, { operation: "poll", ...facts(known), scopeKey: known.scopeKey });
-        } catch {
-          // Revoked authority forbids further provider access. Finalizing only
-          // our existing metadata is safe housekeeping, not permission to run
-          // the callback or launch work. Keep the uncertainty visible so a
-          // later authorized host can reconcile it through job().
+        } catch (error) {
+          // A thrown error would roll the claim back and lose the backstop, so
+          // it is always caught. Only a definite FORBIDDEN means authority was
+          // revoked: that forbids provider access and the callback, but
+          // finalizing our own metadata is safe housekeeping. Keep the
+          // uncertainty visible so a later authorized host can reconcile it
+          // through job(). Anything else (an outage, a timeout) is transient:
+          // leave the claim to expire and the backstop retries, bounded by the
+          // deadline and the late-attempt limit.
+          if (!isForbidden(error)) return null;
           await ctx.runMutation(component.state.finishJob, {
             jobId: known._id,
-            claim: known.claim,
+            claim: job.claim,
             state: "unknown",
           });
           return null;
         }
-        const job = await ctx.runMutation(component.state.claimPoll, args);
-        if (!job) return null;
+        await ctx.scheduler.runAfter(0, options.refs.poll(), {
+          jobId: known._id,
+          claim: job.claim,
+        });
+        return null;
+      },
+    });
+    const poll = internalActionGeneric({
+      args: { jobId: v.string(), claim: v.string() },
+      returns: v.null(),
+      handler: async (ctx, args: PollActionArgs): Promise<null> => {
+        if (!options.refs) throw new Error("SANDBOX_REFS_REQUIRED");
+        const job = await ctx.runQuery(component.state.getJob, { jobId: args.jobId });
+        // Superseded (a later claim took over) or already terminal.
+        if (!job || !["starting", "running"].includes(job.state) || job.claim !== args.claim)
+          return null;
         let outcome;
         let killed: boolean | undefined;
         try {
@@ -696,7 +741,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
         return null;
       },
     });
-    return { poll, settle, cleanup };
+    return { wake, poll, settle, cleanup };
   }
 
   return {
@@ -788,14 +833,18 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
         throw new Error("SANDBOX_FORBIDDEN");
       const key = await scopeKey(trusted);
       const row = await ctx.runQuery(component.state.get, { scopeKey: key });
-      if (!row?.sandboxId) throw new Error("SANDBOX_NOT_FOUND");
+      // A deleted scope has no files left to export. prepare() would reserve a
+      // fresh sandbox for it, paying for an empty VM and then failing the read.
+      if (!row?.sandboxId || row.state === "deleted" || row.state === "deleting")
+        throw new Error("SANDBOX_NOT_FOUND");
       const tc: SandboxCall = {
         ...trusted,
         ctx,
         signal: new AbortController().signal,
         toolCallId: "export",
       };
-      await prepare(tc);
+      // Download from the id prepare resolved, not the row read above.
+      const { sandboxId } = await prepare(tc);
       // Every component transaction holds constant-size metadata. Only this
       // action buffers bytes, in <=512 KiB windows; overflow creates no storage.
       const maximum = nodeExport ? limits.exportBytesNode : limits.exportBytes;
@@ -807,7 +856,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
         let chunk: Uint8Array;
         try {
           chunk = await within(ctx, () =>
-            provider.download(ctx, row.sandboxId!, input.path, {
+            provider.download(ctx, sandboxId, input.path, {
               maxBytes,
               offset: bytes,
               totalSizeLimit: maximum,
@@ -850,7 +899,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
         filename: input.path.split("/").pop(),
       });
       if (stored.file.hash !== digest) throw new Error("SANDBOX_EXPORT_HASH_MISMATCH");
-      await observe(ctx, row.sandboxId, "export", "observed", trusted);
+      await observe(ctx, sandboxId, "export", "observed", trusted);
       return {
         fileId: stored.file.fileId,
         storageId: stored.file.storageId,

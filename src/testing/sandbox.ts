@@ -4,7 +4,7 @@ type FakeMachine = {
   state: "creating" | "ready" | "stopped" | "archived" | "error" | "deleted";
   files: Map<string, Uint8Array>;
 };
-type ExecResult = { exitCode: number; stdout: string; stderr: string };
+type ExecResult = { exitCode: number; stdout: string; stderr: string; timedOut?: boolean };
 
 /** In-memory provider: deterministic, no fetch, no shell, no provider credentials. */
 export function fakeSandboxProvider(

@@ -15,6 +15,7 @@ import type { ComponentApi } from "../../../src/sandbox/component/_generated/com
 import type { SandboxLimits } from "../../../src/sandbox/limits.js";
 import type {
   PollArgs,
+  PollActionArgs,
   SettleArgs,
   SandboxJobEvent,
   SandboxUsageEvent,
@@ -41,6 +42,10 @@ export const state = {
   scope: "thread" as "thread" | "run" | "subject",
   limits: {} as Partial<SandboxLimits>,
   authorized: true,
+  /** What the host's policy throws while `authorized` is false. */
+  deniedWith: "HOST_DENIED",
+  /** Poll actions that die before doing any work, like a killed isolate. */
+  crashPolls: 0,
   callbackFails: false,
   usageFails: false,
   usage: [] as SandboxUsageEvent[],
@@ -69,12 +74,13 @@ export function config(): SandboxOptions {
         }
       : {}),
     refs: {
-      poll: () => ref<"action", PollArgs>("poll"),
+      wake: () => ref<"mutation", PollArgs>("wake"),
+      poll: () => ref<"action", PollActionArgs>("poll"),
       settle: () => ref<"mutation", SettleArgs>("settle"),
       cleanup: () => ref<"action", Record<string, never>>("cleanup"),
     },
     authorize: async (_ctx, request) => {
-      if (!state.authorized) throw new Error("HOST_DENIED");
+      if (!state.authorized) throw new Error(state.deniedWith);
       return { subject: request.subject ?? "owner" };
     },
     resolveThread: async (_ctx, threadId) =>
@@ -95,7 +101,22 @@ export function config(): SandboxOptions {
 export function runtime() {
   const sandbox = defineSandbox(config());
   state.instance = sandbox;
-  return sandbox.internalFunctions();
+  const functions = sandbox.internalFunctions();
+  // Registered functions keep their handler; wrap it to model an action that
+  // dies before it does anything (after the scheduler already consumed it).
+  const real = (functions.poll as unknown as { _handler: (ctx: unknown, args: unknown) => unknown })
+    ._handler;
+  const poll = internalActionGeneric({
+    args: { jobId: v.string(), claim: v.string() },
+    handler: async (ctx, args) => {
+      if (state.crashPolls > 0) {
+        state.crashPolls--;
+        throw new Error("poll action died");
+      }
+      return real(ctx, args) as Promise<null>;
+    },
+  });
+  return { ...functions, poll };
 }
 
 export const invoke = internalActionGeneric({

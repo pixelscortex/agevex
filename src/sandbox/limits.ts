@@ -31,6 +31,9 @@ export const LIMITS = {
   // the command's timeout itself, so Daytona's is set this much later: the
   // wrapper must always get to kill the command's process group first.
   execKillMarginS: 5,
+  // Claims made at or after the deadline that may die unsettled. The first
+  // two still run the kill and notify path; the next one ends the job.
+  lateAttemptsMax: 2,
   // A delete may take one Daytona request (30 s). Below this much remaining
   // action budget cleanup defers the row instead of claiming it, because a
   // claimed delete that times out is recorded as unknown.

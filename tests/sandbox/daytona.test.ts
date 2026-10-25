@@ -51,6 +51,13 @@ function harness(env?: Record<string, string>) {
   return { ctx, provider, actions, replies };
 }
 
+/** A wake (mutation) schedules its poll action one tick later; run that too. */
+async function flush(t: ReturnType<typeof setup>["t"]) {
+  await t.finishInProgressScheduledFunctions();
+  await vi.advanceTimersByTimeAsync(1);
+  await t.finishInProgressScheduledFunctions();
+}
+
 function adapterSetup(limits = {}, env?: Record<string, string>) {
   const h = harness(env);
   const fake = fakeSandboxProvider();
@@ -83,14 +90,14 @@ it("the fenced poller kills a never-ending Daytona group at its deadline and sch
       directory: expect.stringContaining(LIMITS.backgroundRoot),
     });
     await vi.advanceTimersByTimeAsync(30);
-    await s.t.finishInProgressScheduledFunctions();
+    await flush(s.t);
     expect(await s.t.query(s.component.state.getJob, { jobId: result.jobId })).toMatchObject({
       state: "unknown",
       code: "SANDBOX_JOB_DEADLINE",
     });
     const count = s.actions.mock.calls.length;
     await vi.advanceTimersByTimeAsync(LIMITS.actionBudgetMs);
-    await s.t.finishInProgressScheduledFunctions();
+    await flush(s.t);
     expect(s.actions).toHaveBeenCalledTimes(count);
     expect(await readFile(`${directory}/cancelled`, "utf8")).toBe("deadline");
   } finally {
@@ -127,7 +134,7 @@ it("a lost Daytona launch and throwing callback preserve the unknown receipt and
     expect(await s.t.action(api.host.invoke, args)).toEqual(result);
     state.callbackFails = false;
     await vi.advanceTimersByTimeAsync(LIMITS.actionBudgetMs);
-    await s.t.finishInProgressScheduledFunctions();
+    await flush(s.t);
     expect(await s.t.query(api.host.events, {})).toMatchObject([
       { value: { state: "unknown", jobId: (result as { jobId: string }).jobId } },
     ]);
@@ -273,12 +280,12 @@ it("a transient Daytona status failure keeps polling with backoff and kills the 
     })) as { jobId: string };
     directory = (await s.t.query(s.component.state.getJob, { jobId: result.jobId }))!.directory;
     await vi.advanceTimersByTimeAsync(10);
-    await s.t.finishInProgressScheduledFunctions();
+    await flush(s.t);
     expect(await s.t.query(s.component.state.getJob, { jobId: result.jobId })).toMatchObject({
       state: "running",
     });
     await vi.advanceTimersByTimeAsync(40);
-    await s.t.finishInProgressScheduledFunctions();
+    await flush(s.t);
     expect(attempts).toBeGreaterThan(1);
     expect(await s.t.query(s.component.state.getJob, { jobId: result.jobId })).toMatchObject({
       state: "unknown",
@@ -287,7 +294,7 @@ it("a transient Daytona status failure keeps polling with backoff and kills the 
     expect(await readFile(directory + "/cancelled", "utf8")).toBe("deadline");
     const count = s.actions.mock.calls.length;
     await vi.advanceTimersByTimeAsync(LIMITS.actionBudgetMs);
-    await s.t.finishInProgressScheduledFunctions();
+    await flush(s.t);
     expect(s.actions).toHaveBeenCalledTimes(count);
     expect(s.fake.calls.background).toHaveLength(0);
   } finally {
@@ -614,12 +621,12 @@ it("an uncertain group kill retries safely until the finite deadline without rel
     })) as { jobId: string };
     directory = (await s.t.query(s.component.state.getJob, { jobId: result.jobId }))!.directory;
     await vi.advanceTimersByTimeAsync(10);
-    await s.t.finishInProgressScheduledFunctions();
+    await flush(s.t);
     expect(await s.t.query(s.component.state.getJob, { jobId: result.jobId })).toMatchObject({
       state: "running",
     });
     await vi.advanceTimersByTimeAsync(40);
-    await s.t.finishInProgressScheduledFunctions();
+    await flush(s.t);
     expect(kills).toBeGreaterThan(1);
     expect(await s.t.query(s.component.state.getJob, { jobId: result.jobId })).toMatchObject({
       state: "unknown",
@@ -627,7 +634,7 @@ it("an uncertain group kill retries safely until the finite deadline without rel
     });
     const count = s.actions.mock.calls.length;
     await vi.advanceTimersByTimeAsync(LIMITS.actionBudgetMs);
-    await s.t.finishInProgressScheduledFunctions();
+    await flush(s.t);
     expect(s.actions).toHaveBeenCalledTimes(count);
     expect(await readFile(directory + "/cancelled", "utf8")).toBe("deadline");
   } finally {
@@ -665,10 +672,11 @@ it("a hung cancellation remains bounded after the poll deadline and leaves no sc
       input: { command: "sleep 120 & wait" },
     })) as { jobId: string };
     directory = (await s.t.query(s.component.state.getJob, { jobId: result.jobId }))!.directory;
-    await vi.advanceTimersByTimeAsync(10);
+    // Wake at 10 ms; its poll action runs one tick later.
+    await vi.advanceTimersByTimeAsync(11);
     await killed;
     await vi.advanceTimersByTimeAsync(LIMITS.backgroundKillBudgetMs);
-    await s.t.finishInProgressScheduledFunctions();
+    await flush(s.t);
     expect(kills).toBe(1);
     expect(await s.t.query(s.component.state.getJob, { jobId: result.jobId })).toMatchObject({
       state: "unknown",
@@ -676,7 +684,7 @@ it("a hung cancellation remains bounded after the poll deadline and leaves no sc
     });
     const count = s.actions.mock.calls.length;
     await vi.advanceTimersByTimeAsync(LIMITS.actionBudgetMs);
-    await s.t.finishInProgressScheduledFunctions();
+    await flush(s.t);
     expect(s.actions).toHaveBeenCalledTimes(count);
     expect(await readFile(directory + "/cancelled", "utf8")).toBe("deadline");
   } finally {
@@ -708,7 +716,7 @@ it("a hung status read cannot outlive the job deadline or prevent the Daytona gr
     directory = (await s.t.query(s.component.state.getJob, { jobId: result.jobId }))!.directory;
     await vi.advanceTimersByTimeAsync(10);
     await vi.advanceTimersByTimeAsync(40);
-    await s.t.finishInProgressScheduledFunctions();
+    await flush(s.t);
     expect(await s.t.query(s.component.state.getJob, { jobId: result.jobId })).toMatchObject({
       state: "unknown",
       code: "SANDBOX_JOB_DEADLINE",
@@ -739,7 +747,7 @@ it("a timed-out Daytona exec returns a timeout result and kills the command's pr
       signal: new AbortController().signal,
     });
     pid = Number(await readFile(pidFile, "utf8"));
-    expect(result).toMatchObject({ exitCode: 124 });
+    expect(result).toMatchObject({ exitCode: 124, timedOut: true });
     expect(result.stderr).toContain("timed out after 1s");
     expect(() => process.kill(pid, 0)).toThrow(/ESRCH/);
   } finally {
@@ -753,23 +761,61 @@ it("a timed-out Daytona exec returns a timeout result and kills the command's pr
   }
 }, 30_000);
 
-it("a background job whose directory is missing is settled as never started without polling to the deadline", async () => {
+it("a job that deletes its own directory is killed through the environment marker and settles once as unknown", async () => {
   vi.useFakeTimers();
-  const s = adapterSetup({ pollMinMs: 10, pollMaxMs: 20, jobTimeoutMs: 60_000 });
+  const patchDirectory = await mkdtemp(join(tmpdir(), "agevex-selfdelete-"));
+  const procDirectory = join(patchDirectory, "proc");
+  // macOS has no /proc: supply only that view, as the ownership tests do.
+  await writeFile(
+    join(patchDirectory, "sitecustomize.py"),
+    `import os,builtins
+original_scandir=os.scandir
+original_open=builtins.open
+def scandir(path):
+ return original_scandir(${JSON.stringify(procDirectory)} if path=='/proc' else path)
+def open_file(path,*args,**kwargs):
+ if str(path).startswith('/proc/'): path=${JSON.stringify(procDirectory)}+str(path)[5:]
+ return original_open(path,*args,**kwargs)
+os.scandir=scandir
+builtins.open=open_file
+`,
+  );
+  const s = adapterSetup(
+    { pollMinMs: 10, pollMaxMs: 20, jobTimeoutMs: 60_000 },
+    {
+      PYTHONPATH: patchDirectory,
+    },
+  );
+  let pid = 0;
   try {
     const result = (await s.t.action(api.host.invoke, {
       op: "sandbox_run_background",
-      input: { command: "true" },
+      input: { command: "exec sleep 120" },
     })) as { jobId: string };
     const job = (await s.t.query(s.component.state.getJob, { jobId: result.jobId }))!;
+    pid = Number(await readFile(`${job.directory}/group.pid`, "utf8"));
+    // The command (here: the test) removes the directory while the group lives.
     await rm(job.directory, { recursive: true, force: true });
-    await vi.advanceTimersByTimeAsync(10);
-    await s.t.finishInProgressScheduledFunctions();
+    await mkdir(`${procDirectory}/${pid}`, { recursive: true });
+    await writeFile(`${procDirectory}/${pid}/environ`, `AGEVEX_JOB=${job.providerJobId}\0`);
+    await vi.advanceTimersByTimeAsync(11);
+    await flush(s.t);
     expect(await s.t.query(s.component.state.getJob, { jobId: result.jobId })).toMatchObject({
-      state: "failed",
-      logTail: "SANDBOX_JOB_NOT_STARTED",
+      state: "unknown",
     });
+    const events = await s.t.query(api.host.events, {});
+    expect(events).toHaveLength(1);
+    expect(events[0].value).toMatchObject({ jobId: result.jobId, state: "unknown" });
+    // The group did not run on unwatched: it is gone (a zombie may linger a moment).
+    await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow(/ESRCH/), { timeout: 3000 });
   } finally {
     vi.useRealTimers();
+    if (pid)
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        /* already gone */
+      }
+    await rm(patchDirectory, { recursive: true, force: true });
   }
-});
+}, 30_000);

@@ -22,7 +22,7 @@ import { scriptedModel } from "../../src/test.js";
 import { defineSandbox, sandboxCompletion } from "../../src/sandbox/index.js";
 import type { ComponentApi as SandboxApi } from "../../src/sandbox/component/_generated/component.js";
 import type { SandboxLimits } from "../../src/sandbox/limits.js";
-import type { PollArgs, SettleArgs } from "../../src/sandbox/types.js";
+import type { PollArgs, PollActionArgs, SettleArgs } from "../../src/sandbox/types.js";
 import { fakeSandboxProvider } from "../../src/testing/sandbox.js";
 
 // A real host wiring of the sandbox module into agevex through its slot, with
@@ -113,7 +113,8 @@ function build() {
     limits: fixture.limits,
     agent: components.agent,
     refs: {
-      poll: () => hostRef<"action", PollArgs, null>("poll"),
+      wake: () => hostRef<"mutation", PollArgs, null>("wake"),
+      poll: () => hostRef<"action", PollActionArgs, null>("poll"),
       settle: () => hostRef<"mutation", SettleArgs, null>("settle"),
       cleanup: () => hostRef<"action", Record<string, never>, null>("cleanup"),
     },
@@ -166,6 +167,7 @@ export function exports() {
   return {
     ...runtime.internalFunctions(),
     ...runtime.authorizedEndpoints(),
+    wake: functions.wake,
     poll: functions.poll,
     settle: functions.settle,
     cleanup: functions.cleanup,

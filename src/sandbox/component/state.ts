@@ -259,7 +259,7 @@ export const reserveJob = mutation({
     const jobId = await ctx.db.insert("jobs", job);
     const wakeId = await ctx.scheduler.runAt(
       leaseUntil,
-      args.pollHandle as FunctionHandle<"action">,
+      args.pollHandle as FunctionHandle<"mutation">,
       { jobId },
     );
     await ctx.db.patch(jobId, { wakeId });
@@ -285,7 +285,7 @@ export const attachJob = mutation({
     await cancelWake(ctx, row);
     const wakeId = await ctx.scheduler.runAt(
       Math.min(Date.now() + row.pollMinMs, row.deadline),
-      row.pollHandle as FunctionHandle<"action">,
+      row.pollHandle as FunctionHandle<"mutation">,
       { jobId: row._id },
     );
     await ctx.db.patch(row._id, {
@@ -346,16 +346,13 @@ export const claimPoll = mutation({
     const row = await ctx.db.get(args.jobId);
     const now = Date.now();
     if (!row || !["starting", "running"].includes(row.state) || row.leaseUntil > now) return null;
-    const finalLease =
-      row.deadline + LIMITS.backgroundKillBudgetMs + LIMITS.backgroundLeaseMarginMs;
-    if (now > row.deadline + LIMITS.backgroundKillBudgetMs && row.leaseUntil > finalLease) {
-      // Two attempts in a row were leased past the deadline plus the full kill
-      // budget and neither settled (their actions died or hung). The first of
-      // them already killed the group and tried to notify the host through
-      // the normal settle path; another claim would only repeat that. End the
-      // job here: unknown, never retried, readable via job(). This is the only
-      // path (besides revoked authority) that skips the host callback, and it
-      // bounds the chain at three claims.
+    const late = row.lateAttempts ?? 0;
+    if (now >= row.deadline && late >= LIMITS.lateAttemptsMax) {
+      // Two attempts claimed at or after the deadline never settled (their
+      // actions died or hung). Each ran the kill and the normal notify path;
+      // a third claim would only repeat them. End the job here: unknown, never
+      // retried, readable via job(). This is the only path (besides revoked
+      // authority) that skips the host callback, and it bounds the chain.
       await terminate(ctx, row, { state: "unknown", code: "SANDBOX_JOB_DEADLINE" });
       return null;
     }
@@ -372,10 +369,15 @@ export const claimPoll = mutation({
     // or continue safe status polling; it never replays the command.
     const wakeId = await ctx.scheduler.runAt(
       leaseUntil,
-      row.pollHandle as FunctionHandle<"action">,
+      row.pollHandle as FunctionHandle<"mutation">,
       { jobId: row._id },
     );
-    await ctx.db.patch(row._id, { claim, leaseUntil, wakeId });
+    await ctx.db.patch(row._id, {
+      claim,
+      leaseUntil,
+      wakeId,
+      ...(now >= row.deadline ? { lateAttempts: late + 1 } : {}),
+    });
     return { ...row, claim };
   },
 });
@@ -392,7 +394,7 @@ export const again = mutation({
     const delayMs = Math.min(row.delayMs * LIMITS.backoffFactor, row.pollMaxMs);
     const wakeId = await ctx.scheduler.runAt(
       Math.min(Date.now() + delayMs, row.deadline),
-      row.pollHandle as FunctionHandle<"action">,
+      row.pollHandle as FunctionHandle<"mutation">,
       { jobId: row._id },
     );
     await ctx.db.patch(row._id, { delayMs, leaseUntil: 0, wakeId });
