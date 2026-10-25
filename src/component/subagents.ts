@@ -783,7 +783,11 @@ async function releaseGroup(
     earliestMessageId: accepted[0].resultMessageId!,
     earliestMessageSequence: accepted[0].resultSequence!,
     sequence: parent.nextSequence,
-    kind: "note",
+    // A joined release carries delegated results. Labelling it "note" made
+    // hooks.origins report the newest member's result as an origin-less note
+    // while the release was queued; wake and claim treat "result" and "note"
+    // identically, so only the label changes.
+    kind: "result",
     runId: members[0].parentRunId,
   });
   await ctx.db.patch("assignments", parent._id, {

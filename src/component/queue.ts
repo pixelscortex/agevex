@@ -708,11 +708,19 @@ async function deferChildFailure(
   await failChild(ctx, row, code);
   await disarmSlice(ctx, row);
   await sealGroups(ctx, row);
+  // A continuation staged by afterTurn (continueAdmission) is consumed only by
+  // the next slice's claim, which this failure just forfeited. Left behind, the
+  // row stays out of the ready range and wake would overwrite inboxId with the
+  // next ready row, orphaning it; cancel would then delete that ready row twice
+  // (once as the "staged continuation", once in its ready loop) and throw.
+  // Delete it here, as cancel does, and drop both pointers.
+  if (row.hookContinue && row.inboxId) await ctx.db.delete("inbox", row.inboxId);
   await ctx.db.patch("assignments", row._id, {
     turnStatus: "idle",
     turnToken: undefined,
     promptMessageId: undefined,
     continueSlice: false,
+    ...(row.hookContinue ? { hookContinue: false, inboxId: undefined } : {}),
     errorCode: null,
   });
   await wake(ctx, (await ctx.db.get("assignments", row._id))!);

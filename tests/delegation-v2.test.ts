@@ -556,6 +556,62 @@ it.each(["finish", "slice"] as const)(
   },
 );
 
+it("a queued wait:all join reports its result messages as results, not notes", async () => {
+  const t = setup(maxima);
+  const root = await manualRoot(t);
+  const member = await launch(t, root, "Reviewer", { group: "labelled", wait: "all" });
+  await complete(t, member, "labelled member result");
+  await t.mutation(components.agevex.queue.finish, {
+    assignmentId: root.assignmentId,
+    turnToken: root.turnToken,
+    errorCode: null,
+  });
+  // The release is queued and reserved but not yet claimed: its inbox row is the
+  // only record of the join, and that row is what labels the message.
+  const queued = (await t.query(components.agevex.queue.execution, {
+    assignmentId: root.assignmentId,
+  }))!;
+  expect(queued.turnStatus).toBe("queued");
+  const page = await owner(t).query(api.agents.messages, {
+    threadId: root.threadId,
+    paginationOpts: { cursor: null, numItems: 50 },
+  });
+  const joined = page.page.filter((message) => message.text.includes("labelled member result"));
+  expect(joined.length).toBeGreaterThan(0);
+  expect(joined.map((message) => message.origin)).toEqual(joined.map(() => "result"));
+  await owner(t).mutation(api.agents.cancel, { threadId: root.threadId });
+  await drain(t);
+});
+
+it("a child that fails with a staged continuation under live descendants keeps no continuation behind, so a later result and cancel stay consistent", async () => {
+  const t = setup(maxima);
+  const root = await manualRoot(t);
+  const builder = await launch(t, root, "Builder");
+  const reviewer = await launch(t, builder, "Reviewer");
+  // afterTurn stages its continuation, then the slice budget runs out.
+  expect(
+    await t.mutation(components.agevex.hooks.continueAdmission, {
+      assignmentId: builder.assignmentId,
+      executionId: builder.turnToken,
+      prompt: "continue after the review",
+    }),
+  ).not.toBeNull();
+  await t.mutation(components.agevex.queue.finish, {
+    assignmentId: builder.assignmentId,
+    turnToken: builder.turnToken,
+    errorCode: "SLICE_LIMIT",
+  });
+  // The live Reviewer's result wakes Builder with the result as its next prompt.
+  await complete(t, reviewer, "review after the failed turn");
+  expect(
+    await t.query(components.agevex.queue.execution, { assignmentId: builder.assignmentId }),
+  ).toMatchObject({ turnStatus: "queued" });
+  // Cancel deletes each queued row once; a leftover continuation anchor made it
+  // delete the woken result row twice and throw.
+  await owner(t).mutation(api.agents.cancel, { threadId: root.threadId });
+  await drain(t);
+});
+
 it.each(["join", "question"] as const)(
   "an older each result stays ahead of a newer %s and consecutive ready work is consumed once",
   async (kind) => {
