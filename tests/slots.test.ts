@@ -574,6 +574,30 @@ it("each attached file starts extraction and file tools are bound to the owned t
       ),
     ).toBe(true);
 });
+it("one message never binds more than filesPerMessage attachments, so forMessage returns every bound file", async () => {
+  const t = setup();
+  const native = "native-files";
+  const fileIds = Array.from({ length: LIMITS.filesPerMessage + 1 }, (_, n) => `file-${n}`);
+  for (const fileId of fileIds)
+    await t.mutation(components.agevex.files.register, { native, fileId, subject: "alice" });
+  const message = { native, subject: "alice", threadId: "thread", messageId: "message" };
+  const bound = fileIds.slice(0, LIMITS.filesPerMessage);
+  await t.mutation(components.agevex.files.attach, { ...message, files: bound });
+  // A second host call for the same message cannot push it past the cap that
+  // attach's dedup read and forMessage's bounded read both rely on.
+  await expect(
+    t.mutation(components.agevex.files.attach, {
+      ...message,
+      files: fileIds.slice(LIMITS.filesPerMessage),
+    }),
+  ).rejects.toThrow("FILE_LIMIT");
+  // Re-binding an already bound file stays an idempotent no-op at the cap.
+  await t.mutation(components.agevex.files.attach, { ...message, files: [bound[0]] });
+  expect((await t.query(components.agevex.files.forMessage, message)).sort()).toEqual(
+    [...bound].sort(),
+  );
+});
+
 it("without extract the hard maximum of attachments reaches the model as native file parts", async () => {
   const t = setup();
   const files = [];

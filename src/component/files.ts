@@ -85,6 +85,17 @@ export const attach = mutation({
       .query("receipts")
       .withIndex("by_message", (q) => q.eq("native", args.native).eq("messageId", args.messageId))
       .take(LIMITS.filesPerMessage);
+    // Keep every message at <=filesPerMessage bindings, including across
+    // repeated host calls for one message. By induction the take above then
+    // sees every existing binding (so dedup is exact) and forMessage's take of
+    // the same size never truncates.
+    const added = args.files.filter(
+      (fileId) =>
+        !existing.some(
+          (row) => row.kind === "attachment" && row.fileId === fileId && row.native === args.native,
+        ),
+    );
+    if (existing.length + added.length > LIMITS.filesPerMessage) throw new Error("FILE_LIMIT");
     for (const fileId of args.files) {
       const grant = await ctx.db
         .query("receipts")
