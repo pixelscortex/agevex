@@ -1,9 +1,14 @@
 // @vitest-environment edge-runtime
 import { it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { setup, component, worker, storageMetadata } from "./setup.js";
-import { LIMITS, directText, defineExtract, type ExtractFailure } from "../../src/extract/index.js";
+import {
+  LIMITS,
+  directText,
+  defineExtract,
+  type ExtractFailure,
+} from "../../src/modules/extract/client/index.js";
 import { agentComponent } from "./setup.js";
-import { utf8 } from "../../src/extract/limits.js";
+import { utf8 } from "../../src/modules/extract/shared/limits.js";
 import { makeFunctionReference, type FunctionReference } from "convex/server";
 
 const reference = (name: string) =>

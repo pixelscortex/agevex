@@ -7,6 +7,15 @@ run budgets and idempotency.
 
 Git-only, private package, **UNLICENSED**.
 
+## Source layout
+
+Core lives in `src/component/` and `src/client/`. Optional modules live in
+`src/modules/<name>/`: `component/` runs inside Convex, `client/` is the host API,
+`shared/` contains pure contracts used by both, and `test.ts` registers tests.
+Telemetry is a client library; tools expose host factories and installable registry
+sources. Each module README maps its files. Package subpaths stay `agevex/<name>`,
+with `/convex.config`, `/test` and `/_generated/component.js` for components.
+
 ## Optional sandboxes
 
 `agevex/sandbox` binds a provider sandbox to trusted thread, run or subject
@@ -549,7 +558,7 @@ Mount `agevex/meter/convex.config` and import `defineMeter` from `agevex/meter`
 for keyed cost recording, estimates/corrections, aggregate thread/subject/run
 reads, fail-closed budget gates (unpriceable charges record `unknown`),
 request-id lookups, batched Polar/webhook/custom sinks and host-driven
-retention (`prune`). Core wiring is separate. See the [meter API, limits and delivery semantics](src/meter/README.md).
+retention (`prune`). Core wiring is separate. See the [meter API, limits and delivery semantics](src/modules/meter/README.md).
 
 ## Registry tools
 

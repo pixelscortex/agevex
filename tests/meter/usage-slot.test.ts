@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { expect, it } from "vite-plus/test";
-import { inline, LIMITS } from "../../src/meter/index.js";
+import { inline, LIMITS } from "../../src/modules/meter/client/index.js";
 import { setup, attribution } from "./setup.js";
 
 const facts = {

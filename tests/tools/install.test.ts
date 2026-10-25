@@ -42,8 +42,8 @@ export default defineSchema({ existing: defineTable({ label: v.string() }), ${ta
 }
 
 // Registers the installed tools on a real agevex Agent in the fresh host. The
-// host links the same `ai` as agevex (as a real install would), so no `paths`
-// override is involved: a tool typed against a different `ai` copy fails here.
+// host links the same `ai` as agevex (as a real install would). The `paths`
+// override redirects only agevex to source; a different `ai` copy still fails here.
 async function writeWiring(dir: string, installed: readonly (typeof names)[number][]) {
   const state = installed
     .filter((name) => name === "todo" || name === "goals" || name === "continue-budget")
@@ -167,7 +167,7 @@ exec ${quotedBun} "$@"
         target: "ESNext",
         module: "NodeNext",
         moduleResolution: "NodeNext",
-        paths: { "@/*": ["./*"] },
+        paths: { "@/*": ["./*"], agevex: [join(root, "src/client/index.ts")] },
       },
       include: ["convex/**/*.ts"],
     }),

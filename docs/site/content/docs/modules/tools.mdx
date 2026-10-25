@@ -36,3 +36,7 @@ Answer `ask_user` with core `answer({ threadId, toolCallId, text })` and
 `continue_budget` approvals with core `respond({ threadId, approvalId, approved })`
 so the waiting turn wakes; saving a native result or response directly does not.
 Pending-call state lives in core and the native Agent.
+
+Factories are also exported from `agevex/tools`. Registry source lives in
+`src/modules/tools/registry/<item>/`; rebuilding the registry keeps the same
+installed `convex/agevexTools/` targets.

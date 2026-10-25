@@ -7,7 +7,7 @@ import {
   LIMITS,
   type Breakdown,
   type MeterOptions,
-} from "../../src/meter/index.js";
+} from "../../src/modules/meter/client/index.js";
 import { setup, attribution, allBreakdowns } from "./setup.js";
 
 function aggregateCounts(mount: string) {

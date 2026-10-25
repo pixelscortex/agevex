@@ -6,7 +6,7 @@ import type {
   LanguageModelV4Usage,
 } from "@ai-sdk/provider";
 import { z } from "zod";
-import type { Facts } from "../../src/telemetry/index.js";
+import type { Facts } from "../../src/modules/telemetry/client/index.js";
 
 export const facts: Facts = {
   subject: "owner",

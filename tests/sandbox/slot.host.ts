@@ -19,10 +19,14 @@ import {
 import type { TurnArgs } from "../../src/client/index.js";
 import type { ComponentApi as CoreApi } from "../../src/component/_generated/component.js";
 import { scriptedModel } from "../../src/test.js";
-import { defineSandbox, sandboxCompletion } from "../../src/sandbox/index.js";
-import type { ComponentApi as SandboxApi } from "../../src/sandbox/component/_generated/component.js";
-import type { SandboxLimits } from "../../src/sandbox/limits.js";
-import type { PollArgs, PollActionArgs, SettleArgs } from "../../src/sandbox/types.js";
+import { defineSandbox, sandboxCompletion } from "../../src/modules/sandbox/client/index.js";
+import type { ComponentApi as SandboxApi } from "../../src/modules/sandbox/component/_generated/component.js";
+import type { SandboxLimits } from "../../src/modules/sandbox/shared/limits.js";
+import type {
+  PollArgs,
+  PollActionArgs,
+  SettleArgs,
+} from "../../src/modules/sandbox/client/types.js";
 import { fakeSandboxProvider } from "../../src/testing/sandbox.js";
 
 // A real host wiring of the sandbox module into agevex through its slot, with

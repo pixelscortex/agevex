@@ -57,6 +57,15 @@ export default defineConfig({
   // for inputs another checkout changed: never cache tasks or scripts, and
   // never write node_modules/.vite/task-cache.
   run: { cache: false },
+  resolve: {
+    alias: [
+      { find: /^agevex$/, replacement: new URL("./src/client/index.ts", import.meta.url).pathname },
+      {
+        find: "agevex/tools",
+        replacement: new URL("./src/modules/tools/client/index.ts", import.meta.url).pathname,
+      },
+    ],
+  },
   test: {
     include: ["tests/**/*.test.ts"],
     // Hard-maximum fixtures build hundreds of real Workflow-backed threads.

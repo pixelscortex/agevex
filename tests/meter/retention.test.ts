@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
-import { LIMITS } from "../../src/meter/index.js";
+import { LIMITS } from "../../src/modules/meter/client/index.js";
 import { setup, attribution, allBreakdowns } from "./setup.js";
 
 beforeEach(() => {

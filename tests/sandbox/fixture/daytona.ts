@@ -2,9 +2,9 @@ import { componentsGeneric, internalActionGeneric } from "convex/server";
 import type { ComponentApi } from "@daytona/convex";
 import type { AgentComponent } from "@convex-dev/agent";
 import { v } from "convex/values";
-import { daytona } from "../../../src/sandbox/daytona.js";
-import { defineSandbox } from "../../../src/sandbox/index.js";
-import type { ComponentApi as SandboxApi } from "../../../src/sandbox/component/_generated/component.js";
+import { daytona } from "../../../src/modules/sandbox/client/daytona.js";
+import { defineSandbox } from "../../../src/modules/sandbox/client/index.js";
+import type { ComponentApi as SandboxApi } from "../../../src/modules/sandbox/component/_generated/component.js";
 
 // Used only by the opt-in live configuration. The default suite never imports
 // or runs this host function, and all actual API traffic goes through Daytona's

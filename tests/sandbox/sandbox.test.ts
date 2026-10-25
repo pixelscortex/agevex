@@ -3,9 +3,9 @@ import { componentsGeneric, createFunctionHandle, makeFunctionReference } from "
 import { getFile } from "@convex-dev/agent";
 import { getConvexSize } from "convex/values";
 import type { AgentComponent } from "@convex-dev/agent";
-import { defineSandbox, HARD_LIMITS, LIMITS } from "../../src/sandbox/index.js";
+import { defineSandbox, HARD_LIMITS, LIMITS } from "../../src/modules/sandbox/client/index.js";
 import { fakeSandboxProvider } from "../../src/testing/sandbox.js";
-import type { SandboxFacts } from "../../src/sandbox/types.js";
+import type { SandboxFacts } from "../../src/modules/sandbox/client/types.js";
 import { setup, api, state, EXPORT_TEST_TIMEOUT_MS } from "./setup.js";
 
 beforeEach(() => vi.useFakeTimers());

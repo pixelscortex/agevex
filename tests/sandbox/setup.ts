@@ -2,14 +2,14 @@ import { convexTest } from "convex-test";
 import { anyApi, type ApiFromModules } from "convex/server";
 import agent from "@convex-dev/agent/test";
 import core from "../../src/test.js";
-import sandbox from "../../src/sandbox/test.js";
+import sandbox from "../../src/modules/sandbox/test.js";
 import schema from "./fixture/schema.js";
 import { state, runtime } from "./fixture/host.js";
 import { config } from "./fixture/host.js";
-import { sandboxNodeExport } from "../../src/sandbox/index.js";
+import { sandboxNodeExport } from "../../src/modules/sandbox/client/index.js";
 import type * as host from "./fixture/host.js";
 import { fakeSandboxProvider } from "../../src/testing/sandbox.js";
-import type { SandboxLimits } from "../../src/sandbox/limits.js";
+import type { SandboxLimits } from "../../src/modules/sandbox/shared/limits.js";
 
 const modules = import.meta.glob(["./fixture/**/*.ts"]);
 

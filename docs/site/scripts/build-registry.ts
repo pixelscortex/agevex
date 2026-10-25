@@ -1,7 +1,8 @@
 import { siteConfig } from '../site.config';
 
-// registry.json and public/r are generated identity consumers. Changing the
-// single name in site.config.ts and running the build updates both.
+// Item paths point at src/modules/tools/registry, the single source of truth.
+// registry.json and public/r consume the identity from site.config.ts; changing
+// that name and running this build updates both.
 const file = Bun.file(new URL('../registry.json', import.meta.url));
 const registry = await file.json();
 registry.name = siteConfig.registryNamespace;

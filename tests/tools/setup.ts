@@ -8,9 +8,9 @@ import agevex from "../../src/test.js";
 import schema from "./fixture/schema.js";
 import { state, child } from "./fixture/host.js";
 import type * as host from "./fixture/host.js";
-import type * as todoState from "../../docs/site/registry/todo/todoState.js";
-import type * as goalsState from "../../docs/site/registry/goals/goalsState.js";
-import type * as continueBudgetState from "../../docs/site/registry/continue-budget/continueBudgetState.js";
+import type * as todoState from "../../src/modules/tools/registry/todo/todoState.js";
+import type * as goalsState from "../../src/modules/tools/registry/goals/goalsState.js";
+import type * as continueBudgetState from "../../src/modules/tools/registry/continue-budget/continueBudgetState.js";
 
 export const api = anyApi as unknown as ApiFromModules<{
   host: typeof host;
@@ -31,10 +31,11 @@ export function setup() {
     transactionLimits: true,
     modules: {
       ...import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]),
-      "./fixture/todoState.ts": () => import("../../docs/site/registry/todo/todoState.js"),
-      "./fixture/goalsState.ts": () => import("../../docs/site/registry/goals/goalsState.js"),
+      "./fixture/todoState.ts": () => import("../../src/modules/tools/registry/todo/todoState.js"),
+      "./fixture/goalsState.ts": () =>
+        import("../../src/modules/tools/registry/goals/goalsState.js"),
       "./fixture/continueBudgetState.ts": () =>
-        import("../../docs/site/registry/continue-budget/continueBudgetState.js"),
+        import("../../src/modules/tools/registry/continue-budget/continueBudgetState.js"),
     },
   });
 

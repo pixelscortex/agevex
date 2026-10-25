@@ -13,7 +13,7 @@ import type { AgentComponent } from "@convex-dev/agent";
 import { makeFunctionReference } from "convex/server";
 import type { FunctionReference } from "convex/server";
 import agevex from "../../src/test.js";
-import extractSchema from "../../src/extract/component/schema.js";
+import extractSchema from "../../src/modules/extract/component/schema.js";
 import {
   authorizeAttached,
   defineExtract,
@@ -21,15 +21,15 @@ import {
   type ExtractBackend,
   type ExtractOptions,
   type WorkerArgs,
-} from "../../src/extract/index.js";
+} from "../../src/modules/extract/client/index.js";
 import schema from "../fixture/schema.js";
 import { components } from "../fixture/api.js";
 import { fixture, reset, exports, api, registration, text, call } from "../hooks.host.js";
 import { requireReceipt } from "../receipt.js";
-import { LIMITS } from "../../src/extract/index.js";
+import { LIMITS } from "../../src/modules/extract/client/index.js";
 
 const hostModules = import.meta.glob(["../fixture/**/*.ts", "../fixture/**/*.js"]);
-const extractModules = import.meta.glob("../../src/extract/component/**/*.ts");
+const extractModules = import.meta.glob("../../src/modules/extract/component/**/*.ts");
 
 const mounts = components as unknown as {
   agent: AgentComponent;

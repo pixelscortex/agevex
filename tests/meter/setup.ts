@@ -1,13 +1,13 @@
 import { convexTest } from "convex-test";
 import { makeFunctionReference, type FunctionReference } from "convex/server";
-import { register } from "../../src/meter/test.js";
+import { register } from "../../src/modules/meter/test.js";
 import {
   defineMeter,
   inline,
   type ComponentApi,
   type Meter,
   type MeterOptions,
-} from "../../src/meter/index.js";
+} from "../../src/modules/meter/client/index.js";
 import schema from "./fixture/schema.js";
 
 const modules = import.meta.glob("./fixture/**/*.ts");

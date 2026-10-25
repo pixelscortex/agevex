@@ -1,4 +1,4 @@
-import type { ChargeHandle } from "../../src/meter/index.js";
+import type { ChargeHandle } from "../../src/modules/meter/client/index.js";
 
 declare const charge: ChargeHandle;
 // @ts-expect-error Corrections need a stable operation key, even without a revision.

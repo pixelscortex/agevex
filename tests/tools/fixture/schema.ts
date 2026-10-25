@@ -1,8 +1,8 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { todoTables } from "../../../docs/site/registry/todo/todoSchema.js";
-import { goalTables } from "../../../docs/site/registry/goals/goalsSchema.js";
-import { consentTables } from "../../../docs/site/registry/continue-budget/continueBudgetSchema.js";
+import { todoTables } from "../../../src/modules/tools/registry/todo/todoSchema.js";
+import { goalTables } from "../../../src/modules/tools/registry/goals/goalsSchema.js";
+import { consentTables } from "../../../src/modules/tools/registry/continue-budget/continueBudgetSchema.js";
 
 // Mount the actual shipped snippets, rather than recreating their schema.
 export default defineSchema({

@@ -10,9 +10,9 @@ import type { Tool } from "ai";
 import type { AgentComponent } from "@convex-dev/agent";
 import { bindOnceTool, noopMeter, type ToolContext } from "../../../src/client/once.js";
 import type { ComponentApi as CoreApi } from "../../../src/component/_generated/component.js";
-import { defineSandbox } from "../../../src/sandbox/index.js";
-import type { ComponentApi } from "../../../src/sandbox/component/_generated/component.js";
-import type { SandboxLimits } from "../../../src/sandbox/limits.js";
+import { defineSandbox } from "../../../src/modules/sandbox/client/index.js";
+import type { ComponentApi } from "../../../src/modules/sandbox/component/_generated/component.js";
+import type { SandboxLimits } from "../../../src/modules/sandbox/shared/limits.js";
 import type {
   PollArgs,
   PollActionArgs,
@@ -23,7 +23,7 @@ import type {
   SandboxExportArgs,
   SandboxExportResult,
   SandboxContext,
-} from "../../../src/sandbox/types.js";
+} from "../../../src/modules/sandbox/client/types.js";
 import { fakeSandboxProvider } from "../../../src/testing/sandbox.js";
 
 const components = componentsGeneric() as unknown as {

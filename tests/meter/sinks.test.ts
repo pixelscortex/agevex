@@ -7,7 +7,7 @@ import {
   openRouterCost,
   LIMITS,
   type SinkEvent,
-} from "../../src/meter/index.js";
+} from "../../src/modules/meter/client/index.js";
 
 function event(index: number): SinkEvent {
   return {
