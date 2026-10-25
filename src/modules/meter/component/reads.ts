@@ -1,4 +1,9 @@
-// Component runtime source; keep host dependencies and environment access outside this boundary.
+/**
+ * Registered meter aggregate queries used by authorized host read wrappers.
+ * Thread pages and subject breakdowns seek bounded label groups in trees;
+ * they never scan charge rows. Optional projections must be enabled explicitly.
+ * Budget arithmetic beside each read explains the hard-maximum transaction bound.
+ */
 import { v } from "convex/values";
 import { query, type QueryCtx } from "./_generated/server.js";
 import {
@@ -69,6 +74,7 @@ async function threadPage(
   return { page, cursor: null as string | null };
 }
 
+/** Summarize a root thread and page its enabled axes under the capped-tree read budget. */
 export const threadCost = query({
   args: {
     threadId: v.string(),
@@ -114,6 +120,7 @@ export const threadCost = query({
   },
 });
 
+/** Read a single subject/run aggregate snapshot for host reporting and budget admission. */
 export const cost = query({
   args: { subject: v.string(), runId: v.optional(v.string()) },
   handler: async (ctx, { subject, runId }) => {
@@ -129,6 +136,7 @@ export const cost = query({
   },
 });
 
+/** Page an enabled subject axis or a bounded UTC-day range without reading charge rows. */
 export const breakdown = query({
   args: {
     breakdowns,

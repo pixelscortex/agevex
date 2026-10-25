@@ -1,4 +1,9 @@
-// Pure shared contracts and bounds used by the host and component; no function registrations.
+/**
+ * Wire contracts for host worker handles and component Workpool jobs.
+ * Lookup jobs carry the immutable request, deadline and attempt fence.
+ * Delivery jobs name one sink and claim, with retry bounds carried explicitly.
+ * Both runtimes validate the same payload; no functions are registered here.
+ */
 import { v } from "convex/values";
 
 export const jobs = v.object({

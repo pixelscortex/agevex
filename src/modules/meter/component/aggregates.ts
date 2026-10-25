@@ -1,4 +1,9 @@
-// Component runtime source; keep host dependencies and environment access outside this boundary.
+/**
+ * Meter aggregate projections and bounded summary arithmetic.
+ * Lifecycle mutations replace frozen per-charge contributions; reads summarize
+ * one owned subject, run or root-thread namespace without scanning charges.
+ * Projection depths also supply the conservative delete budget used by prune.
+ */
 import { DirectAggregate } from "@convex-dev/aggregate";
 import type { Bounds } from "@convex-dev/aggregate";
 import { components } from "./_generated/api.js";
@@ -15,6 +20,7 @@ export type Group = (typeof groups)[number];
 export type Axis = "agent" | "model" | "provider";
 export const axes: Axis[] = ["agent", "model", "provider"];
 
+/** Select the stored aggregate bucket; missing evidence always contributes to unknown. */
 function group(row: Pick<Doc<"charges">, "status" | "nanos" | "source">): Group {
   return row.status === "unknown" || row.nanos === undefined
     ? "unknown"
@@ -185,6 +191,7 @@ export async function threadCount(ctx: QueryCtx, root: string) {
 }
 
 export type Summary = Awaited<ReturnType<typeof summary>>;
+/** Read all three status sums and the unknown count for one owned namespace/range. */
 export async function summary(
   ctx: QueryCtx,
   tree: Tree,
@@ -201,6 +208,7 @@ export async function summary(
   return totals(sums[0], sums[1], sums[2], unknown);
 }
 
+/** Keep budget totals separate from unknown billed nanos when formatting aggregate reads. */
 function totals(estimated: number, settled: number, unknownNanos: number, unknown: number) {
   return {
     totalNanos: estimated + settled,
@@ -212,6 +220,7 @@ function totals(estimated: number, settled: number, unknownNanos: number, unknow
   };
 }
 
+/** Combine the capped and overflow thread summaries without hiding unknown charges. */
 export function combine(a: Summary, b: Summary): Summary {
   return totals(
     a.estimatedNanos + b.estimatedNanos,
