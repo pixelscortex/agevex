@@ -14,10 +14,11 @@ import {
   type UsageSlot,
 } from "../../../src/client/index.js";
 
-import { LIVE_LIMITS } from "../config.js";
+import { LIVE_MODELS, LIVE_LIMITS } from "../config.js";
 
 declare const process: { env: Record<string, string | undefined> };
 export const live = {
+  scenario: "structured-task",
   delegation: false,
   depth: false,
   builderCalls: 0,
@@ -33,7 +34,12 @@ export const live = {
   costReported: false,
   models: new Set<string>(),
   responses: [] as {
+    scenario: string;
     status: number;
+    model: string | null;
+    inputTokens: number;
+    outputTokens: number;
+    usd: number | null;
     tools: string[];
     finishReasons: string[];
     errorCode?: string | number;
@@ -41,27 +47,41 @@ export const live = {
   }[],
   evidence: [] as Promise<void>[],
 };
-export const modelId = process.env.OPENROUTER_LIVE_MODEL ?? "openrouter/free";
+export const modelId = LIVE_MODELS[0];
 const maxUsd = Number(process.env.OPENROUTER_LIVE_MAX_USD ?? LIVE_LIMITS.maxUsd);
 const provider = createOpenAI({
   apiKey: process.env.OPENROUTER_API_KEY ?? "skipped",
   baseURL: "https://openrouter.ai/api/v1",
   name: "openrouter",
   fetch: async (url, init) => {
+    // Settle prior response accounting before admitting another paid request.
+    await Promise.all(live.evidence);
     if (++live.requests > LIVE_LIMITS.requests || live.usd >= maxUsd)
       throw new Error("LIVE_COST_CAP");
-    // OpenRouter's native routing contract supports require_parameters
-    // (ai-sdk-provider 3.0.0 src/types/openrouter-chat-settings.ts:196). A random
-    // free route must support forced tool choice; silently dropping it makes
-    // a fixed delegation scenario unreliable. No free endpoint currently
-    // advertises parallel_tool_calls, so bound batching with host hooks below.
+    // @openrouter/ai-sdk-provider 3.1.0 exposes models?: string[] in
+    // src/types/index.ts:12 and serializes it beside model in src/chat/index.ts:148.
+    // Send that same wire option through our existing OpenAI-compatible adapter:
+    // OpenRouter tries the free router, then MiniMax on capacity errors, within
+    // one request. This never retries a completed or unknown paid operation.
+    // require_parameters (src/types/openrouter-chat-settings.ts:196) keeps forced
+    // tool choice mandatory. Bound batching with host hooks below instead of
+    // asking free endpoints for unsupported parallel_tool_calls.
     const body = JSON.parse(String(init?.body));
     const response = await fetch(url, {
       ...init,
-      body: JSON.stringify({ ...body, provider: { ...body.provider, require_parameters: true } }),
+      body: JSON.stringify({
+        ...body,
+        models: LIVE_MODELS,
+        provider: { ...body.provider, require_parameters: true },
+      }),
     });
     const outcome: (typeof live.responses)[number] = {
+      scenario: live.scenario,
       status: response.status,
+      model: null,
+      inputTokens: 0,
+      outputTokens: 0,
+      usd: null,
       tools: [] as string[],
       finishReasons: [] as string[],
     };
@@ -78,7 +98,7 @@ const provider = createOpenAI({
             const chunk = JSON.parse(line.slice(6)) as {
               error?: { code?: string | number; message?: string };
               model?: string;
-              usage?: { cost?: number };
+              usage?: { cost?: number; prompt_tokens?: number; completion_tokens?: number };
               choices?: {
                 finish_reason?: string;
                 delta?: { tool_calls?: { function?: { name?: string } }[] };
@@ -99,10 +119,22 @@ const provider = createOpenAI({
                 ?.replaceAll(process.env.OPENROUTER_API_KEY ?? "skipped", "[REDACTED]")
                 .slice(0, 500);
             }
-            if (chunk.model) live.models.add(chunk.model);
+            if (chunk.model) {
+              outcome.model = chunk.model;
+              live.models.add(chunk.model);
+            }
+            if (typeof chunk.usage?.prompt_tokens === "number") {
+              live.inputTokens += chunk.usage.prompt_tokens - outcome.inputTokens;
+              outcome.inputTokens = chunk.usage.prompt_tokens;
+            }
+            if (typeof chunk.usage?.completion_tokens === "number") {
+              live.outputTokens += chunk.usage.completion_tokens - outcome.outputTokens;
+              outcome.outputTokens = chunk.usage.completion_tokens;
+            }
             if (typeof chunk.usage?.cost === "number") {
               live.costReported = true;
-              live.usd += chunk.usage.cost;
+              live.usd += chunk.usage.cost - (outcome.usd ?? 0);
+              outcome.usd = chunk.usage.cost;
             }
           } catch {
             /* Keep SSE comments and non-JSON keepalives out of evidence. */
@@ -179,13 +211,6 @@ childModel.doStream = (args) => {
     toolChoice: { type: "none" },
   });
 };
-const usageHandler = (
-  _ctx: unknown,
-  { usage }: { usage: { inputTokens?: number; outputTokens?: number } },
-) => {
-  live.inputTokens += usage.inputTokens ?? 0;
-  live.outputTokens += usage.outputTokens ?? 0;
-};
 // A forced tool choice may return several calls. Use F1's host policy to admit
 // one per turn instead of requesting unsupported parallel_tool_calls=false.
 // At most LIVE_LIMITS.requests live turns add thread ids; each turn clears its
@@ -205,7 +230,6 @@ const child = new Agent(native, {
   languageModel: childModel,
   subagents: [],
   instructions: "Answer the task in one short sentence. Do not call tools.",
-  usageHandler,
 });
 const reviewerModel = provider.chat(modelId);
 const reviewerStream = reviewerModel.doStream.bind(reviewerModel);
@@ -221,7 +245,6 @@ const reviewer = new Agent(native, {
   name: "Reviewer",
   languageModel: reviewerModel,
   subagents: [],
-  usageHandler,
   instructions: "Review the task in one short sentence. Do not call tools.",
 });
 const builderModel = provider.chat(modelId);
@@ -259,7 +282,6 @@ const builder = new Agent(native, {
   languageModel: builderModel,
   subagents: [reviewer],
   hooks: oneDelegatePerTurn,
-  usageHandler,
   instructions:
     "First delegate one very short task to Reviewer. When its result arrives, reply in one short sentence. Never delegate to any other agent.",
 });
@@ -270,7 +292,6 @@ const main = new Agent(native, {
   hooks: oneDelegatePerTurn,
   instructions:
     "For a depth-two task delegate exactly once to Builder, then give a short final answer after its result. For other tasks use Researcher when required to delegate. Use a very short factual task. After the second Researcher result, reply in one short sentence. Never delegate to any other agent.",
-  usageHandler,
 });
 const criticModel = provider.chat(modelId);
 const criticStream = criticModel.doStream.bind(criticModel);
@@ -285,13 +306,11 @@ criticModel.doStream = (args) => {
 const critic = new Agent(native, {
   name: "Critic",
   languageModel: criticModel,
-  usageHandler,
   instructions: "Give one short useful review note. Do not return NONE. Do not call tools.",
 });
 const watched = new Agent(native, {
   name: "Watched",
   languageModel: rootModel,
-  usageHandler,
   sideAgents: [{ agent: critic, every: { turns: 1 }, sees: "delta" }],
   instructions: "Answer in one short sentence.",
 });

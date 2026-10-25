@@ -4,7 +4,7 @@ import { it, expect } from "vite-plus/test";
 import { convexTest } from "convex-test";
 import agent from "@convex-dev/agent/test";
 import { anyApi, type ApiFromModules } from "convex/server";
-import { LIVE_LIMITS } from "./config.js";
+import { LIVE_MODELS, LIVE_LIMITS } from "./config.js";
 import agevex from "../../src/test.js";
 import schema from "../fixture/schema.js";
 import { z } from "zod";
@@ -50,10 +50,12 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
           }),
         ),
       ).toMatchObject({ status: "done", value: { answer: expect.any(String) } });
+      await Promise.all(live.evidence);
       const taskCharge = live.charges[beforeTask];
       scenarios.push({ scenario: "structured-task", usage: taskCharge?.usage });
       expect(taskCharge?.usage).toBeTruthy();
       for (const scenario of ["plain", "delegation", "depth", "critic"] as const) {
+        live.scenario = scenario;
         const delegation = scenario === "delegation";
         const depth = scenario === "depth";
         const critic = scenario === "critic";
@@ -231,6 +233,7 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
             { agent: "Reviewer", depth: 2, status: "completed" },
           ]);
         }
+        await Promise.all(live.evidence);
         scenarios.push({
           scenario,
           inputTokens: live.inputTokens - before.input,
@@ -247,12 +250,11 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
       }
     } finally {
       await Promise.all(live.evidence);
-      expect(live.usd).toBeLessThanOrEqual(
-        Number(process.env.OPENROUTER_LIVE_MAX_USD ?? LIVE_LIMITS.maxUsd),
-      );
       const evidence = JSON.stringify({
         scenarios,
         requestedModel: modelId,
+        fallbackModels: LIVE_MODELS,
+        maxUsd: Number(process.env.OPENROUTER_LIVE_MAX_USD ?? LIVE_LIMITS.maxUsd),
         routedModels: [...live.models],
         requests: live.requests,
         responses: live.responses,
@@ -262,6 +264,9 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
       });
       await writeFile(".vite-plus/live-results.json", evidence + "\n");
       console.log(evidence);
+      expect(live.usd).toBeLessThanOrEqual(
+        Number(process.env.OPENROUTER_LIVE_MAX_USD ?? LIVE_LIMITS.maxUsd),
+      );
     }
   },
   360_000,

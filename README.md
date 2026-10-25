@@ -400,9 +400,10 @@ bun run typecheck:tests
 bun run build
 ```
 
-Live tests use OpenRouter, default `OPENROUTER_LIVE_MODEL=openrouter/free`,
-with a small request bound and a default $0.05 spend cap
-(`OPENROUTER_LIVE_MAX_USD`). Routed models, tokens and provider cost are saved
+Live tests request `openrouter/free` with the ordered OpenRouter fallback
+`["openrouter/free", "minimax/minimax-m3.1-flash"]`, a small request bound and a
+default $0.05 spend cap (`OPENROUTER_LIVE_MAX_USD`). Each response records its
+actual routed model, tokens and provider cost. Results are saved
 in `.vite-plus/live-results.json`. `agevex/test` exports `register`,
 `scriptedModel` and `expectJournalUnchanged`; the latter checks committed
 journals and replays them through the real Workflow engine.
