@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { requireReceipt } from "./receipt.js";
 import { beforeEach, afterEach, it, expect, vi } from "vite-plus/test";
 import { convexTest } from "convex-test";
 import agent from "@convex-dev/agent/test";
@@ -53,7 +54,9 @@ function setup(limits?: Registration["limits"], preclaimFailure = false) {
 type Test = ReturnType<typeof setup>;
 const owner = (t: Test) => t.withIdentity({ subject: "alice" });
 const open = (t: Test, requestKey = "v2") =>
-  owner(t).mutation(api.agents.open, { agent: "Main", prompt: "do the work", requestKey });
+  owner(t)
+    .mutation(api.agents.open, { agent: "Main", prompt: "do the work", requestKey })
+    .then(requireReceipt);
 const drain = (t: Test) => t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100), 3000);
 const calls = (agent: string) => v2.calls.filter((entry) => entry.agent === agent);
 const tree = (t: Test, threadId: string) => owner(t).query(api.agents.runTree, { threadId });
@@ -1488,6 +1491,7 @@ it("persisted v1 limits resume depth-two delegation and retain the default four-
       >,
     });
   });
+  if (receipt.status === "rejected") throw new Error(receipt.code);
   const root = {
     assignmentId: receipt.assignmentId,
     turnToken: receipt.assignmentId + ":0",

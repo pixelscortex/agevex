@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { requireReceipt } from "./receipt.js";
 import { expect, it, vi, afterEach } from "vite-plus/test";
 import { api, setup } from "./setup.js";
 import { state } from "./host.js";
@@ -14,11 +15,13 @@ it("emits metadata-only lifecycle events without changing execution", async () =
   vi.useFakeTimers(); // Workflow dispatch includes scheduled control steps.
   const t = setup();
   const alice = t.withIdentity({ subject: "alice" });
-  const receipt = await alice.mutation(api.agents.open, {
-    agent: "Main",
-    prompt: "observe this request",
-    requestKey: "observe-1",
-  });
+  const receipt = await alice
+    .mutation(api.agents.open, {
+      agent: "Main",
+      prompt: "observe this request",
+      requestKey: "observe-1",
+    })
+    .then(requireReceipt);
 
   await drain(t);
   expect(state.events.map((event) => event.type)).toEqual([

@@ -59,9 +59,13 @@ A root without children only needs `refs.runTurn`.
 ## Durable execution
 
 `open({ agent, prompt, requestKey })` and
-`send({ threadId, text, requestKey })` return acceptance receipts immediately.
-Identical subject-scoped keys replay the receipt; different input throws
-`KEY_CONFLICT` before native writes. Up to 20 additional prompts queue while
+`send({ threadId, text, requestKey })` return typed receipts immediately: `{ status: "accepted", position, threadId,
+assignmentId, receiptId }`, `{ status: "duplicate", position, threadId,
+assignmentId, receiptId }`, or `{ status: "rejected", code }`. Position is the
+zero-based inbox place at acceptance; duplicates retain that original position.
+Identical subject-scoped keys replay the receipt; changed input returns
+`KEY_CONFLICT` before native writes. Invalid input, a full queue (`QUEUE_FULL`),
+and recovery-required state also return rejections. Authorization failures throw. Up to 20 additional prompts queue while
 busy. Arrivals never silently enter an ongoing turn.
 
 Each thread has a component-internal loop workflow. It reads the durable

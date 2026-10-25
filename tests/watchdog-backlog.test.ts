@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { requireReceipt } from "./receipt.js";
 import { it, expect, vi, afterEach, beforeEach } from "vite-plus/test";
 import { setup, api, components, state } from "./setup.js";
 
@@ -13,7 +14,9 @@ const drain = (t: ReturnType<typeof setup>) =>
 // abort budget, so only queue time can exceed the 120s claim-armed watchdog.
 const GENERATION_MS = 60_000;
 const open = (alice: ReturnType<ReturnType<typeof setup>["withIdentity"]>, prompt: string) =>
-  alice.mutation(api.agents.open, { agent: "Main", prompt, requestKey: prompt });
+  alice
+    .mutation(api.agents.open, { agent: "Main", prompt, requestKey: prompt })
+    .then(requireReceipt);
 
 it("a backlog larger than pool capacity runs every turn exactly once", async () => {
   const t = setup();

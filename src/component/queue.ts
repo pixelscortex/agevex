@@ -32,19 +32,37 @@ async function existing(
 ) {
   const row = await findReceipt(ctx, `request:${subject}`, requestKey);
   if (!row) return null;
-  if (row.fingerprint !== fingerprint) throw new Error("KEY_CONFLICT");
-  return row.result as {
-    assignmentId: string;
-    threadId: string;
-    receiptId: string;
-    status: "accepted";
-  };
+  if (row.fingerprint !== fingerprint)
+    return { status: "rejected" as const, code: "KEY_CONFLICT" as const };
+  const accepted = row.result as Extract<typeof vReceipt.type, { status: "accepted" }>;
+  return { ...accepted, status: "duplicate" as const };
 }
 
 export const lookupReceipt = query({
   args: { subject: v.string(), requestKey: v.string(), fingerprint: v.string() },
   returns: v.union(v.null(), vReceipt),
   handler: (ctx, args) => existing(ctx, args.subject, args.requestKey, args.fingerprint),
+});
+
+/** Preflight shares the host mutation's snapshot with its later native save.
+ * Expected refusal must happen before that save: returning a receipt after a
+ * write would commit an orphan prompt rather than rolling the transaction back.
+ */
+export const admission = query({
+  args: { threadId: v.string(), subject: v.string() },
+  returns: v.union(v.null(), vReceipt),
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("assignments")
+      .withIndex("by_thread", (q) => q.eq("threadId", args.threadId))
+      .unique();
+    if (!row || row.subject !== args.subject) throw new Error("FORBIDDEN");
+    if (row.turnStatus === "recovery_required")
+      return { status: "rejected" as const, code: "RECOVERY_REQUIRED" as const };
+    if (row.queuedMessages >= (row.limits ?? LIMITS).queueLength)
+      return { status: "rejected" as const, code: "QUEUE_FULL" as const };
+    return null;
+  },
 });
 
 export const assignment = query({
@@ -301,7 +319,13 @@ export const accept = mutation({
       expiresAt: Date.now() + LIMITS.receiptRetentionMs,
     });
     await ctx.db.patch("receipts", receiptId, {
-      result: { assignmentId: row._id, threadId: args.threadId, receiptId, status: "accepted" },
+      result: {
+        assignmentId: row._id,
+        threadId: args.threadId,
+        receiptId,
+        status: "accepted",
+        position: row.queuedMessages,
+      },
     });
     await wake(ctx, { ...row, queuedMessages: row.queuedMessages + 1 });
     return {
@@ -309,6 +333,7 @@ export const accept = mutation({
       threadId: args.threadId,
       receiptId,
       status: "accepted" as const,
+      position: row.queuedMessages,
     };
   },
 });

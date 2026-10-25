@@ -76,12 +76,31 @@ export const runEvent = v.object({
   at: v.number(),
   errorCode: runErrorCode,
 });
-export const receipt = v.object({
+const receiptIdentity = {
   assignmentId: v.string(),
   threadId: v.string(),
   receiptId: v.string(),
-  status: v.literal("accepted"),
-});
+};
+export const receipt = v.union(
+  v.object({ ...receiptIdentity, status: v.literal("accepted"), position: v.number() }),
+  v.object({
+    ...receiptIdentity,
+    status: v.literal("duplicate"),
+    position: v.optional(v.number()),
+  }),
+  v.object({
+    status: v.literal("rejected"),
+    code: v.union(
+      v.literal("KEY_CONFLICT"),
+      v.literal("QUEUE_FULL"),
+      v.literal("CANCELLED"),
+      v.literal("INVALID_MESSAGE"),
+      v.literal("INVALID_REQUEST_KEY"),
+      v.literal("UNKNOWN_AGENT"),
+      v.literal("RECOVERY_REQUIRED"),
+    ),
+  }),
+);
 export const subagentCounts = v.object({
   active: v.number(),
   history: v.number(),

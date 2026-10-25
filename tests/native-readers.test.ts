@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { requireReceipt } from "./receipt.js";
 import { it, expect, vi, afterEach } from "vite-plus/test";
 import { listUIMessages } from "@convex-dev/agent";
 import { setup, api, components } from "./setup.js";
@@ -11,11 +12,13 @@ it("preserves native UI pagination/parts and native persisted stream deltas", as
   vi.useFakeTimers();
   const t = setup();
   const alice = t.withIdentity({ subject: "alice" });
-  const receipt = await alice.mutation(api.agents.open, {
-    agent: "Main",
-    prompt: "hello native",
-    requestKey: "native",
-  });
+  const receipt = await alice
+    .mutation(api.agents.open, {
+      agent: "Main",
+      prompt: "hello native",
+      requestKey: "native",
+    })
+    .then(requireReceipt);
   await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100));
   const args = { threadId: receipt.threadId, paginationOpts: { cursor: null, numItems: 1 } };
   const wrapped = await alice.query(api.agents.messages, args);

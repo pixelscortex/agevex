@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { requireReceipt } from "./receipt.js";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { createFunctionHandle } from "convex/server";
 import { getConvexSize } from "convex/values";
@@ -18,11 +19,13 @@ afterEach(() => {
 const drain = (t: Test) => t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100), 2000);
 const owner = (t: Test) => t.withIdentity({ subject: "alice" });
 const open = (t: Test, key = "bounded-reads") =>
-  owner(t).mutation(api.agents.open, {
-    agent: "Main",
-    prompt: "bounded reads",
-    requestKey: key,
-  });
+  owner(t)
+    .mutation(api.agents.open, {
+      agent: "Main",
+      prompt: "bounded reads",
+      requestKey: key,
+    })
+    .then(requireReceipt);
 const execution = (t: Test, assignmentId: string) =>
   t.query(components.agevex.queue.execution, { assignmentId });
 // Test-only inspection of the small native fixtures; runtime never scans history.
@@ -316,7 +319,7 @@ it("an oversized approval step commits APPROVAL_LIMIT before the native save and
       text: "must stay blocked",
       requestKey: "overflow-followup",
     }),
-  ).rejects.toThrow("RECOVERY_REQUIRED");
+  ).resolves.toEqual({ status: "rejected", code: "RECOVERY_REQUIRED" });
   await drain(t);
   expect(state.transcriptReads).toBe(0);
   expect(state.calls).toHaveLength(0);

@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { requireReceipt } from "./receipt.js";
 import { it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { listMessages } from "@convex-dev/agent";
 import { workflowCall } from "../src/testing/expect-journal.js";
@@ -21,7 +22,8 @@ const tick = (t: ReturnType<typeof setup>, ms: number) =>
 const open = (t: ReturnType<typeof setup>, requestKey = "durable") =>
   t
     .withIdentity({ subject: "alice" })
-    .mutation(api.agents.open, { agent: "Main", prompt: "durable prompt", requestKey });
+    .mutation(api.agents.open, { agent: "Main", prompt: "durable prompt", requestKey })
+    .then(requireReceipt);
 const admission = {
   scope: "external:test",
   key: "stable-key",

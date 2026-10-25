@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { requireReceipt } from "./receipt.js";
 import { it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { setup, api, internal, components, state } from "./setup.js";
 import { workflowCall } from "../src/testing/expect-journal.js";
@@ -30,11 +31,14 @@ const tick = (t: ReturnType<typeof setup>, ms: number) =>
 const drain = (t: ReturnType<typeof setup>) =>
   t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100), 2000);
 const open = (t: ReturnType<typeof setup>) =>
-  t.withIdentity({ subject: "alice" }).mutation(api.agents.open, {
-    agent: "Main",
-    prompt: "review regression",
-    requestKey: "review",
-  });
+  t
+    .withIdentity({ subject: "alice" })
+    .mutation(api.agents.open, {
+      agent: "Main",
+      prompt: "review regression",
+      requestKey: "review",
+    })
+    .then(requireReceipt);
 const activity = (t: ReturnType<typeof setup>, threadId: string) =>
   t.withIdentity({ subject: "alice" }).query(api.agents.activity, { threadId });
 const recoveryJobs = (t: ReturnType<typeof setup>) =>
@@ -1155,11 +1159,13 @@ it("registration root lane limits bound concurrent active model slices", async (
   });
   await open(t);
   const alice = t.withIdentity({ subject: "alice" });
-  await alice.mutation(api.agents.open, {
-    agent: "Main",
-    prompt: "second root",
-    requestKey: "second-root",
-  });
+  await alice
+    .mutation(api.agents.open, {
+      agent: "Main",
+      prompt: "second root",
+      requestKey: "second-root",
+    })
+    .then(requireReceipt);
   await expect
     .poll(async () => {
       await tick(t, 100);

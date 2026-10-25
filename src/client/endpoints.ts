@@ -70,9 +70,9 @@ const messagesReturn = v.object({
 });
 
 function validateInput(text: string, requestKey: string) {
-  if (!text.trim() || text.length > LIMITS.messageLength) throw new Error("INVALID_MESSAGE");
+  if (!text.trim() || text.length > LIMITS.messageLength) return "INVALID_MESSAGE" as const;
   if (!requestKey || requestKey.length > LIMITS.requestKeyLength)
-    throw new Error("INVALID_REQUEST_KEY");
+    return "INVALID_REQUEST_KEY" as const;
 }
 
 export function authorizedEndpoints(component: ComponentApi, config: Registration) {
@@ -128,10 +128,13 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
       args: { agent: v.string(), prompt: v.string(), requestKey: v.string() },
       returns: receipt,
       handler: async (ctx, args) => {
-        validateInput(args.prompt, args.requestKey);
-        const native = agent(args.agent);
         const { subject } = await config.authorize(ctx, { operation: "open", agent: args.agent });
         if (!subject) throw new Error("FORBIDDEN");
+        const invalid = validateInput(args.prompt, args.requestKey);
+        if (invalid) return { status: "rejected" as const, code: invalid };
+        if (!config.agents.some((a) => a.name === args.agent))
+          return { status: "rejected" as const, code: "UNKNOWN_AGENT" as const };
+        const native = agent(args.agent);
         if (subject.length > LIMITS.requestKeyLength) throw new Error("INVALID_SUBJECT");
         const hash = await fingerprint(["open", args.agent, args.prompt]);
         const duplicate = await ctx.runQuery(component.queue.lookupReceipt, {
@@ -157,6 +160,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           runTurn,
           limits,
         });
+        if (accepted.status !== "accepted") throw new Error("ADMISSION_CHANGED");
         await observe(ctx, config, {
           type: "request.accepted",
           operation: "open",
@@ -171,8 +175,9 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
       args: { threadId: v.string(), text: v.string(), requestKey: v.string() },
       returns: receipt,
       handler: async (ctx, args) => {
-        validateInput(args.text, args.requestKey);
         const row = await owned(ctx, args.threadId, "send");
+        const invalid = validateInput(args.text, args.requestKey);
+        if (invalid) return { status: "rejected" as const, code: invalid };
         const hash = await fingerprint(["send", args.threadId, args.text]);
         const duplicate = await ctx.runQuery(component.queue.lookupReceipt, {
           subject: row.subject,
@@ -180,6 +185,11 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           fingerprint: hash,
         });
         if (duplicate) return duplicate;
+        const refusal = await ctx.runQuery(component.queue.admission, {
+          threadId: args.threadId,
+          subject: row.subject,
+        });
+        if (refusal) return refusal;
         const { messageId } = await saveMessage(ctx, row.native.component, {
           threadId: args.threadId,
           prompt: args.text,
@@ -195,6 +205,7 @@ export function authorizedEndpoints(component: ComponentApi, config: Registratio
           runTurn: await createFunctionHandle(config.refs.runTurn()),
           limits,
         });
+        if (accepted.status !== "accepted") throw new Error("ADMISSION_CHANGED");
         await observe(ctx, config, {
           type: "request.accepted",
           operation: "send",
