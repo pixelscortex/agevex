@@ -151,7 +151,7 @@ Optional `onComplete(ctx, event)` commits atomically with terminal state and rec
 threadId, runId, state: "done" | "failed" | "unknown", exitCode?, logTail?, code? }`.
 Use transactional writes in the callback. Status and callback failures retry until
 the deadline, then leave an unknown snapshot readable through `sandbox.job(ctx, { jobId })`.
-Deadline expiry records `SANDBOX_JOB_DEADLINE`; a watchdog that finds its post-deadline attempt unsettled ends the job as `unknown` directly, without another attempt or callback; revoked authority records unknown without provider access or a callback.
+Deadline expiry records `SANDBOX_JOB_DEADLINE`; a watchdog claimed after the deadline kills the group and still notifies once, and only if two such attempts die unsettled does the next wake end the job as `unknown` directly, without a callback; revoked authority records unknown without provider access or a callback.
 Completion and deadline cleanup terminate descendants in the original process group;
 processes that detach with `setsid` or daemonize require stopping or deleting the sandbox.
 

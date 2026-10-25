@@ -752,7 +752,7 @@ it("a scope whose sandbox TTL cleanup deleted gets a fresh sandbox on next use",
   expect(await invoke(s.t, "sandbox_read_file", { path: "/again" })).toEqual({ content: "new" });
 });
 
-it("a final watchdog claimed past the deadline whose action never settled ends the job once and schedules nothing", async () => {
+it("a final watchdog claimed past the deadline notifies the host once as unknown and then schedules nothing", async () => {
   const fake = fakeSandboxProvider({ background: () => [{ state: "running" }] });
   fake.provider.cancelBackground = async (_ctx, id) => {
     fake.calls.cancel.push(id);
@@ -763,17 +763,32 @@ it("a final watchdog claimed past the deadline whose action never settled ends t
     jobId: string;
   };
   // This attempt takes the claim and dies without ever settling it. Its lease
-  // runs to the deadline plus the full kill budget, which is the last wake.
+  // runs to the deadline plus the kill budget and margin: the last wake.
   expect(await s.t.mutation(s.component.state.claimPoll, { jobId })).not.toBeNull();
-  await advance(s.t, 1_000 + LIMITS.backgroundKillBudgetMs + LIMITS.backgroundLeaseMarginMs + 1);
+  await vi.advanceTimersByTimeAsync(
+    1_000 + LIMITS.backgroundKillBudgetMs + LIMITS.backgroundLeaseMarginMs + 1,
+  );
+  // That wake finds the deadline long gone. Its kill hangs, but is bounded.
+  await vi.advanceTimersByTimeAsync(LIMITS.backgroundKillBudgetMs + 1);
+  await s.t.finishInProgressScheduledFunctions();
   expect(await s.t.query(s.component.state.getJob, { jobId })).toMatchObject({
     state: "unknown",
     code: "SANDBOX_JOB_DEADLINE",
   });
+  // The host callback ran exactly once, atomically with the terminal state.
+  const events = await s.t.query(api.host.events, {});
+  expect(events).toHaveLength(1);
+  expect(events[0].value).toMatchObject({
+    type: "sandbox.job.completed",
+    jobId,
+    state: "unknown",
+    code: "SANDBOX_JOB_DEADLINE",
+  });
   const work = [fake.calls.poll.length, fake.calls.cancel.length];
-  expect(work[1]).toBeLessThanOrEqual(1);
+  expect(work[1]).toBe(1);
   await advance(s.t, LIMITS.actionBudgetMs);
   expect([fake.calls.poll.length, fake.calls.cancel.length]).toEqual(work);
+  expect(await s.t.query(api.host.events, {})).toHaveLength(1);
   const live = await s.t.run((ctx) =>
     ctx.db.system
       .query("_scheduled_functions")
@@ -781,6 +796,25 @@ it("a final watchdog claimed past the deadline whose action never settled ends t
       .then((rows) => rows.filter((row) => ["pending", "inProgress"].includes(row.state.kind))),
   );
   expect(live).toHaveLength(0);
+});
+
+it("a final attempt that also never settles ends the job directly instead of claiming forever", async () => {
+  const fake = fakeSandboxProvider({ background: () => [{ state: "running" }] });
+  const s = setup("thread", { pollMinMs: 100, pollMaxMs: 400, jobTimeoutMs: 1_000 }, fake);
+  const { jobId } = (await invoke(s.t, "sandbox_run_background", { command: "forever" })) as {
+    jobId: string;
+  };
+  const stages = LIMITS.backgroundKillBudgetMs + LIMITS.backgroundLeaseMarginMs;
+  // Two consecutive attempts take the claim and die; the third wake ends it.
+  expect(await s.t.mutation(s.component.state.claimPoll, { jobId })).not.toBeNull();
+  vi.setSystemTime(Date.now() + 1_000 + stages + 1);
+  expect(await s.t.mutation(s.component.state.claimPoll, { jobId })).not.toBeNull();
+  vi.setSystemTime(Date.now() + stages + 1);
+  expect(await s.t.mutation(s.component.state.claimPoll, { jobId })).toBeNull();
+  expect(await s.t.query(s.component.state.getJob, { jobId })).toMatchObject({
+    state: "unknown",
+    code: "SANDBOX_JOB_DEADLINE",
+  });
 });
 
 it("cleanup defers a delete the remaining action budget cannot finish instead of recording it unknown", async () => {

@@ -346,12 +346,16 @@ export const claimPoll = mutation({
     const row = await ctx.db.get(args.jobId);
     const now = Date.now();
     if (!row || !["starting", "running"].includes(row.state) || row.leaseUntil > now) return null;
-    if (now > row.deadline + LIMITS.backgroundKillBudgetMs && row.leaseUntil > row.deadline) {
-      // The previous claim was already leased past the deadline, with the full
-      // kill budget, and its action never settled (it died or hung). Another
-      // claim could only repeat that attempt and, with a lease in the past,
-      // reschedule itself immediately forever while kills pile up. End the job
-      // here instead: unknown, never retried; the host reads it via job().
+    const finalLease =
+      row.deadline + LIMITS.backgroundKillBudgetMs + LIMITS.backgroundLeaseMarginMs;
+    if (now > row.deadline + LIMITS.backgroundKillBudgetMs && row.leaseUntil > finalLease) {
+      // Two attempts in a row were leased past the deadline plus the full kill
+      // budget and neither settled (their actions died or hung). The first of
+      // them already killed the group and tried to notify the host through
+      // the normal settle path; another claim would only repeat that. End the
+      // job here: unknown, never retried, readable via job(). This is the only
+      // path (besides revoked authority) that skips the host callback, and it
+      // bounds the chain at three claims.
       await terminate(ctx, row, { state: "unknown", code: "SANDBOX_JOB_DEADLINE" });
       return null;
     }
