@@ -12,15 +12,19 @@ export function register<Schema extends SchemaDefinition<GenericSchema, boolean>
   name = "meter",
 ) {
   t.registerComponent(name, schema, modules);
+
   aggregate.register(
     t as unknown as TestConvex<SchemaDefinition<GenericSchema, boolean>>,
     `${name}/costByThread`,
   );
+
   aggregate.register(
     t as unknown as TestConvex<SchemaDefinition<GenericSchema, boolean>>,
     `${name}/costBySubject`,
   );
+
   workpool.register(t, `${name}/workpool`);
+
   return componentsGeneric()[name] as unknown as ComponentApi;
 }
 export default { register, schema, modules };

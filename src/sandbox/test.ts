@@ -11,6 +11,7 @@ export function register<Schema extends SchemaDefinition<GenericSchema, boolean>
   name = "sandbox",
 ) {
   t.registerComponent(name, schema, modules);
+
   return componentsGeneric()[name] as unknown as ComponentApi;
 }
 export default { register, schema, modules };

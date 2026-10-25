@@ -81,12 +81,14 @@ const overridable = ["maxThreadCharges", "maxGroups", "maxDays", "maxAttempts", 
 
 export function integer(value: number, max: number, name: string) {
   if (!Number.isSafeInteger(value) || value < 0 || value > max) throw new Error(`INVALID_${name}`);
+
   return value;
 }
 
 export function text(value: string, name: string, max: number = LIMITS.maxStringBytes) {
   if (typeof value !== "string" || !value || new TextEncoder().encode(value).length > max)
     throw new Error(`INVALID_${name}`);
+
   return value;
 }
 
@@ -94,22 +96,28 @@ export function text(value: string, name: string, max: number = LIMITS.maxString
  * amount as OVER_CAP pass maxBilledNanos and compare against the cap. */
 export function nanos(usd: number, max: number = LIMITS.maxChargeNanos) {
   if (!Number.isFinite(usd) || usd < 0) throw new Error("INVALID_USD");
+
   return integer(Math.round(usd * LIMITS.nanosPerUsd), max, "NANOS");
 }
 
 /** Base events must use the raw charge key, so reserve the delta namespace. */
 export function chargeKey(value: string) {
   text(value, "KEY", LIMITS.maxKeyBytes);
+
   if (value.includes(LIMITS.deltaSeparator)) throw new Error("RESERVED_CHARGE_KEY");
+
   return value;
 }
 
 export function resolveLimits(overrides: Partial<ResolvedLimits> = {}): ResolvedLimits {
   for (const [key, value] of Object.entries(overrides)) {
     if (!overridable.includes(key)) throw new Error("INVALID_LIMIT");
+
     integer(value, LIMITS[key as keyof Limits], "LIMIT");
+
     if (!value) throw new Error("INVALID_LIMIT");
   }
+
   return {
     maxThreadCharges: LIMITS.maxThreadCharges,
     maxGroups: LIMITS.maxGroups,

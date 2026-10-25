@@ -25,6 +25,7 @@ export function setup() {
   state.steps.length = 0;
   child.calls.length = 0;
   state.budget = { checks: 0, runIds: [] };
+
   const t = convexTest({
     schema,
     transactionLimits: true,
@@ -36,8 +37,10 @@ export function setup() {
         import("../../docs/site/registry/continue-budget/continueBudgetState.js"),
     },
   });
+
   agent.register(t);
   agevex.register(t);
+
   return t;
 }
 

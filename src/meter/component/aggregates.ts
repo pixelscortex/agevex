@@ -57,9 +57,11 @@ export function projections(row: Doc<"charges">): Projection[] {
   const root = rootOf(a);
   const thread = LIMITS.threadTreeDepth;
   const subject = LIMITS.subjectTreeDepth;
+
   const entries: Projection[] = [
     { tree: bySubject, key: ["", day], namespace: ["subject", a.subject, state], depth: subject },
   ];
+
   if (root !== undefined)
     entries.push({
       tree: byThread,
@@ -69,6 +71,7 @@ export function projections(row: Doc<"charges">): Projection[] {
       namespace: [row.reason === "THREAD_CAPACITY" ? "overflow" : "thread", root, state],
       depth: row.reason === "THREAD_CAPACITY" ? subject : thread,
     });
+
   if (a.runId)
     entries.push({
       tree: bySubject,
@@ -76,8 +79,10 @@ export function projections(row: Doc<"charges">): Projection[] {
       namespace: ["run", a.subject, a.runId, state],
       depth: subject,
     });
+
   for (const axis of axes) {
     if (!row.breakdowns.includes(`subject.${axis}`)) continue;
+
     entries.push({
       tree: bySubject,
       key: [axis === "provider" ? row.provider : (a[axis] ?? ""), day],
@@ -85,11 +90,13 @@ export function projections(row: Doc<"charges">): Projection[] {
       depth: subject,
     });
   }
+
   // Agent grouping is the thread tree's own leading key. Only model/provider
   // need extra projections; overflow charges stay out of the paged trees.
   if (root !== undefined && row.reason !== "THREAD_CAPACITY")
     for (const axis of ["model", "provider"] as const) {
       if (!row.breakdowns.includes(`thread.${axis}`)) continue;
+
       entries.push({
         tree: bySubject,
         key: [axis === "provider" ? row.provider : (a.model ?? ""), day],
@@ -97,6 +104,7 @@ export function projections(row: Doc<"charges">): Projection[] {
         depth: thread,
       });
     }
+
   return entries;
 }
 
@@ -125,9 +133,11 @@ export async function updateAggregates(
 ) {
   const entries = projections(row);
   const previous = old && projections(old);
+
   for (const [index, entry] of entries.entries()) {
     const next = { key: entry.key, namespace: entry.namespace, sumValue: summand(row) };
     const before = previous?.[index];
+
     if (before?.namespace.join("\u0000") !== entry.namespace.join("\u0000")) {
       // Small nodes bound bytes on range reads, but an aggregate insert into a
       // missing namespace creates a 16-wide tree (btree.ts:56-63). Initialize
@@ -140,6 +150,7 @@ export async function updateAggregates(
           maxNodeSize: LIMITS.aggregateNodeSize,
         });
     }
+
     if (before)
       await entry.tree.replace(
         ctx,
@@ -165,8 +176,10 @@ export function deleteCost(row: Doc<"charges">) {
 /** Entries currently in this root thread's capped trees (all three groups). */
 export async function threadCount(ctx: QueryCtx, root: string) {
   let count = 0;
+
   for (const state of groups)
     count += await byThread.count(ctx, { namespace: ["thread", root, state] });
+
   return count;
 }
 
@@ -178,9 +191,12 @@ export async function summary(
   bounds?: Bounds<Key, string>,
 ) {
   const sums: number[] = [];
+
   for (const state of groups)
     sums.push(await tree.sum(ctx, { namespace: [...namespace, state], bounds }));
+
   const unknown = await tree.count(ctx, { namespace: [...namespace, "unknown"], bounds });
+
   return totals(sums[0], sums[1], sums[2], unknown);
 }
 

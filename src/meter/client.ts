@@ -22,6 +22,7 @@ import type { BudgetSlot, UsageSlot } from "../client/slots.js";
 export function inline(
   decode: NonNullable<Provider["inline"]> = ({ providerMetadata }) => {
     const usd = openRouterCost(providerMetadata);
+
     return usd === undefined ? undefined : { usd };
   },
 ): Provider {
@@ -39,9 +40,13 @@ function lookupMs(provider: Provider) {
  * mutation or `capped` turns them into `unknown` / OVER_CAP, keeping the amount. */
 function costNanos(provider: Provider, cost: Cost) {
   if ("usd" in cost && "credits" in cost) throw new Error("AMBIGUOUS_COST");
+
   if ("usd" in cost) return { nanos: nanos(cost.usd, LIMITS.maxBilledNanos) };
+
   integer(cost.credits, LIMITS.maxQuantity, "CREDITS");
+
   if (!provider.credits) throw new Error("CREDIT_RATE_REQUIRED");
+
   return {
     nanos: nanos(cost.credits * provider.credits.usdPerCredit, LIMITS.maxBilledNanos),
     credits: cost.credits,
@@ -71,13 +76,17 @@ function priceInline(
   evidence: Parameters<NonNullable<Provider["inline"]>>[0],
 ): Priced {
   if (!provider) return { reason: "PROVIDER_NOT_REGISTERED" };
+
   let cost: Cost | undefined;
+
   try {
     cost = provider.inline?.(evidence);
   } catch {
     return { reason: "DECODE_FAILED" };
   }
+
   if (!cost) return { reason: "NO_COST" };
+
   try {
     return capped(costNanos(provider, cost));
   } catch (error) {
@@ -91,9 +100,13 @@ function priceEstimate(
   quantity: number,
 ): Priced {
   if (!provider) return { reason: "PROVIDER_NOT_REGISTERED" };
+
   if (!profile) return {};
+
   const price = provider.profiles?.[profile];
+
   if (!price) return { reason: "PROFILE_NOT_REGISTERED" };
+
   try {
     return capped({ nanos: nanos(price.usd * quantity, LIMITS.maxBilledNanos) });
   } catch (error) {
@@ -105,40 +118,55 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
   const limits = resolveLimits(options.limits);
   const breakdowns = resolveBreakdowns(options.breakdowns);
   const providers = Object.entries(options.providers);
+
   if (!providers.length || providers.length > LIMITS.maxProviders)
     throw new Error("INVALID_PROVIDERS");
+
   for (const [name, provider] of providers) {
     text(name, "PROVIDER");
     const profiles = Object.entries(provider.profiles ?? {});
+
     if (profiles.length > LIMITS.maxProfiles) throw new Error("INVALID_PROFILES");
+
     for (const [profile, price] of profiles) {
       text(profile, "PROFILE");
       text(price.unit, "UNIT");
       nanos(price.usd);
     }
+
     if (provider.credits) nanos(provider.credits.usdPerCredit);
+
     integer(lookupMs(provider), LIMITS.maxLookupMs, "LOOKUP_WINDOW");
+
     if (!lookupMs(provider)) throw new Error("INVALID_LOOKUP_WINDOW");
+
     if (provider.lookup && !options.workers?.lookup) throw new Error("LOOKUP_WORKER_REQUIRED");
   }
+
   const sinks = (options.sinks ?? []).map((sink, index) => ({
     ...sink,
     name: sink.name ?? `sink:${index}`,
   }));
+
   if (sinks.length > LIMITS.maxSinks || new Set(sinks.map((s) => s.name)).size !== sinks.length)
     throw new Error("INVALID_SINKS");
+
   for (const sink of sinks) text(sink.name, "SINK");
+
   if (sinks.length && !options.workers?.deliver) throw new Error("DELIVERY_WORKER_REQUIRED");
 
   function registered(name: string) {
     text(name, "PROVIDER");
+
     return Object.prototype.hasOwnProperty.call(options.providers, name)
       ? options.providers[name]
       : undefined;
   }
   function providerFor(name: string) {
     const provider = registered(name);
+
     if (!provider) throw new Error("PROVIDER_NOT_REGISTERED");
+
     return provider;
   }
   async function jobs() {
@@ -155,6 +183,7 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
   async function authorize(ctx: ReadCtx, attribution: Partial<Attribution>) {
     for (const value of Object.values(attribution))
       if (value !== undefined) text(value, "ATTRIBUTION");
+
     await options.authorize?.(ctx, attribution);
   }
 
@@ -172,14 +201,18 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
   ): ScopedMeter {
     let cached: Attribution | undefined;
     const facts = async () => (cached ??= await attributed());
+
     const guard = async () => {
       const attribution = await facts();
+
       if (trusted) {
         for (const value of Object.values(attribution))
           if (value !== undefined) text(value, "ATTRIBUTION");
       } else await authorize(ctx, attribution);
+
       return attribution;
     };
+
     /** `provider` is undefined for an unregistered name: the charge exists as
      * `unknown`, and only a USD settlement can resolve it. */
     function handle(key: string, provider: Provider | undefined): ChargeHandle {
@@ -187,11 +220,13 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
         key,
         get: async () => {
           await guard();
+
           return await ctx.runQuery(component.charges.get, { key });
         },
         attach: async ({ requestId, key: operationKey }) => {
           text(operationKey, "OPERATION_KEY", LIMITS.maxKeyBytes);
           await guard();
+
           return await ctx.runMutation(component.charges.attach, {
             key,
             requestId,
@@ -206,7 +241,9 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
           integer(quantity, LIMITS.maxQuantity, "QUANTITY");
           const row = await ctx.runQuery(component.charges.get, { key });
           const price = row?.profile && provider?.profiles?.[row.profile];
+
           if (!price) throw new Error("PROFILE_REQUIRED");
+
           return await ctx.runMutation(component.charges.update, {
             key,
             operation: "correct",
@@ -219,6 +256,7 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
         settle: async (cost) => {
           text(cost.key, "OPERATION_KEY", LIMITS.maxKeyBytes);
           await guard();
+
           return await ctx.runMutation(component.charges.update, {
             key,
             operation: "settle",
@@ -229,6 +267,7 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
         },
       };
     }
+
     return {
       // Malformed keys, names and quantities are caller bugs and still throw;
       // unpriceable amounts and unregistered names are recorded `unknown`.
@@ -236,9 +275,11 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
         const attribution = await guard();
         const name = resolve(requested);
         const provider = registered(name);
+
         text(args.key, "KEY", LIMITS.maxKeyBytes);
         integer(args.quantity, LIMITS.maxQuantity, "QUANTITY");
         const priced = priceEstimate(provider, args.profile, args.quantity);
+
         await ctx.runMutation(component.charges.create, {
           key: args.key,
           attribution,
@@ -253,17 +294,21 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
           maxThreadCharges: limits.maxThreadCharges,
           jobs: await jobs(),
         });
+
         return handle(args.key, provider);
       },
       record: async (requested, args) => {
         const attribution = await guard();
         const name = resolve(requested);
         const provider = registered(name);
+
         text(args.key, "KEY", LIMITS.maxKeyBytes);
+
         const priced = priceInline(provider, {
           usage: args.usage,
           providerMetadata: args.providerMetadata,
         });
+
         await ctx.runMutation(component.charges.create, {
           key: args.key,
           attribution,
@@ -276,6 +321,7 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
           maxThreadCharges: limits.maxThreadCharges,
           jobs: await jobs(),
         });
+
         return handle(args.key, provider);
       },
     };
@@ -283,6 +329,7 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
 
   function scope(ctx: WriteCtx, attribution: Attribution): ScopedMeter {
     text(attribution.subject, "SUBJECT");
+
     return bind(ctx, async () => attribution, false);
   }
 
@@ -296,16 +343,23 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
   function resolver(mapping: Record<string, string> = {}) {
     for (const [id, name] of Object.entries(mapping)) {
       text(id, "PROVIDER");
+
       if (!registered(name)) throw new Error("PROVIDER_NOT_REGISTERED");
     }
+
     return (name: string) => {
       if (registered(name)) return name;
+
       if (Object.prototype.hasOwnProperty.call(mapping, name)) return mapping[name];
+
       const parts = name.split(".");
+
       for (let length = parts.length - 1; length > 0; length--) {
         const prefix = parts.slice(0, length).join(".");
+
         if (prefix && registered(prefix)) return prefix;
       }
+
       return name;
     };
   }
@@ -319,16 +373,21 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
     if (trusted) {
       for (const value of Object.values(args)) if (value !== undefined) text(value, "ATTRIBUTION");
     } else await authorize(ctx, args);
+
     const policy = await budgetPolicy?.(args);
+
     // Budget caps can cover many charges, so the bound is the exact-integer
     // ceiling, not the per-charge cap. A total at or beyond 2^53 is still
     // >= any such cap, so imprecision there can only deny, never admit.
     if (policy && (!Number.isFinite(policy.maxUsd) || policy.maxUsd < 0))
       throw new Error("INVALID_BUDGET");
+
     const maxNanos = policy
       ? integer(Math.round(policy.maxUsd * LIMITS.nanosPerUsd), Number.MAX_SAFE_INTEGER, "BUDGET")
       : undefined;
+
     const cost = await ctx.runQuery(component.reads.cost, args);
+
     return {
       allowed: cost.unknown === 0 && (maxNanos === undefined || cost.totalNanos < maxNanos),
       ...cost,
@@ -345,6 +404,7 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
      * the same saved step a second time under a different identity. */
     usageSlot(slot: { providers?: Record<string, string> } = {}): UsageSlot {
       const resolve = resolver(slot.providers);
+
       return {
         // A model id over the label limit would fail validation and, since core
         // swallows meter errors, drop the charge. Store `sha256:<hex>` instead
@@ -381,8 +441,10 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
       args: { threadId: string; cursors?: Partial<Record<"agent" | "model" | "provider", string>> },
     ) => {
       await authorize(ctx, { threadId: args.threadId });
+
       for (const axis of ["model", "provider"] as const)
         if (args.cursors?.[axis] !== undefined) requireBreakdown(breakdowns, `thread.${axis}`);
+
       return await ctx.runQuery(component.reads.threadCost, {
         ...args,
         breakdowns,
@@ -391,6 +453,7 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
     },
     subjectCost: async (ctx: ReadCtx, args: { subject: string; runId?: string }) => {
       await authorize(ctx, args);
+
       return await ctx.runQuery(component.reads.cost, args);
     },
     breakdown: async (
@@ -404,7 +467,9 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
       },
     ) => {
       await authorize(ctx, { subject: args.subject });
+
       if (args.by !== "day") requireBreakdown(breakdowns, `subject.${args.by}`);
+
       return await ctx.runQuery(component.reads.breakdown, {
         ...args,
         breakdowns,
@@ -432,7 +497,9 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
     retrySinks: async (ctx: WriteCtx, args: { key: string; subject: string }) => {
       await authorize(ctx, { subject: args.subject });
       const row = await ctx.runQuery(component.charges.get, { key: args.key });
+
       if (row?.attribution.subject !== args.subject) throw new Error("CHARGE_NOT_FOUND");
+
       return await ctx.runMutation(component.charges.retrySinks, {
         key: args.key,
         jobs: await jobs(),
@@ -446,6 +513,7 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
           returns: v.null(),
           handler: async (ctx, args) => {
             const row = await ctx.runQuery(component.charges.get, { key: args.key });
+
             if (
               !row ||
               row.lookupUntil !== args.until ||
@@ -454,19 +522,24 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
               row.status === "unknown"
             )
               return null;
+
             let amount: ReturnType<typeof costNanos> | undefined;
+
             if (Date.now() < args.until) {
               try {
                 const cost = await providerFor(args.provider).lookup?.(ctx, args.requestId);
+
                 if (cost) amount = costNanos(providerFor(args.provider), cost);
               } catch {
                 /* Read-only billing evidence may be retried; paid work never is. */
               }
             }
+
             await ctx.runMutation(component.charges.lookupResult, {
               ...args,
               ...amount,
             });
+
             return null;
           },
         }),
@@ -477,13 +550,17 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
             // One job, one batch: <=LIMITS.sinkBatch due events of this sink in
             // a single deliver() call, i.e. one Polar ingest request.
             const events = await ctx.runMutation(component.charges.claimDeliveries, args);
+
             if (!events.length) return null;
+
             const sink = sinks.find((s) => s.name === args.sink);
             let ok = false;
             let rateLimited = false;
             let retryAfterMs: number | undefined;
+
             try {
               if (!sink) throw new Error("SINK_NOT_REGISTERED");
+
               await sink.deliver(events);
               ok = true;
             } catch (error) {
@@ -492,6 +569,7 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
                 rateLimited = error.rateLimited;
               }
             }
+
             // Acknowledgements rewrite charge rows, so record the batch's one
             // outcome in chunks that keep each mutation within its budget.
             for (let offset = 0; offset < events.length; offset += LIMITS.ackBatch)
@@ -504,6 +582,7 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
                 jobs: args.jobs,
                 ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
               });
+
             return null;
           },
         }),

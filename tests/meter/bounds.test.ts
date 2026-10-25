@@ -6,6 +6,7 @@ import { LIMITS, type SinkEvent } from "../../src/meter/index.js";
 import { setup, allBreakdowns } from "./setup.js";
 
 const TEST_LIMITS = { seedBatch: 256, timeoutMs: 180_000, days: LIMITS.maxDays, idBytes: 64 };
+
 type Item = { k: Value; v: string; s: number };
 type Node = { items: Item[]; children: number[]; aggregate?: { count: number; sum: number } };
 
@@ -25,43 +26,57 @@ async function seedProjection(
   register: boolean,
 ) {
   const total = items.length;
+
   items.sort((a, b) => compareValues(a.k, b.k));
   const nodes: Node[] = [];
   let offset = 0;
+
   function build(size: number, height: number, root = false): number {
     if (height === 1) {
       const entries = items.slice(offset, offset + size);
+
       offset += size;
+
       nodes.push({
         items: entries,
         children: [],
         aggregate: { count: size, sum: size * LIMITS.maxChargeNanos },
       });
+
       return nodes.length - 1;
     }
+
     const min = 3 ** (height - 1) - 1;
     const max = 5 ** (height - 1) - 1;
     let count = root ? 2 : 3;
+
     while (count <= 5 && (size - count + 1 < count * min || size - count + 1 > count * max))
       count++;
+
     if (count > 5) throw new Error("INVALID_FIXTURE_OCCUPANCY");
+
     const childSize = Math.floor((size - count + 1) / count);
     const extra = (size - count + 1) % count;
     const entries: Item[] = [];
     const children: number[] = [];
+
     for (let index = 0; index < count; index++) {
       children.push(build(childSize + (index < extra ? 1 : 0), height - 1));
+
       if (index < count - 1) entries.push(items[offset++]);
     }
+
     // Roots stay lazy (the aggregate default the meter keeps): no root total.
     nodes.push({
       items: entries,
       children,
       ...(root ? {} : { aggregate: { count: size, sum: size * LIMITS.maxChargeNanos } }),
     });
+
     return nodes.length - 1;
   }
   const root = build(total, Math.ceil(Math.log(total + 1) / Math.log(5)), true);
+
   if (register)
     t.registerComponent(mount, aggregate.schema, {
       ...aggregate.modules,
@@ -78,6 +93,7 @@ async function seedProjection(
           },
           handler: async (ctx, args) => {
             const ids: string[] = [];
+
             for (const node of args.nodes)
               ids.push(
                 await ctx.db.insert("btreeNode", {
@@ -88,6 +104,7 @@ async function seedProjection(
                   ),
                 }),
               );
+
             return ids;
           },
         }),
@@ -103,6 +120,7 @@ async function seedProjection(
         }),
       }),
     });
+
   function reference<A extends Record<string, Value>>(name: string) {
     // convex-test documents this function-handle address format; it enters the
     // nested fixture component directly, without exposing any production API.
@@ -113,16 +131,20 @@ async function seedProjection(
     >;
   }
   const ids: string[] = [];
+
   for (let start = 0; start < nodes.length; start += TEST_LIMITS.seedBatch) {
     const batch = nodes.slice(start, start + TEST_LIMITS.seedBatch).map((node) => ({
       ...node,
       children: node.children.map((child) => (child < start ? ids[child] : child - start)),
     }));
+
     const saved = (await t.mutation(reference<{ nodes: typeof batch }>("nodes"), {
       nodes: batch,
     })) as string[];
+
     ids.push(...saved);
   }
+
   await t.mutation(reference<{ root: string; namespace: string[] }>("root"), {
     root: ids[root],
     namespace,
@@ -139,10 +161,12 @@ async function seedProjection(
  */
 async function seedAtCapacity(t: ReturnType<typeof setup>["t"], subject: string, day: number) {
   const states = ["estimate", "settled", "unknown"] as const;
+
   const labels = Array.from(
     { length: LIMITS.maxGroups + 1 },
     (_, i) => String(i) + "é".repeat((LIMITS.maxStringBytes - 2) / 2) + "x",
   );
+
   const projections = [
     {
       mount: "costByThread",
@@ -170,17 +194,22 @@ async function seedAtCapacity(t: ReturnType<typeof setup>["t"], subject: string,
       key: (label: string, ordinal: number): Value[] => [label, ordinal],
     })),
   ];
+
   const registered = new Set<string>();
+
   for (const projection of projections) {
     for (const [stateIndex, state] of states.entries()) {
       const items: Item[] = [];
+
       for (let index = stateIndex; index < LIMITS.maxThreadCharges - 1; index += states.length) {
         const ordinal = day - TEST_LIMITS.days + 1 + (index % TEST_LIMITS.days);
         const id = String(index).padStart(TEST_LIMITS.idBytes, "x");
         const key = projection.key(labels[index % labels.length], ordinal);
         const exploded = key.flatMap((part) => ["", part]).concat([""]);
+
         items.push({ k: [exploded, id, ""], v: id, s: LIMITS.maxChargeNanos });
       }
+
       await seedProjection(
         t,
         `meter/${projection.mount}`,
@@ -188,9 +217,11 @@ async function seedAtCapacity(t: ReturnType<typeof setup>["t"], subject: string,
         items,
         !registered.has(projection.mount),
       );
+
       registered.add(projection.mount);
     }
   }
+
   return labels;
 }
 
@@ -198,6 +229,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-10-25T00:00:00Z"));
 });
+
 afterEach(() => vi.useRealTimers());
 
 it(
@@ -206,6 +238,7 @@ it(
     const label = "é".repeat(LIMITS.maxStringBytes / 2);
     const key = "é".repeat(LIMITS.maxKeyBytes / 2);
     const events: SinkEvent[] = [];
+
     const { t, meter } = setup({
       breakdowns: allBreakdowns,
       limits: { pruneMinAgeMs: 1 },
@@ -226,6 +259,7 @@ it(
         },
       })),
     });
+
     const attribution = {
       subject: label,
       rootThreadId: label,
@@ -234,18 +268,23 @@ it(
       agent: label,
       model: label,
     };
+
     const day = Math.floor(Date.now() / LIMITS.dayMs);
     const labels = await seedAtCapacity(t, label, day);
+
     await t.run(async (ctx) => {
       await meter
         .scope(ctx, attribution)
         .estimate(label, { key, profile: label, quantity: LIMITS.maxQuantity });
     });
+
     const knownFixtures = ((LIMITS.maxThreadCharges - 1) / 3) * 2;
     const maxTotal = (knownFixtures + 1) * LIMITS.maxChargeNanos;
+
     expect(await t.run((ctx) => meter.subjectCost(ctx, { subject: label }))).toMatchObject({
       totalNanos: maxTotal,
     });
+
     expect(await t.run((ctx) => meter.threadCost(ctx, { threadId: label }))).toMatchObject({
       totalNanos: maxTotal,
       unknown: (LIMITS.maxThreadCharges - 1) / 3,
@@ -254,24 +293,30 @@ it(
         cursor: labels[LIMITS.maxGroups - 1],
       },
     });
+
     expect(
       await t.run((ctx) => meter.subjectCost(ctx, { subject: label, runId: label })),
     ).toMatchObject({ totalNanos: maxTotal });
+
     // At full capacity existing charges must still settle, including migration
     // into the maximally populated namespace and the maximum sink fanout.
     await t.run(async (ctx) => {
       const charge = await meter
         .scope(ctx, attribution)
         .estimate(label, { key, profile: label, quantity: LIMITS.maxQuantity });
+
       await charge.attach({ requestId: label, key: "é".repeat(LIMITS.maxKeyBytes / 2) });
+
       await charge.correct({
         quantity: LIMITS.maxQuantity - 1,
         key: "lower-quantity".padEnd(LIMITS.maxKeyBytes, "x"),
       });
+
       await charge.correct({
         quantity: LIMITS.maxQuantity,
         key: "restore-quantity".padEnd(LIMITS.maxKeyBytes, "x"),
       });
+
       // Fill the receipt ledger before the final eight-projection replacement,
       // so transactionLimits covers maximum charge bytes and aggregate fanout together.
       for (let index = 0; index < LIMITS.maxOperations - 4; index++)
@@ -279,11 +324,13 @@ it(
           quantity: LIMITS.maxQuantity,
           key: String(index).padEnd(LIMITS.maxKeyBytes, "x"),
         });
+
       await charge.settle({
         usd: LIMITS.maxChargeNanos / LIMITS.nanosPerUsd,
         key: "settle".padEnd(LIMITS.maxKeyBytes, "x"),
       });
     });
+
     const days = await t.run((ctx) =>
       meter.breakdown(ctx, {
         subject: label,
@@ -292,8 +339,10 @@ it(
         by: "day",
       }),
     );
+
     expect(days.page).toHaveLength(LIMITS.maxDays);
     expect(days.page.reduce((sum, item) => sum + item.totalNanos, 0)).toBe(maxTotal);
+
     for (const by of ["agent", "model", "provider"] as const) {
       const range = {
         subject: label,
@@ -301,17 +350,23 @@ it(
         to: (day + 1) * LIMITS.dayMs,
         by,
       };
+
       const first = await t.run((ctx) => meter.breakdown(ctx, range));
+
       expect(first.page).toHaveLength(LIMITS.maxGroups);
       expect(first.page.map((entry) => entry.key)).toEqual(labels.slice(0, LIMITS.maxGroups));
       expect(first.cursor).toBe(labels[LIMITS.maxGroups - 1]);
       const next = await t.run((ctx) => meter.breakdown(ctx, { ...range, cursor: first.cursor! }));
+
       expect([...first.page, ...next.page].reduce((sum, item) => sum + item.totalNanos, 0)).toBe(
         maxTotal,
       );
+
       expect(next.cursor).toBeNull();
     }
+
     const first = await t.run((ctx) => meter.threadCost(ctx, { threadId: label }));
+
     const next = await t.run((ctx) =>
       meter.threadCost(ctx, {
         threadId: label,
@@ -322,28 +377,36 @@ it(
         },
       }),
     );
+
     for (const axis of ["byAgent", "byModel", "byProvider"] as const) {
       expect(first[axis]!.page).toHaveLength(LIMITS.maxGroups);
       expect(first[axis]!.cursor).toBe(labels[LIMITS.maxGroups - 1]);
+
       expect(
         [...first[axis]!.page, ...next[axis]!.page].reduce((sum, item) => sum + item.totalNanos, 0),
       ).toBe(maxTotal);
+
       expect(next[axis]!.cursor).toBeNull();
     }
+
     // The thread is now full: a new charge is recorded unknown, never thrown.
     await t.run(async (ctx) => {
       await meter
         .scope(ctx, attribution)
         .estimate(label, { key: "capacity-overflow", profile: label, quantity: 1 });
     });
+
     expect(await t.run((ctx) => meter.check(ctx, { subject: label, runId: label }))).toMatchObject({
       allowed: false,
     });
+
     await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100), 1000);
     expect(events).toHaveLength(LIMITS.maxSinks * 2);
+
     expect(events.reduce((sum, event) => sum + event.nanos, 0)).toBe(
       LIMITS.maxSinks * LIMITS.maxChargeNanos,
     );
+
     // Retention of the settled, delivered maximum charge fits one transaction
     // with all eight projections in maximally populated trees.
     expect(
@@ -351,6 +414,7 @@ it(
         meter.prune(ctx, { before: Date.now() - 1, limit: LIMITS.maxPruneLimit }),
       ),
     ).toEqual({ deleted: 1, more: false });
+
     expect(await t.run((ctx) => meter.subjectCost(ctx, { subject: label }))).toMatchObject({
       totalNanos: maxTotal - LIMITS.maxChargeNanos,
     });

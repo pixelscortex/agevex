@@ -117,6 +117,7 @@ export const HARD_LIMITS: SandboxLimits = {
 export function integer(value: number, maximum: number, name: string, minimum = 1) {
   if (!Number.isSafeInteger(value) || value < minimum || value > maximum)
     throw new Error(`SANDBOX_INVALID_${name}`);
+
   return value;
 }
 
@@ -124,6 +125,7 @@ export function integer(value: number, maximum: number, name: string, minimum = 
 export function bounded(value: string, maximum: number, name: string) {
   if (typeof value !== "string" || !value.length || value.length > maximum || value.includes("\0"))
     throw new Error(`SANDBOX_INVALID_${name}`);
+
   return value;
 }
 
@@ -132,10 +134,14 @@ export function resolveLimits(overrides: Partial<SandboxLimits> = {}): SandboxLi
   for (const key of Object.keys(overrides))
     if (!Object.prototype.hasOwnProperty.call(HARD_LIMITS, key))
       throw new Error("SANDBOX_INVALID_LIMIT");
+
   const limits: SandboxLimits = { ...LIMITS, ...overrides };
+
   for (const key of Object.keys(HARD_LIMITS) as (keyof SandboxLimits)[])
     integer(limits[key], HARD_LIMITS[key], key);
+
   if (limits.pollMinMs > limits.pollMaxMs) throw new Error("SANDBOX_INVALID_POLL_RANGE");
+
   return Object.freeze(limits);
 }
 

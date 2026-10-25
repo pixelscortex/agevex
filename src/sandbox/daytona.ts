@@ -44,14 +44,18 @@ export function daytona(
     "AUTO_STOP",
     0,
   );
+
   const autoArchiveInterval = integer(
     opts.autoArchiveInterval ?? LIMITS.daytonaAutoArchiveMinutes,
     LIMITS.daytonaTimerMaxMinutes,
     "AUTO_ARCHIVE",
     0,
   );
+
   if (opts.snapshot !== undefined) bounded(opts.snapshot, LIMITS.identityChars, "SNAPSHOT");
+
   if (opts.target !== undefined) bounded(opts.target, LIMITS.identityChars, "TARGET");
+
   const client = new Daytona(component, opts);
 
   async function python(
@@ -66,7 +70,9 @@ export function daytona(
       timeoutSeconds: timeoutS,
       autoStart: false,
     });
+
     if (result.exitCode !== 0) throw new Error("SANDBOX_DAYTONA_OPERATION_FAILED");
+
     return result.result;
   }
 
@@ -79,6 +85,7 @@ export function daytona(
   ) {
     bounded(path, LIMITS.pathChars, "PATH");
     integer(maxBytes, HARD_LIMITS.fileReadChars * LIMITS.utf8BytesPerChar, "FILE_BYTES");
+
     // Read <=maxBytes+1, even if the file grows after the size check. Export
     // refuses overflow, while text reads retain the tail. The largest reply
     // is ceil(640000/3)*4 <854 KiB base64, below Convex's return ceiling.
@@ -87,8 +94,11 @@ export function daytona(
       sandboxId,
       `import os,stat,base64\np=${JSON.stringify(path)}\nn=${maxBytes}\nf=open(p,'rb')\ns=os.fstat(f.fileno())\nassert stat.S_ISREG(s.st_mode),'regular files only'\n${tail ? "f.seek(max(0,s.st_size-n))" : "assert s.st_size<=n,'file too large'"}\nb=f.read(n+1)\nassert len(b)<=n,'file too large'\nprint(base64.b64encode(b).decode())`,
     );
+
     const bytes = decodeBase64(result.trim());
+
     if (bytes.byteLength > maxBytes) throw new Error("SANDBOX_FILE_TOO_LARGE");
+
     return bytes;
   }
 
@@ -96,6 +106,7 @@ export function daytona(
     id: "daytona",
     async create(ctx, { scopeKey }) {
       bounded(scopeKey, LIMITS.scopeKeyChars, "SCOPE");
+
       const args: CreateSandboxArgs = {
         snapshot: opts.snapshot,
         target: opts.target,
@@ -109,39 +120,53 @@ export function daytona(
         userKey: scopeKey,
         labels: { agevexScope: scopeKey },
       };
+
       const created = await client.createSandbox(ctx, args);
+
       return { sandboxId: created.sandboxId };
     },
     async resume(ctx, sandboxId) {
       const known = await client.refreshSandbox(ctx, { sandboxId });
+
       if (!known || known.state === "destroyed") throw new Error("SANDBOX_GONE");
+
       if (known.state === "error") {
         // Narrow bridge matching the SDK's recover route. Confirm recoverable
         // first; never delete/recreate to hide an error and lose the files.
         const apiKey = opts.apiKey ?? process.env.DAYTONA_API_KEY;
+
         if (!apiKey) throw new Error("SANDBOX_DAYTONA_KEY_REQUIRED");
+
         const root = (
           opts.apiUrl ??
           process.env.DAYTONA_API_URL ??
           "https://app.daytona.io/api"
         ).replace(/\/+$/, "");
+
         const url = `${root}/sandbox/${encodeURIComponent(sandboxId)}`;
         const headers = { Authorization: `Bearer ${apiKey}` };
+
         const inspected = await fetch(url, {
           headers,
           signal: AbortSignal.timeout(LIMITS.daytonaRequestMs),
         });
+
         if (!inspected.ok) throw new Error("SANDBOX_RECOVERY_UNAVAILABLE");
+
         const state = (await inspected.json()) as { state?: string; recoverable?: boolean };
+
         if (state.state !== "error" || state.recoverable !== true)
           throw new Error("SANDBOX_NOT_RECOVERABLE");
+
         const recovered = await fetch(`${url}/recover`, {
           method: "POST",
           headers,
           signal: AbortSignal.timeout(LIMITS.daytonaRequestMs),
         });
+
         if (!recovered.ok) throw new Error("SANDBOX_RECOVERY_UNKNOWN");
       }
+
       await client.startSandbox(ctx, { sandboxId, waitTimeoutMs: LIMITS.daytonaReadyMs });
     },
     async stop(ctx, sandboxId) {
@@ -165,6 +190,7 @@ export function daytona(
       // is set LATER than the wrapper's, otherwise it kills the wrapper first
       // and the command survives with an unknown outcome.
       const chars = HARD_LIMITS.outputChars;
+
       const result = JSON.parse(
         await python(
           ctx,
@@ -173,16 +199,21 @@ export function daytona(
           timeoutS + LIMITS.execKillMarginS,
         ),
       ) as { exitCode: number; stdout: string; stderr: string; timedOut: boolean };
+
       signal.throwIfAborted();
+
       return result;
     },
     async startBackground(ctx, sandboxId, cmd, job) {
       bounded(cmd, LIMITS.commandChars, "COMMAND");
       const jobId = job?.jobId ?? crypto.randomUUID();
       const directory = job?.directory ?? `${LIMITS.backgroundRoot}/${jobId}`;
+
       bounded(jobId, LIMITS.identityChars, "JOB_ID");
       bounded(directory, LIMITS.pathChars, "JOB_DIRECTORY");
+
       if (job && job.sandboxId !== sandboxId) throw new Error("SANDBOX_JOB_MISMATCH");
+
       // The provider's disposable VM supplies isolation. Specifically:
       // on completion and on deadline, every process still in the job's original process group is terminated; a process that deliberately detaches (setsid / daemonizes) is outside this guarantee; for full containment stop or delete the sandbox, which `sandbox.stop` / TTL cleanup do.
       // The supervisor stays outside that group. WNOWAIT (or macOS kqueue's
@@ -225,6 +256,7 @@ with open(d+'/output.log','wb') as log:
 if os.path.exists(d+'/cancel.request'):
  with open(d+'/cancelled','w') as f: f.write('deadline')
 publish('status.exit',code)`;
+
       await python(
         ctx,
         sandboxId,
@@ -236,10 +268,12 @@ while not os.path.exists(d+'/group.pid') and p.poll() is None: time.sleep(${LIMI
 assert os.path.exists(d+'/group.pid'),'background launch failed'`,
         LIMITS.backgroundExecTimeoutS,
       );
+
       return { jobId, sandboxId, directory };
     },
     async poll(ctx, _jobId, { sandboxId, directory }) {
       bounded(directory, LIMITS.pathChars, "JOB_DIRECTORY");
+
       // tail -c bounds bytes at the source, rather than taking the end of
       // Daytona's truncated prefix. The component receives <=48 KiB of log
       // data (plus JSON escaping), regardless of the on-disk log's size.
@@ -271,6 +305,7 @@ else:
     async cancelBackground(ctx, jobId, { sandboxId, directory }) {
       bounded(jobId, LIMITS.identityChars, "JOB_ID");
       bounded(directory, LIMITS.pathChars, "JOB_DIRECTORY");
+
       // A missing job directory does not mean the command never ran: poll() is
       // only reached after the launch was confirmed, so the command (or a
       // person) removed it while the group may still be alive. Fall back to
@@ -346,12 +381,15 @@ if not os.path.exists(d+'/status.exit') and not os.path.exists(d+'/cancelled'):
     },
     async writeFile(ctx, sandboxId, path, content) {
       bounded(path, LIMITS.pathChars, "PATH");
+
       if (content.length > HARD_LIMITS.writeChars) throw new Error("SANDBOX_WRITE_TOO_LARGE");
+
       await client.writeFile(ctx, { sandboxId, path, content });
     },
     async listFiles(ctx, sandboxId, path, { limit }) {
       bounded(path, LIMITS.pathChars, "PATH");
       integer(limit, HARD_LIMITS.listEntries, "LIST_ENTRIES");
+
       const result = JSON.parse(
         await python(
           ctx,
@@ -359,11 +397,14 @@ if not os.path.exists(d+'/status.exit') and not os.path.exists(d+'/cancelled'):
           `import os,itertools,json\nwith os.scandir(${JSON.stringify(path)}) as d:\n print(json.dumps([{'name':e.name[:${LIMITS.pathChars}],'isDir':e.is_dir(follow_symlinks=False)} for e in itertools.islice(d,${limit})]))`,
         ),
       ) as FileEntry[];
+
       return result;
     },
     async upload(ctx, sandboxId, path, content) {
       bounded(path, LIMITS.pathChars, "PATH");
+
       if (content.byteLength > LIMITS.exportChunkBytes) throw new Error("SANDBOX_UPLOAD_TOO_LARGE");
+
       await client.writeFileBytes(ctx, { sandboxId, path, content });
     },
     async download(ctx, sandboxId, path, { maxBytes, offset = 0, totalSizeLimit = maxBytes }) {
@@ -371,6 +412,7 @@ if not os.path.exists(d+'/status.exit') and not os.path.exists(d+'/cancelled'):
       integer(maxBytes, LIMITS.exportChunkBytes, "EXPORT_WINDOW");
       integer(totalSizeLimit, HARD_LIMITS.exportBytesNode, "EXPORT_SIZE");
       integer(offset, HARD_LIMITS.exportBytesNode, "EXPORT_OFFSET", 0);
+
       // process.run records stdout in executions (process.ts:99-105), so
       // base64 stdout would leak file bytes into component mutation args and
       // rows. Stage one <=512 KiB window, return only its path, then use the
@@ -381,13 +423,18 @@ if not os.path.exists(d+'/status.exit') and not os.path.exists(d+'/cancelled'):
         sandboxId,
         `import os,stat,tempfile\nf=open(${JSON.stringify(path)},'rb')\ns=os.fstat(f.fileno())\nassert stat.S_ISREG(s.st_mode),'regular files only'\nif s.st_size>${totalSizeLimit}: print('TOO_LARGE')\nelse:\n os.makedirs(${JSON.stringify(LIMITS.exportRoot)},mode=0o700,exist_ok=True)\n fd,p=tempfile.mkstemp(dir=${JSON.stringify(LIMITS.exportRoot)})\n f.seek(${offset})\n with os.fdopen(fd,'wb') as out: out.write(f.read(${maxBytes}))\n print(p)`,
       );
+
       if (result.trim() === "TOO_LARGE") throw new Error("SANDBOX_EXPORT_TOO_LARGE");
+
       const windowPath = bounded(result.trim(), LIMITS.pathChars, "EXPORT_WINDOW_PATH");
+
       try {
         const bytes = new Uint8Array(
           await client.readFileBytes(ctx, { sandboxId, path: windowPath }),
         );
+
         if (bytes.byteLength > maxBytes) throw new Error("SANDBOX_EXPORT_WINDOW_TOO_LARGE");
+
         return bytes;
       } finally {
         await client.deleteFile(ctx, { sandboxId, path: windowPath });

@@ -36,19 +36,25 @@ export const state = {
   budget: { checks: 0, runIds: [] as string[] },
 };
 const model = mockModel();
+
 model.doStream = async (args) => {
   const index = state.calls.length;
+
   state.calls.push(args);
+
   return scriptedModel([state.steps[index] ?? [{ type: "text", text: "Finished." }]]).doStream(
     args,
   );
 };
+
 const component = componentsGeneric().agevex as unknown as ComponentApi;
 const agent = componentsGeneric().agent as unknown as NativeApi;
+
 const hostApi = anyApi as unknown as ApiFromModules<{
   todoState: typeof import("../../../docs/site/registry/todo/todoState.js");
   goalsState: typeof import("../../../docs/site/registry/goals/goalsState.js");
 }>;
+
 export const todoRefs = hostApi.todoState satisfies TodoFunctions;
 export const goalRefs = hostApi.goalsState satisfies GoalFunctions;
 
@@ -56,9 +62,12 @@ export const goalRefs = hostApi.goalsState satisfies GoalFunctions;
 // Its model asks for consent once, then finishes.
 export const child = { calls: [] as LanguageModelV4CallOptions[] };
 const childModel = mockModel();
+
 childModel.doStream = async (args) => {
   const index = child.calls.length;
+
   child.calls.push(args);
+
   return scriptedModel([
     index === 0
       ? [
@@ -72,6 +81,7 @@ childModel.doStream = async (args) => {
       : [{ type: "text", text: "Child finished." }],
   ]).doStream(args);
 };
+
 const helper = new Agent(agent, {
   name: "Helper",
   subagents: [],
@@ -90,6 +100,7 @@ const main = new Agent(agent, {
     continue_budget: createContinueBudgetTool(),
   },
 });
+
 const runtime = registerAgent(component, {
   agents: [main],
   refs: {
@@ -106,10 +117,14 @@ const runtime = registerAgent(component, {
     // Delegation runs from a background slice with no end user on the connection.
     if (scope.operation === "delegate" || scope.operation === "deliver") {
       if (scope.subject !== "alice" && scope.subject !== "bob") throw new Error("FORBIDDEN");
+
       return { subject: scope.subject };
     }
+
     const identity = await ctx.auth.getUserIdentity();
+
     if (!identity) throw new Error("UNAUTHENTICATED");
+
     return { subject: identity.subject };
   },
   budget: {
@@ -119,6 +134,7 @@ const runtime = registerAgent(component, {
       state.budget.checks++;
       state.budget.runIds.push(runId);
       const limit = await ctx.runQuery(budgetLimitRef, { subject });
+
       return { allowed: limit === null || state.budget.checks <= limit };
     },
   },
@@ -130,6 +146,7 @@ const runtime = registerAgent(component, {
 const budgetLimitRef = makeFunctionReference<"query", { subject: string }, number | null>(
   "host:budgetLimit",
 ) as unknown as FunctionReference<"query", "internal", { subject: string }, number | null>;
+
 export const budgetLimit = internalQueryGeneric({
   args: { subject: v.string() },
   handler: async (ctx, { subject }) =>
@@ -147,6 +164,7 @@ export const setBudgetLimit = internalMutationGeneric({
       .query("budgets")
       .withIndex("by_subject", (q) => q.eq("subject", subject))
       .unique();
+
     if (row) await ctx.db.patch("budgets", row._id, { limit });
     else await ctx.db.insert("budgets", { subject, limit });
   },
@@ -163,17 +181,21 @@ export const approveContinue = mutationGeneric({
   args: { threadId: v.string(), approvalId: v.string() },
   handler: async (ctx, { threadId, approvalId }) => {
     const identity = await ctx.auth.getUserIdentity();
+
     if (!identity) throw new Error("UNAUTHENTICATED");
+
     const response = await ctx.runMutation(selfApi.host.respond, {
       threadId,
       approvalId,
       approved: true,
     });
+
     // A replayed response was first decided earlier, possibly through plain
     // core respond and possibly in another run: it never becomes consent now.
     if (!response.replayed) {
       // Bind the consent to the run active at approval time (the run that asked).
       const { runId } = await ctx.runQuery(selfApi.host.activity, { threadId });
+
       await ctx.runMutation(selfApi.continueBudgetState.record, {
         subject: identity.subject,
         threadId,
@@ -181,6 +203,7 @@ export const approveContinue = mutationGeneric({
         runId,
       });
     }
+
     return response;
   },
 });
@@ -198,7 +221,9 @@ export const resumeAfterBudget = mutationGeneric({
   },
   handler: async (ctx, { threadId, approvalId, instruction }) => {
     const identity = await ctx.auth.getUserIdentity();
+
     if (!identity) throw new Error("UNAUTHENTICATED");
+
     return resumeAfterBudgetStop({
       threadId,
       approvalId,

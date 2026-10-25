@@ -24,6 +24,7 @@ export function resolveBreakdowns(breakdowns: Breakdown[] = []): Breakdown[] {
     breakdowns.some((value) => !BREAKDOWNS.includes(value))
   )
     throw new Error("INVALID_BREAKDOWNS");
+
   return [...new Set(breakdowns)];
 }
 

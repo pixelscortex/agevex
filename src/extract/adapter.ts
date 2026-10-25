@@ -57,6 +57,7 @@ export function extractSlot(
         fileId: args.fileId,
         subject: args.subject,
       });
+
       // A fresh extraction indexes itself in the worker. An existing one
       // (another thread attached the same bytes, or a later message re-attached
       // the file) has no worker to do it, so index this thread's namespace now.
@@ -77,6 +78,7 @@ export function extractSlot(
           // own row; the extraction itself is unaffected.
         }
       }
+
       return job;
     },
     tools: (context: ToolContext) => {
@@ -85,10 +87,13 @@ export function extractSlot(
         threadId: context.threadId,
         subject: context.subject,
       });
+
       // `search_files` is only useful when something indexes the thread's
       // namespace; without autoIndex the model would always get empty results.
       if (autoIndex) return tools;
+
       const { search_files: _unused, ...rest } = tools;
+
       return rest;
     },
   };
@@ -128,13 +133,17 @@ type AttachmentRuntime = {
 export function authorizeAttached(runtime: () => AttachmentRuntime): ExtractOptions["authorize"] {
   return async (ctx, scope) => {
     if (scope.subject === undefined) throw new Error("FORBIDDEN");
+
     // The slot's only namespace is the thread itself; never another thread's.
     if (scope.namespace !== undefined && scope.namespace !== scope.threadId)
       throw new Error("FORBIDDEN");
+
     if (scope.fileId === undefined) {
       if (scope.operation !== "search" && scope.operation !== "index") throw new Error("FORBIDDEN");
+
       return;
     }
+
     if (
       !(await runtime().fileAttached(ctx, {
         threadId: scope.threadId,
