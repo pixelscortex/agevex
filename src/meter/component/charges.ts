@@ -463,16 +463,21 @@ export const lookupResult = mutation({
     // A real response already in flight may arrive after expiry. Do not start
     // new provider work then, but retain that evidence rather than losing it.
     if (args.nanos !== undefined) {
-      integer(args.nanos, LIMITS.maxChargeNanos, "NANOS");
+      // Same rule as update: a real amount above the per-charge cap is kept
+      // (and billed, source "lookup") as unknown/OVER_CAP, never discarded.
+      integer(args.nanos, LIMITS.maxBilledNanos, "NANOS");
+      const over = args.nanos > LIMITS.maxChargeNanos;
       if (args.credits !== undefined) integer(args.credits, LIMITS.maxQuantity, "CREDITS");
       await change(
         ctx,
         row,
         {
-          status: "settled",
+          status: over ? "unknown" : "settled",
           source: "lookup",
           nanos: args.nanos,
           ...(args.credits === undefined ? {} : { credits: args.credits }),
+          // THREAD_CAPACITY routes projections and must never change.
+          ...(over && row.reason !== "THREAD_CAPACITY" ? { reason: "OVER_CAP" as const } : {}),
         },
         args.jobs,
       );

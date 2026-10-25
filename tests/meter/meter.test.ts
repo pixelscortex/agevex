@@ -935,3 +935,36 @@ it("corrections and settlements above the $90 cap become unknown OVER_CAP with t
     unknown: 2,
   });
 });
+
+it("a lookup result above the $90 cap is kept as unknown OVER_CAP and billed", async () => {
+  const events: SinkEvent[] = [];
+  const { t, meter, component } = setup({
+    providers: {
+      async: {
+        profiles: { request: { unit: "call", usd: 0.3 } },
+        lookupFor: LIMITS.backoffMs * 20,
+        lookup: async () => ({ usd: 95 }),
+      },
+    },
+    sinks: [{ name: "ledger", deliver: async (batch) => void events.push(...batch) }],
+  });
+  await t.run(async (ctx) => {
+    const charge = await meter
+      .scope(ctx, attribution)
+      .estimate("async", { key: "big-lookup", profile: "request", quantity: 1 });
+    await charge.attach({ requestId: "big-id", key: "attach-big-id" });
+  });
+  await drain(t);
+  expect(await t.query(component.charges.get, { key: "big-lookup" })).toMatchObject({
+    status: "unknown",
+    source: "lookup",
+    reason: "OVER_CAP",
+    nanos: 95_000_000_000,
+  });
+  expect(events.map((event) => [event.externalId, event.nanos])).toEqual([
+    ["big-lookup", 95_000_000_000],
+  ]);
+  expect(await t.run((ctx) => meter.check(ctx, { subject: "owner", runId: "run" }))).toMatchObject({
+    allowed: false,
+  });
+});
