@@ -5,7 +5,7 @@ import { internalMutation, type MutationCtx } from "./_generated/server.js";
 import { internal } from "./_generated/api.js";
 import { pendingGeneration } from "./schema.js";
 import { approvalKey, saveResponses } from "./approvals.js";
-import { wake } from "./queue.js";
+import { wake } from "./queue/wake.js";
 
 /** Exactly one recorded placeholder per transaction, including native payload reads. */
 async function finalize(ctx: MutationCtx, pending: typeof pendingGeneration.type) {
