@@ -7,7 +7,7 @@
       "name": "todo",
       "type": "registry:lib",
       "title": "Todo tools",
-      "description": "Durable todo_read/todo_write for a trusted owner and thread. Host table agevexTodos; at most 100 unique items, 100-character ids, 4000-character text and 32 KiB UTF-8 per list. Core receipts deduplicate tool calls.",
+      "description": "Durable todo_read/todo_write for a trusted owner and thread. Host table agevexTodos; at most 100 unique items, 100-character ids, 4000-character text and 32 KiB UTF-8 per list. Core receipts deduplicate tool calls. Includes a bounded cleanup mutation.",
       "dependencies": [
         "ai@^7.0.153",
         "zod@^4.6.7",
@@ -36,7 +36,7 @@
       "name": "goals",
       "type": "registry:lib",
       "title": "Goal tools",
-      "description": "goal_set/goal_check for a trusted owner, thread and run. Host table agevexGoals; one explicit goal up to 4000 characters per run. Core receipts deduplicate tool calls.",
+      "description": "goal_set/goal_check for a trusted owner, thread and run. Host table agevexGoals: one row per owner and thread holding one explicit goal up to 4000 characters, owned by the run that set it. Core receipts deduplicate tool calls. Includes a bounded cleanup mutation.",
       "dependencies": [
         "ai@^7.0.153",
         "zod@^4.6.7",
@@ -84,13 +84,13 @@
       "name": "continue-budget",
       "type": "registry:lib",
       "title": "Continue budget",
-      "description": "continue_budget requests native Agent approval with a nonblank reason up to 2000 characters; resumeAfterBudgetStop continues a run core stopped with BUDGET_EXCEEDED (consent, raise host budget, cancel, fresh send). No item tables. Consent alone changes no budget.",
+      "description": "continue_budget requests native Agent approval with a nonblank reason up to 2000 characters; resumeAfterBudgetStop, used inside one host mutation, verifies the approval, raises your budget, cancels the run core stopped with BUDGET_EXCEEDED and sends a fresh request atomically. No item tables. Consent alone changes no budget.",
       "dependencies": [
         "ai@^7.0.153",
         "zod@^4.6.7",
         "convex@^1.47.0"
       ],
-      "docs": "Use a TypeScript host with tsx: true in components.json before installing. Register createContinueBudgetTool() on an agevex Agent with host authorize/authorizeExecution, and call resumeAfterBudgetStop from a host action with your own budget policy update. Requires the host's existing agevex package. Approvals use core respond, never native approveToolCall directly. See /docs/tools/continue-budget.",
+      "docs": "Use a TypeScript host with tsx: true in components.json before installing. Register createContinueBudgetTool() on an agevex Agent with host authorize/authorizeExecution, and call resumeAfterBudgetStop inside ONE host mutation with your own budget policy write. Requires the host's existing agevex package. Approvals use core respond, never native approveToolCall directly. See /docs/tools/continue-budget.",
       "files": [
         {
           "path": "registry/continue-budget/continueBudget.ts",

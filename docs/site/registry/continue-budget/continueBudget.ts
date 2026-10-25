@@ -38,17 +38,26 @@ export type SendReceipt =
   | { status: "accepted" | "duplicate"; threadId: string }
   | { status: "rejected"; code: string };
 
+/** Model-facing consent statement placed at the start of the fresh request. */
+export const CONSENT_TEXT = "The user approved continuing beyond the budget.";
+
 export type ResumeAfterBudgetStop<Receipt extends SendReceipt> = {
-  /** Explicit spending consent from the user (e.g. an approved `continue_budget`). */
-  consent: boolean;
-  /** Core `activity` for the stopped thread. */
-  activity: () => Promise<{ errorCode: string | null }>;
-  /** Host budget policy update. Must be idempotent (set an absolute limit). */
+  threadId: string;
+  /** The `continue_budget` approval the user answered on this thread. */
+  approvalId: string;
+  /** Optional extra instruction appended to the consent statement. */
+  instruction?: string;
+  /** True only when `approvalId` is an approval answered "approved" on `threadId`.
+   * Must fail closed: a foreign, unknown or denied id is `false` (or throws). */
+  isApproved: (args: { threadId: string; approvalId: string }) => Promise<boolean>;
+  /** Core `activity` plus the stopped run's id (the id your budget slot received). */
+  activity: () => Promise<{ errorCode: string | null; runId: string | null }>;
+  /** Host budget policy write. Runs in the same transaction as cancel and send. */
   raiseBudget: () => Promise<unknown>;
   /** Core `cancel` for the stopped thread. */
   cancel: () => Promise<unknown>;
-  /** Core `send` with a stable `requestKey`, so a retried flow cannot duplicate the request. */
-  send: () => Promise<Receipt>;
+  /** Core `send` with the supplied `text` and `requestKey`. */
+  send: (args: { text: string; requestKey: string }) => Promise<Receipt>;
 };
 
 /**
@@ -56,33 +65,53 @@ export type ResumeAfterBudgetStop<Receipt extends SendReceipt> = {
  *
  * Core never resumes a stopped run, because the step that tripped the budget may
  * have been paid for with an unknown outcome. The only supported path is:
- *   1. explicit spending consent,
+ *   1. explicit spending consent (an approved `continue_budget` approval),
  *   2. the host updates its budget policy,
  *   3. cancel the stopped run (clears its recovery state and discards its notes),
  *   4. send a fresh request (a new run with its own run id).
  *
- * The order matters: raising the budget first means a failure leaves the run
- * stopped and nothing cancelled; cancelling before the raise could leave a
- * cancelled thread whose next request is denied again. Retrying: if `raiseBudget`
- * or `cancel` fails, call this again (the thread still reports BUDGET_EXCEEDED;
- * `raiseBudget` must be idempotent). Once `cancel` succeeded the stop is cleared,
- * so a failed `send` is retried by calling core `send` directly with the same
- * `requestKey` (a repeat returns `duplicate`). Nothing runs without consent, and
- * a thread that is not stopped for budget is left untouched (no cancel of
- * healthy work).
+ * ATOMICITY. Call this inside ONE host mutation, with every callback made through
+ * `ctx.runQuery`/`ctx.runMutation` (nested Convex calls share the caller's
+ * transaction). The stop check, budget write, cancel and send then commit or roll
+ * back together. Two overlapping resumes cannot both pass the stop check: the
+ * loser either conflicts (OCC) and retries into `not-stopped`, or runs after the
+ * winner and sees `not-stopped`. Without this, a second resume that checked the
+ * stop before the first committed would cancel the fresh run the first one sent.
+ * A rejected `send` throws, which rolls back the budget write and the cancel too.
+ *
+ * REQUEST KEY. `after-budget:<threadId>:<stoppedRunId>` is unique per stop, so
+ * the same thread can be stopped and resumed any number of times. A `duplicate`
+ * receipt means this exact stop was already resumed: `already-resumed`.
+ *
+ * MODEL VIEW. Cancel settles the approval call the model made as an
+ * `execution-denied` tool result, because core never executes a call whose slice
+ * was stopped. The fresh request therefore states the consent explicitly
+ * (`CONSENT_TEXT`), so the model does not read that denial as a refusal.
  */
 export async function resumeAfterBudgetStop<Receipt extends SendReceipt>(
   flow: ResumeAfterBudgetStop<Receipt>,
 ): Promise<
   | { status: "no-consent" }
   | { status: "not-stopped" }
-  | { status: "resumed"; receipt: Exclude<Receipt, { status: "rejected" }> }
+  | { status: "already-resumed" }
+  | { status: "resumed"; receipt: Exclude<Receipt, { status: "rejected" | "duplicate" }> }
 > {
-  if (flow.consent !== true) return { status: "no-consent" };
-  if ((await flow.activity()).errorCode !== "BUDGET_EXCEEDED") return { status: "not-stopped" };
+  const { errorCode, runId } = await flow.activity();
+  if (errorCode !== "BUDGET_EXCEEDED" || !runId) return { status: "not-stopped" };
+  let approved = false;
+  try {
+    approved = await flow.isApproved({ threadId: flow.threadId, approvalId: flow.approvalId });
+  } catch {
+    // Fail closed: an unknown, foreign or conflicting approval is not consent.
+  }
+  if (!approved) return { status: "no-consent" };
   await flow.raiseBudget();
   await flow.cancel();
-  const receipt = await flow.send();
+  const receipt = await flow.send({
+    text: flow.instruction ? `${CONSENT_TEXT} ${flow.instruction}` : CONSENT_TEXT,
+    requestKey: `after-budget:${flow.threadId}:${runId}`,
+  });
   if (receipt.status === "rejected") throw new Error(receipt.code);
-  return { status: "resumed", receipt: receipt as Exclude<Receipt, { status: "rejected" }> };
+  if (receipt.status === "duplicate") return { status: "already-resumed" };
+  return { status: "resumed", receipt: receipt as Exclude<Receipt, { status: "rejected" | "duplicate" }> };
 }

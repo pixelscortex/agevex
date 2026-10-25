@@ -12,9 +12,9 @@ Set `"tsx": true` in the host's `components.json` before installing.
 | Item | Contract and state |
 | --- | --- |
 | [Todo](/docs/tools/todo) | `todo_read` / `todo_write`: replace or read up to 100 items and 32 KiB per list. Host table `agevexTodos`, scoped by owner and thread. |
-| [Goals](/docs/tools/goals) | `goal_set` / `goal_check`: set or read one goal, up to 4000 characters. Host table `agevexGoals`, scoped by owner, thread and run. |
+| [Goals](/docs/tools/goals) | `goal_set` / `goal_check`: set or read one goal, up to 4000 characters. Host table `agevexGoals`: one row per owner and thread, owned by the run that set it. |
 | [Ask the user](/docs/tools/ask-user) | `ask_user`: a deferred question up to 2000 characters, answered with free text through core `answer`. No item table. |
-| [Continue budget](/docs/tools/continue-budget) | `continue_budget`: native approval with a reason up to 2000 characters, plus `resumeAfterBudgetStop` for runs stopped with `BUDGET_EXCEEDED`. No item table; consent does not change budget policy. |
+| [Continue budget](/docs/tools/continue-budget) | `continue_budget`: native approval with a reason up to 2000 characters, plus `resumeAfterBudgetStop`, an atomic one-mutation resume for runs stopped with `BUDGET_EXCEEDED`. No item table; consent does not change budget policy. |
 
 Start the docs site from `docs/site` with `bun run dev`, or replace the origin:
 

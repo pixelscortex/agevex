@@ -2,7 +2,9 @@ import { defineSchema, defineTable, type DataModelFromSchemaDefinition } from "c
 import { v } from "convex/values";
 
 /**
- * Merge into the host schema; each field is used by goal_set/goal_check.
+ * Merge into the host schema; each field is used by goal_set/goal_check. One row per
+ * (subject, thread): `runId` names the run that last set the goal and is overwritten
+ * by the next goal_set, so the table grows with threads, not with runs.
  * Native thread metadata has no custom field for a run goal. See
  * @convex-dev/agent/src/client/threads.ts:18-30,55-63 (version 0.7.7).
  */
@@ -12,7 +14,7 @@ export const goalTables = {
     threadId: v.string(),
     runId: v.string(),
     goal: v.string(),
-  }).index("by_owner_thread_run", ["subject", "threadId", "runId"]),
+  }).index("by_owner_thread", ["subject", "threadId"]),
 };
 const schema = defineSchema(goalTables);
 export type GoalDataModel = DataModelFromSchemaDefinition<typeof schema>;

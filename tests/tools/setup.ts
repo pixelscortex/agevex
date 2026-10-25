@@ -21,7 +21,7 @@ export const managed = componentsGeneric().agevex as unknown as ComponentApi;
 export function setup() {
   state.calls.length = 0;
   state.steps.length = 0;
-  state.budget = { allowed: Infinity, checks: 0, runIds: [] };
+  state.budget = { checks: 0, runIds: [] };
   const t = convexTest({
     schema,
     transactionLimits: true,

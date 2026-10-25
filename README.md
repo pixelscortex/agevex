@@ -400,14 +400,14 @@ bunx shadcn add http://localhost:3000/r/todo.json
 ```
 
 Items: [todo](docs/site/content/docs/tools/todo.mdx) (100 items, 32 KiB/list),
-[goals](docs/site/content/docs/tools/goals.mdx) (one 4000-character goal/run),
+[goals](docs/site/content/docs/tools/goals.mdx) (one 4000-character goal/thread),
 [ask-user](docs/site/content/docs/tools/ask-user.mdx) (a deferred tool: the owner
 answers with core `answer`, 2000-character question) and
 [continue-budget](docs/site/content/docs/tools/continue-budget.mdx) (native
-approval plus `resumeAfterBudgetStop`: consent, raise budget, cancel, fresh
-send). Todo/goals ship host table snippets to merge into your schema; the other
+approval plus `resumeAfterBudgetStop`: verified consent, raise budget, cancel, fresh
+send, atomically in one host mutation). Todo/goals ship host table snippets to merge into your schema; the other
 two add no tables. Core `ToolContext` supplies ownership and the once-tool
-ledger. Keep state functions internal. Budget consent does not change a budget.
+ledger. Rows outlive threads: use each state module's bounded `cleanup`. Keep state functions internal. Budget consent does not change a budget.
 
 `bun run registry:build` rebuilds `/r/*.json`; `bun run test:tools` builds the
 package and runs the offline suite, including a CLI install smoke test that

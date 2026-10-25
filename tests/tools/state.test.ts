@@ -232,3 +232,85 @@ it("maximum todo and goal payloads round-trip through managed tools and core rec
     .find((part) => part.type === "tool-result" && part.toolCallId === "max-read");
   expect(readResult).toMatchObject({ output: { type: "json", value: { todos } } });
 });
+
+it("goal_set keeps one row per owner and thread: a later run overwrites the earlier run's goal", async () => {
+  const t = setup();
+  state.steps.push(call("goal_set", "first-run", { goal: "first" }));
+  const receipt = await open(t);
+  await drain(t);
+  const [firstRow] = await t.run((ctx) => ctx.db.query("agevexGoals").collect());
+  state.steps.length = state.calls.length;
+  state.steps.push(
+    call("goal_check", "other-run-check", {}),
+    call("goal_set", "next-run", { goal: "next" }),
+  );
+  await t.withIdentity({ subject: "alice" }).mutation(api.host.send, {
+    threadId: receipt.threadId,
+    text: "Another run",
+    requestKey: "second",
+  });
+  await drain(t);
+  // The new run saw no goal before setting its own, and the table did not grow.
+  expect(JSON.stringify(state.calls[state.calls.length - 2].prompt)).toContain('"goal":null');
+  const rows = await t.run((ctx) => ctx.db.query("agevexGoals").collect());
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({ goal: "next" });
+  expect(rows[0].runId).not.toBe(firstRow.runId);
+  const scope = { subject: "alice", threadId: receipt.threadId };
+  expect(await t.query(api.goalsState.check, { ...scope, runId: firstRow.runId })).toEqual({
+    goal: null,
+  });
+});
+
+it.each(["todoState", "goalsState"] as const)(
+  "%s cleanup deletes one bounded batch for the target owner or thread only and reports when more remain",
+  async (module) => {
+    const t = setup();
+    const batch = module === "todoState" ? TODO_LIMITS.cleanupBatch : GOAL_LIMITS.cleanupBatch;
+    const table = module === "todoState" ? "agevexTodos" : "agevexGoals";
+    await t.run(async (ctx) => {
+      for (let i = 0; i < batch + 1; i++)
+        await ctx.db.insert(
+          table,
+          module === "todoState"
+            ? { subject: "alice", threadId: `t${i}`, todos: [] }
+            : { subject: "alice", threadId: `t${i}`, runId: "r", goal: "g" },
+        );
+      await ctx.db.insert(
+        table,
+        module === "todoState"
+          ? { subject: "bob", threadId: "t0", todos: [] }
+          : { subject: "bob", threadId: "t0", runId: "r", goal: "g" },
+      );
+    });
+    const count = () => t.run((ctx) => ctx.db.query(table).collect()).then((rows) => rows.length);
+    expect(await t.mutation(api[module].cleanup, { subject: "alice", threadId: "t0" })).toEqual({
+      deleted: 1,
+      done: true,
+    });
+    expect(await t.mutation(api[module].cleanup, { subject: "alice" })).toEqual({
+      deleted: batch,
+      done: true,
+    });
+    // 129 alice rows - 1 targeted = 128 deleted in one batch; bob is untouched.
+    expect(await count()).toBe(1);
+    await t.run(async (ctx) => {
+      for (let i = 0; i < batch + 1; i++)
+        await ctx.db.insert(
+          table,
+          module === "todoState"
+            ? { subject: "alice", threadId: `again${i}`, todos: [] }
+            : { subject: "alice", threadId: `again${i}`, runId: "r", goal: "g" },
+        );
+    });
+    expect(await t.mutation(api[module].cleanup, { subject: "alice" })).toEqual({
+      deleted: batch,
+      done: false,
+    });
+    expect(await t.mutation(api[module].cleanup, { subject: "alice" })).toEqual({
+      deleted: 1,
+      done: true,
+    });
+    expect(await count()).toBe(1);
+  },
+);

@@ -5,7 +5,7 @@ import {
   type QueryBuilder,
 } from "convex/server";
 import { v } from "convex/values";
-import { goalText } from "./goals.js";
+import { GOAL_LIMITS, goalText } from "./goals.js";
 import type { GoalDataModel } from "./goalsSchema.js";
 
 const query = internalQueryGeneric as QueryBuilder<GoalDataModel, "internal">;
@@ -24,11 +24,12 @@ export const check = query({
     // No history scan, model call, copied request content or native transcript.
     const row = await ctx.db
       .query("agevexGoals")
-      .withIndex("by_owner_thread_run", (q) =>
-        q.eq("subject", args.subject).eq("threadId", args.threadId).eq("runId", args.runId),
+      .withIndex("by_owner_thread", (q) =>
+        q.eq("subject", args.subject).eq("threadId", args.threadId),
       )
       .unique();
-    return { goal: row ? goalText.parse(row.goal) : null };
+    // The row belongs to the run that set it; any other run has no goal yet.
+    return { goal: row && row.runId === args.runId ? goalText.parse(row.goal) : null };
   },
 });
 
@@ -44,12 +45,40 @@ export const set = mutation({
     // transaction's index read serializes concurrent first writes for this run.
     const row = await ctx.db
       .query("agevexGoals")
-      .withIndex("by_owner_thread_run", (q) =>
-        q.eq("subject", owner.subject).eq("threadId", owner.threadId).eq("runId", owner.runId),
+      .withIndex("by_owner_thread", (q) =>
+        q.eq("subject", owner.subject).eq("threadId", owner.threadId),
       )
       .unique();
-    if (row) await ctx.db.patch("agevexGoals", row._id, { goal });
+    // One row per thread: a new run overwrites the previous run's goal.
+    if (row) await ctx.db.patch("agevexGoals", row._id, { goal, runId: owner.runId });
     else await ctx.db.insert("agevexGoals", { ...owner, goal });
     return { goal };
+  },
+});
+
+/**
+ * Bounded host cleanup. Rows outlive their threads (the host owns retention), so
+ * call this from your own thread-deletion or retention job. One call deletes at
+ * most GOAL_LIMITS.cleanupBatch rows for the subject (optionally one thread) and
+ * reports `done: false` when more remain, so the caller decides whether to call
+ * again; nothing reschedules itself. Reads/deletes <= 128 rows of < 18 KiB =
+ * < 2.3 MiB, 128 writes, one query: far below the 16 MiB / 16,000-write limits.
+ */
+export const cleanup = mutation({
+  args: { subject: v.string(), threadId: v.optional(v.string()) },
+  returns: v.object({ deleted: v.number(), done: v.boolean() }),
+  handler: async (ctx, args) => {
+    const threadId = args.threadId;
+    const rows = await ctx.db
+      .query("agevexGoals")
+      .withIndex("by_owner_thread", (q) =>
+        threadId === undefined
+          ? q.eq("subject", args.subject)
+          : q.eq("subject", args.subject).eq("threadId", threadId),
+      )
+      .take(GOAL_LIMITS.cleanupBatch + 1);
+    const batch = rows.slice(0, GOAL_LIMITS.cleanupBatch);
+    for (const row of batch) await ctx.db.delete("agevexGoals", row._id);
+    return { deleted: batch.length, done: rows.length <= GOAL_LIMITS.cleanupBatch };
   },
 });

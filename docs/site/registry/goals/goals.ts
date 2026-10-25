@@ -2,7 +2,7 @@ import { defineOnceTool } from "agevex";
 import type { FunctionReference } from "convex/server";
 import { z } from "zod";
 
-export const GOAL_LIMITS = { minChars: 1, goalChars: 4000 } as const;
+export const GOAL_LIMITS = { minChars: 1, goalChars: 4000, cleanupBatch: 128 } as const;
 export const goalText = z.string().trim().min(GOAL_LIMITS.minChars).max(GOAL_LIMITS.goalChars);
 // Core validates every ToolContext fact (nonempty, at most LIMITS.factBytes
 // UTF-8 bytes) before a tool runs, so the scope is passed through unchanged.
@@ -12,7 +12,7 @@ export type GoalFunctions = {
   set: FunctionReference<"mutation", "internal", Scope & { goal: string }, { goal: string }>;
 };
 
-/** One explicit goal per owner, thread and user run; checking reads it back. */
+/** One explicit goal per owner and thread, owned by the run that set it. */
 export function createGoalTools(refs: GoalFunctions) {
   const tools = {
     goal_set: defineOnceTool({
@@ -43,7 +43,7 @@ export function createGoalTools(refs: GoalFunctions) {
     }),
   };
   tools.goal_set.description =
-    "Set the explicit goal for this owner's current thread and user run. Report progress against this goal.";
+    "Set the explicit goal for this owner's thread and current user run, replacing any earlier run's goal. Report progress against this goal.";
   tools.goal_check.description =
     "Read this run's goal, or null when unset. Assess your work against it; this tool does not independently verify success.";
   return tools;

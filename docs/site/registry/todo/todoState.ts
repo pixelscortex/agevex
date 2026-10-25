@@ -5,7 +5,7 @@ import {
   type QueryBuilder,
 } from "convex/server";
 import { v } from "convex/values";
-import { todoList } from "./todo.js";
+import { TODO_LIMITS, todoList } from "./todo.js";
 import type { TodoDataModel } from "./todoSchema.js";
 
 const query = internalQueryGeneric as QueryBuilder<TodoDataModel, "internal">;
@@ -57,5 +57,32 @@ export const write = mutation({
     if (row) await ctx.db.patch("agevexTodos", row._id, { todos });
     else await ctx.db.insert("agevexTodos", { ...owner, todos });
     return { todos };
+  },
+});
+
+/**
+ * Bounded host cleanup. Rows outlive their threads (the host owns retention), so
+ * call this from your own thread-deletion or retention job. One call deletes at
+ * most TODO_LIMITS.cleanupBatch rows for the subject (optionally one thread) and
+ * reports `done: false` when more remain, so the caller decides whether to call
+ * again; nothing reschedules itself. Reads/deletes <= 128 rows of < 34 KiB =
+ * < 4.3 MiB, 128 writes, one query: far below the 16 MiB / 16,000-write limits.
+ */
+export const cleanup = mutation({
+  args: { subject: v.string(), threadId: v.optional(v.string()) },
+  returns: v.object({ deleted: v.number(), done: v.boolean() }),
+  handler: async (ctx, args) => {
+    const threadId = args.threadId;
+    const rows = await ctx.db
+      .query("agevexTodos")
+      .withIndex("by_owner_thread", (q) =>
+        threadId === undefined
+          ? q.eq("subject", args.subject)
+          : q.eq("subject", args.subject).eq("threadId", threadId),
+      )
+      .take(TODO_LIMITS.cleanupBatch + 1);
+    const batch = rows.slice(0, TODO_LIMITS.cleanupBatch);
+    for (const row of batch) await ctx.db.delete("agevexTodos", row._id);
+    return { deleted: batch.length, done: rows.length <= TODO_LIMITS.cleanupBatch };
   },
 });

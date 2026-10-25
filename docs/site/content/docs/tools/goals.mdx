@@ -39,11 +39,18 @@ not independently verify success.
 
 `GOAL_LIMITS` fix goal text at 4000 characters. Owner, thread and run come from
 `ToolContext`, which core already bounds (`LIMITS.factBytes`, 128 UTF-8 bytes).
-The host table `agevexGoals` stores `subject`, `threadId` and `runId` as the
-composite ownership/run index, plus `goal` for both tools to read. A new user
-run has its own goal. The host owns retention and deletion. Each operation
-reads at most two indexed rows; a valid row is below 29 KiB and a set writes
-one row. There are no SDK tables or transcript reads.
+The host table `agevexGoals` holds **one row per owner and thread**: `subject`,
+`threadId`, `goal`, and the `runId` that last set it. A later run's `goal_set`
+overwrites the row, and `goal_check` returns `null` for any run other than the
+one that set the goal, so the table grows with threads, not runs. Each operation
+reads at most two indexed rows (a valid row is below 18 KiB) and a set writes
+one. There are no SDK tables or transcript reads.
+
+Rows outlive their threads; the host owns retention. Call the shipped internal
+`cleanup({ subject, threadId? })` mutation from your own deletion or retention
+job. It deletes at most `GOAL_LIMITS.cleanupBatch` (128) rows per call and
+returns `{ deleted, done }`; call again while `done` is false. Nothing
+reschedules itself.
 
 Both tools use core `defineOnceTool`, which supplies trusted `ToolContext`
 facts and the cancellation fence. Ownership and run are never model input;

@@ -8,6 +8,7 @@ export const TODO_LIMITS = {
   idChars: 100,
   textChars: 4000,
   listBytes: 32 * 1024,
+  cleanupBatch: 128,
 } as const;
 
 export const todoList = z

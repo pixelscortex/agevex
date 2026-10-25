@@ -36,28 +36,59 @@ limit**: the tool changes no meter, budget or core counter.
 When your `budget` slot denies a slice, core ends the turn with
 `BUDGET_EXCEEDED` in `activity` and leaves the run in `recovery_required`. Core
 never resumes it, because the step that tripped the budget may be an uncertain
-paid step. `resumeAfterBudgetStop` runs the supported sequence from a host
-action:
+paid step. `resumeAfterBudgetStop` runs the supported sequence, and you call it
+inside **one host mutation**:
 
 ```ts
+import { mutationGeneric } from "convex/server";
+import { v } from "convex/values";
 import { resumeAfterBudgetStop } from "./agevexTools/continueBudget.js";
 
-const result = await resumeAfterBudgetStop({
-  consent: approved, // the user's explicit spending consent
-  activity: () => ctx.runQuery(api.agents.activity, { threadId }),
-  raiseBudget: () => ctx.runMutation(internal.budgets.raise, { subject }), // idempotent
-  cancel: () => ctx.runMutation(api.agents.cancel, { threadId }),
-  send: () =>
-    ctx.runMutation(api.agents.send, { threadId, text, requestKey: "after-budget" }),
+export const resumeAfterBudget = mutationGeneric({
+  args: { threadId: v.string(), approvalId: v.string() },
+  handler: async (ctx, { threadId, approvalId }) =>
+    resumeAfterBudgetStop({
+      threadId,
+      approvalId,
+      // true only for an approval the owner answered "approved" on this thread.
+      isApproved: ({ threadId, approvalId }) => myApprovalCheck(ctx, threadId, approvalId),
+      // core `activity` plus the stopped run's id (the id your budget slot saw).
+      // `activity` does not return the run id yet, so read it from the component.
+      activity: async () => {
+        const a = await ctx.runQuery(api.agents.activity, { threadId });
+        const row = await ctx.runQuery(components.agevex.queue.execution, {
+          assignmentId: a.assignmentId,
+        });
+        return { errorCode: a.errorCode, runId: row?.runId ?? null };
+      },
+      raiseBudget: () => ctx.runMutation(internal.budgets.raise, { threadId }), // idempotent
+      cancel: () => ctx.runMutation(api.agents.cancel, { threadId }),
+      send: (args) => ctx.runMutation(api.agents.send, { threadId, ...args }),
+    }),
 });
-// "no-consent" | "not-stopped" | { status: "resumed", receipt }
+// "no-consent" | "not-stopped" | "already-resumed" | { status: "resumed", receipt }
 ```
 
-Order: consent, raise your budget policy, cancel the stopped run (clears its
-recovery state and discards its pending notes), then send a fresh request as a
-new run. Without consent, or if the thread is not stopped for budget, nothing is
-changed or cancelled. A rejected `send` throws its receipt code. If `raiseBudget`
-or `cancel` fails, call again; once `cancel` succeeded, retry core `send` with the
-same `requestKey` (a repeat returns `duplicate`).
+Order: check the stop, verify consent, raise your budget policy, cancel the
+stopped run (clears its recovery state and discards its pending notes), then
+send a fresh request as a new run.
+
+- **Atomic.** Nested `ctx.runQuery`/`ctx.runMutation` calls share the mutation's
+  transaction, so the stop check, budget write, cancel and send commit together.
+  Two overlapping resumes cannot both pass: the loser sees `not-stopped`. Run as
+  separate transactions, the loser would cancel the fresh run the winner just sent.
+  A rejected `send` throws, which rolls back the budget write and the cancel.
+- **One key per stop.** The request key is `after-budget:<threadId>:<stoppedRunId>`,
+  so the same thread can be stopped and resumed repeatedly. A `duplicate` receipt
+  maps to `already-resumed`, never `resumed`.
+- **Verified consent.** `isApproved` must fail closed for a denied, unknown or
+  foreign `approvalId`; the helper then returns `no-consent` and changes nothing.
+  Replaying core `respond({ threadId, approvalId, approved: true })` is idempotent
+  and returns the saved response message, which you can read by its exact id.
+- **What the model sees.** Cancel settles the model's original `continue_budget`
+  call as an `execution-denied` tool result, because core never executes a call
+  whose slice was stopped. That denial is not a refusal, so the fresh request
+  starts with "The user approved continuing beyond the budget." (`CONSENT_TEXT`).
+  The stopped run's budget note is discarded by the cancel.
 
 No item tables or schema changes. Budget policy and storage stay host-owned.
