@@ -1,0 +1,45 @@
+src/modules/telemetry/README.md
+  s_85f066bf84a49a::t_ed9066b5965f90 3-5,7-36
+src/modules/telemetry/client/agent-events.ts
+  s_85f066bf84a49a::t_a3220d81138aca 1-141
+src/modules/telemetry/client/attribution.ts
+  s_85f066bf84a49a::t_f382850a009006 1-95
+src/modules/telemetry/client/exporters.ts
+  s_85f066bf84a49a::t_f16ce2bb719a90 1-5,73,93,121
+src/modules/telemetry/client/flush.ts
+  s_85f066bf84a49a::t_e2bc42712eaebe 1-102
+src/modules/telemetry/client/index.ts
+  s_85f066bf84a49a::t_534a8fc8c961d3 1-5,7-9,15
+src/modules/telemetry/client/integration.ts
+  s_85f066bf84a49a::t_ffa36c2b79f4c5 1-42
+src/modules/telemetry/client/limits.ts
+  s_85f066bf84a49a::t_67430ba5703ca1 1-5,31,56
+src/modules/telemetry/client/model-events.ts
+  s_85f066bf84a49a::t_2505e8da2c5a0f 1-84
+src/modules/telemetry/client/otlp.ts
+  s_85f066bf84a49a::t_cce855b97211c0 1-5,35,94,119
+src/modules/telemetry/client/spans.ts
+  s_85f066bf84a49a::t_c8b2d291604b6b 1-148
+src/modules/telemetry/client/tool-events.ts
+  s_85f066bf84a49a::t_c7e5a73e4f6a3c 1-68
+src/modules/telemetry/client/turn.ts
+  s_85f066bf84a49a::t_1df6ab0d611d0f 1-45
+src/modules/telemetry/client/types.ts
+  s_85f066bf84a49a::t_a17dbb841dc230 1-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "98570838949558b12908f36b771325b5c70c21e8",
+  "prompts": {},
+  "sessions": {
+    "s_85f066bf84a49a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17570-9252-7242-8993-f524c34cf25d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
