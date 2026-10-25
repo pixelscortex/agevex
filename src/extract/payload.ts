@@ -45,7 +45,13 @@ export function readDocument(value: unknown): ExtractedDoc {
 /** Serialize only on writes; a read must not allocate another full 32 MiB JSON blob. */
 export function document(value: unknown, maxBytes: number): { doc: ExtractedDoc; blob: Blob } {
   const doc = parseDocument(value);
-  const blob = new Blob([JSON.stringify(doc)], { type: "application/json" });
+  const json = JSON.stringify(doc);
+  // UTF-8 never takes fewer bytes than the string has UTF-16 units, so a string
+  // already over the ceiling is rejected BEFORE a Blob copies it. Control
+  // characters escape to six characters each (\u0001), so a text near the byte
+  // limit can serialize to several times that; the Blob would be one more copy.
+  if (json.length > maxBytes) throw new ExtractError("TOO_LARGE");
+  const blob = new Blob([json], { type: "application/json" });
   if (blob.size > maxBytes) throw new ExtractError("TOO_LARGE");
   return { doc, blob };
 }

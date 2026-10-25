@@ -319,8 +319,9 @@ function extractRuntime(component: ComponentApi, options: ExtractOptions, nodeRu
     let committed = false;
     let fileId: string | undefined;
     let backendId = "unavailable";
-    // A host refusal here (file detached, policy unavailable, transient host
-    // error) is not an unknown paid outcome: it is a retryable object failure.
+    // A host refusal BEFORE the provider is called (file detached, policy
+    // unavailable, transient host error) is not an unknown paid outcome: it is a
+    // retryable object failure.
     // Mapping it keeps the row `failed` so an explicit admission can try again,
     // instead of stranding it in `unknown`, which is never rerun.
     const allowed = async (id: string) => {
@@ -357,7 +358,12 @@ function extractRuntime(component: ComponentApi, options: ExtractOptions, nodeRu
         payloadBytes: payloadCeiling,
       });
       usage = cleanUsage(result.usage);
-      await allowed(fileId);
+      // No authorization re-check here. The check above ran BEFORE any paid
+      // work and maps a refusal to a retryable failure. Once the provider has
+      // succeeded the result is published even if the message or file was
+      // detached meanwhile: discarding it would pay again on the next attach,
+      // and publishing leaks nothing because every read (`raw`) re-authorizes
+      // against the then-current attachment.
       if (!result.ok) {
         // Validate the closed vocabulary before it crosses the component wire;
         // an untrusted backend's arbitrary message never becomes durable state.
@@ -423,6 +429,7 @@ function extractRuntime(component: ComponentApi, options: ExtractOptions, nodeRu
           ...subjectOf(args),
           namespace: args.threadId,
           key: AUTO_INDEX_KEY,
+          automatic: true,
         });
       } catch {
         // Intentionally ignored: see above.
@@ -550,24 +557,54 @@ function extractRuntime(component: ComponentApi, options: ExtractOptions, nodeRu
      * ADMIN operation, not an agent or per-thread one. Agent dedupes uploads by
      * hash, so every thread and uploader that attached the same bytes shares
      * these extractions. Purge tombstones all extractions of `fileId` (the
-     * no-repeat receipt and reported usage stay) and deletes their payload
-     * blobs. It performs no `authorize` call: expose it only behind your own
-     * admin check. RAG entries are not deleted; they are hidden because search
-     * requires a ready extraction. Call `release` per namespace first to remove
-     * them.
+     * no-repeat receipt and reported usage stay), deletes their payload blobs,
+     * and removes the RAG content of every namespace that indexed them: each
+     * index record is fenced, its native entry deleted by exact id, and the
+     * record dropped, so no orphaned chunks or vectors remain. It performs no
+     * `authorize` call: expose it only behind your own admin check.
+     *
+     * Work per call is bounded (at most LIMITS.purgeBatch index records) and
+     * nothing reschedules itself: loop until `more` is false.
+     * `do { r = await extract.purge(ctx, { fileId }); } while (r.more);`
      */
-    async purge(ctx: ActionCtx, args: { fileId: string }) {
+    async purge(ctx: ActionCtx, args: { fileId: string }): Promise<{ more: boolean }> {
       bounded(args.fileId);
+      let budget: number = LIMITS.purgeBatch;
+      let more = false;
       let after: number | null = 0;
-      do {
-        const page: { storageIds: string[]; next: number | null } = await ctx.runMutation(
-          component.artifacts.purge,
-          { fileId: args.fileId, after },
-        );
+      walk: do {
+        const page: { storageIds: string[]; artifactIds: string[]; next: number | null } =
+          await ctx.runMutation(component.artifacts.purge, { fileId: args.fileId, after });
         for (const id of page.storageIds) await ctx.storage.delete(storageId(id));
+        if (rag) {
+          for (const artifactId of page.artifactIds) {
+            for (;;) {
+              if (budget === 0) {
+                more = true;
+                break walk;
+              }
+              const batch: {
+                entries: { indexId: string; entryId: string | null }[];
+                more: boolean;
+              } = await ctx.runMutation(component.indexing.purgeBatch, {
+                artifactId,
+                limit: budget,
+              });
+              for (const released of batch.entries) {
+                if (released.entryId) {
+                  const entry = { entryId: released.entryId as EntryId };
+                  if (await rag.getEntry(ctx, entry)) await rag.delete(ctx, entry);
+                }
+                await ctx.runMutation(component.indexing.forget, released);
+              }
+              budget -= batch.entries.length;
+              if (!batch.more) break;
+            }
+          }
+        }
         after = page.next;
       } while (after !== null);
-      return null;
+      return { more };
     },
     async readText(ctx: ActionCtx, args: ArtifactArgs & { cursor?: number; maxBytes?: number }) {
       return (await readWindow(ctx, { kind: "text", ...args })) as {
@@ -718,7 +755,16 @@ function extractRuntime(component: ComponentApi, options: ExtractOptions, nodeRu
       });
       return { read_file, search_files } satisfies ToolSet;
     },
-    async index(ctx: ActionCtx, args: ArtifactArgs & { namespace: string; key: string }) {
+    /**
+     * Index a ready artifact's text into `namespace`. `automatic: true` (the
+     * slot and the worker) only creates a missing record: it never re-runs a
+     * failed, unknown, released or key-changed index, because that repeats paid
+     * embedding; only an explicit call (without it) recovers those.
+     */
+    async index(
+      ctx: ActionCtx,
+      args: ArtifactArgs & { namespace: string; key: string; automatic?: boolean },
+    ) {
       if (!rag || !options.rag) throw new Error("EXTRACT_RAG_DISABLED");
       bounded(args.key);
       await authorize(ctx, {
@@ -729,6 +775,35 @@ function extractRuntime(component: ComponentApi, options: ExtractOptions, nodeRu
       });
       const ref = await payloadRef(ctx, args);
       const row = ref.row;
+      // Decide from the index record BEFORE loading or chunking the payload: an
+      // already-ready (or live) index must not cost a payload read, and an
+      // automatic caller never re-embeds. The admit mutation re-checks all of
+      // this atomically; this read only avoids the wasted load.
+      const existing = await ctx.runQuery(component.indexing.lookup, {
+        artifactId: row._id,
+        namespace: args.namespace,
+      });
+      if (existing) {
+        const live =
+          (existing.status === "cleaning" || existing.status === "running") &&
+          existing.leaseUntil > Date.now();
+        const state =
+          existing.status === "ready" && existing.key === args.key
+            ? ("ready" as const)
+            : live
+              ? ("pending" as const)
+              : args.automatic
+                ? ("skipped" as const)
+                : undefined;
+        if (state)
+          return {
+            entryId: existing.entryId,
+            status: state,
+            created: false,
+            replacedEntry: null,
+            usage: { tokens: 0 },
+          };
+      }
       // Decide from the stored summary BEFORE reading the payload: an artifact
       // whose text exceeds the index ceiling must not cost a full payload load.
       if ((row.summary?.textBytes ?? 0) > LIMITS.indexBytes) throw new ExtractError("TOO_LARGE");
@@ -750,11 +825,17 @@ function extractRuntime(component: ComponentApi, options: ExtractOptions, nodeRu
         namespace: args.namespace,
         key: args.key,
         leaseMs: limits.indexLeaseMs,
+        ...(args.automatic ? { automatic: true } : {}),
       });
       if (admitted.action !== "run")
         return {
           entryId: admitted.entryId,
-          status: admitted.action === "reuse" ? ("ready" as const) : ("pending" as const),
+          status:
+            admitted.action === "reuse"
+              ? ("ready" as const)
+              : admitted.action === "skip"
+                ? ("skipped" as const)
+                : ("pending" as const),
           created: false,
           replacedEntry: null,
           usage: { tokens: 0 },

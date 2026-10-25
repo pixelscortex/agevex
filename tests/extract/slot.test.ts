@@ -53,7 +53,7 @@ const storageMetadata = makeFunctionReference<
 async function setup(
   input: { slot?: boolean; autoIndex?: boolean; rag?: boolean; textOnly?: boolean } = {},
 ) {
-  const state = { backendCalls: [] as string[] };
+  const state = { backendCalls: [] as string[], embedCalls: 0, embedFails: false };
   const backend: ExtractBackend = {
     id: "fake",
     version: "1",
@@ -76,13 +76,17 @@ async function setup(
             component: mounts.rag,
             embedding: new MockEmbeddingModelV4({
               maxEmbeddingsPerCall: LIMITS.ragBatch,
-              doEmbed: async ({ values }) => ({
-                embeddings: values.map(() =>
-                  Array.from({ length: LIMITS.embeddingDimensions[0] }, () => 1),
-                ),
-                usage: { tokens: values.length },
-                warnings: [],
-              }),
+              doEmbed: async ({ values }) => {
+                state.embedCalls++;
+                if (state.embedFails) throw new Error("PROVIDER_DOWN");
+                return {
+                  embeddings: values.map(() =>
+                    Array.from({ length: LIMITS.embeddingDimensions[0] }, () => 1),
+                  ),
+                  usage: { tokens: values.length },
+                  warnings: [],
+                };
+              },
             }),
             embeddingDimension: LIMITS.embeddingDimensions[0],
           },
@@ -342,4 +346,49 @@ it("a turn with an attachment no backend accepts completes and read_file returns
     status: "failed",
     failure: { code: "UNSUPPORTED_TYPE", retryable: false },
   });
+});
+
+it("an automatic index that failed after paying is not re-embedded on re-attach; only an explicit index recovers it", async () => {
+  const h = await setup({ rag: true, autoIndex: true });
+  h.state.embedFails = true;
+  const a = await upload(h, "auto indexed once");
+  const first = await open(h, [a], "t1");
+  await drain(h);
+  // The worker's automatic index tried once, paid for the attempt and failed.
+  expect(h.state.embedCalls).toBe(1);
+  const status = () =>
+    h.t.action(async (ctx) => {
+      const artifact = await h.extract.get(ctx, {
+        threadId: first.threadId,
+        fileId: a,
+        subject: "alice",
+      });
+      return h.t.query(mounts.extract.indexing.lookup, {
+        artifactId: artifact!.artifactId,
+        namespace: first.threadId,
+      });
+    });
+  expect(await status()).toMatchObject({ status: "failed" });
+  // Re-attaching reuses the extraction; the automatic index must not repeat the spend.
+  h.state.embedFails = false;
+  await send(h, first.threadId, "again", [a]);
+  await send(h, first.threadId, "and again", [a]);
+  await drain(h);
+  expect(h.state.embedCalls).toBe(1);
+  expect(await status()).toMatchObject({ status: "failed" });
+  // An explicit host call is the only way to spend again.
+  const artifact = await h.t.action((ctx) =>
+    h.extract.get(ctx, { threadId: first.threadId, fileId: a, subject: "alice" }),
+  );
+  await h.t.action((ctx) =>
+    h.extract.index(ctx, {
+      threadId: first.threadId,
+      subject: "alice",
+      artifactId: artifact!.artifactId,
+      namespace: first.threadId,
+      key: "auto",
+    }),
+  );
+  expect(h.state.embedCalls).toBe(2);
+  expect(await status()).toMatchObject({ status: "ready" });
 });

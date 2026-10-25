@@ -348,6 +348,9 @@ export const purge = mutation({
     }
     return {
       storageIds,
+      // Every row of the page, released or not: `purge` still has to clean the
+      // RAG index records of artifacts tombstoned by an earlier call.
+      artifactIds: rows.slice(0, LIMITS.purgeBatch).map((row) => row._id),
       next: rows.length > LIMITS.purgeBatch ? rows[LIMITS.purgeBatch]!._creationTime : null,
     };
   },
@@ -359,13 +362,14 @@ export const purge = mutation({
  */
 export const abandon = internalMutation({
   args: { artifactId: v.string(), attempt: v.number(), claim: v.string() },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<boolean> => {
     validateFence(args);
     const id = ctx.db.normalizeId("artifacts", args.artifactId);
     const row = id ? await ctx.db.get("artifacts", id) : null;
-    if (row && current(row, args) && row.status === "running")
-      await ctx.db.patch("artifacts", row._id, { status: "unknown" });
-    return null;
+    if (!row || !current(row, args)) return false;
+    if (row.status === "running") await ctx.db.patch("artifacts", row._id, { status: "unknown" });
+    // True: this dispatch's claim is the row's current claim.
+    return true;
   },
 });
 export const expire = internalMutation({

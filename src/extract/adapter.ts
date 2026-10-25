@@ -43,6 +43,7 @@ export function extractSlot(
         artifactId: string;
         namespace: string;
         key: string;
+        automatic?: boolean;
       },
     ): Promise<unknown>;
     tools(context: { ctx: ActionCtx; threadId: string; subject: string }): ToolSet;
@@ -69,6 +70,7 @@ export function extractSlot(
             artifactId: job.artifactId,
             namespace: args.threadId,
             key: AUTO_INDEX_KEY,
+            automatic: true,
           });
         } catch {
           // Not ready (failed, unknown) or the index failed: recorded on its

@@ -58,12 +58,15 @@ export const done = internalMutation({
     // A crashed action has an unknown paid outcome. The lease covers crashes in
     // this callback too; neither path admits a new provider attempt.
     const { onComplete, ...fence } = args.context;
-    await ctx.runMutation(internal.artifacts.abandon, fence);
+    const owned = await ctx.runMutation(internal.artifacts.abandon, fence);
     // Native Workflow completion runs even when the action failed after saving
     // a result (for example, a host usage hook failed). The callback must see
     // that terminal row too, without replaying any provider work. It is a
     // mutation in this same transaction, so callback writes commit atomically.
-    if (onComplete)
+    // Only the dispatch that still owns the row's claim reports: a stale
+    // dispatch (re-dispatched after its queue deadline) completing late must
+    // not fire a second callback for an outcome it did not produce.
+    if (onComplete && owned)
       await ctx.runMutation(onComplete as FunctionHandle<"mutation">, {
         artifactId: fence.artifactId,
       });

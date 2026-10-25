@@ -479,7 +479,7 @@ threads sharing bytes share one. Retryable failures (`PROVIDER_UNAVAILABLE`,
 explicit `run`, at most three attempts in total. Final failures and `unknown`
 outcomes never rerun, and a queued job never expires before it starts. `release`
 removes one namespace's index only; the admin `purge({ fileId })` tombstones the
-shared extraction and deletes payloads (late output is fenced, usage survives).
+shared extraction, deletes payloads and every namespace's RAG entries (returns `{ more }`: loop; late output is fenced, usage survives). A paid result is published even if the file was detached mid-run.
 Change a backend version or supply a different SHA-256 `optionsHash` to request new work.
 
 Text cursors are UTF-8 byte offsets. `readText` and `readPages` return at most

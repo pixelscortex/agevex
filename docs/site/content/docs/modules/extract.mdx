@@ -187,11 +187,11 @@ consecutively from 1. Validation strips unknown payload fields.
 - `extract.readText(ctx, { threadId, artifactId, cursor?, maxBytes? })`: returns `{ text, cursor: number | null, done }`; defaults to cursor 0 and a 1 MiB window.
 - `extract.readPages(ctx, { threadId, artifactId, from?, count?, cursor?, maxBytes? })`: returns `{ pages, next: { from, cursor } | null }`; defaults to page 1, 100 pages, cursor 0 and 1 MiB aggregate text.
 - `extract.release(ctx, { threadId, artifactId, namespace? })`: removes only the caller's namespace index (default `threadId`): fences it, deletes its native RAG entry by exact id and drops the record. The shared extraction and other namespaces' indexes are untouched; returns `null`.
-- `extract.purge(ctx, { fileId })`: **admin operation**, performs no `authorize`; expose it only behind your own admin check. Agent dedupes uploads by hash, so every thread that attached the same bytes shares an extraction; purge tombstones all extractions of `fileId` for all of them (receipt and reported usage stay), fences late output and deletes their payload blobs. RAG entries are not deleted (search hides them); `release` each namespace first to remove them.
+- `extract.purge(ctx, { fileId })`: **admin operation**, performs no `authorize`; expose it only behind your own admin check. Agent dedupes uploads by hash, so every thread that attached the same bytes shares an extraction; purge tombstones all extractions of `fileId` for all of them (receipt and reported usage stay), fences late output and deletes their payload blobs. It also fences every namespace's index record of those extractions, deletes its native RAG entry by exact id and drops the record, so no chunks or vectors are orphaned. Work per call is bounded (at most `LIMITS.purgeBatch` = 32 index records) and nothing reschedules itself: returns `{ more }`; loop `do { r = await extract.purge(ctx, { fileId }); } while (r.more);`.
 
 `onComplete` is an internal mutation reference taking `{ artifactId: string }`
 and returning `null | void`; it runs after Workflow completion, including failed
-work, and does not run again on reuse. Views contain `artifactId`, `fileId`,
+work, and does not run again on reuse. Only the dispatch that still owns the artifact's current claim reports, so a caller that gets `wait` (another admission is running or a stale dispatch was replaced) receives no callback and should read status instead. Views contain `artifactId`, `fileId`,
 `backend`, `version`, `optionsHash`, `status`, `attempt`, optional `summary`,
 `failure: { code, retryable }`, and `usage`. Status is `pending`, `running`,
 `ready`, `failed`, `unknown`, or `released`.
@@ -204,7 +204,7 @@ for the next character throws `EXTRACT_WINDOW_TOO_SMALL`.
 
 ### Optional RAG and tools
 
-- `extract.index(ctx, { threadId, artifactId, namespace, key })`: indexes ready artifact text; returns `{ entryId, status: "ready" | "pending", created, replacedEntry: null, usage: { tokens } }`; `entryId` may be absent while waiting.
+- `extract.index(ctx, { threadId, artifactId, namespace, key, automatic? })`: indexes ready artifact text; returns `{ entryId, status: "ready" | "pending" | "skipped", created, replacedEntry: null, usage: { tokens } }`; `entryId` may be absent while waiting. The index record is checked before the payload is loaded: a ready or live index returns without a payload read. With `automatic: true` (used by the slot and the worker) a missing record is created but an existing failed, unknown, released or key-changed one is `skipped`, never re-embedded.
 - `extract.search(ctx, { threadId, namespace, query, limit? })`: returns `{ text, references: { artifactId, fileId }[], usage }`; defaults to 10 results, no adjacent chunk context, and at most 64 KiB text.
 - `extract.tools({ ctx, threadId, subject? })`: returns AI SDK `read_file` and, only with RAG configured, `search_files`. `subject` is forwarded to `authorize`.
 - `extract.slot(): ExtractSlot`: the agevex `extract` slot ([above](#wire-it-into-agevex)); `authorizeAttached(() => runtime)` builds the matching `authorize`.
@@ -301,10 +301,10 @@ than their hard maxima. The byte ceilings depend on the runtime:
 
 Arithmetic (16 MiB reserved for code and runtime; every live copy counted, no GC
 timing assumed; N input bytes, P payload bytes): Firecrawl request phase `3N`
-(Blob, request body, fetch buffer) and vision OCR `5N` (Blob, bytes, ~3 base64 copies
-of 4/3 N); output phase `N + 6P` (cached Blob, response chunks + merge, decoded
-string, parsed object); direct text `7N`; reads `6P`. Default: 36, 30, 28, 48 and
-36 MiB, within the 48 MiB working set. Node: 150 MB, 50 MB, 56 MiB, 242 MB and
+(Blob, request body, fetch buffer) and vision OCR `6N` (Blob, bytes, ~3 base64 copies
+of 4/3 N each); output phase `N + 6P` (cached Blob, response chunks + merge, decoded
+string, parsed object); direct text `7N`; reads `6P`. Default: 36, 36, 28, 48 and
+36 MiB, within the 48 MiB working set. Node: 150 MB, 60 MB, 56 MiB, 242 MB and
 192 MiB, within 496 MiB. The checksum is streamed, adding no whole-file copy.
 
 To extract larger files, export the Node actions from a `"use node"` file and
@@ -355,7 +355,8 @@ any provider is called.
 - A queued extraction never expires unpaid, and retryable failures are retried only by explicit admission, at most three times.
 - One thread's index, replacement or release never touches another thread's index of the same shared extraction.
 - Extraction lease expiry fences late publication, retains paid usage and never reclaims expired work; see [artifact states](#artifacts-and-failures).
-- [Authorization](#setup) runs before reads and before/after backend work; ownership loss prevents publication.
+- [Authorization](#setup) runs before reads and before backend work (a refusal is retryable). A paid provider result is published even if the file was detached mid-run, since every read re-authorizes; discarding it would pay again.
+- Automatic indexing (`autoIndex`, via `index({ automatic: true })`) only creates a missing index record and never re-embeds a failed, unknown or replaced one; only an explicit `index()` recovers those.
 - [Payload and RAG bounds](#limits) are exercised under transaction limits.
 - [Completion callbacks](#acquisition-extraction-and-reads) observe saved terminal results even if a usage hook fails; hook failure cannot replay provider work.
 
@@ -364,5 +365,5 @@ any provider is called.
 - Hosts supply action wrappers, authorization, exact attachment records, worker/metadata exports and `tools({ ctx, threadId })` wiring (or `extract.slot()` under agevex).
 - Final-failed (or out-of-attempts), released and unknown extraction identities are reused without rerunning. Intentionally change a backend version or supply a different valid SHA-256 `optionsHash` to request new work. The default hash covers resolved extraction ceilings, excluding the indexing lease.
 - Windowed reads still load and parse the bounded full JSON payload in an action (one decode, no schema copy). Indexing covers only `doc.text`, up to 1 MiB, even when a larger artifact is readable.
-- A dedicated RAG mount/namespace is required for chunk bounds. `release` deletes one namespace's native entry; `purge` leaves entries in place and hides them through artifact checks. Prior-index cleanup happens on explicit replacement/recovery.
+- A dedicated RAG mount/namespace is required for chunk bounds. `release` deletes one namespace's native entry; `purge` deletes the RAG entries of every namespace that indexed the file. Prior-index cleanup happens on explicit replacement/recovery.
 - Built-in Firecrawl transport makes one request per operation. Custom backends must uphold their own provider retry and signal behavior.

@@ -490,7 +490,7 @@ async function threads(extra: Partial<Parameters<typeof setup>[0]> = {}) {
     (
       await h.t.query(ragComponent.entries.list, {
         status,
-        paginationOpts: { cursor: null, numItems: 10 },
+        paginationOpts: { cursor: null, numItems: 100 },
       })
     ).page;
   return { ...h, attached, attach, drain, ready };
@@ -653,3 +653,98 @@ it("index encodes the text once instead of once per chunk", async () => {
   expect(whole.length).toBeLessThanOrEqual(1);
   encode.mockRestore();
 }, 30_000);
+
+it("an already-ready index returns without loading the payload", async () => {
+  const h = await threads();
+  const fileId = await h.upload("indexed once");
+  h.attach("a", fileId);
+  const job = await h.action((ctx) => h.extract.run(ctx, { threadId: "a", fileId }));
+  await h.drain();
+  const args = { threadId: "a", artifactId: job.artifactId, namespace: "a", key: "k" };
+  const first = await h.action((ctx) => h.extract.index(ctx, args));
+  expect(first.status).toBe("ready");
+  const load = vi.spyOn(Blob.prototype, "text");
+  for (const automatic of [false, true])
+    expect(await h.action((ctx) => h.extract.index(ctx, { ...args, automatic }))).toMatchObject({
+      status: "ready",
+      entryId: first.entryId,
+      created: false,
+    });
+  expect(load).not.toHaveBeenCalled();
+  load.mockRestore();
+});
+it("purge removes every namespace's RAG content for the file and leaves other files searchable", async () => {
+  const h = await threads();
+  const doomed = await h.upload("doomed shared document");
+  const live = await h.upload("live document");
+  h.attach("a", doomed);
+  h.attach("b", doomed);
+  h.attach("a", live);
+  const artifacts: Record<string, string> = {};
+  for (const [threadId, fileId] of [
+    ["a", doomed],
+    ["a", live],
+  ] as const) {
+    const job = await h.action((ctx) => h.extract.run(ctx, { threadId, fileId }));
+    await h.drain();
+    artifacts[fileId] = job.artifactId;
+  }
+  const index = (threadId: string, fileId: string) =>
+    h.action((ctx) =>
+      h.extract.index(ctx, {
+        threadId,
+        artifactId: artifacts[fileId]!,
+        namespace: threadId,
+        key: "k",
+      }),
+    );
+  const live1 = await index("a", live);
+  await index("a", doomed);
+  await index("b", doomed);
+  expect(await h.ready("ready")).toHaveLength(3);
+  let result = await h.action((ctx) => h.extract.purge(ctx, { fileId: doomed }));
+  expect(result).toEqual({ more: false });
+  // No orphaned chunks: only the live file's entry remains, and its index record.
+  expect((await h.ready("ready")).map((entry) => entry.entryId)).toEqual([live1.entryId]);
+  expect(await h.ready("pending")).toHaveLength(0);
+  for (const namespace of ["a", "b"])
+    expect(
+      await h.t.query(component.indexing.lookup, {
+        artifactId: artifacts[doomed]!,
+        namespace,
+      }),
+    ).toBeNull();
+  const found = await h.action((ctx) =>
+    h.extract.search(ctx, { threadId: "a", namespace: "a", query: "document" }),
+  );
+  expect(found.references).toEqual([{ fileId: live, artifactId: artifacts[live] }]);
+  expect(found.text).toContain("live document");
+  expect(found.text).not.toContain("doomed");
+  result = await h.action((ctx) => h.extract.purge(ctx, { fileId: doomed }));
+  expect(result).toEqual({ more: false });
+}, 30_000);
+it("purge works in bounded batches and reports more until every namespace is cleaned", async () => {
+  const h = await threads();
+  const fileId = await h.upload("shared by many threads");
+  const count = LIMITS.purgeBatch + 1;
+  const names = Array.from({ length: count }, (_, index) => `t${index}`);
+  for (const name of names) h.attach(name, fileId);
+  const job = await h.action((ctx) => h.extract.run(ctx, { threadId: names[0]!, fileId }));
+  await h.drain();
+  for (const name of names)
+    await h.action((ctx) =>
+      h.extract.index(ctx, {
+        threadId: name,
+        artifactId: job.artifactId,
+        namespace: name,
+        key: "k",
+      }),
+    );
+  expect(await h.ready("ready")).toHaveLength(count);
+  const first = await h.action((ctx) => h.extract.purge(ctx, { fileId }));
+  expect(first).toEqual({ more: true });
+  expect(await h.ready("ready")).toHaveLength(count - LIMITS.purgeBatch);
+  const second = await h.action((ctx) => h.extract.purge(ctx, { fileId }));
+  expect(second).toEqual({ more: false });
+  expect(await h.ready("ready")).toHaveLength(0);
+}, 60_000);

@@ -10,7 +10,7 @@ const MiB = 2 ** 20;
  *
  * - Request phase (Firecrawl multipart): storage Blob N + serialized request
  *   body N + fetch/runtime buffer N = 3N. Vision OCR holds Blob N, its
- *   Uint8Array N and about three base64/JSON copies of 4/3 N = 5N.
+ *   Uint8Array N and about three base64/JSON copies of 4/3 N each = 6N.
  * - Output phase: the Blob stays cached for the checksum and backend, N, plus
  *   response chunks and their merge 2P, decoded string up to 2P (UTF-16),
  *   parsed object up to 2P, = N + 6P. Serializing the result (text 2P + JSON
@@ -19,10 +19,10 @@ const MiB = 2 ** 20;
  * - Reads: Blob P + string 2P + parsed 2P + one UTF-8 window encoding P = 6P.
  *   The hash is computed in streamed chunks, so it adds no whole-file copy.
  *
- * Default runtime: document 12 MiB -> 3N = 36 MiB; image 6 MiB -> 5N = 30 MiB;
+ * Default runtime: document 12 MiB -> 3N = 36 MiB; image 6 MiB -> 6N = 36 MiB;
  * text 4 MiB -> 7N = 28 MiB; payload 6 MiB -> N + 6P = 12 + 36 = 48 MiB (the
  * whole working set, hence exactly 64 MiB with the reserve) and reads 36 MiB.
- * Node runtime: document 50 MB -> 3N = 150 MB; image 10 MB -> 5N = 50 MB;
+ * Node runtime: document 50 MB -> 3N = 150 MB; image 10 MB -> 6N = 60 MB;
  * text 8 MiB -> 7N = 56 MiB; payload 32 MiB -> N + 6P = 50 + 192 = 242 MB;
  * reads 192 MiB; all well under 496 MiB. Files above a default ceiling run in
  * the optional Node worker, never in the default one.

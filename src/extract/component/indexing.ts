@@ -1,7 +1,7 @@
 import type { RAG } from "@convex-dev/rag";
 import { v } from "convex/values";
 import { mutation, query, internalMutation } from "./_generated/server.js";
-import type { Doc } from "./_generated/dataModel.js";
+import type { Doc, Id } from "./_generated/dataModel.js";
 import { internal } from "./_generated/api.js";
 import { bounded, integer, LIMITS } from "../limits.js";
 
@@ -38,6 +38,11 @@ export const admit = mutation({
     namespace: v.string(),
     key: v.string(),
     leaseMs: v.optional(v.number()),
+    // Set by automatic callers (the slot, the worker). They may create a
+    // missing record but never re-run a failed, unknown, released or replaced
+    // one: that is paid embedding, which only an explicit host `index()` may
+    // choose to repeat.
+    automatic: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     bounded(args.namespace);
@@ -68,6 +73,7 @@ export const admit = mutation({
     } else if (row.status === "ready" && row.key === args.key) {
       return { action: "reuse" as const, indexId: row._id, entryId: row.entryId };
     }
+    if (args.automatic) return { action: "skip" as const, indexId: row._id, entryId: row.entryId };
     await ctx.db.patch("indexes", row._id, {
       status: "cleaning",
       claim,
@@ -87,7 +93,14 @@ export const lookup = query({
     bounded(args.namespace);
     const row = await byTarget(ctx, args.artifactId, args.namespace);
     return row
-      ? { indexId: row._id, status: row.status, entryId: row.entryId, claim: row.claim }
+      ? {
+          indexId: row._id,
+          status: row.status,
+          key: row.key,
+          leaseUntil: row.leaseUntil,
+          entryId: row.entryId,
+          claim: row.claim,
+        }
       : null;
   },
 });
@@ -106,6 +119,29 @@ export const release = mutation({
     if (!row) return null;
     if (row.status !== "released") await ctx.db.patch("indexes", row._id, { status: "released" });
     return { indexId: row._id, entryId: row.entryId ?? null };
+  },
+});
+
+/**
+ * One bounded batch of an artifact's index records for `purge`: fence up to
+ * `limit` (<= LIMITS.purgeBatch = 32) rows as released and return their exact
+ * entry ids for native deletion. `more` says rows remain beyond the batch.
+ * Budget: 33 rows read, 32 patched, each < 1 KiB.
+ */
+export const purgeBatch = mutation({
+  args: { artifactId: v.id("artifacts"), limit: v.number() },
+  handler: async (ctx, args) => {
+    const limit = integer(args.limit, LIMITS.purgeBatch, 1);
+    const rows = await ctx.db
+      .query("indexes")
+      .withIndex("by_artifact_namespace", (q) => q.eq("artifactId", args.artifactId))
+      .take(limit + 1);
+    const entries: { indexId: Id<"indexes">; entryId: string | null }[] = [];
+    for (const row of rows.slice(0, limit)) {
+      if (row.status !== "released") await ctx.db.patch("indexes", row._id, { status: "released" });
+      entries.push({ indexId: row._id, entryId: row.entryId ?? null });
+    }
+    return { entries, more: rows.length > limit };
   },
 });
 

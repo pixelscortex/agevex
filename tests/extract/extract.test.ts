@@ -4,6 +4,11 @@ import { setup, component, worker, storageMetadata } from "./setup.js";
 import { LIMITS, directText, defineExtract, type ExtractFailure } from "../../src/extract/index.js";
 import { agentComponent } from "./setup.js";
 import { utf8 } from "../../src/extract/limits.js";
+import { makeFunctionReference, type FunctionReference } from "convex/server";
+
+const callback = makeFunctionReference<"mutation", { artifactId: string }, null>(
+  "host:onComplete",
+) as unknown as FunctionReference<"mutation", "internal", { artifactId: string }, null>;
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
@@ -165,10 +170,26 @@ it("a queued job does not expire before it starts and is dispatched again only a
   // A never-started row past its queue deadline is dispatched again (new
   // claim); the stale dispatch cannot start, so the provider is paid once.
   const other = await h.upload("second file");
-  const queued = await h.action((ctx) => h.extract.run(ctx, { ...scope, fileId: other }));
+  const queued = await h.action((ctx) =>
+    h.extract.run(ctx, { ...scope, fileId: other, onComplete: callback }),
+  );
+  const stale = await h.t.query(component.artifacts.get, { artifactId: queued.artifactId });
   vi.setSystemTime(Date.now() + LIMITS.queueMs + 1000);
-  const again = await h.action((ctx) => h.extract.run(ctx, { ...scope, fileId: other }));
+  const again = await h.action((ctx) =>
+    h.extract.run(ctx, { ...scope, fileId: other, onComplete: callback }),
+  );
   expect(again).toEqual({ artifactId: queued.artifactId, action: "run" });
+  // The stale dispatch's start is fenced out: it cannot begin, so it cannot pay.
+  expect(
+    await h.t.mutation(component.artifacts.start, {
+      artifactId: queued.artifactId,
+      attempt: stale!.attempt,
+      claim: stale!.claim,
+    }),
+  ).toBe(false);
+  expect(await h.t.query(component.artifacts.get, { artifactId: queued.artifactId })).toMatchObject(
+    { status: "pending" },
+  );
   await drain(h);
   expect(h.state.calls).toBe(2);
   expect(
@@ -176,6 +197,9 @@ it("a queued job does not expire before it starts and is dispatched again only a
   ).toMatchObject({
     status: "ready",
   });
+  // Both dispatches registered a callback, but only the one owning the row's
+  // claim reports: the stale dispatch finishing late must not fire a second one.
+  expect(h.state.completions).toEqual(["ready"]);
 });
 it("a host refusal in the worker is a retryable failure, never an unknown outcome", async () => {
   const h = setup();
@@ -511,7 +535,7 @@ it("lease expiry fences a late paid completion and preserves its usage without r
   await drain(h);
   expect(h.state.calls).toBe(1);
 });
-it("rechecks the exact attachment after paid work before publishing output", async () => {
+it("publishes a paid result when the file is detached mid-run and a later attach reuses it without paying again", async () => {
   const h = setup();
   const fileId = await h.upload();
   let release!: () => void;
@@ -523,18 +547,62 @@ it("rechecks the exact attachment after paid work before publishing output", asy
   for (let i = 0; i < LIMITS.backends && !h.state.calls; i++)
     await vi.advanceTimersByTimeAsync(100);
   expect(h.state.calls).toBe(1);
+  // The message is deleted while the provider call is in flight.
   h.state.attachments.clear();
-  release();
+  // Release inside an open action context: convex-test only accepts the
+  // worker's blob write while some action transaction is active.
+  await h.action(async () => {
+    release();
+    await vi.advanceTimersByTimeAsync(1000);
+    return null;
+  });
   await drain(h);
-  // Direct component read is the host's test inspection, not a public bypass.
-  const row = await h.t.query(component.artifacts.get, { artifactId: job.artifactId });
-  expect(row).toMatchObject({
-    status: "failed",
-    failure: "OBJECT_UNAVAILABLE",
+  // The paid result was published, not discarded...
+  const args = { ...scope, artifactId: job.artifactId };
+  expect(await h.t.query(component.artifacts.get, { artifactId: job.artifactId })).toMatchObject({
+    status: "ready",
     usage: { credits: 1 },
   });
-  expect(row?.payloadStorageId).toBeUndefined();
+  // ...yet leaks nothing: every read re-authorizes against the current attachment.
+  await expect(h.action((ctx) => h.extract.readText(ctx, args))).rejects.toThrow("FORBIDDEN");
+  // A later attach reuses it: no second provider call.
+  h.state.attachments.set(fileId, "owner");
+  expect(await h.action((ctx) => h.extract.run(ctx, { ...scope, fileId }))).toMatchObject({
+    action: "reuse",
+  });
+  await drain(h);
+  expect(h.state.calls).toBe(1);
+  expect(h.state.events).toHaveLength(1);
+  expect((await h.action((ctx) => h.extract.readText(ctx, args))).text).toBe("private");
 });
+it("a control-character text near the limit is TOO_LARGE before any oversized Blob is built", async () => {
+  const h = setup({ backends: [directText()] });
+  // Each U+0001 serializes to the six characters \u0001: a text within the 4 MiB
+  // input ceiling becomes a 24 MiB JSON string, far over the 6 MiB payload ceiling.
+  const fileId = await h.upload("\u0001".repeat(LIMITS.maxBytes.text));
+  const RealBlob = Blob;
+  const stringParts: number[] = [];
+  vi.stubGlobal(
+    "Blob",
+    class extends RealBlob {
+      constructor(parts?: BlobPart[], options?: BlobPropertyBag) {
+        super(parts, options);
+        for (const part of parts ?? []) if (typeof part === "string") stringParts.push(part.length);
+      }
+    },
+  );
+  try {
+    const args = await run(h, fileId);
+    expect(await h.action((ctx) => h.extract.get(ctx, args))).toMatchObject({
+      status: "failed",
+      failure: { code: "TOO_LARGE" },
+    });
+  } finally {
+    vi.unstubAllGlobals();
+  }
+  // The serialized string is rejected by length; it is never copied into a Blob.
+  expect(Math.max(0, ...stringParts)).toBeLessThanOrEqual(LIMITS.payloadBytes);
+}, 30_000);
 it.each([
   ["application/pdf", LIMITS.maxBytes.document],
   ["image/png", LIMITS.maxBytes.image],
