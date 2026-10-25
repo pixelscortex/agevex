@@ -1,0 +1,25 @@
+src/client/index.ts
+  s_3cb8c4d6edfc03::t_c618502d7e2b28 47-48
+src/client/tasks.ts
+  s_3cb8c4d6edfc03::t_4425b62e4f51a7 1-186
+src/component/ledger.ts
+  s_3cb8c4d6edfc03::t_a7bce8f7a1f24f 147-172
+src/component/limits.ts
+  s_3cb8c4d6edfc03::t_4012c0c6e6b201 94-95
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d660fa35b42679b619555122a8800efa0dd4d75a",
+  "prompts": {},
+  "sessions": {
+    "s_3cb8c4d6edfc03": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a170b4-8b30-70a2-b7bc-60180de42f5c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
