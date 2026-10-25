@@ -1,0 +1,28 @@
+tests/slots.test.ts
+  s_45c674298da868::t_cf50baf79770d6 358-376,380-382,386,397,401,404,411-412,416-424,428-429
+  s_45c674298da868::t_c74353c31cdd6b 46-61,237-238,240-243,349-350,352-356,552-554
+  s_45c674298da868::t_1ae5ee83028edd 377-379,383-385,387-396,398-400,402-403,405-410,413-415,425-427,555-602,604,606
+  s_45c674298da868::t_14464337eac8d8 607-609
+README.md
+  s_45c674298da868::t_cf50baf79770d6 189-193,212-216
+src/client/runtime.ts
+  s_45c674298da868::t_919e92e67015ba 1312-1314,1514,1672-1673,1675-1677,1680-1681,1683,1727-1729,1745,1762
+tests/live/convex/agents.ts
+  s_45c674298da868::t_6e84169da2a2aa 237-253
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "efc26120f234825450c85d7cfa61f5300e913e18",
+  "prompts": {},
+  "sessions": {
+    "s_45c674298da868": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a170f9-eb14-7302-9864-c82e94947166",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
