@@ -596,12 +596,11 @@ export function registerAgent(component: ComponentApi, config: Registration) {
         threadId: event.threadId,
       });
       const managed = assignment && graph.byName.get(assignment.agent);
-      if (
-        !assignment ||
-        !managed?.sandbox ||
-        !config.sandbox ||
-        assignment.subject !== event.subject
-      )
+      // Any managed thread of this registration may receive a completion: a
+      // job started by an opted-in child reports to its root conversation,
+      // whose own agent need not use sandbox tools. The trust gate is the
+      // configured slot, the stored owner and the host's `sandbox` authorize.
+      if (!assignment || !managed || !config.sandbox || assignment.subject !== event.subject)
         throw new Error("FORBIDDEN");
       const { subject } = await config.authorize(ctx, {
         operation: "sandbox",

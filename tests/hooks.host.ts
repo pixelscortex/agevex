@@ -120,6 +120,7 @@ export const main = new Agent(components.agent, {
     }),
     once: defineOnceTool({
       name: "effect",
+      description: "Echo text exactly once.",
       input: z.object({ text: z.string() }),
       run: (input) => echo.execute(input),
     }),

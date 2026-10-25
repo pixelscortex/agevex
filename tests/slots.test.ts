@@ -384,6 +384,43 @@ it("sandbox job completion posts a bounded passive note through the F1 path", as
   expect(notes[0].text).toHaveLength(LIMITS.noteLength + '<note from="sandbox"></note>'.length);
   expect((await status(t, receipt.threadId)).queuedMessages).toBe(0);
 });
+it("sandbox completions reach a root whose own agent never opted into sandbox tools", async () => {
+  // A child agent may own the sandbox work; the root conversation still gets the note.
+  fixture.sandbox = false;
+  fixture.slots.sandbox = { tools: () => ({}) };
+  const t = setup();
+  const receipt = await open(t);
+  await drain(t);
+  expect(
+    await t.mutation((ctx) =>
+      registration().sandboxComplete(ctx, {
+        subject: "alice",
+        threadId: receipt.threadId,
+        runId: "run",
+        jobId: "child-job",
+        state: "done",
+      }),
+    ),
+  ).toBe(true);
+  await expect(
+    t.mutation((ctx) =>
+      registration().sandboxComplete(ctx, {
+        subject: "bob",
+        threadId: receipt.threadId,
+        runId: "run",
+        jobId: "foreign",
+        state: "done",
+      }),
+    ),
+  ).rejects.toThrow("FORBIDDEN");
+});
+it("once tools offer their declared description to the model", async () => {
+  const t = setup();
+  await open(t);
+  await drain(t);
+  const effect = fixture.calls[0].args.tools?.find((tool) => tool.name === "once");
+  expect(effect).toMatchObject({ description: "Echo text exactly once." });
+});
 it.each(["idle", "in-flight"])(
   "%s sandbox completions share the host note cap and retain provenance until the next safe claim",
   async (arrival) => {

@@ -26,6 +26,8 @@ export type ToolContext = {
 const ONCE = Symbol("agevex.once");
 type OnceConfig<Input, Output> = {
   name: string;
+  /** What the model reads when choosing the tool; defaults to `name`. */
+  description?: string;
   input: z.ZodType<Input>;
   run: (input: Input, context: ToolContext) => Promise<Output> | Output;
   key?: (input: Input, context: ToolContext) => string;
@@ -43,7 +45,7 @@ export function defineOnceTool<Input, Output extends Value>(
 ): Tool<Input, Output> {
   return Object.assign(
     tool({
-      description: config.name,
+      description: config.description ?? config.name,
       inputSchema: config.input,
       execute: async (): Promise<Output> => {
         throw new Error("MANAGED_TOOL_CONTEXT_REQUIRED");
