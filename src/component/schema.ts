@@ -431,6 +431,7 @@ export default defineSchema({
     resultMessageId: v.optional(v.string()),
     // Native notifications can share a millisecond; this parent-local order
     // selects the latest exact anchor when the closed group is released.
+    // Written on accepted join members only; read only by releaseGroup.
     resultSequence: v.optional(v.number()),
     events: v.array(runEvent),
   })

@@ -660,9 +660,9 @@ async function applyDelivery(
     deliveryStatus: args.deliveryStatus,
     deliveryAt: at,
     errorCode: args.errorCode ?? run.errorCode,
-    ...(args.parentMessageId
-      ? { resultMessageId: args.parentMessageId, resultSequence: parent?.nextSequence }
-      : {}),
+    ...(args.parentMessageId ? { resultMessageId: args.parentMessageId } : {}),
+    // Only releaseGroup orders a joined cohort by it; "each" rows never need it.
+    ...(args.parentMessageId && run.join ? { resultSequence: parent?.nextSequence } : {}),
     events: appendEvent(run.events, phase[args.deliveryStatus], at, args.errorCode),
   });
   if (run.side) return null;
