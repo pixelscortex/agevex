@@ -1,0 +1,32 @@
+tests/bounded-reads.test.ts
+  s_d756358d387cb5::t_b630267bace9cc 183,211-248
+  s_6a1aa73fa75fdb::t_82c92061c93056 249-250
+tests/deferred-answers.test.ts
+  s_d756358d387cb5::t_b630267bace9cc 40,65,70,72-92
+src/component/queue.ts
+  s_d756358d387cb5::t_d52787f4b0a3e4 1032-1077,1094-1101,1129,1174-1175,1229
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3c0324988fc80649df3c66086264b3051910967e",
+  "prompts": {},
+  "sessions": {
+    "s_6a1aa73fa75fdb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1707e-b28d-7431-af04-e0c6ed46d527",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_d756358d387cb5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17084-ac9a-7672-b81b-7ab173113376",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
