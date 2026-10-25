@@ -250,7 +250,7 @@ one sink in one `deliver` call (one Polar request); new events wait one second
 so bursts share it. Failures back off and stop after `limits.maxAttempts`. A 429
 with `Retry-After` reschedules once without consuming an attempt; the next
 consecutive 429 consumes one. A crashed or cancelled job counts as one failed
-attempt for the events it claimed and charges no other event; a job that died before claiming is retried without charging, up to `maxAttempts - 1` times, then its sink's due rows take one attempt, so a worker that can never run still drives them to `failed`. Failed events stay pending for explicit `retrySinks` recovery.
+attempt for the events it claimed and charges no other event; a job that died before claiming is retried without charging, up to `maxAttempts - 1` times, then its sink's due rows take one attempt, so a worker that can never run still drives them to `failed`. Failed events stay pending for explicit `retrySinks` recovery. With `maxAttempts: 1` there is no free retry, so a single transient pre-claim crash marks that sink's due rows `failed` at once; keep `maxAttempts` at 2 or more, or call `retrySinks` after a crash.
 
 The first external id is the charge key. Later events use `key:delta:revision`
 and signed `nanos` deltas, with `totalNanos` holding the new absolute amount.

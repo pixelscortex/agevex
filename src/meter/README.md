@@ -220,7 +220,7 @@ without consuming an attempt; the next consecutive 429 consumes one. A
 crashed or cancelled job counts as one failed attempt for the rows it claimed
 (Workpool `onComplete`, with a claim marker) and charges no other row; a job that died before claiming is retried up to seven times without charging, then its sink's due rows take one attempt, so a worker that can never run still drives them to `failed`.
 Recording does not wait for the sink. Failed deliveries stay pending;
-`retrySinks(ctx, { key, subject })` resumes them. Jobs run only on demand.
+`retrySinks(ctx, { key, subject })` resumes them. With `maxAttempts: 1` a single pre-claim crash fails the sink's due rows at once; keep it at 2 or more. Jobs run only on demand.
 
 First delivery uses `externalId = charge.key`. Subsequent corrections send
 **signed nanodollar deltas** under `key:delta:revision`, with `totalNanos` for
