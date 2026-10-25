@@ -1082,3 +1082,29 @@ it("cancel after a consumed provider approval appends no result or decision", as
   await drain(t);
   expect((await nativePage(t, turn.threadId)).page).toEqual(before);
 });
+
+it("streams rejects non-finite, negative and fractional start orders and cursors", async () => {
+  const t = setup();
+  const receipt = await open(t);
+  const streamId = await t.mutation(components.agent.streams.create, {
+    threadId: receipt.threadId,
+    order: 1,
+    stepOrder: 0,
+  });
+  for (const value of [NaN, Infinity, -1, 1.5]) {
+    await expect(
+      owner(t).query(api.agents.streams, {
+        threadId: receipt.threadId,
+        streamArgs: { kind: "list", startOrder: value },
+      }),
+    ).rejects.toThrow("INVALID_STREAM_ORDER");
+    await expect(
+      owner(t).query(api.agents.streams, {
+        threadId: receipt.threadId,
+        streamArgs: { kind: "deltas", cursors: [{ streamId, cursor: value }] },
+      }),
+    ).rejects.toThrow("INVALID_STREAM_CURSOR");
+  }
+  await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
+  await drain(t);
+});

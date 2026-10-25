@@ -64,7 +64,7 @@ export const HOST_LIMITS = {
  * 1 MiB placeholder) are NEVER read by cancel; cleanup runs separately.
  * Subagent rows stay <=4 KiB: names/subjects/groups <=200 UTF-16 units,
  * hashed tool-call dedup keys, ids, counters and <=4 small events. Assignments
- * allow <=8 KiB including the 16 recorded fixed-size approval keys.
+ * allow <=8 KiB including the 16 recorded fixed-size approval/deferred-call keys.
  *
  * Other proportional paths: claim drains <=152 consecutive ready rows,
  * including <=50 ready joins from its run, and reads no native bodies. Each

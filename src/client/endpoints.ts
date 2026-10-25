@@ -397,6 +397,11 @@ async function boundedStreams(
 ) {
   if (!args) return undefined;
   if (args.kind === "list") {
+    if (
+      args.startOrder !== undefined &&
+      (!Number.isSafeInteger(args.startOrder) || args.startOrder < 0)
+    )
+      throw new ConvexError({ code: "INVALID_STREAM_ORDER" });
     // Accepted upstream exception, like Agent's context reader (spec §9b):
     // Agent 0.7.7 streams.list reads at most 100 streaming-state metadata docs.
     return syncStreams(ctx, row.native.component, { threadId: row.threadId, streamArgs: args });
