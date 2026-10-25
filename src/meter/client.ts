@@ -14,7 +14,7 @@ import type {
   UnknownReason,
   WriteCtx,
 } from "./types.js";
-import { openRouterCost } from "./helpers.js";
+import { hashLabel, openRouterCost } from "./helpers.js";
 import { SinkDeliveryError } from "./sinks.js";
 import { requireBreakdown, resolveBreakdowns } from "./breakdowns.js";
 import type { BudgetSlot, UsageSlot } from "../client/slots.js";
@@ -158,20 +158,40 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
     await options.authorize?.(ctx, attribution);
   }
 
-  function scope(ctx: WriteCtx, attribution: Attribution): ScopedMeter {
-    text(attribution.subject, "SUBJECT");
+  /**
+   * Host calls (`scope`) run the host `authorize` guard. Core's slot calls
+   * (`trusted`) do not: their attribution is server-derived, core authorized
+   * the turn when it began, and they run in background actions with no user
+   * identity, where an identity-based guard would drop every charge.
+   */
+  function bind(
+    ctx: WriteCtx,
+    attributed: () => Promise<Attribution>,
+    trusted: boolean,
+    resolve: (name: string) => string = (name) => name,
+  ): ScopedMeter {
+    let cached: Attribution | undefined;
+    const facts = async () => (cached ??= await attributed());
+    const guard = async () => {
+      const attribution = await facts();
+      if (trusted) {
+        for (const value of Object.values(attribution))
+          if (value !== undefined) text(value, "ATTRIBUTION");
+      } else await authorize(ctx, attribution);
+      return attribution;
+    };
     /** `provider` is undefined for an unregistered name: the charge exists as
      * `unknown`, and only a USD settlement can resolve it. */
     function handle(key: string, provider: Provider | undefined): ChargeHandle {
       return {
         key,
         get: async () => {
-          await authorize(ctx, attribution);
+          await guard();
           return await ctx.runQuery(component.charges.get, { key });
         },
         attach: async ({ requestId, key: operationKey }) => {
           text(operationKey, "OPERATION_KEY", LIMITS.maxKeyBytes);
-          await authorize(ctx, attribution);
+          await guard();
           return await ctx.runMutation(component.charges.attach, {
             key,
             requestId,
@@ -182,7 +202,7 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
         },
         correct: async ({ quantity, key: operationKey }) => {
           text(operationKey, "OPERATION_KEY", LIMITS.maxKeyBytes);
-          await authorize(ctx, attribution);
+          await guard();
           integer(quantity, LIMITS.maxQuantity, "QUANTITY");
           const row = await ctx.runQuery(component.charges.get, { key });
           const price = row?.profile && provider?.profiles?.[row.profile];
@@ -198,7 +218,7 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
         },
         settle: async (cost) => {
           text(cost.key, "OPERATION_KEY", LIMITS.maxKeyBytes);
-          await authorize(ctx, attribution);
+          await guard();
           return await ctx.runMutation(component.charges.update, {
             key,
             operation: "settle",
@@ -212,8 +232,9 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
     return {
       // Malformed keys, names and quantities are caller bugs and still throw;
       // unpriceable amounts and unregistered names are recorded `unknown`.
-      estimate: async (name, args) => {
-        await authorize(ctx, attribution);
+      estimate: async (requested, args) => {
+        const attribution = await guard();
+        const name = resolve(requested);
         const provider = registered(name);
         text(args.key, "KEY", LIMITS.maxKeyBytes);
         integer(args.quantity, LIMITS.maxQuantity, "QUANTITY");
@@ -234,8 +255,9 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
         });
         return handle(args.key, provider);
       },
-      record: async (name, args) => {
-        await authorize(ctx, attribution);
+      record: async (requested, args) => {
+        const attribution = await guard();
+        const name = resolve(requested);
         const provider = registered(name);
         text(args.key, "KEY", LIMITS.maxKeyBytes);
         const priced = priceInline(provider, {
@@ -259,12 +281,39 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
     };
   }
 
+  function scope(ctx: WriteCtx, attribution: Attribution): ScopedMeter {
+    text(attribution.subject, "SUBJECT");
+    return bind(ctx, async () => attribution, false);
+  }
+
+  /**
+   * Core passes the Agent's stored `message.provider`, the AI SDK provider id
+   * (`@openrouter/ai-sdk-provider` 3.1.0 stores "openrouter.chat"). Resolve an
+   * exact registered name first, then an explicit mapping, then the prefix
+   * before the first ".". Anything else stays as given and records unknown.
+   */
+  function resolver(mapping: Record<string, string> = {}) {
+    for (const [id, name] of Object.entries(mapping)) {
+      text(id, "PROVIDER");
+      if (!registered(name)) throw new Error("PROVIDER_NOT_REGISTERED");
+    }
+    return (name: string) => {
+      if (registered(name)) return name;
+      if (Object.prototype.hasOwnProperty.call(mapping, name)) return mapping[name];
+      const prefix = name.split(".")[0];
+      return prefix && registered(prefix) ? prefix : name;
+    };
+  }
+
   async function check(
     ctx: ReadCtx,
     args: { subject: string; runId?: string },
     budgetPolicy = options.budgets,
+    trusted = false,
   ) {
-    await authorize(ctx, args);
+    if (trusted) {
+      for (const value of Object.values(args)) if (value !== undefined) text(value, "ATTRIBUTION");
+    } else await authorize(ctx, args);
     const policy = await budgetPolicy?.(args);
     // Budget caps can cover many charges, so the bound is the exact-integer
     // ceiling, not the per-charge cap. A total at or beyond 2^53 is still
@@ -289,8 +338,24 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
      * through unchanged keeps saved model steps and tool replays on the same
      * idempotent charge/operation receipts; another usage handler would bill
      * the same saved step a second time under a different identity. */
-    usageSlot(): UsageSlot {
-      return { scope };
+    usageSlot(slot: { providers?: Record<string, string> } = {}): UsageSlot {
+      const resolve = resolver(slot.providers);
+      return {
+        // A model id over the label limit would fail validation and, since core
+        // swallows meter errors, drop the charge. Store `sha256:<hex>` instead
+        // (71 bytes); the full id is never stored.
+        scope: (ctx, facts) =>
+          bind(
+            ctx,
+            async () =>
+              facts.model !== undefined &&
+              new TextEncoder().encode(facts.model).length > LIMITS.maxStringBytes
+                ? { ...facts, model: `sha256:${await hashLabel(facts.model)}` }
+                : facts,
+            true,
+            resolve,
+          ),
+      };
     },
     /** Use the same run-scoped aggregate check as the standalone API. A slot
      * policy overrides only the cap, leaving recording and read policy intact.
@@ -300,7 +365,10 @@ export function defineMeter(component: ComponentApi, options: MeterOptions) {
      * This remains a snapshot check, not a reservation for concurrent work. */
     budgetSlot(policy: MeterOptions["budgets"] = options.budgets): BudgetSlot {
       return {
-        check: async (ctx, args) => ({ allowed: (await check(ctx, args, policy)).allowed }),
+        // Trusted like usageSlot: core's slice gate runs without user identity.
+        check: async (ctx, args) => ({
+          allowed: (await check(ctx, args, policy, true)).allowed,
+        }),
       };
     },
     threadCost: async (

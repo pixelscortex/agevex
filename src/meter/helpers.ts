@@ -3,6 +3,12 @@ import type { Meter } from "./client.js";
 import type { Attribution } from "./types.js";
 import { integer, LIMITS, text } from "./limits.js";
 
+/** Full SHA-256 hex of a label, for ids too long to store as labels. */
+export async function hashLabel(value: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 /** Zero is evidence. Missing/invalid evidence must remain unknown, never zero. */
 export function openRouterCost(providerMetadata: unknown): number | undefined {
   const metadata = providerMetadata as { openrouter?: { usage?: { cost?: unknown } } } | null;
