@@ -385,15 +385,17 @@ export default defineSchema({
     actorAssignmentId: v.id("assignments"),
     // Read by reserve (depth bound, child depth) and the tree projection.
     depth: v.number(),
+    // Read by reserve (cohort lookup), delivery and release (whole cohort).
     group: v.optional(v.string()),
-    wait: v.optional(v.union(v.literal("each"), v.literal("all"))),
-    groupReleased: v.optional(v.boolean()),
-    // Only a sealed, fully delivered cohort enters the ready-group index.
-    // Read by releaseGroups; historical incomplete cohorts cannot hide it.
-    groupReady: v.optional(v.boolean()),
-    // The launching slice seals its cohorts before results may release them.
-    // Read by admission (closed membership), release, and the indexed seal.
-    groupSealed: v.optional(v.boolean()),
+    // A wait "all" member's join state; absent means wait "each". One-way:
+    // reserve writes "open"; the launching slice's sealGroups moves its run's
+    // open members to "sealed"; markGroupReady moves ONE representative of a
+    // sealed, fully delivered cohort to "ready"; releaseGroup moves every
+    // member to "joined". Read by reserve (wait/closed checks), settlement
+    // (any unjoined member fences R3), delivery, readiness and release.
+    join: v.optional(
+      v.union(v.literal("open"), v.literal("sealed"), v.literal("ready"), v.literal("joined")),
+    ),
     // The exact native question id is recorded with its native save and read
     // for verification before delivery. `asking` itself is the open-question fence.
     questionMessageId: v.optional(v.string()),
@@ -437,15 +439,9 @@ export default defineSchema({
     .index("by_root_sequence", ["rootAssignmentId", "sequence"])
     .index("by_root_status", ["rootAssignmentId", "status"])
     .index("by_parent_delivery", ["actorAssignmentId", "side", "deliveryStatus"])
-    .index("by_ready_group", [
-      "actorAssignmentId",
-      "rootCancellationEpoch",
-      "groupReady",
-      "groupReleased",
-      "parentRunId",
-    ])
-    .index("by_membership", ["actorAssignmentId", "parentRunId", "groupSealed"])
+    // Every reader pins actor, epoch and one join state: settlementBlocked
+    // (open/sealed/ready), releaseGroups (ready [+ run]), sealGroups (open + run).
+    .index("by_join", ["actorAssignmentId", "rootCancellationEpoch", "join", "parentRunId"])
     .index("by_group", ["actorAssignmentId", "parentRunId", "group"])
-    .index("by_unjoined", ["actorAssignmentId", "rootCancellationEpoch", "wait", "groupReleased"])
     .index("by_root_run", ["rootAssignmentId", "parentRunId", "sequence"]),
 });

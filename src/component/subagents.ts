@@ -76,9 +76,9 @@ async function hasPendingChildren(
 /** A terminal child whose native delivery has not committed is also future
  * inbox work. Fence that short settlement/delivery interval and unreleased
  * groups as well as live descendants; otherwise a result could reach a terminal
- * parent. Three indexed existence probes (<=3 KiB inbox + 2*4 KiB runs)
+ * parent. Five indexed existence probes (<=3 KiB inbox + 4*4 KiB runs)
  * + one <=32 KiB root
- * read stay below 48 KiB; no history is read.
+ * read stay below 52 KiB; no history is read.
  */
 export async function settlementBlocked(ctx: QueryCtx | MutationCtx, parent: Doc<"assignments">) {
   if (
@@ -94,19 +94,24 @@ export async function settlementBlocked(ctx: QueryCtx | MutationCtx, parent: Doc
   const root = parent.rootAssignmentId
     ? await ctx.db.get("assignments", parent.rootAssignmentId)
     : parent;
-  return (
-    !!root &&
-    !!(await ctx.db
-      .query("subagentRuns")
-      .withIndex("by_unjoined", (q) =>
-        q
-          .eq("actorAssignmentId", parent._id)
-          .eq("rootCancellationEpoch", root.cancellationEpoch)
-          .eq("wait", "all")
-          .eq("groupReleased", false),
-      )
-      .first())
-  );
+  if (!root) return false;
+  // Any not-yet-joined wait "all" member of this epoch fences settlement. One
+  // exact probe per unjoined state, rather than a range over the join literal
+  // order, so a renamed state can never silently fall outside the fence.
+  for (const join of ["open", "sealed", "ready"] as const)
+    if (
+      await ctx.db
+        .query("subagentRuns")
+        .withIndex("by_join", (q) =>
+          q
+            .eq("actorAssignmentId", parent._id)
+            .eq("rootCancellationEpoch", root.cancellationEpoch)
+            .eq("join", join),
+        )
+        .first()
+    )
+      return true;
+  return false;
 }
 
 function appendEvent(
@@ -161,7 +166,7 @@ async function settleRunState(
  * not proof that the last turn reported a valid result. The same notification
  * path propagates the terminal outcome to the next ancestor without paid work.
  * Depth <=2 bounds propagation to at most 2 * (6*32 KiB assignment reads +
- * 2*4 KiB run reads + 11 KiB indexed fence probes) <512 KiB metadata,
+ * 2*4 KiB run reads + 19 KiB indexed fence probes) <512 KiB metadata,
  * including patch reads and the watched thread's context references. No native
  * bodies are read here; side settlement never enters this ancestor path.
  */
@@ -302,9 +307,11 @@ export const reserve = mutation({
           q.eq("actorAssignmentId", row._id).eq("parentRunId", budget._id).eq("group", group),
         )
         .take(wait === "all" ? root.limits.activeChildrenPerRoot : 1);
-      if (members.some((member) => (member.wait ?? "each") !== wait))
+      if (members.some((member) => (member.join ? "all" : "each") !== wait))
         return { kind: "denied" as const, code: "GROUP_CONFLICT" as const };
-      if (members.some((member) => member.groupSealed))
+      // Sealing is one-way (sealed -> ready -> joined), so any state past
+      // "open" means the launching slice already closed this cohort.
+      if (members.some((member) => member.join && member.join !== "open"))
         return { kind: "denied" as const, code: "GROUP_CLOSED" as const };
       if (wait === "all" && members.length >= root.limits.activeChildrenPerRoot)
         return { kind: "denied" as const, code: "GROUP_LIMIT" as const };
@@ -326,8 +333,7 @@ export const reserve = mutation({
       depth,
       messagesReceived: 0,
       group,
-      wait,
-      ...(wait === "all" ? { groupReleased: false, groupSealed: false } : {}),
+      ...(wait === "all" ? { join: "open" as const } : {}),
       parentRunId: budget._id,
       dedupKey,
       sequence,
@@ -675,7 +681,7 @@ async function applyDelivery(
     (!budget || budget.cancelled || budget.hops >= root.limits.runHops)
   )
     throw new Error("RUN_BUDGET");
-  if (run.wait === "all") {
+  if (run.join) {
     // <=15 members *4 KiB =60 KiB. Mark readiness and enqueue ONE id-only
     // anchor; <=15 release markers. No historical candidate prefix is read.
     // Native child bodies are verified ONE per delivery transaction (<=1 MiB);
@@ -731,15 +737,17 @@ async function markGroupReady(
     !members.length ||
     members.some(
       (member) =>
-        !member.groupSealed ||
-        member.groupReleased ||
+        (member.join !== "sealed" && member.join !== "ready") ||
         member.deliveryStatus === "pending" ||
         !["completed", "failed"].includes(member.status) ||
         member.rootCancellationEpoch !== root.cancellationEpoch,
     )
   )
     return;
-  await ctx.db.patch("subagentRuns", members[0]._id, { groupReady: true });
+  // members come from one by_group range in creation order, so members[0] is
+  // the same row on every call: at most one "ready" row per cohort.
+  if (members[0].join === "sealed")
+    await ctx.db.patch("subagentRuns", members[0]._id, { join: "ready" });
 }
 
 /** Release uses recorded parent-message ids only. Full inboxes defer this
@@ -756,22 +764,22 @@ async function releaseGroup(
     !members.length ||
     members.some(
       (member) =>
-        !member.groupSealed ||
+        !member.join ||
+        member.join === "open" ||
         member.deliveryStatus === "pending" ||
         !["completed", "failed"].includes(member.status) ||
         member.rootCancellationEpoch !== root.cancellationEpoch,
     )
   )
     return false;
-  if (members.some((member) => member.groupReleased)) return false;
+  if (members.some((member) => member.join === "joined")) return false;
   const accepted = members
     .filter((member) => member.deliveryStatus === "accepted" && member.resultMessageId)
     .sort((a, b) => (a.resultSequence ?? 0) - (b.resultSequence ?? 0));
   if (accepted.length && parent.queuedMessages >= root.limits.queueLength) return false;
-  // Mark all <=15 members so the bounded unresolved-group index retires the
+  // Mark all <=15 members "joined" so the by_join fence probes retire the
   // entire cohort, including failures. No delivered body is read or copied.
-  for (const member of members)
-    await ctx.db.patch("subagentRuns", member._id, { groupReleased: true });
+  for (const member of members) await ctx.db.patch("subagentRuns", member._id, { join: "joined" });
   if (!accepted.length) return true;
   await ctx.db.insert("inbox", {
     assignmentId: parent._id,
@@ -800,26 +808,38 @@ async function releaseGroup(
  * current run belong to it. <=50 launch rows *4 KiB plus <=50 patch reads
  * =400 KiB, <=100 reads/50 writes. The index excludes older request budgets
  * and already sealed cohorts; no transcript or Workflow journal is consulted.
+ *
+ * The range also pins the root's CURRENT epoch. That excludes nothing: an open
+ * member from an older epoch can never share parent.runId with a running
+ * parent. A cancel that bumps the epoch while a member of run R is still open
+ * finds R either as root.runId (the root stays on R until a slice end seals R's
+ * members: approval pauses and recovery_required both keep runId) or as the
+ * runId of the member's still-active actor, and marks R cancelled; it also
+ * idles that actor and deletes its ready inbox rows. Afterwards every path
+ * that could enqueue ready work for R is fenced (reserve/continueAdmission by
+ * R.cancelled; attach, delivery, post and release by the epoch), so no
+ * assignment runs under R again and reserve refuses any new member of R.
  */
 export async function sealGroups(ctx: MutationCtx, parent: Doc<"assignments">) {
   if (!parent.runId) return;
-  const members = await ctx.db
-    .query("subagentRuns")
-    .withIndex("by_membership", (q) =>
-      q
-        .eq("actorAssignmentId", parent._id)
-        .eq("parentRunId", parent.runId!)
-        .eq("groupSealed", false),
-    )
-    .take(parent.limits.runLaunches);
-  for (const member of members) {
-    await ctx.db.patch("subagentRuns", member._id, { groupSealed: true });
-    member.groupSealed = true;
-  }
   const root = parent.rootAssignmentId
     ? await ctx.db.get("assignments", parent.rootAssignmentId)
     : parent;
   if (!root) return;
+  const members = await ctx.db
+    .query("subagentRuns")
+    .withIndex("by_join", (q) =>
+      q
+        .eq("actorAssignmentId", parent._id)
+        .eq("rootCancellationEpoch", root.cancellationEpoch)
+        .eq("join", "open")
+        .eq("parentRunId", parent.runId!),
+    )
+    .take(parent.limits.runLaunches);
+  for (const member of members) {
+    await ctx.db.patch("subagentRuns", member._id, { join: "sealed" });
+    member.join = "sealed";
+  }
   const groups = new Set(members.map((member) => member.group ?? ""));
   // Partition the <=50 just-sealed rows in memory; no repeated group queries.
   for (const group of groups)
@@ -848,12 +868,11 @@ export const releaseGroups = mutation({
     if (!root || root.cancelled) return false;
     const candidate = await ctx.db
       .query("subagentRuns")
-      .withIndex("by_ready_group", (q) => {
+      .withIndex("by_join", (q) => {
         const ready = q
           .eq("actorAssignmentId", parent._id)
           .eq("rootCancellationEpoch", root.cancellationEpoch)
-          .eq("groupReady", true)
-          .eq("groupReleased", false);
+          .eq("join", "ready");
         return args.parentRunId ? ready.eq("parentRunId", args.parentRunId) : ready;
       })
       .first();

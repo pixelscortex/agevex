@@ -1524,6 +1524,109 @@ it("cancelled groups cannot hide a fresh run's deferred join behind their archiv
   await drain(t);
 });
 
+it("a child whose delivered wait-all cohort is still open cannot settle until its slice seals and joins it", async () => {
+  const t = setup(maxima);
+  const root = await manualRoot(t);
+  const builder = await launch(t, root, "Builder");
+  const reviewer = await launch(t, builder, "Reviewer", { group: "open cohort", wait: "all" });
+  // The member settles and delivers while Builder's launching slice is still
+  // running, so its cohort is delivered but not yet sealed: no live descendant,
+  // no queued inbox work, only the unjoined member holds Builder open.
+  await complete(t, reviewer, "review delivered into an open cohort");
+  const builderResult = await nativeSave(t, builder, "Builder", "Builder result before the join");
+  await t.mutation(api.agents.coordinate, {
+    op: "settle",
+    assignmentId: builder.assignmentId,
+    turnToken: builder.turnToken,
+    runId: builder.runId,
+    resultMessageId: builderResult,
+    errorCode: null,
+  });
+  expect((await tree(t, root.threadId)).find((run) => run.runId === builder.runId)?.status).toBe(
+    "running",
+  );
+  // Ending the slice seals the cohort; the join is released as Builder's next turn.
+  await t.mutation(components.agevex.queue.finish, {
+    assignmentId: builder.assignmentId,
+    turnToken: builder.turnToken,
+    errorCode: null,
+  });
+  const queued = (await t.query(rawAssignment, { assignmentId: builder.assignmentId }))!;
+  expect(queued.turnStatus).toBe("queued");
+  expect((await tree(t, root.threadId)).find((run) => run.runId === builder.runId)?.status).toBe(
+    "running",
+  );
+  const joined = await t.mutation(components.agevex.queue.claim, {
+    assignmentId: builder.assignmentId,
+    turnToken: queued.turnToken!,
+  });
+  expect(
+    (
+      await t.query(components.agent.messages.getMessagesByIds, {
+        messageIds: [joined!.promptMessageId],
+      })
+    )[0]?.text,
+  ).toContain("review delivered into an open cohort");
+  await owner(t).mutation(api.agents.cancel, { threadId: root.threadId });
+  await drain(t);
+});
+
+it("a cancelled request's open cohort never seals into or joins the next request's cohort of the same name", async () => {
+  const t = setup(maxima);
+  let root = await manualRoot(t);
+  const stale = await launch(t, root, "Reviewer", { group: "shared", wait: "all" });
+  // Delivered but never sealed: cancel arrives while the launching slice runs.
+  await complete(t, stale, "stale review from the cancelled request");
+  await owner(t).mutation(api.agents.cancel, { threadId: root.threadId });
+  // The cancelled turn can no longer add a member to that open cohort.
+  expect(
+    await t.mutation(api.agents.coordinate, {
+      op: "launch",
+      assignmentId: root.assignmentId,
+      turnToken: root.turnToken,
+      toolCallId: crypto.randomUUID(),
+      agent: "Reviewer",
+      task: "late member",
+      group: "shared",
+      wait: "all",
+    }),
+  ).toMatchObject({ status: "denied" });
+  await owner(t).mutation(api.agents.send, {
+    threadId: root.threadId,
+    text: "next request",
+    requestKey: "next-request",
+  });
+  const fresh = (await t.query(rawAssignment, { assignmentId: root.assignmentId }))!;
+  root = { ...root, turnToken: fresh.turnToken! };
+  await t.mutation(components.agevex.queue.claim, {
+    assignmentId: root.assignmentId,
+    turnToken: root.turnToken,
+  });
+  const member = await launch(t, root, "Reviewer", { group: "shared", wait: "all" });
+  expect((await tree(t, root.threadId)).map((run) => run.runId)).toEqual([member.runId]);
+  await complete(t, member, "fresh review from the next request");
+  await t.mutation(components.agevex.queue.finish, {
+    assignmentId: root.assignmentId,
+    turnToken: root.turnToken,
+    errorCode: null,
+  });
+  const queued = (await t.query(rawAssignment, { assignmentId: root.assignmentId }))!;
+  expect(queued.turnStatus).toBe("queued");
+  const joined = await t.mutation(components.agevex.queue.claim, {
+    assignmentId: root.assignmentId,
+    turnToken: queued.turnToken!,
+  });
+  const prompt = (
+    await t.query(components.agent.messages.getMessagesByIds, {
+      messageIds: [joined!.promptMessageId],
+    })
+  )[0]?.text;
+  expect(prompt).toContain("fresh review from the next request");
+  expect(prompt).not.toContain("stale review");
+  await owner(t).mutation(api.agents.cancel, { threadId: root.threadId });
+  await drain(t);
+});
+
 it("the root epoch rejects a late native write from a child that settled immediately before cancel", async () => {
   const t = setup(maxima);
   const root = await manualRoot(t);

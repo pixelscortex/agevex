@@ -447,7 +447,7 @@ export const claim = mutation({
         // anchor. Otherwise an older deferred join could hide a consumed answer
         // on the very next turn. Never cross another run/user turn.
         // <=100 backlog + reserved answer +50 joins + reserved head =152 rows.
-        // The ready-group index is scoped to this budget: <=50 members TOTAL
+        // The by_join "ready" range is scoped to this budget: <=50 members TOTAL
         // across its cohorts. <=100 run metadata reads (400 KiB), <=152
         // inbox deletes/assignment patches and fixed per-iteration probes stay
         // <8 MiB, <2,000 reads/<600 writes even at all host maxima.
