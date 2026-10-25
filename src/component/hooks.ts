@@ -503,7 +503,7 @@ export async function settleRouting(ctx: MutationCtx, row: Doc<"assignments">) {
 
 /** Decided approvals still need native results from continuation generation. */
 export function awaitingApprovalResults(row: Doc<"assignments">) {
-  return !!row.approvals?.resolved.length;
+  return !!row.approvals?.requests.some((request) => request.resolved);
 }
 
 /** Before-turn notes can enter history immediately only when prior approvals

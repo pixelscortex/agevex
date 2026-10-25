@@ -256,17 +256,15 @@ export default defineSchema({
             // near-1 MiB call ids out of coordination rows. Read by write() to
             // retire the request once its native tool result is saved.
             toolCallKey: v.bytes(),
-            state: v.optional(
-              v.union(
-                v.literal("pending"),
-                v.literal("approved"),
-                v.literal("denied"),
-                v.literal("running"),
-              ),
-            ),
+            // Set by respond with the native decision; deferred calls never set it
+            // (answer removes them). Read by respond (duplicate decision, last
+            // decision unblocks), answer (remaining undecided), awaitingApprovalResults,
+            // cleanup (cancel repeats no decision) and write() (a resolved
+            // provider-executed call is consumed by the next assistant response:
+            // a turn only runs once every recorded request is resolved).
+            resolved: v.optional(v.literal(true)),
           }),
         ),
-        resolved: v.array(v.number()),
       }),
     ),
     continueSlice: v.optional(v.boolean()),

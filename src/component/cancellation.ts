@@ -123,7 +123,7 @@ export const cleanupBatch = internalMutation({
           toolName: call.toolName,
           ...(request.providerExecuted ? { providerExecuted: true as const } : {}),
         });
-        if (!approvals.resolved.includes(0))
+        if (!request.resolved)
           responses.push({
             approvalId: part.approvalId,
             approved: false,
@@ -142,16 +142,10 @@ export const cleanupBatch = internalMutation({
       );
     // Native deletion is also terminal for this exact reference. Never search
     // another order/message for a replacement after cancellation.
-    const remaining = approvals.requests
-      .map((request, index) => ({ request, resolved: approvals.resolved.includes(index) }))
-      .filter((_, index) => index !== 0);
+    const remaining = approvals.requests.slice(1);
     if (remaining.length) {
       await ctx.db.patch("assignments", assignmentId, {
-        approvals: {
-          ...approvals,
-          requests: remaining.map(({ request }) => request),
-          resolved: remaining.flatMap(({ resolved }, index) => (resolved ? [index] : [])),
-        },
+        approvals: { ...approvals, requests: remaining },
       });
       await ctx.scheduler.runAfter(0, internal.cancellation.cleanup, {
         assignmentId,

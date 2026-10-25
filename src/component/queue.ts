@@ -526,15 +526,6 @@ export const claim = mutation({
             logicalPromptMessageId: row.promptMessageId,
           }
         : {}),
-      approvals: row.approvals
-        ? {
-            ...row.approvals,
-            requests: row.approvals.requests.map((request, index) => ({
-              ...request,
-              state: row.approvals!.resolved.includes(index) ? ("running" as const) : request.state,
-            })),
-          }
-        : undefined,
       lastSlice: sliceId,
       inboxId: undefined,
     });
@@ -1050,20 +1041,15 @@ export const write = mutation({
             message.status === "success" &&
             Array.isArray(message.message.content),
         );
-        const remaining = row.approvals.requests
-          .map((request, index) => ({ request, resolved: row.approvals!.resolved.includes(index) }))
-          .filter(
-            ({ request }) =>
-              !(providerConsumed && request.providerExecuted && request.state === "running") &&
-              !resulted.has(keyString(request.toolCallKey)),
-          );
-        row.approvals = remaining.length
-          ? {
-              ...row.approvals,
-              requests: remaining.map(({ request }) => request),
-              resolved: remaining.flatMap(({ resolved }, index) => (resolved ? [index] : [])),
-            }
-          : undefined;
+        // A running turn is claimed only after every recorded request was
+        // resolved (claim refuses approvalBlocked), and respond/answer refuse
+        // while it runs, so "resolved" here means decided AND resumed.
+        const remaining = row.approvals.requests.filter(
+          (request) =>
+            !(providerConsumed && request.providerExecuted && request.resolved) &&
+            !resulted.has(keyString(request.toolCallKey)),
+        );
+        row.approvals = remaining.length ? { ...row.approvals, requests: remaining } : undefined;
         await ctx.db.patch("assignments", row._id, { approvals: row.approvals });
       }
       if (row.childRunId) {
@@ -1202,7 +1188,6 @@ export const write = mutation({
           approvals: {
             inboxId,
             requests,
-            resolved: [],
             epoch: row.cancellationEpoch,
             getMessages: args.nativeMessages.getMessages,
             addMessages: args.handle,
@@ -1318,8 +1303,7 @@ export const respond = mutation({
       !decision
     )
       throw new ConvexError({ code: "APPROVAL_NOT_FOUND" });
-    if (approvals.resolved.includes(index))
-      throw new ConvexError({ code: "APPROVAL_ALREADY_RESOLVED" });
+    if (decision.resolved) throw new ConvexError({ code: "APPROVAL_ALREADY_RESOLVED" });
     const messageId = await saveResponses(
       ctx,
       { ...row, messageId: decision.messageId, addMessages: args.addMessages },
@@ -1333,19 +1317,11 @@ export const respond = mutation({
       ],
     );
     await saveResponseReceipt(ctx, receipt, messageId);
-    const resolved = [...approvals.resolved, index];
-    await ctx.db.patch("assignments", row._id, {
-      approvals: {
-        ...approvals,
-        resolved,
-        requests: approvals.requests.map((request, offset) =>
-          offset === index
-            ? { ...request, state: args.approved ? ("approved" as const) : ("denied" as const) }
-            : request,
-        ),
-      },
-    });
-    if (resolved.length === approvals.requests.length) {
+    const requests = approvals.requests.map((request, offset) =>
+      offset === index ? { ...request, resolved: true as const } : request,
+    );
+    await ctx.db.patch("assignments", row._id, { approvals: { ...approvals, requests } });
+    if (requests.every((request) => request.resolved)) {
       await ctx.db.patch("inbox", approvals.inboxId, { messageId });
       await ctx.db.patch("assignments", row._id, { approvalBlocked: false });
       await wake(ctx, { ...row, approvalBlocked: false });
@@ -1433,16 +1409,8 @@ export const answer = mutation({
     })) as { messages: MessageDoc[] };
     const messageId = saved.messages[0]._id;
     await saveResponseReceipt(ctx, receipt, messageId);
-    const remaining = pause.requests
-      .map((request, offset) => ({ request, resolved: pause.resolved.includes(offset) }))
-      .filter((_, offset) => offset !== index);
-    const approvals = remaining.length
-      ? {
-          ...pause,
-          requests: remaining.map((entry) => entry.request),
-          resolved: remaining.flatMap((entry, offset) => (entry.resolved ? [offset] : [])),
-        }
-      : undefined;
+    const remaining = pause.requests.filter((_, offset) => offset !== index);
+    const approvals = remaining.length ? { ...pause, requests: remaining } : undefined;
     const blocked = remaining.some((entry) => !entry.resolved);
     await ctx.db.patch("assignments", row._id, { approvals, approvalBlocked: blocked });
     // Always retain the last saved result as the future prompt, including a

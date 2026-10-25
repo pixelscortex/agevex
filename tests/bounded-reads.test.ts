@@ -533,7 +533,7 @@ it("sixteen approvals stay bounded and resolve atomically at the pause limit", a
       approved: false,
     });
     const row = (await execution(t, turn.assignmentId))!;
-    expect(row.approvals?.resolved).toHaveLength(i + 1);
+    expect(row.approvals?.requests.filter((request) => request.resolved)).toHaveLength(i + 1);
     expect(row.approvalBlocked).toBe(i < LIMITS.approvalsPerPause - 1);
     if (i === LIMITS.approvalsPerPause - 1) expect(row.promptMessageId).toBe(response.messageId);
   }
@@ -676,6 +676,33 @@ it("cancel settles the remaining approvals after a partial response without repl
   });
 });
 
+it("cancel denies only the undecided calls even when the decided approval is last in the pause", async () => {
+  const t = setup(undefined, undefined, true);
+  const turn = await request(t, 3);
+  await owner(t).mutation(api.agents.respond, {
+    threadId: turn.threadId,
+    approvalId: "approval-2",
+    approved: true,
+  });
+  await owner(t).mutation(api.agents.cancel, { threadId: turn.threadId });
+  await drain(t);
+  // Cleanup retires the recorded requests one per transaction from the front;
+  // the decision on the last one must survive the two removals before it.
+  const responses = (await nativePage(t, turn.threadId)).page.flatMap((message) =>
+    message.message?.role === "tool" && Array.isArray(message.message.content)
+      ? message.message.content.filter((part) => part.type === "tool-approval-response")
+      : [],
+  );
+  expect(
+    responses.map((part) => [part.approvalId, part.approved, part.reason ?? null]).sort(),
+  ).toEqual([
+    ["approval-0", false, "cancelled"],
+    ["approval-1", false, "cancelled"],
+    ["approval-2", true, null],
+  ]);
+  expect((await execution(t, turn.assignmentId))?.approvals).toBeUndefined();
+});
+
 it("pause approve running tool cancel fresh send completes without missing or duplicate results", async () => {
   const t = setup(undefined, undefined, true);
   state.approval = true;
@@ -699,7 +726,10 @@ it("pause approve running tool cancel fresh send completes without missing or du
     approvalId: approval.approvalId,
     approved: true,
   });
-  expect((await execution(t, turn.assignmentId))?.approvals?.requests[0].state).toBe("approved");
+  expect(await execution(t, turn.assignmentId)).toMatchObject({
+    turnStatus: "queued",
+    approvals: { requests: [{ resolved: true }] },
+  });
   await expect
     .poll(async () => {
       await t.action(async () => {
@@ -708,7 +738,10 @@ it("pause approve running tool cancel fresh send completes without missing or du
       return state.echoStarted;
     })
     .toBe(true);
-  expect((await execution(t, turn.assignmentId))?.approvals?.requests[0].state).toBe("running");
+  expect(await execution(t, turn.assignmentId)).toMatchObject({
+    turnStatus: "running",
+    approvals: { requests: [{ resolved: true }] },
+  });
   await owner(t).mutation(api.agents.cancel, { threadId: turn.threadId });
   await owner(t).mutation(api.agents.send, {
     threadId: turn.threadId,

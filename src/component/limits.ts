@@ -154,7 +154,7 @@ export const LIMITS = {
   runEvents: 4,
   maxDelegationPage: 50,
   // Bound approval coordination metadata even when native approval ids are huge:
-  // requests store SHA-256 keys; resolved contains only their array offsets.
+  // requests store SHA-256 keys and a per-request resolved flag, never payloads.
   approvalsPerPause: 16,
   nativeCallIdLength: 1 << 20,
   nativeEnvelopeBytes: 4 << 10,
