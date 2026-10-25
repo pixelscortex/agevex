@@ -14,6 +14,7 @@ export const LIMITS = {
   optionsBytes: 4096,
   backends: 32,
   leaseMs: 10 * 60 * 1000,
+  indexLeaseMs: 10 * 60 * 1000,
   providerMs: 5 * 60 * 1000,
   outputTokens: 4096,
   searchResults: 10,
@@ -31,6 +32,7 @@ export const LIMITS = {
 export type ExtractLimits = {
   maxBytes: { document: number; image: number; text: number };
   payloadBytes: number;
+  indexLeaseMs: number;
 };
 export function integer(value: number, max: number, min = 0): number {
   if (!Number.isSafeInteger(value) || value < min || value > max)
@@ -59,6 +61,7 @@ export function resolveLimits(
       text: integer(value?.maxBytes?.text ?? LIMITS.maxBytes.text, LIMITS.maxBytes.text, 1),
     },
     payloadBytes: integer(value?.payloadBytes ?? LIMITS.payloadBytes, LIMITS.payloadBytes, 1),
+    indexLeaseMs: integer(value?.indexLeaseMs ?? LIMITS.indexLeaseMs, LIMITS.indexLeaseMs, 1),
   };
 }
 /** Return valid UTF-8 without splitting a multibyte character at the byte ceiling. */

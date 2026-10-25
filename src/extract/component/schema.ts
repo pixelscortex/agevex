@@ -47,9 +47,16 @@ export default defineSchema({
     failure: v.optional(failure),
     usage: v.optional(usage),
     indexStatus: v.optional(
-      v.union(v.literal("cleaning"), v.literal("running"), v.literal("failed"), v.literal("ready")),
+      v.union(
+        v.literal("cleaning"),
+        v.literal("running"),
+        v.literal("unknown"),
+        v.literal("failed"),
+        v.literal("ready"),
+      ),
     ),
     indexClaim: v.optional(v.string()),
+    indexLeaseUntil: v.optional(v.number()),
     indexEntryId: v.optional(v.string()),
     indexNamespace: v.optional(v.string()),
     indexKey: v.optional(v.string()),

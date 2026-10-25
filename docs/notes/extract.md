@@ -29,24 +29,25 @@
 
 Only owned table: `artifacts`.
 
-| Field                                                      | Why it is read                                                                                                                                   |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `_id`, `_creationTime`                                     | Convex document identity; `_id` addresses exact status, fence, read, release, and RAG references; `_creationTime` is Convex-managed metadata.    |
-| `fileId`                                                   | Exact Agent file access and host attachment authorization; identity index.                                                                       |
-| `backend`, `version`                                       | Identity reuse and selecting the frozen backend implementation.                                                                                  |
-| `optionsHash`                                              | Identity lookup; default hashes the resolved limits. Explicit overrides must be SHA-256 hex.                                                     |
-| `status`                                                   | Admission `reuse/wait/run`, dispatch guard, completion guard, readiness, and release.                                                            |
-| `attempt`, `claim`                                         | Dispatch, completion, expiry, and abandon fences; RAG content identity. New identities start at attempt 1; expired attempts are never reclaimed. |
-| `leaseUntil`                                               | Admission, dispatch, completion, and one-shot expiry recognize unknown outcomes.                                                                 |
-| `summary.kind`, `summary.textBytes`, `summary.pages`       | Returned status describes artifact type and read extent without fetching full JSON.                                                              |
-| `summary.preview`, `summary.language`                      | Small status preview and optional backend language; never a provider body.                                                                       |
-| `payloadStorageId`                                         | Exact host storage read, release cleanup, and stale-output cleanup.                                                                              |
-| `failure`                                                  | Closed status code and its retryable classification. Retryable describes the cause, not permission for automatic replay.                         |
-| `usage.inputTokens`, `usage.outputTokens`, `usage.credits` | Status/accounting evidence, including failures and late paid completion after release.                                                           |
-| `indexStatus`                                              | Index admission (`cleaning`/`running` waits, `ready` reuses, `failed` permits an explicit retry), completion fence, and search visibility.       |
-| `indexClaim`                                               | Fences entry creation and completion to the single admitted index action. No expired-action takeover can overlap paid work.                      |
-| `indexEntryId`                                             | Exact native RAG cleanup before retry, atomic promotion, returned id on reuse/wait, and filtering search to the current completed index.         |
-| `indexNamespace`, `indexKey`                               | Reuse only the same requested index target; a different target cleans up the recorded previous entry first.                                      |
+| Field                                                      | Why it is read                                                                                                                                                              |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `_id`, `_creationTime`                                     | Convex document identity; `_id` addresses exact status, fence, read, release, and RAG references; `_creationTime` is Convex-managed metadata.                               |
+| `fileId`                                                   | Exact Agent file access and host attachment authorization; identity index.                                                                                                  |
+| `backend`, `version`                                       | Identity reuse and selecting the frozen backend implementation.                                                                                                             |
+| `optionsHash`                                              | Identity lookup; default hashes the resolved extraction ceilings, excluding the indexing lease. Explicit overrides must be SHA-256 hex.                                     |
+| `status`                                                   | Admission `reuse/wait/run`, dispatch guard, completion guard, readiness, and release.                                                                                       |
+| `attempt`, `claim`                                         | Dispatch, completion, expiry, and abandon fences; RAG content identity. New identities start at attempt 1; expired attempts are never reclaimed.                            |
+| `leaseUntil`                                               | Admission, dispatch, completion, and one-shot expiry recognize unknown outcomes.                                                                                            |
+| `summary.kind`, `summary.textBytes`, `summary.pages`       | Returned status describes artifact type and read extent without fetching full JSON.                                                                                         |
+| `summary.preview`, `summary.language`                      | Small status preview and optional backend language; never a provider body.                                                                                                  |
+| `payloadStorageId`                                         | Exact host storage read, release cleanup, and stale-output cleanup.                                                                                                         |
+| `failure`                                                  | Closed status code and its retryable classification. Retryable describes the cause, not permission for automatic replay.                                                    |
+| `usage.inputTokens`, `usage.outputTokens`, `usage.credits` | Status/accounting evidence, including failures and late paid completion after release.                                                                                      |
+| `indexStatus`                                              | Index admission waits on live `cleaning`/`running`, reuses `ready`, and explicitly recovers `unknown`/expired/failed attempts; writes, expiry, and search check it.         |
+| `indexClaim`                                               | Fences entry creation, chunk writes, promotion, and the one-shot expiry check to the current indexing attempt.                                                              |
+| `indexLeaseUntil`                                          | Entry creation, chunk writes, promotion, admission, and one-shot expiry reject an expired attempt. Default/hard maximum: 10 minutes; hosts may lower `limits.indexLeaseMs`. |
+| `indexEntryId`                                             | Exact native RAG cleanup before retry, atomic promotion, returned id on reuse/wait, and filtering search to the current completed index.                                    |
+| `indexNamespace`, `indexKey`                               | Reuse only the same requested index target; a different target cleans up the recorded previous entry first.                                                                 |
 
 Request content, owner copies, file state, vectors, chunk state, and provider
 bodies are not stored in this table. Native Agent owns files. Host storage owns
@@ -89,7 +90,11 @@ payload JSON. Native Workflow owns its journal. Native RAG owns vectors/chunks.
   pages (8 MiB bandwidth threshold plus at most one bounded chunk's overhead).
   There is at most one pending entry per artifact, and therefore per native
   key. Promotion cannot collect a history of pending retries. A crashed index
-  action retains its fence: there is no automatic timeout takeover or paid retry.
+  attempt becomes `unknown` after its independent lease expires, retaining the
+  exact entry id. One scheduled check never reschedules or starts paid work.
+  Only explicit host `index()` admission claims recovery, completes exact-id
+  cleanup, and starts again. Native chunk writes and promotion share the
+  transaction that checks the current claim and lease, fencing late writers.
 - All deterministic component tests enforce convex-test transaction limits.
   The exact 32 MiB payload, 10,000 pages / 100-page window, 32 simultaneous
   admissions/dispatches, and 1 MiB RAG input at 4,096 dimensions are exercised.
@@ -191,6 +196,12 @@ The PNG generator uses only local bitmap pixels and PNG compression.
 - repeated failed and concurrent indexing keeps one pending entry then succeeds under transaction limits — [tests/extract/rag.test.ts:87](../../tests/extract/rag.test.ts).
 - %s fences indexing before a late embedding can publish (release and ownership) — [tests/extract/rag.test.ts:187](../../tests/extract/rag.test.ts).
 - enforces the configured text ceiling for accepted %s files — [tests/extract/extract.test.ts:290](../../tests/extract/extract.test.ts).
+- recovers a crash during cleaning after lease expiry and cleans the exact recorded entry — [tests/extract/rag.test.ts:309](../../tests/extract/rag.test.ts).
+- recovers a crash during embedding after lease expiry with one replacement entry — [tests/extract/rag.test.ts:328](../../tests/extract/rag.test.ts).
+- rejects stale chunk writes and promotion after explicit recovery claims an expired attempt — [tests/extract/rag.test.ts:344](../../tests/extract/rag.test.ts).
+- expiry alone records unknown, retains the entry and never starts embedding or another timer — [tests/extract/rag.test.ts:382](../../tests/extract/rag.test.ts).
+- validates indexing lease overrides against a positive integer hard maximum at registration — [tests/extract/rag.test.ts:401](../../tests/extract/rag.test.ts).
+- rejects chunks and promotion at lease expiry before the scheduled check runs — [tests/extract/rag.test.ts:406](../../tests/extract/rag.test.ts).
 - live directText reads an Agent text file without provider credits — [tests/extract/extract.live.ts:37](../../tests/extract/extract.live.ts).
 - live Firecrawl parses one small public PDF and fetches one page within three calls — [tests/extract/extract.live.ts:43](../../tests/extract/extract.live.ts).
 - live visionOcr transcribes one tiny PNG with openrouter/free and no retries — [tests/extract/extract.live.ts:81](../../tests/extract/extract.live.ts).
@@ -200,8 +211,12 @@ The PNG generator uses only local bitmap pixels and PNG compression.
 Review fixes:
 
 - `bun run check`, `bun run typecheck`, and `bun run typecheck:tests`: pass.
-- `bunx vp test --run`: **224 tests passed** across 17 files, including 52 extract
+- `bunx vp test --run`: **231 tests passed** across 17 files, including 59 extract
   guarantees. Convex transaction limits remain enforced in the extract harness.
+- All four indexing lease regressions failed against the original indexing
+  implementation: cleaning/running never became unknown, and an expired
+  explicit recovery returned pending. Lazy admission and one-shot expiry are
+  covered, including stale chunk/promotion rejection before timer delivery.
 - The RAG retry test failed on the original implementation with two pending
   entries after the second failure. XML/CSV/JavaScript application MIME tests
   failed because oversized files became ready. Release/ownership indexing tests

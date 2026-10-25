@@ -80,3 +80,8 @@ paid failures retain usage evidence.
 
 The Agent component owns files, the receipts ledger owns attempts, and the RAG
 component owns vectors. Chunking and indexing happen only when `rag` is configured.
+
+Indexing has its own lease (10 minutes by default and maximum; lower it with
+`limits.indexLeaseMs`). Expiry records an unknown outcome and retains the exact
+RAG entry id. An explicit `index()` call cleans that entry before starting again;
+expiry never retries embedding automatically. Late writes and promotion are fenced.

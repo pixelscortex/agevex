@@ -132,7 +132,11 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
       ? backends.find((value) => value.id === selected)
       : backends.find((value) => value.accepts(file.info));
     if (!backend || !backend.accepts(file.info)) throw new ExtractError("UNSUPPORTED_TYPE");
-    const optionsHash = args.optionsHash ?? (await fingerprint(limits));
+    // An indexing-only lease change must not create another paid extraction
+    // identity. Keep the extraction ceilings as the identity's options input.
+    const optionsHash =
+      args.optionsHash ??
+      (await fingerprint({ maxBytes: limits.maxBytes, payloadBytes: limits.payloadBytes }));
     if (!/^[a-f0-9]{64}$/.test(optionsHash)) throw new Error("INVALID_EXTRACT_ARGUMENT");
     return {
       file,
@@ -488,6 +492,7 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
         artifactId: row._id,
         namespace: args.namespace,
         key: args.key,
+        leaseMs: limits.indexLeaseMs,
       });
       if (admitted.action !== "run")
         return {
@@ -537,8 +542,9 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
             maxRetries: 0,
           });
           tokens += result.usage.tokens;
-          await ctx.runMutation(options.rag.component.chunks.insert, {
-            entryId,
+          const inserted = await ctx.runMutation(component.indexing.insert, {
+            ...fence,
+            insert: await createFunctionHandle(options.rag.component.chunks.insert),
             startOrder,
             chunks: batch.map(({ text }, index) => ({
               content: { text },
@@ -546,6 +552,7 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
               embedding: result.embeddings[index]!,
             })),
           });
+          if (!inserted) throw new Error("EXTRACT_INDEX_FENCED");
         }
         await authorize(ctx, {
           operation: "index",
