@@ -1,0 +1,39 @@
+example/src/components/playground/notes.tsx
+  s_d863bd773ba186::t_1c1e4439c65690 10-15,51
+example/src/components/playground/root-messages.ts
+  s_d863bd773ba186::t_2e97aa59fbe2b4 1,3-29,32
+example/scripts/root-transcript.test.tsx
+  s_d863bd773ba186::t_bd427a499377f0 4-6,9-14,19-20,25,29-49,53,55-58,63,68-69,78-101
+example/src/components/playground/types.ts
+  s_d863bd773ba186::t_4925d38d4e0de1 2-3,7,12-19,29-31,35
+example/src/components/playground/activity-panel.tsx
+  s_d863bd773ba186::t_5222bf1d956470 170,191,207
+example/src/components/playground/labels.ts
+  s_d863bd773ba186::t_1d8f6c18935048 1-8,21,47-48,53,69-72
+example/src/components/playground/playground.tsx
+  s_d863bd773ba186::t_93e1f26a64b0be 127
+example/src/components/playground/run-inspector.tsx
+  s_d863bd773ba186::t_f103bf15761ef5 19,21-22,49,51-54,83-94,109-113,143,148-149,164,194
+example/src/components/playground/steps.tsx
+  s_d863bd773ba186::t_bcbfb8861556b6 186,212
+example/src/components/playground/transcript.tsx
+  s_d863bd773ba186::t_d086abcd355154 1,23,25,27-28,31,35,40,47,59-60,73,86-89,92,106,109,112-115,123-124,129-141,159-162
+example/src/components/playground/use-messages.ts
+  s_d863bd773ba186::t_ed6ca9c29daf16 2,6,23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "35bdc73f3c899f54a6e241dd6518eae920806378",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}

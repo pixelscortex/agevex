@@ -1,0 +1,33 @@
+docs/site/content/docs/recipes/critic.mdx
+  s_d863bd773ba186::t_834aa4568dfd40 7-8
+docs/site/content/docs/recipes/summary.mdx
+  s_d863bd773ba186::t_c2206190785562 7-8
+example/convex/agents.ts
+  s_d863bd773ba186::t_e12b394ef9c995 55,69,83
+example/convex/model.ts
+  s_d863bd773ba186::t_3b14d3a64edbba 15,17,22-25,27,29-30,33-34
+example/scripts/smoke.ts
+  s_d863bd773ba186::t_393966514944a7 100-101,132,182-186,191-192,251-253,256-260
+example/src/components/playground/composer.tsx
+  s_d863bd773ba186::t_2e1d20eb3bc3d8 179-180
+example/src/components/playground/run-inspector.tsx
+  s_d863bd773ba186::t_c9312c2e09c21d 180-185
+example/src/lib/scenarios.ts
+  s_d863bd773ba186::t_80110623b2128a 17,25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "894cb943360be15e4b82746fde678046e5a94050",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
