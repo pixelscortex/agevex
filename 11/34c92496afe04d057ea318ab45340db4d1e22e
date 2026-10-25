@@ -1,0 +1,52 @@
+docs/site/content/docs/tools/index.mdx
+  s_13da76928a739b::t_e2951d88847585 26-27
+  s_13da76928a739b::t_5ddd501498bb38 4
+docs/site/content/docs/meta.json
+  s_13da76928a739b::t_e2951d88847585 13-14
+docs/site/content/docs/tools/todo.mdx
+  s_13da76928a739b::t_e2951d88847585 16-18
+  s_13da76928a739b::t_61fb7fa73a4aba 4
+docs/site/content/docs/tools/continue-budget.mdx
+  s_13da76928a739b::t_e2951d88847585 15-17
+  s_13da76928a739b::t_a4d8334247029f 4
+tests/tools/install.test.ts
+  s_13da76928a739b::t_8e2daa9309e3ea 11-17,20-37,64-66,75,103,114,126,131-132,135-155,157,162,166,169-170,182-186,213
+docs/site/content/docs/tools/goals.mdx
+  s_13da76928a739b::t_e2951d88847585 15-17
+  s_13da76928a739b::t_5a3cdae3b32646 4
+docs/site/content/docs/tools/ask-user.mdx
+  s_13da76928a739b::t_e2951d88847585 15-17,41-43
+  s_13da76928a739b::t_d1c3fa4036fc42 4
+docs/site/content/docs/modules/tools.mdx
+  s_13da76928a739b::t_3b8510f640302f 4-5,8-10,12,14-17,19,21-26,28-37
+docs/site/content/docs/registry.mdx
+  s_13da76928a739b::t_7dc41eb636bef5 4-5,8-11,13,15-16,19-22,25-28,30-31,33-39,41-42,44,46,50-51,54-61
+docs/site/public/r/ask-user.json
+  s_13da76928a739b::t_5dea97eaa8b533 5,19
+docs/site/public/r/continue-budget.json
+  s_13da76928a739b::t_1047e0777a89e5 19
+docs/site/public/r/goals.json
+  s_13da76928a739b::t_cafe2a347d7baa 31
+docs/site/public/r/registry.json
+  s_13da76928a739b::t_5a254ad3d66e8c 16,45,68,74,93
+docs/site/public/r/todo.json
+  s_13da76928a739b::t_00d1fe42bf5d6d 31
+docs/site/registry.json
+  s_13da76928a739b::t_99534412aa0fb5 16,45,68,74,93
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1134c92496afe04d057ea318ab45340db4d1e22e",
+  "prompts": {},
+  "sessions": {
+    "s_13da76928a739b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1705e-c45c-7302-a1e3-a6464cdb5402",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}

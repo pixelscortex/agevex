@@ -1,0 +1,63 @@
+README.md
+  s_d863bd773ba186::t_bd061323651c1a 403,407-408,410
+docs/site/content/docs/modules/tools.mdx
+  s_d863bd773ba186::t_7053452f323e02 15,17
+docs/site/content/docs/tools/continue-budget.mdx
+  s_d863bd773ba186::t_aae9733e3d9527 39-40,43-44,47-67,69,72-92
+docs/site/content/docs/tools/goals.mdx
+  s_d863bd773ba186::t_99115ea26ec772 42-53
+docs/site/content/docs/tools/index.mdx
+  s_d863bd773ba186::t_4b2bd7a38f3c54 12
+docs/site/content/docs/tools/todo.mdx
+  s_d863bd773ba186::t_2d69c879f4f5cf 49-55
+docs/site/public/r/continue-budget.json
+  s_d863bd773ba186::t_3074098ddc0339 5,14,19
+docs/site/public/r/goals.json
+  s_d863bd773ba186::t_ac4a3848f902a3 5,14,20,26
+docs/site/public/r/registry.json
+  s_d863bd773ba186::t_dae2a1d9289753 10,39,87,93
+docs/site/public/r/todo.json
+  s_d863bd773ba186::t_50e022115accaa 5,14,26
+docs/site/registry.json
+  s_d863bd773ba186::t_f2b6defe962cd5 10,39,87,93
+docs/site/registry/continue-budget/continueBudget.ts
+  s_d863bd773ba186::t_26fca61313545b 41-43,45-55,59-60,68,73-89,96-97,99-107,110-113,115-116
+docs/site/registry/goals/goals.ts
+  s_d863bd773ba186::t_5763e14c206b1b 5,15,46
+docs/site/registry/goals/goalsSchema.ts
+  s_d863bd773ba186::t_f93a5f0b355739 5-7,17
+docs/site/registry/goals/goalsState.ts
+  s_d863bd773ba186::t_fcc345f8c699fa 8,27-28,31-32,48-49,52-53,58-84
+docs/site/registry/todo/todo.ts
+  s_d863bd773ba186::t_d4a216fd2b114e 11
+docs/site/registry/todo/todoState.ts
+  s_d863bd773ba186::t_0bae1a22029c0c 8,62-88
+tests/tools/continue-budget.test.ts
+  s_d863bd773ba186::t_f281a24aba0104 6,9,112-117,119-122,124,126-130,132-134,137,140,148-149,151,154-156,158,160-161,164,171,173-174,176,180-184,186,191-226,229-253,256-322,329-330,333-350
+tests/tools/fixture/host.ts
+  s_d863bd773ba186::t_d4745bb81efdfa 16-18,22,27-30,35-36,84-86,89-90,98-181
+tests/tools/fixture/schema.ts
+  s_d863bd773ba186::t_73040cb9834111 1-2,7-14
+tests/tools/install.test.ts
+  s_d863bd773ba186::t_f70e18bfa2838b 38-86,92-96,172-182,247,275
+tests/tools/setup.ts
+  s_d863bd773ba186::t_7fafd19bd602de 24
+tests/tools/state.test.ts
+  s_d863bd773ba186::t_51a60a2bad43c8 235-316
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3c39fc58adaca1e6c266f92746d57bba92d56e9c",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
