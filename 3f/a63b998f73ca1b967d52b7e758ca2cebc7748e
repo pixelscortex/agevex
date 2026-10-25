@@ -1,0 +1,44 @@
+src/meter/component/schema.ts
+  s_8db5deca3a9444::t_76025205d55198 24-32,55-57
+src/meter/component/aggregates.ts
+  s_8db5deca3a9444::t_76025205d55198 43-44,50,53-54,60,70-71
+src/meter/component/reads.ts
+  s_8db5deca3a9444::t_76025205d55198 13-14,77,87-88,95-96,100-105,123,133-134
+src/meter/index.ts
+  s_8db5deca3a9444::t_76025205d55198 1-2
+tests/meter/setup.ts
+  s_8db5deca3a9444::t_87bde05b6bf1d5 8-14
+src/meter/client.ts
+  s_8db5deca3a9444::t_76025205d55198 18,46,158,182,202-203,206,225,228,333-334
+src/meter/breakdowns.ts
+  s_8db5deca3a9444::t_76025205d55198 1-32
+tests/meter/meter.test.ts
+  s_8db5deca3a9444::t_87bde05b6bf1d5 8,123,176,303
+tests/meter/bounds.test.ts
+  s_8db5deca3a9444::t_87bde05b6bf1d5 6,207,299-300,305-306,308,310
+src/meter/component/charges.ts
+  s_8db5deca3a9444::t_76025205d55198 13-14,108,120,163
+tests/meter/breakdowns.test.ts
+  s_8db5deca3a9444::t_373882a78d037c 13-21,75-77,127-130,156-158,160-162,166-168,172-174,190-192
+  s_8db5deca3a9444::t_bd47b4f2fbf66f 1-12,22-74,78-126,131-155,159,163-165,169-171,175-189,193
+src/meter/types.ts
+  s_8db5deca3a9444::t_76025205d55198 4,35-36
+src/meter/README.md
+  s_8db5deca3a9444::t_29bd8edb4227c0 89-91,103-110,171-191,202-216,219-226,267-268
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3fa63b998f73ca1b967d52b7e758ca2cebc7748e",
+  "prompts": {},
+  "sessions": {
+    "s_8db5deca3a9444": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17070-d3d8-7cd1-b39e-88f4f1b1e036",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
