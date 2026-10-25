@@ -59,17 +59,26 @@ export const approveContinue = mutationGeneric({
       approvalId,
       approved: true,
     });
-    const { runId } = await ctx.runQuery(api.agents.activity, { threadId });
-    await ctx.runMutation(internal.agevexTools.continueBudgetState.record, {
-      subject,
-      threadId,
-      approvalId,
-      runId,
-    });
+    if (!response.replayed) {
+      const { runId } = await ctx.runQuery(api.agents.activity, { threadId });
+      await ctx.runMutation(internal.agevexTools.continueBudgetState.record, {
+        subject,
+        threadId,
+        approvalId,
+        runId,
+      });
+    }
     return response;
   },
 });
 ```
+
+**Every `continue_budget` approval must go through this action.** Core `respond`
+now returns `{ messageId, replayed }`; the action records consent only when
+`replayed` is `false`, in the run that is active at that moment. A first decision
+made anywhere else (plain `respond`, another tool, an admin script) never becomes
+consent: approving it again through the action is a replay and records nothing,
+so an old answer cannot be bound to a later run's stop.
 
 Denials are answered through plain `respond({ approved: false })` and record
 nothing. `record` is idempotent (the first row wins, spent or not); `consume` is how the
@@ -86,9 +95,11 @@ user is asked.
 **Cleanup.** Rows outlive threads. Call the shipped internal
 `cleanup({ subject, threadId })` from your thread-deletion job. It deletes at
 most 128 rows per call (call again while `done` is false) and **never deletes a
-row younger than `LIMITS.receiptRetentionMs` (7 days)**, which is how long core
-`respond` replays its saved result. A spent row is what stops a replayed approve
-from creating fresh consent, so it must outlive that window.
+row younger than `LIMITS.receiptRetentionMs` + `LIMITS.purgeIntervalMs` + 1 hour**
+(about 7 days 2 hours). Core serves a saved `respond` result until its purge
+chain deletes the receipt, which runs every `purgeIntervalMs` and does not look at
+the receipt's expiry, so a replay is possible slightly past 7 days. Spent rows are
+a second guard behind the `replayed` check above and must outlive that window.
 
 ## Continue a stopped run
 
@@ -138,8 +149,8 @@ send a fresh request as a new run.
   the resume transaction and succeeds only for an unspent row of the same owner,
   thread, approval id and stopped run id. One approval therefore cannot authorize
   a later stop, an approval given in one run cannot unlock another run's stop, and
-  a replayed approve (core `respond` replays for 7 days) cannot re-create consent
-  because the spent row blocks re-recording. A failed resume restores the row.
+  a replayed approve cannot re-create consent (the action skips `record` when
+  `respond` replayed, and the spent row blocks re-recording as a second guard). A failed resume restores the row.
 - **Consent is never inferred.** The helper never calls `respond`, so a pending
   approval cannot be approved on the user's behalf. An approval answered through
   core alone, a denied one, or an unknown id returns `no-consent` and changes

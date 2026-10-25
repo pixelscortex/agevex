@@ -21,6 +21,12 @@ const consent = {
 // Index fields are limited to 1 KiB each, and the approval id is chosen by the
 // model provider. Reject what cannot be indexed instead of truncating it: a
 // truncated id could make two approvals look like one consent.
+// Core serves a saved `respond` result until its purge chain deletes the receipt:
+// `findReceipt` ignores `expiresAt` and the purge runs every purgeIntervalMs. So
+// the safe age is retention + one purge interval + a margin, not retention alone.
+const CONSENT_RETENTION_MS =
+  LIMITS.receiptRetentionMs + LIMITS.purgeIntervalMs + 60 * 60_000;
+
 const checkId = (approvalId: string) => {
   if (
     !approvalId ||
@@ -34,10 +40,10 @@ const checkId = (approvalId: string) => {
  * `respond({ approved: true })`, with the thread's current `activity.runId`, so
  * both commit or neither does. The run id binds the consent to the run that was
  * active when the user approved: an approval from one run can never unlock the
- * stop of another. Re-recording the same approval keeps the first row, spent or not: core
- * `respond` replays its saved result for LIMITS.receiptRetentionMs (7 days)
- * without re-checking that the approval is still pending, so a double-click
- * after a resume would otherwise insert a fresh, unspent row for the new run.
+ * stop of another. Call it ONLY when `respond` returned `replayed: false`: a
+ * replay means the approval was first decided earlier (maybe through plain core
+ * `respond`, maybe in another run) and must never become consent now. As a
+ * second guard, re-recording the same approval keeps the first row, spent or not.
  * subject/threadId/runId are core facts (<= 128 UTF-8 bytes); a row is < 2 KiB,
  * and unique() reads at most two rows (convex/src/server/impl/query_impl.ts:334-343).
  */
@@ -85,9 +91,11 @@ export const consume = mutation({
 });
 
 /**
- * Bounded host cleanup for one deleted thread. Spent rows are what block a
- * replayed approve, and core `respond` can replay for LIMITS.receiptRetentionMs
- * (7 days, exported by agevex), so a row younger than that is never deleted.
+ * Bounded host cleanup for one deleted thread. A replayed approve does not
+ * record consent (the host's approve action checks `respond`'s `replayed`), but
+ * spent rows stay as belt and braces for as long as core can still replay:
+ * LIMITS.receiptRetentionMs (7 days) plus one LIMITS.purgeIntervalMs (1 hour)
+ * plus a 1 hour margin, so a row younger than that is never deleted.
  * Deletes at most CONSENT_LIMITS.cleanupBatch rows (< 2 KiB each, < 256 KiB) of
  * that thread created before the cutoff, reading through the by_thread index's
  * _creationTime range so the read is bounded by the batch, and reports
@@ -97,7 +105,7 @@ export const cleanup = mutation({
   args: { subject: v.string(), threadId: v.string() },
   returns: v.object({ deleted: v.number(), done: v.boolean() }),
   handler: async (ctx, args) => {
-    const cutoff = Date.now() - LIMITS.receiptRetentionMs;
+    const cutoff = Date.now() - CONSENT_RETENTION_MS;
     const rows = await ctx.db
       .query("agevexBudgetConsents")
       .withIndex("by_thread", (q) =>

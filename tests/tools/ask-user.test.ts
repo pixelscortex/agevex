@@ -61,7 +61,11 @@ it("ask_user pauses the run as a pending deferred call; answer resumes it once a
   expect(state.calls).toHaveLength(2);
   expect(JSON.stringify(state.calls[1].prompt)).toContain(args.text);
   // A repeated answer replays the original result and never resumes twice.
-  await expect(alice.mutation(api.host.answer, args)).resolves.toEqual(answered);
+  expect(answered.replayed).toBe(false);
+  await expect(alice.mutation(api.host.answer, args)).resolves.toEqual({
+    ...answered,
+    replayed: true,
+  });
   await drain(t);
   expect(state.calls).toHaveLength(2);
   expect(await alice.query(api.host.activity, { threadId: receipt.threadId })).toMatchObject({

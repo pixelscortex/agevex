@@ -61,7 +61,11 @@ it("continue_budget pauses at its hard maximum, authorizes the responder, and re
   ).rejects.toThrow();
   expect(state.calls).toHaveLength(1);
   const answered = await alice.mutation(api.host.respond, response);
-  await expect(alice.mutation(api.host.respond, response)).resolves.toEqual(answered);
+  expect(answered.replayed).toBe(false);
+  await expect(alice.mutation(api.host.respond, response)).resolves.toEqual({
+    ...answered,
+    replayed: true,
+  });
   await drain(t);
   expect(state.calls).toHaveLength(2);
   expect(JSON.stringify(state.calls[1].prompt)).toContain(`"approved":true`);
@@ -160,6 +164,48 @@ const resume = (
   approvalId: string,
   instruction?: string,
 ) => alice.mutation(api.host.resumeAfterBudget, { threadId, approvalId, instruction });
+
+it("an approval first decided through plain core respond never becomes consent, even when approved again for a later run", async () => {
+  const t = setup();
+  await limit(t, "alice", 1);
+  // R1 is stopped; the user's first decision on approval A went through plain core respond.
+  const { alice, receipt, approval } = await stoppedForBudget(t, 2, "first", "core-only");
+  // The host's admin recovery starts R2 without consent; R2 asks again and is stopped too.
+  await t.run(async (ctx) => {
+    const [row] = await ctx.db.query("budgets").collect();
+    await ctx.db.patch("budgets", row._id, { limit: state.budget.checks + 1 });
+  });
+  await alice.mutation(api.host.cancel, { threadId: receipt.threadId });
+  state.steps.splice(state.calls.length, 0, requestConsent("consent-r2", { reason: "Again" }));
+  await alice.mutation(api.host.send, {
+    threadId: receipt.threadId,
+    text: "Admin recovery",
+    requestKey: "admin",
+  });
+  await drain(t);
+  const second = await approvalId(t, receipt.assignmentId);
+  expect(second).not.toBe(approval);
+  await alice.mutation(api.host.respond, {
+    threadId: receipt.threadId,
+    approvalId: second,
+    approved: true,
+  });
+  await drain(t);
+  expect(await alice.query(api.host.activity, { threadId: receipt.threadId })).toMatchObject({
+    errorCode: "BUDGET_EXCEEDED",
+  });
+  // Approving A "again" now is a replay of the earlier decision: core says so,
+  // and the host records nothing, so A cannot be bound to R2's stop.
+  const replay = await alice.mutation(api.host.approveContinue, {
+    threadId: receipt.threadId,
+    approvalId: approval,
+  });
+  expect(replay.replayed).toBe(true);
+  expect(await consentRows(t)).toEqual([]);
+  await expect(resume(alice, receipt.threadId, approval)).resolves.toEqual({
+    status: "no-consent",
+  });
+});
 
 it("recording consent alone never raises the budget or resumes: the run stays stopped until the resume mutation runs", async () => {
   const t = setup();
@@ -391,9 +437,10 @@ it("cleanup never deletes consent younger than core's response-receipt retention
   });
   const clean = (threadId = "thread-a") =>
     t.mutation(api.continueBudgetState.cleanup, { subject: "alice", threadId });
-  // Just inside the retention window: nothing may be deleted, or a replayed
-  // approve could record fresh consent after the spent row was removed.
-  vi.setSystemTime(Date.now() + LIMITS.receiptRetentionMs - 60_000);
+  // Core serves a saved respond result until its hourly purge deletes the
+  // receipt, so the safe age is retention + purge interval + 1 hour margin.
+  const retention = LIMITS.receiptRetentionMs + LIMITS.purgeIntervalMs + 60 * 60_000;
+  vi.setSystemTime(Date.now() + retention - 60_000);
   expect(await clean()).toEqual({ deleted: 0, done: true });
   expect(await consentRows(t)).toHaveLength(CONSENT_LIMITS.cleanupBatch + 2);
   vi.setSystemTime(Date.now() + 120_000);
@@ -403,7 +450,7 @@ it("cleanup never deletes consent younger than core's response-receipt retention
   expect(await consentRows(t)).toMatchObject([{ threadId: "thread-b" }]);
 });
 
-it("a delegated child that calls continue_budget gets a typed ROOT_ONLY denial and records no consent", async () => {
+it("a delegated child cannot record consent through the approve action, and calling continue_budget returns a typed ROOT_ONLY denial", async () => {
   const t = setup();
   state.steps.push([
     {
@@ -425,6 +472,18 @@ it("a delegated child that calls continue_budget gets a typed ROOT_ONLY denial a
   const childThreadId = runs.page[0].childThreadId!;
   const assignment = await t.query(managed.queue.assignment, { threadId: childThreadId });
   const childApproval = await approvalId(t, assignment!.assignmentId);
+  // The host's approve action cannot bind consent to a child: `activity` is
+  // root-only, so the whole action (including its respond) is refused.
+  await expect(
+    alice.mutation(api.host.approveContinue, {
+      threadId: childThreadId,
+      approvalId: childApproval,
+    }),
+  ).rejects.toThrow();
+  expect(await consentRows(t)).toEqual([]);
+  await drain(t);
+  expect(child.calls).toHaveLength(1);
+  // Answered through plain core respond instead, the tool refuses at execution.
   await alice.mutation(api.host.respond, {
     threadId: childThreadId,
     approvalId: childApproval,

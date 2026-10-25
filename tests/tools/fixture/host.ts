@@ -169,14 +169,18 @@ export const approveContinue = mutationGeneric({
       approvalId,
       approved: true,
     });
-    // Bind the consent to the run active at approval time (the run that asked).
-    const { runId } = await ctx.runQuery(selfApi.host.activity, { threadId });
-    await ctx.runMutation(selfApi.continueBudgetState.record, {
-      subject: identity.subject,
-      threadId,
-      approvalId,
-      runId,
-    });
+    // A replayed response was first decided earlier, possibly through plain
+    // core respond and possibly in another run: it never becomes consent now.
+    if (!response.replayed) {
+      // Bind the consent to the run active at approval time (the run that asked).
+      const { runId } = await ctx.runQuery(selfApi.host.activity, { threadId });
+      await ctx.runMutation(selfApi.continueBudgetState.record, {
+        subject: identity.subject,
+        threadId,
+        approvalId,
+        runId,
+      });
+    }
     return response;
   },
 });
