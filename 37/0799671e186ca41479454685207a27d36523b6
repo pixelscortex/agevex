@@ -1,0 +1,37 @@
+src/client/turn/routing.ts
+  s_d863bd773ba186::t_364412d30891bd 42-43,50
+src/component/README.md
+  s_d863bd773ba186::t_a198b77c321bfa 113-114
+src/component/hooks/notes.ts
+  s_d863bd773ba186::t_893b9e09393756 112
+src/component/limits.ts
+  s_d863bd773ba186::t_aafd764fc839e9 158-159
+src/component/schema.ts
+  s_d863bd773ba186::t_d6736854128dac 245-248,449-450,457-459
+src/component/subagents/runs.ts
+  s_d863bd773ba186::t_c876b35a5ca787 32-33,43-72
+src/component/subagents/views.ts
+  s_d863bd773ba186::t_9531f587b443e4 19,210,235
+src/component/turns/cancel.ts
+  s_d863bd773ba186::t_49ed37e3747235 18,53-55
+src/component/turns/claim.ts
+  s_d863bd773ba186::t_941210d97e1bc6 23,314
+tests/delegation-v2.test.ts
+  s_d863bd773ba186::t_6aeb23f0b50136 104-139,2470-2472,2477-2487
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "370799671e186ca41479454685207a27d36523b6",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
