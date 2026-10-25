@@ -787,9 +787,11 @@ async function releaseGroup(
   await ctx.db.insert("inbox", {
     assignmentId: parent._id,
     messageId: accepted[accepted.length - 1].resultMessageId!,
-    messageSequence: accepted[accepted.length - 1].resultSequence!,
-    earliestMessageId: accepted[0].resultMessageId!,
-    earliestMessageSequence: accepted[0].resultSequence!,
+    join: {
+      newestSequence: accepted[accepted.length - 1].resultSequence!,
+      earliestId: accepted[0].resultMessageId!,
+      earliestSequence: accepted[0].resultSequence!,
+    },
     sequence: parent.nextSequence,
     // A joined release carries delegated results. Labelling it "note" made
     // hooks.origins report the newest member's result as an origin-less note

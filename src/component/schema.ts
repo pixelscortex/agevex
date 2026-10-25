@@ -289,18 +289,23 @@ export default defineSchema({
     // Deferred joins append later than their native save. Claim compares this
     // recorded save order, never queue insertion order, to retain newer answers.
     passive: v.optional(v.boolean()),
-    // All posted notes retain text until claim; delivered controls retain ids.
-    noteText: v.optional(v.string()),
-    // Hook continuations wait for claim so notes precede their native prompt.
-    continueText: v.optional(v.string()),
+    // Unsaved body of a posted note (addNote) or a staged hook continuation
+    // (continueAdmission); a row is one kind, so never both. Held until claim,
+    // whose claimNotes is its only reader and clears it once saved natively.
+    text: v.optional(v.string()),
     // Separates cancelled payloads from fresh admission before cleanup runs.
     noteEpoch: v.optional(v.number()),
     from: v.optional(v.string()),
-    messageSequence: v.optional(v.number()),
-    // A joined group generates from its newest result, but notes precede its
-    // earliest native member. Set only on group releases; read by claim.
-    earliestMessageId: v.optional(v.string()),
-    earliestMessageSequence: v.optional(v.number()),
+    // A joined group generates from its newest result (messageId, at
+    // newestSequence), but notes precede its earliest native member. Set only
+    // by releaseGroup, all three together; read only by claim.
+    join: v.optional(
+      v.object({
+        newestSequence: v.number(),
+        earliestId: v.string(),
+        earliestSequence: v.number(),
+      }),
+    ),
     runId: v.id("runs"),
     // Read by wake (result/note make a subagent_result turn; user/parent make a
     // user turn), claim (non-user kinds merge consecutively; a user row ends it) and hooks.origins

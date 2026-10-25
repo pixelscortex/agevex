@@ -103,12 +103,12 @@ export async function claimNotes(
     .take(row.limits.notesPending);
   if (!notes.length && !continuation) return;
   const controls = [
-    ...notes.map((note) => ({ row: note, message: noteMessage(note.noteText!, note.from!) })),
+    ...notes.map((note) => ({ row: note, message: noteMessage(note.text!, note.from!) })),
     ...(continuation
       ? [
           {
             row: continuation,
-            message: { role: "user" as const, content: continuation.continueText! },
+            message: { role: "user" as const, content: continuation.text! },
           },
         ]
       : []),
@@ -132,8 +132,7 @@ export async function claimNotes(
     finalized.push(message);
     await ctx.db.patch("inbox", control.row._id, {
       messageId: message._id,
-      noteText: undefined,
-      continueText: undefined,
+      text: undefined,
       passive: false,
     });
     if (control.row.kind === "continue") {
@@ -308,7 +307,7 @@ export const continueAdmission = mutation({
     const messageId = await ctx.db.insert("inbox", {
       assignmentId: row._id,
       messageId: "",
-      continueText: args.prompt,
+      text: args.prompt,
       sequence: row.nextSequence,
       runId: run._id,
       kind: "continue",
@@ -417,7 +416,7 @@ export const addNote = mutation({
       passive: true,
       from: args.from,
       noteEpoch: row.cancellationEpoch,
-      noteText: args.text,
+      text: args.text,
     });
     await ctx.db.patch("assignments", row._id, {
       notesPending: row.notesPending + 1,

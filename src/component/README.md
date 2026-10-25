@@ -15,9 +15,10 @@ Workpool: root parallelism 2, child parallelism 4. Hosts export `runTurn` and
   committed results; ordinary tool slices never drain them. `beforeTurn` hook
   notes are saved before the first generation.
 - `inbox`: FIFO ready message references, passive notes and retained control ids.
-  `noteText` holds every posted note until claim; `noteEpoch` isolates cancelled
-  payloads from fresh admission/cleanup. `continueText` stages a hook prompt so
-  claim saves notes before that prompt. `from` labels notes in context and
+  `text` holds a posted note or a staged hook prompt until claim; `noteEpoch`
+  isolates cancelled payloads from fresh admission/cleanup. Claim saves notes
+  before a staged prompt. `join` carries a joined group's newest and earliest
+  member anchors. `from` labels notes in context and
   the public reader. After save, `messageId`/`kind`/`from` retain origin metadata
   with `passive: false`; `by_message` reads only ids on the requested page.
   The ready index selects `passive: undefined`, so controls never start work or

@@ -440,7 +440,7 @@ export const claim = mutation({
     if (first && row.inboxId) {
       const head = await ctx.db.get("inbox", row.inboxId);
       if (head) {
-        noteAnchor = head.earliestMessageId ?? head.messageId;
+        noteAnchor = head.join?.earliestId ?? head.messageId;
         await ctx.db.delete("inbox", head._id);
       }
       if (head?.kind === "result" || head?.kind === "note" || head?.kind === "parent") {
@@ -455,8 +455,8 @@ export const claim = mutation({
         // <8 MiB, <2,000 reads/<600 writes even at all host maxima.
         // @convex-dev/agent/src/component/messages.ts:298-322 anchors native
         // context at the prompt's recorded order, rather than our inbox order.
-        let newest = head.messageSequence ?? head.sequence;
-        let earliest = head.earliestMessageSequence ?? newest;
+        let newest = head.join?.newestSequence ?? head.sequence;
+        let earliest = head.join?.earliestSequence ?? newest;
         const bound = row.limits.queueLength + row.limits.runLaunches + 1;
         for (let count = 0; count < bound; count++) {
           await ctx.runMutation(api.subagents.releaseGroups, {
@@ -471,11 +471,11 @@ export const claim = mutation({
             .first();
           if (!item || item.runId !== head.runId || item.kind === "user") break;
           await ctx.db.delete("inbox", item._id);
-          const order = item.messageSequence ?? item.sequence;
-          const noteOrder = item.earliestMessageSequence ?? order;
+          const order = item.join?.newestSequence ?? item.sequence;
+          const noteOrder = item.join?.earliestSequence ?? order;
           if (noteOrder < earliest) {
             earliest = noteOrder;
-            noteAnchor = item.earliestMessageId ?? item.messageId;
+            noteAnchor = item.join?.earliestId ?? item.messageId;
           }
           if (order > newest) {
             newest = order;
