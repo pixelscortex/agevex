@@ -1,0 +1,21 @@
+src/sandbox/daytona.ts
+  s_d863bd773ba186::t_ca18e549b59485 160-165,171-172,252-254
+tests/sandbox/daytona.test.ts
+  s_d863bd773ba186::t_430b375ec3d846 728-775
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d7a2e6f570c0977cb13b615133213eea27baa74a",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
