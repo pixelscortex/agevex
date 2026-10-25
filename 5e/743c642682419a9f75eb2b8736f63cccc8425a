@@ -1,0 +1,31 @@
+example/scripts/root-transcript.test.tsx
+  s_d863bd773ba186::t_55d371703dee44 5-6
+example/src/components/playground/activity-panel.tsx
+  s_d863bd773ba186::t_3e53ca69623e05 21-23,49-65,68,91-107,125,142-146,160,164,174-189
+example/src/components/playground/playground.tsx
+  s_d863bd773ba186::t_b9d24ab8005151 18-19
+example/src/components/playground/run-turns.ts
+  s_d863bd773ba186::t_0536498a535d0a 1-70
+example/src/components/playground/transcript.tsx
+  s_d863bd773ba186::t_3803b876ad3167 23,28
+example/src/components/playground/turns.ts
+  s_d863bd773ba186::t_e536c3caf9ddac 1-55
+example/src/components/playground/waterfall.tsx
+  s_d863bd773ba186::t_35bf74e050f4ea 3-6,13,33-71,78-89,116-121,125,131-133,136,142-160,165-171,173-178,180,185-229,233-258
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5e743c642682419a9f75eb2b8736f63cccc8425a",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
