@@ -141,7 +141,7 @@ async function settleRunState(
   const root = await ctx.db.get("assignments", run.rootAssignmentId);
   if (root) {
     await ctx.db.patch("assignments", root._id, {
-      activeRuns: Math.max(0, (root.activeRuns ?? 0) - 1),
+      activeRuns: Math.max(0, root.activeRuns - 1),
       historyRuns: (root.historyRuns ?? 0) + 1,
     });
   }
@@ -218,7 +218,7 @@ export const delegateContext = query({
       subject: row.subject,
       rootAgent: root.agent,
       actorAgent: row.agent,
-      activeRuns: root.activeRuns ?? 0,
+      activeRuns: root.activeRuns,
     };
   },
 });
@@ -261,8 +261,8 @@ export const reserve = mutation({
           parent.rootCancellationEpoch !== root.cancellationEpoch))
     )
       return { kind: "denied" as const, code: "FORBIDDEN" as const };
-    const depth = parent ? (parent.depth ?? 1) + 1 : 1;
-    if (depth > (root.limits?.maxDepth ?? LIMITS.maxDepth))
+    const depth = parent ? parent.depth + 1 : 1;
+    if (depth > root.limits.maxDepth)
       return { kind: "denied" as const, code: "DEPTH_LIMIT" as const };
     if (args.side && (args.group !== undefined || args.wait !== undefined))
       return { kind: "denied" as const, code: "GROUP_CONFLICT" as const };
@@ -278,7 +278,7 @@ export const reserve = mutation({
         return { kind: "denied" as const, code: "DELEGATION_CONFLICT" as const };
       return { kind: "replay" as const, runId: duplicate.runId, agent: duplicate.agent };
     }
-    if ((root.activeRuns ?? 0) >= (root.limits ?? LIMITS).activeChildrenPerRoot)
+    if (root.activeRuns >= root.limits.activeChildrenPerRoot)
       return { kind: "denied" as const, code: "ACTIVE_LIMIT" as const };
     // A delivered-result turn retains this run id: completing a child cannot
     // replenish launches, and a new caller prompt alone creates a new budget.
@@ -287,9 +287,8 @@ export const reserve = mutation({
       !budget ||
       budget.cancelled ||
       (args.side
-        ? (budget.sideRuns ?? 0) >= (row.limits?.sideRunsPerRun ?? LIMITS.sideRunsPerRun)
-        : budget.launches >= (row.limits ?? LIMITS).runLaunches ||
-          budget.hops >= (row.limits ?? LIMITS).runHops)
+        ? budget.sideRuns >= row.limits.sideRunsPerRun
+        : budget.launches >= row.limits.runLaunches || budget.hops >= row.limits.runHops)
     )
       return { kind: "denied" as const, code: "RUN_BUDGET" as const };
     const wait = args.wait ?? "each";
@@ -304,29 +303,30 @@ export const reserve = mutation({
         .withIndex("by_group", (q) =>
           q.eq("actorAssignmentId", row._id).eq("parentRunId", budget._id).eq("group", group),
         )
-        .take(wait === "all" ? (root.limits ?? LIMITS).activeChildrenPerRoot : 1);
+        .take(wait === "all" ? root.limits.activeChildrenPerRoot : 1);
       if (members.some((member) => (member.wait ?? "each") !== wait))
         return { kind: "denied" as const, code: "GROUP_CONFLICT" as const };
       if (members.some((member) => member.groupSealed))
         return { kind: "denied" as const, code: "GROUP_CLOSED" as const };
-      if (wait === "all" && members.length >= (root.limits ?? LIMITS).activeChildrenPerRoot)
+      if (wait === "all" && members.length >= root.limits.activeChildrenPerRoot)
         return { kind: "denied" as const, code: "GROUP_LIMIT" as const };
     }
     await ctx.db.patch(
       "runs",
       budget._id,
       args.side
-        ? { sideRuns: (budget.sideRuns ?? 0) + 1 }
+        ? { sideRuns: budget.sideRuns + 1 }
         : { launches: budget.launches + 1, hops: budget.hops + 1 },
     );
     const runId = crypto.randomUUID();
     const now = Date.now();
-    const sequence = (root.nextRunSequence ?? 0) + 1;
+    const sequence = root.nextRunSequence + 1;
     await ctx.db.insert("subagentRuns", {
       runId,
       side: args.side || undefined,
       rootCancellationEpoch: root.cancellationEpoch,
       depth,
+      messagesReceived: 0,
       group,
       wait,
       ...(wait === "all" ? { groupReleased: false, groupSealed: false } : {}),
@@ -350,7 +350,7 @@ export const reserve = mutation({
       events: [{ phase: "queued", at: now, errorCode: null }],
     });
     await ctx.db.patch("assignments", root._id, {
-      activeRuns: (root.activeRuns ?? 0) + 1,
+      activeRuns: root.activeRuns + 1,
       nextRunSequence: sequence,
     });
     return { kind: "reserved" as const, runId };
@@ -385,7 +385,7 @@ export const attach = mutation({
       agent: run.agent,
       threadId: args.childThreadId,
       runTurn: run.runTurn,
-      limits: root?.limits,
+      limits: root.limits,
       turnStatus: "idle",
       errorCode: null,
       queuedMessages: 1,
@@ -394,6 +394,9 @@ export const attach = mutation({
       nextTurn: 0,
       cancellationEpoch: 0,
       cancelled: false,
+      completedTurns: 0,
+      activeRuns: 0,
+      nextRunSequence: 0,
       rootAssignmentId: run.rootAssignmentId,
       runId: run.parentRunId,
       childRunId: run.runId,
@@ -674,7 +677,7 @@ async function applyDelivery(
     return null;
   if (
     args.deliveryStatus === "accepted" &&
-    (!budget || budget.cancelled || budget.hops >= (root.limits ?? LIMITS).runHops)
+    (!budget || budget.cancelled || budget.hops >= root.limits.runHops)
   )
     throw new Error("RUN_BUDGET");
   if (run.wait === "all") {
@@ -690,7 +693,7 @@ async function applyDelivery(
           .eq("parentRunId", run.parentRunId)
           .eq("group", run.group ?? ""),
       )
-      .take((root.limits ?? LIMITS).activeChildrenPerRoot);
+      .take(root.limits.activeChildrenPerRoot);
     if (args.deliveryStatus === "accepted") {
       await ctx.db.patch("assignments", parent._id, { nextSequence: parent.nextSequence + 1 });
       parent.nextSequence++;
@@ -698,8 +701,7 @@ async function applyDelivery(
     await markGroupReady(ctx, members, root);
     await wake(ctx, (await ctx.db.get("assignments", parent._id))!);
   } else if (args.deliveryStatus === "accepted" && args.parentMessageId) {
-    if (parent.queuedMessages >= (root.limits ?? LIMITS).queueLength)
-      throw new Error("QUEUE_LIMIT");
+    if (parent.queuedMessages >= root.limits.queueLength) throw new Error("QUEUE_LIMIT");
     await ctx.db.insert("inbox", {
       assignmentId: parent._id,
       messageId: args.parentMessageId,
@@ -770,7 +772,7 @@ async function releaseGroup(
   const accepted = members
     .filter((member) => member.deliveryStatus === "accepted" && member.resultMessageId)
     .sort((a, b) => (a.resultSequence ?? 0) - (b.resultSequence ?? 0));
-  if (accepted.length && parent.queuedMessages >= (root.limits ?? LIMITS).queueLength) return false;
+  if (accepted.length && parent.queuedMessages >= root.limits.queueLength) return false;
   // Mark all <=15 members so the bounded unresolved-group index retires the
   // entire cohort, including failures. No delivered body is read or copied.
   for (const member of members)
@@ -814,7 +816,7 @@ export async function sealGroups(ctx: MutationCtx, parent: Doc<"assignments">) {
         .eq("parentRunId", parent.runId!)
         .eq("groupSealed", false),
     )
-    .take((parent.limits ?? LIMITS).runLaunches);
+    .take(parent.limits.runLaunches);
   for (const member of members) {
     await ctx.db.patch("subagentRuns", member._id, { groupSealed: true });
     member.groupSealed = true;
@@ -843,11 +845,7 @@ export const releaseGroups = mutation({
   returns: v.boolean(),
   handler: async (ctx, args) => {
     const parent = await ctx.db.get("assignments", args.assignmentId);
-    if (
-      !parent ||
-      parent.cancelled ||
-      parent.queuedMessages >= (parent.limits ?? LIMITS).queueLength
-    )
+    if (!parent || parent.cancelled || parent.queuedMessages >= parent.limits.queueLength)
       return false;
     const root = parent.rootAssignmentId
       ? await ctx.db.get("assignments", parent.rootAssignmentId)
@@ -873,7 +871,7 @@ export const releaseGroups = mutation({
           .eq("parentRunId", candidate.parentRunId)
           .eq("group", candidate.group ?? ""),
       )
-      .take((root.limits ?? LIMITS).activeChildrenPerRoot);
+      .take(root.limits.activeChildrenPerRoot);
     const released = await releaseGroup(ctx, parent, root, members);
     if (released) await settleIdleParent(ctx, (await ctx.db.get("assignments", parent._id))!);
     return released;
@@ -1009,22 +1007,19 @@ async function interaction(
     return denied("FORBIDDEN");
   if (args.op === "message" && child._id === actor._id) return denied("FORBIDDEN");
   if (args.op === "ask" && child._id !== actor._id) return denied("FORBIDDEN");
-  if (
-    args.op === "message" &&
-    (run.messagesReceived ?? 0) >= (root.limits?.messagesPerChild ?? LIMITS.messagesPerChild)
-  )
+  if (args.op === "message" && run.messagesReceived >= root.limits.messagesPerChild)
     return denied("MESSAGE_LIMIT");
   const target = args.op === "message" ? child : parent;
   // One extra slot is reserved exclusively for the answer to an open question.
   // A new question cannot reserve another while that extra slot is occupied.
   const answering = args.op === "message" && run.status === "asking";
   if (
-    (!answering && target.queuedMessages >= (root.limits ?? LIMITS).queueLength) ||
-    (args.op === "ask" && child.queuedMessages > (root.limits ?? LIMITS).queueLength)
+    (!answering && target.queuedMessages >= root.limits.queueLength) ||
+    (args.op === "ask" && child.queuedMessages > root.limits.queueLength)
   )
     return denied("QUEUE_LIMIT");
   const budget = await ctx.db.get("runs", run.parentRunId);
-  if (!budget || budget.cancelled || budget.hops >= (root.limits ?? LIMITS).runHops)
+  if (!budget || budget.cancelled || budget.hops >= root.limits.runHops)
     return denied("RUN_BUDGET");
   return { kind: "ready" as const, actor, root, run, child, parent, budget };
 }
@@ -1060,7 +1055,7 @@ async function post(
   kind: "parent" | "note",
   answering = false,
 ) {
-  if (target.queuedMessages >= (target.limits ?? LIMITS).queueLength + Number(answering))
+  if (target.queuedMessages >= target.limits.queueLength + Number(answering))
     throw new Error("QUEUE_LIMIT");
   await ctx.db.insert("inbox", {
     assignmentId: target._id,
@@ -1096,7 +1091,7 @@ export const messageChild = mutation({
     await ctx.db.patch("subagentRuns", run._id, {
       status: "running",
       questionMessageId: undefined,
-      messagesReceived: (run.messagesReceived ?? 0) + 1,
+      messagesReceived: run.messagesReceived + 1,
     });
     await ctx.db.patch("runs", budget._id, { hops: budget.hops + 1 });
     await post(ctx, child, budget._id, args.messageId, "parent", run.status === "asking");
@@ -1157,10 +1152,7 @@ export const runTree = query({
       .withIndex("by_root_run", (q) =>
         q.eq("rootAssignmentId", root._id).eq("parentRunId", root.runId!),
       )
-      .take(
-        (root.limits ?? LIMITS).runLaunches +
-          (root.limits?.sideRunsPerRun ?? LIMITS.sideRunsPerRun),
-      );
+      .take(root.limits.runLaunches + root.limits.sideRunsPerRun);
     return rows.map((run) => ({
       runId: run.runId,
       side: run.side ?? false,
@@ -1168,7 +1160,7 @@ export const runTree = query({
       childAssignmentId: run.childAssignmentId ?? null,
       agent: run.agent,
       status: run.status,
-      depth: run.depth ?? 1,
+      depth: run.depth,
       group: run.group ?? null,
       childThreadId: run.childThreadId ?? null,
       createdAt: run.createdAt,

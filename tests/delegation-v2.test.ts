@@ -3,7 +3,7 @@ import { requireReceipt } from "./receipt.js";
 import { beforeEach, afterEach, it, expect, vi } from "vite-plus/test";
 import { convexTest } from "convex-test";
 import agent from "@convex-dev/agent/test";
-import { createThread, saveMessage } from "@convex-dev/agent";
+import { saveMessage } from "@convex-dev/agent";
 import { componentsGeneric, type FunctionReference, createFunctionHandle } from "convex/server";
 import { workflowCall } from "../src/testing/expect-journal.js";
 import agevex from "../src/test.js";
@@ -1519,67 +1519,6 @@ it("cancelled groups cannot hide a fresh run's deferred join behind their archiv
       })
     )[0]?.text,
   ).toContain("Reviewer failed the delegated task");
-  await owner(t).mutation(api.agents.cancel, { threadId: root.threadId });
-  await drain(t);
-});
-
-it("persisted v1 limits resume depth-two delegation and retain the default four-message bound", async () => {
-  const t = setup(maxima);
-  const { maxDepth, messagesPerChild, ...legacy } = maxima;
-  expect(maxDepth).toBe(2);
-  expect(messagesPerChild).toBe(8);
-  const receipt = await t.run(async (ctx) => {
-    const threadId = await createThread(ctx, components.agent, { userId: "alice" });
-    const { messageId } = await saveMessage(ctx, components.agent, {
-      threadId,
-      prompt: "legacy prompt",
-      userId: "alice",
-    });
-    return ctx.runMutation(components.agevex.queue.accept, {
-      subject: "alice",
-      agent: "Main",
-      threadId,
-      requestKey: "legacy",
-      fingerprint: "legacy",
-      promptMessageId: messageId,
-      runTurn: await createFunctionHandle(runTurnReference()),
-      limits: legacy as Omit<
-        import("../src/client/index.js").Limits,
-        "maxDepth" | "messagesPerChild"
-      >,
-    });
-  });
-  if (receipt.status === "rejected") throw new Error(receipt.code);
-  const root = {
-    assignmentId: receipt.assignmentId,
-    turnToken: receipt.assignmentId + ":0",
-    threadId: receipt.threadId,
-  };
-  await t.mutation(components.agevex.queue.claim, {
-    assignmentId: root.assignmentId,
-    turnToken: root.turnToken,
-  });
-  const parent = await launch(t, root, "Builder");
-  const child = await launch(t, parent, "Reviewer");
-  for (let i = 0; i < LIMITS.messagesPerChild; i++)
-    expect(
-      await t.mutation(api.agents.coordinate, {
-        op: "message",
-        assignmentId: root.assignmentId,
-        turnToken: root.turnToken,
-        runId: child.runId,
-        text: "legacy follow-up",
-      }),
-    ).toMatchObject({ status: "accepted" });
-  expect(
-    await t.mutation(api.agents.coordinate, {
-      op: "message",
-      assignmentId: root.assignmentId,
-      turnToken: root.turnToken,
-      runId: child.runId,
-      text: "too many",
-    }),
-  ).toMatchObject({ status: "denied", code: "MESSAGE_LIMIT" });
   await owner(t).mutation(api.agents.cancel, { threadId: root.threadId });
   await drain(t);
 });

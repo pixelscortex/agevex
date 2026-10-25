@@ -196,14 +196,14 @@ export const LIMITS = {
 
 /** Only these policy bounds are tunable; internal safety/platform facts are not. */
 export const limitsValidator = v.object({
-  // resolveLimits fills every optional policy field at registration; version-1
-  // replay fixtures may omit newer policy fields without changing journal steps.
-  attachmentBytes: v.optional(v.number()),
-  continuesPerRun: v.optional(v.number()),
-  sideRunsPerRun: v.optional(v.number()),
+  // resolveLimits fills every policy field at registration, so a stored row
+  // always carries the complete resolved set and readers never fall back.
+  attachmentBytes: v.number(),
+  continuesPerRun: v.number(),
+  sideRunsPerRun: v.number(),
   notesPending: v.number(),
-  maxDepth: v.optional(v.number()),
-  messagesPerChild: v.optional(v.number()),
+  maxDepth: v.number(),
+  messagesPerChild: v.number(),
   rootLane: v.number(),
   childLane: v.number(),
   runLaunches: v.number(),

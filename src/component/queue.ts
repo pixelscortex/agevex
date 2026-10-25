@@ -72,7 +72,7 @@ export const admission = query({
         status: "rejected" as const,
         code: row.cancelled ? ("CANCELLED" as const) : ("RECOVERY_REQUIRED" as const),
       };
-    if (row.queuedMessages >= (row.limits ?? LIMITS).queueLength)
+    if (row.queuedMessages >= row.limits.queueLength)
       return { status: "rejected" as const, code: "QUEUE_FULL" as const };
     return null;
   },
@@ -188,7 +188,7 @@ export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = tru
   // one run budget: <=50 members TOTAL, <=50 indexed probes/releases,
   // <8 MiB metadata and <1,000 reads/writes at all host maxima. Root loops
   // keep their existing one-cohort cadence; claim drains ready FIFO work.
-  const releases = row.childRunId ? (row.limits ?? LIMITS).runLaunches : 1;
+  const releases = row.childRunId ? row.limits.runLaunches : 1;
   for (let i = 0; i < releases; i++) {
     if (!(await ctx.runMutation(api.subagents.releaseGroups, { assignmentId: row._id }))) break;
     row = (await ctx.db.get("assignments", row._id))!;
@@ -229,7 +229,7 @@ export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = tru
       });
     }
   }
-  const manager = laneManager(!!row.childRunId, row.limits ?? LIMITS);
+  const manager = laneManager(!!row.childRunId, row.limits);
   if (!row.workflowId) {
     const workflowId = await manager.start(
       ctx,
@@ -237,7 +237,7 @@ export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = tru
       {
         assignmentId: row._id,
         version: LIMITS.workflowVersion,
-        ...(row.limits && row.limits.slicesPerTurn !== LIMITS.slicesPerTurn
+        ...(row.limits.slicesPerTurn !== LIMITS.slicesPerTurn
           ? { slicesPerTurn: row.limits.slicesPerTurn }
           : {}),
       },
@@ -277,7 +277,7 @@ export const accept = mutation({
     savedMessage: v.optional(messageRef),
     trackContext: v.optional(v.boolean()),
     runTurn: v.string(),
-    limits: v.optional(limitsValidator),
+    limits: limitsValidator,
     models: v.optional(modelOverrides),
   },
   returns: vReceipt,
@@ -302,6 +302,9 @@ export const accept = mutation({
         notesPending: 0,
         nextSequence: 0,
         nextTurn: 0,
+        completedTurns: 0,
+        activeRuns: 0,
+        nextRunSequence: 0,
         cancellationEpoch: 0,
         cancelled: false,
       });
@@ -313,7 +316,7 @@ export const accept = mutation({
       row = { ...row, contextMessages: [] };
     }
     if (row.turnStatus === "recovery_required") throw new Error("RECOVERY_REQUIRED");
-    if (row.queuedMessages >= (row.limits ?? LIMITS).queueLength) throw new Error("QUEUE_LIMIT");
+    if (row.queuedMessages >= row.limits.queueLength) throw new Error("QUEUE_LIMIT");
     if (row.cancelled) {
       await ctx.db.patch("assignments", row._id, { cancelled: false });
       row = { ...row, cancelled: false };
@@ -325,6 +328,10 @@ export const accept = mutation({
     const models = args.models ?? row.models;
     const runId = await ctx.db.insert("runs", {
       models,
+      startedAgents: 0n,
+      routingAgents: 0n,
+      continues: 0,
+      sideRuns: 0,
       launches: 0,
       hops: 0,
       cancelled: false,
@@ -455,7 +462,7 @@ export const claim = mutation({
         // context at the prompt's recorded order, rather than our inbox order.
         let newest = head.messageSequence ?? head.sequence;
         let earliest = head.earliestMessageSequence ?? newest;
-        const bound = (row.limits ?? LIMITS).queueLength + (row.limits ?? LIMITS).runLaunches + 1;
+        const bound = row.limits.queueLength + row.limits.runLaunches + 1;
         for (let count = 0; count < bound; count++) {
           await ctx.runMutation(api.subagents.releaseGroups, {
             assignmentId: row._id,
@@ -560,12 +567,12 @@ export const claim = mutation({
     )
       throw new Error("INVALID_AGENT_INDEX");
     const bit = 1n << BigInt(agentIndex ?? 0);
-    const isRunStart = !!budget && ((budget.startedAgents ?? 0n) & bit) === 0n;
+    const isRunStart = !!budget && (budget.startedAgents & bit) === 0n;
     if (budget && isRunStart)
       await ctx.db.patch("runs", budget._id, {
-        startedAgents: BigInt.asIntN(LIMITS.agents, (budget.startedAgents ?? 0n) | bit),
+        startedAgents: BigInt.asIntN(LIMITS.agents, budget.startedAgents | bit),
         ...(routeModel
-          ? { routingAgents: BigInt.asIntN(LIMITS.agents, (budget.routingAgents ?? 0n) | bit) }
+          ? { routingAgents: BigInt.asIntN(LIMITS.agents, budget.routingAgents | bit) }
           : {}),
       });
     if (budget && isRunStart && routeModel) {
@@ -575,7 +582,7 @@ export const claim = mutation({
     const hooks = {
       isTurnStart: first || !!row.hookContinue,
       isRunStart,
-      turn: row.completedTurns ?? 0,
+      turn: row.completedTurns,
     };
     const runId = row.childRunId;
     if (!runId) {
@@ -590,7 +597,7 @@ export const claim = mutation({
         modelId,
         ...hooks,
         cancellationEpoch: row.cancellationEpoch,
-        turnOrigin: row.turnOrigin ?? "user",
+        turnOrigin: row.turnOrigin!,
         subagent: null,
       };
     }
@@ -634,7 +641,7 @@ export const claim = mutation({
       modelId,
       ...hooks,
       cancellationEpoch: row.cancellationEpoch,
-      turnOrigin: row.turnOrigin ?? "user",
+      turnOrigin: row.turnOrigin!,
       subagent: {
         runId: run.runId,
         agent: run.agent,
@@ -825,9 +832,9 @@ export const activity = query({
       errorCode: row.errorCode,
       runId: row.runId,
       subagents: {
-        active: row.activeRuns ?? 0,
+        active: row.activeRuns,
         history: row.historyRuns ?? 0,
-        total: (row.activeRuns ?? 0) + (row.historyRuns ?? 0),
+        total: row.activeRuns + (row.historyRuns ?? 0),
       },
     };
   },
@@ -1468,10 +1475,7 @@ export const betweenSlices = internalMutation({
     if (!run || run.cancelled) return null;
     // Exhausting delegation budget never prevents a final answer. Admission of
     // additional effects checks launches/hops transactionally in reserve.
-    if (
-      run.launches > (row.limits ?? LIMITS).runLaunches ||
-      run.hops > (row.limits ?? LIMITS).runHops
-    )
+    if (run.launches > row.limits.runLaunches || run.hops > row.limits.runHops)
       throw new Error("RUN_BUDGET");
     return args.executionId;
   },
@@ -1510,7 +1514,7 @@ export const cancel = mutation({
             .withIndex("by_root_status", (q) =>
               q.eq("rootAssignmentId", root._id).eq("status", status),
             )
-            .take((root.limits ?? LIMITS).activeChildrenPerRoot),
+            .take(root.limits.activeChildrenPerRoot),
         ),
       )
     ).flat();
@@ -1554,7 +1558,7 @@ export const cancel = mutation({
         .withIndex("by_assignment_ready", (q) =>
           q.eq("assignmentId", row._id).eq("passive", undefined),
         )
-        .take((row.limits ?? LIMITS).queueLength + 2);
+        .take(row.limits.queueLength + 2);
       // A staged hook continuation is addressed directly, never included in a
       // backlog scan. <=16 assignments * (64 KiB text +1 KiB metadata) read
       // for deletion adds <=1,040 KiB to the 12,680 KiB cancel budget: <14 MiB.
@@ -1627,10 +1631,7 @@ export const reconcile = internalMutation({
       recoveryJobId: undefined,
     });
     const status = row.workflowId
-      ? await laneManager(!!row.childRunId, row.limits ?? LIMITS).status(
-          ctx,
-          row.workflowId as WorkflowId,
-        )
+      ? await laneManager(!!row.childRunId, row.limits).status(ctx, row.workflowId as WorkflowId)
       : null;
     if (
       status?.type === "inProgress" &&

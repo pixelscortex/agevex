@@ -1622,7 +1622,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                         }
                       : {}),
                     experimental_download: boundedDownload(
-                      queued.limits?.attachmentBytes ?? LIMITS.attachmentBytes,
+                      queued.limits.attachmentBytes,
                       controller.signal,
                     ),
                     maxOutputTokens: LIMITS.outputTokens,

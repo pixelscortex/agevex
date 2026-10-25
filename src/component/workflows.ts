@@ -122,13 +122,13 @@ function lane(child: boolean) {
       }
       // Rotate bounded loops before the journal reaches 8 MiB. Idle loops stay
       // asleep on events; rotation consumes no model work or inbox rows.
-      const nextId = await laneManager(child, row.limits ?? LIMITS).start(
+      const nextId = await laneManager(child, row.limits).start(
         ctx,
         child ? internal.workflows.childLoop : internal.workflows.rootLoop,
         {
           assignmentId: row._id,
           version: LIMITS.workflowVersion,
-          ...(row.limits && row.limits.slicesPerTurn !== LIMITS.slicesPerTurn
+          ...(row.limits.slicesPerTurn !== LIMITS.slicesPerTurn
             ? { slicesPerTurn: row.limits.slicesPerTurn }
             : {}),
         },

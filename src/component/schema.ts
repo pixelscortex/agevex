@@ -90,11 +90,7 @@ const receiptIdentity = {
 };
 export const receipt = v.union(
   v.object({ ...receiptIdentity, status: v.literal("accepted"), position: v.number() }),
-  v.object({
-    ...receiptIdentity,
-    status: v.literal("duplicate"),
-    position: v.optional(v.number()),
-  }),
+  v.object({ ...receiptIdentity, status: v.literal("duplicate"), position: v.number() }),
   v.object({
     status: v.literal("rejected"),
     code: v.union(
@@ -197,7 +193,8 @@ export default defineSchema({
         }),
       ),
     ),
-    completedTurns: v.optional(v.number()),
+    // Read by claim (hook `turn`), hookState and reviewContext; 0 until a turn completes.
+    completedTurns: v.number(),
     // Read by note admission/claim/cancel; never charged to ready work.
     notesPending: v.number(),
     // Read by beforeTurn: a continuation has its own prompt, while generation
@@ -213,7 +210,9 @@ export default defineSchema({
     models: v.optional(modelOverrides),
     runTurn: v.string(),
     workflowId: v.optional(v.string()),
-    limits: v.optional(limitsValidator),
+    // The registration's fully resolved host limits, copied from the root at
+    // creation. Read by every bounded query/take on this row.
+    limits: limitsValidator,
     // Read by wake: a ping is only sent to a loop that is awaiting one. No index.
     loopWaiting: v.optional(v.boolean()),
     pinged: v.optional(v.boolean()),
@@ -273,9 +272,12 @@ export default defineSchema({
     ),
     continueSlice: v.optional(v.boolean()),
     lastSlice: v.optional(v.string()),
-    activeRuns: v.optional(v.number()),
+    // Roots only (0 elsewhere): live child count read by reserve admission and
+    // activity; nextRunSequence orders delegations for reads and is
+    // activity's history baseline. Both are written by reserve and settle.
+    activeRuns: v.number(),
     historyRuns: v.optional(v.number()),
-    nextRunSequence: v.optional(v.number()),
+    nextRunSequence: v.number(),
   }).index("by_thread", ["threadId"]),
   inbox: defineTable({
     assignmentId: v.id("assignments"),
@@ -314,10 +316,15 @@ export default defineSchema({
     // hook may choose its agent model at run start; later turns only read it.
     // Read at claim, never replaced by a subsequent send's thread policy.
     models: v.optional(modelOverrides),
-    startedAgents: v.optional(v.int64()),
-    routingAgents: v.optional(v.int64()),
-    continues: v.optional(v.number()),
-    sideRuns: v.optional(v.number()),
+    // Bit sets over agent indexes: startedAgents marks agents that began in this
+    // run (claim isRunStart); routingAgents marks the owner of a pending
+    // beforeTurn model decision (hooks.routing/settleRouting).
+    startedAgents: v.int64(),
+    routingAgents: v.int64(),
+    // Read by continueAdmission against limits.continuesPerRun.
+    continues: v.number(),
+    // Read by reserve against limits.sideRunsPerRun.
+    sideRuns: v.number(),
     launches: v.number(),
     hops: v.number(),
     cancelled: v.boolean(),
@@ -369,9 +376,8 @@ export default defineSchema({
     payloadFingerprint: v.string(),
     rootAssignmentId: v.id("assignments"),
     actorAssignmentId: v.id("assignments"),
-    // Optional only for replaying existing depth-one runs. Read by admission,
-    // group release and the tree projection; never duplicate native messages.
-    depth: v.optional(v.number()),
+    // Read by reserve (depth bound, child depth) and the tree projection.
+    depth: v.number(),
     group: v.optional(v.string()),
     wait: v.optional(v.union(v.literal("each"), v.literal("all"))),
     groupReleased: v.optional(v.boolean()),
@@ -384,7 +390,8 @@ export default defineSchema({
     // The exact native question id is recorded with its native save and read
     // for verification before delivery. `asking` itself is the open-question fence.
     questionMessageId: v.optional(v.string()),
-    messagesReceived: v.optional(v.number()),
+    // Read by interaction admission against limits.messagesPerChild.
+    messagesReceived: v.number(),
     childAssignmentId: v.optional(v.id("assignments")),
     childThreadId: v.optional(v.string()),
     // Recorded with native final saves, cleared on every new turn claim, and

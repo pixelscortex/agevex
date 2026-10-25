@@ -94,7 +94,7 @@ export async function claimNotes(
     .withIndex("by_assignment_ready", (q) =>
       q.eq("assignmentId", row._id).eq("passive", true).eq("noteEpoch", row.cancellationEpoch),
     )
-    .take(row.limits?.notesPending ?? LIMITS.notesPending);
+    .take(row.limits.notesPending);
   if (!notes.length && !continuation) return;
   const controls = [
     ...notes.map((note) => ({ row: note, message: noteMessage(note.noteText!, note.from!) })),
@@ -205,7 +205,7 @@ export const cancelNotes = internalMutation({
       .withIndex("by_assignment_ready", (q) =>
         q.eq("assignmentId", assignmentId).eq("passive", true).eq("noteEpoch", epoch),
       )
-      .take(row.limits?.notesPending ?? LIMITS.notesPending);
+      .take(row.limits.notesPending);
     for (const note of notes) {
       await ctx.db.delete("inbox", note._id);
     }
@@ -270,8 +270,8 @@ export const hookState = mutation({
       await ctx.db.patch("runs", run._id, { models });
     }
     if (args.complete)
-      await ctx.db.patch("assignments", row._id, { completedTurns: (row.completedTurns ?? 0) + 1 });
-    return (row.completedTurns ?? 0) + (args.complete ? 1 : 0);
+      await ctx.db.patch("assignments", row._id, { completedTurns: row.completedTurns + 1 });
+    return row.completedTurns + (args.complete ? 1 : 0);
   },
 });
 
@@ -293,7 +293,7 @@ export const continueAdmission = mutation({
       row.turnStatus !== "running" ||
       !run ||
       run.cancelled ||
-      (run.continues ?? 0) >= (row.limits?.continuesPerRun ?? LIMITS.continuesPerRun)
+      run.continues >= row.limits.continuesPerRun
     )
       return null;
     // Stage the hook prompt until its claim so pending notes can be placed
@@ -308,7 +308,7 @@ export const continueAdmission = mutation({
       kind: "continue",
       passive: false,
     });
-    await ctx.db.patch("runs", run._id, { continues: (run.continues ?? 0) + 1 });
+    await ctx.db.patch("runs", run._id, { continues: run.continues + 1 });
     await ctx.db.patch("assignments", row._id, {
       hookContinue: true,
       nextSequence: row.nextSequence + 1,
@@ -333,7 +333,7 @@ export const reviewContext = query({
     const last = row.reviewed?.find((review) => review.agent === args.agent);
     const due =
       args.turns !== undefined
-        ? (row.completedTurns ?? 0) - (last?.turn ?? 0) >= args.turns
+        ? row.completedTurns - (last?.turn ?? 0) >= args.turns
         : Date.now() - (last?.at ?? row._creationTime) >= args.minutes! * LIMITS.minuteMs;
     if (!due) return null;
     let bytes = 0;
@@ -369,7 +369,7 @@ export const reviewed = mutation({
     if (reviewed.length >= LIMITS.sideAgents) throw new Error("SIDE_AGENT_LIMIT");
     reviewed.push({
       agent: args.agent,
-      turn: row.completedTurns ?? 0,
+      turn: row.completedTurns,
       at: Date.now(),
       boundary: args.boundary,
     });
@@ -398,7 +398,7 @@ export const addNote = mutation({
       args.from.length > LIMITS.requestKeyLength
     )
       throw new Error("INVALID_NOTE");
-    if (row.notesPending >= (row.limits?.notesPending ?? LIMITS.notesPending))
+    if (row.notesPending >= row.limits.notesPending)
       throw new ConvexError({ code: "NOTES_PENDING_LIMIT" });
     // <=4,000 UTF-16 units => <=16 KiB plus <1 KiB metadata. A note
     // never wakes a turn, even when idle or paused with unresolved tool calls.
@@ -450,7 +450,7 @@ export const routing = query({
     const run = row?.runId ? await ctx.db.get("runs", row.runId) : null;
     if (!row || !run || row.cancelled || run.cancelled) return null;
     return {
-      pending: ((run.routingAgents ?? 0n) & (1n << BigInt(args.agentIndex))) !== 0n,
+      pending: (run.routingAgents & (1n << BigInt(args.agentIndex))) !== 0n,
       modelId: run.models?.[row.agent],
     };
   },
@@ -489,7 +489,7 @@ export async function settleRouting(ctx: MutationCtx, row: Doc<"assignments">) {
     await ctx.db.patch("runs", run._id, {
       routingAgents: BigInt.asIntN(
         LIMITS.agents,
-        (run.routingAgents ?? 0n) & ~(1n << BigInt(row.routingAgentIndex)),
+        run.routingAgents & ~(1n << BigInt(row.routingAgentIndex)),
       ),
     });
   await ctx.db.patch("assignments", row._id, { routingAgentIndex: undefined });
