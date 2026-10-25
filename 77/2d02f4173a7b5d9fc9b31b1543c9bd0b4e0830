@@ -139,8 +139,12 @@ src/testing/bridge.ts
   s_b39d195254f51a::t_f296f15c5e1909 10,70-98
 tests/hooks.host.ts
   s_b39d195254f51a::t_3e7c05c3fac77b 1-65,67-149
+  s_6f2e0c3f739e34::t_6c3615bdfc36c5 66
 tests/hooks.test.ts
   s_b39d195254f51a::t_6eba2ae34c76f5 1-339,491-688
+  s_6f2e0c3f739e34::t_6c3615bdfc36c5 340-359,362-444,446-465,470-476,482-490
+  s_6f2e0c3f739e34::t_e8bd5a9074b65f 477-481
+  s_6f2e0c3f739e34::t_82ddd355a09c5b 360-361,445,466-469
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -168,6 +172,14 @@ tests/hooks.test.ts
       "agent_id": {
         "tool": "codex",
         "id": "01a17066-3401-7dc0-a9c1-6ac7ab1d53a0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_6f2e0c3f739e34": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a170a1-b630-7351-8c75-155df7a3fa29",
         "model": "gpt-6.1-sol"
       },
       "human_author": "JustKira <shighgamerhg@gmail.com>"
