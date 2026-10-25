@@ -1,4 +1,8 @@
-// Registry source installed into the host Convex app; not an agevex component.
+/**
+ * Spending-consent tool and host orchestration for a fresh post-budget run.
+ * The model requests approval; the host consumes recorded consent atomically
+ * with its budget update, core cancellation and fresh send. No paid step is retried.
+ */
 import { defineOnceTool } from "agevex";
 import { z } from "zod";
 

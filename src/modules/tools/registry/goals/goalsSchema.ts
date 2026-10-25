@@ -1,4 +1,8 @@
-// Registry source installed into the host Convex app; not an agevex component.
+/**
+ * Host schema snippet for one explicit goal per owner and thread.
+ * Installers merge goalTables into their own schema; goalsState uses the
+ * owner/thread index to read or replace the current goal without scanning history.
+ */
 import { defineSchema, defineTable, type DataModelFromSchemaDefinition } from "convex/server";
 import { v } from "convex/values";
 
