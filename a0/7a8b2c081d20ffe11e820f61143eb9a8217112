@@ -1,0 +1,33 @@
+src/component/README.md
+  s_d863bd773ba186::t_a850f6bdef691f 8-106
+src/component/approvals.ts
+  s_d863bd773ba186::t_17aa233766c8a7 1-10
+src/component/convex.config.ts
+  s_d863bd773ba186::t_d101ba65ae427f 1-4
+src/component/facts.ts
+  s_d863bd773ba186::t_4b6e997e47df98 1-5
+src/component/limits.ts
+  s_d863bd773ba186::t_c304fe2580bf59 8-11
+src/component/models.ts
+  s_d863bd773ba186::t_6d29d4280a2350 1-5
+src/component/schema.ts
+  s_d863bd773ba186::t_b39074e52faa66 1-11
+src/component/worker.ts
+  s_d863bd773ba186::t_57b319daeb4ba2 1-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a07a8b2c081d20ffe11e820f61143eb9a8217112",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
