@@ -21,6 +21,7 @@ async function mergeSchema(dir: string, installed: readonly (typeof names)[numbe
   const snippets = [
     { name: "todo", table: "todoTables", file: "todoSchema" },
     { name: "goals", table: "goalTables", file: "goalsSchema" },
+    { name: "continue-budget", table: "consentTables", file: "continueBudgetSchema" },
   ] as const;
   const tables = snippets.filter((snippet) => installed.includes(snippet.name));
   await mkdir(join(dir, "convex"), { recursive: true });
@@ -39,7 +40,9 @@ export default defineSchema({ existing: defineTable({ label: v.string() }), ${ta
 // host links the same `ai` as agevex (as a real install would), so no `paths`
 // override is involved: a tool typed against a different `ai` copy fails here.
 async function writeWiring(dir: string, installed: readonly (typeof names)[number][]) {
-  const state = installed.filter((name) => name === "todo" || name === "goals");
+  const state = installed
+    .filter((name) => name === "todo" || name === "goals" || name === "continue-budget")
+    .map((name) => (name === "continue-budget" ? "continueBudget" : name));
   const modules = state.map((name) => `"agevexTools/${name}State": typeof ${name}State;`);
   await mkdir(join(dir, "convex/_generated"), { recursive: true });
   await writeFile(

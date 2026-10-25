@@ -84,18 +84,28 @@
       "name": "continue-budget",
       "type": "registry:lib",
       "title": "Continue budget",
-      "description": "continue_budget requests native Agent approval with a nonblank reason up to 2000 characters; resumeAfterBudgetStop, used inside one host mutation, verifies the approval, raises your budget, cancels the run core stopped with BUDGET_EXCEEDED and sends a fresh request atomically. No item tables. Consent alone changes no budget.",
+      "description": "continue_budget requests native Agent approval with a nonblank reason up to 2000 characters. Host table agevexBudgetConsents records the owner's explicit consent (subject, thread, approval id) when your approve action calls core respond. resumeAfterBudgetStop, used inside one host mutation, checks that consent, raises your budget, cancels the run core stopped with BUDGET_EXCEEDED and sends a fresh request atomically. Includes a bounded cleanup mutation.",
       "dependencies": [
         "ai@^7.0.153",
         "zod@^4.6.7",
         "convex@^1.47.0"
       ],
-      "docs": "Use a TypeScript host with tsx: true in components.json before installing. Register createContinueBudgetTool() on an agevex Agent with host authorize/authorizeExecution, and call resumeAfterBudgetStop inside ONE host mutation with your own budget policy write. Requires the host's existing agevex package. Approvals use core respond, never native approveToolCall directly. See /docs/tools/continue-budget.",
+      "docs": "Use a TypeScript host with tsx: true in components.json before installing. Merge consentTables from the installed schema snippet into convex/schema.ts. Register createContinueBudgetTool() on an agevex Agent with host authorize/authorizeExecution. Your approve action must call core respond and internal.agevexTools.continueBudgetState.record in one mutation; call resumeAfterBudgetStop inside ONE host mutation with your own budget policy write. Requires the host's existing agevex package. No schema is overwritten. See /docs/tools/continue-budget.",
       "files": [
         {
           "path": "registry/continue-budget/continueBudget.ts",
           "type": "registry:file",
           "target": "~/convex/agevexTools/continueBudget.ts"
+        },
+        {
+          "path": "registry/continue-budget/continueBudgetSchema.ts",
+          "type": "registry:file",
+          "target": "~/convex/agevexTools/continueBudgetSchema.ts"
+        },
+        {
+          "path": "registry/continue-budget/continueBudgetState.ts",
+          "type": "registry:file",
+          "target": "~/convex/agevexTools/continueBudgetState.ts"
         }
       ]
     }

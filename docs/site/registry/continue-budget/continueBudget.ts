@@ -2,6 +2,7 @@ import { defineOnceTool } from "agevex";
 import { z } from "zod";
 
 export const CONTINUE_BUDGET_LIMITS = { minChars: 1, reasonChars: 2000 } as const;
+export const CONSENT_LIMITS = { approvalIdBytes: 512, cleanupBatch: 128 } as const;
 export const continueInput = z.strictObject({
   reason: z
     .string()
@@ -47,11 +48,13 @@ export type ResumeAfterBudgetStop<Receipt extends SendReceipt> = {
   approvalId: string;
   /** Optional extra instruction appended to the consent statement. */
   instruction?: string;
-  /** True only when `approvalId` is an approval answered "approved" on `threadId`.
-   * Must fail closed: a foreign, unknown or denied id is `false` (or throws). */
+  /** True only when the host recorded this owner's explicit consent for
+   * `approvalId` on `threadId` (see `continueBudgetState.has`). Consent is host
+   * state: the helper never calls `respond`, so a pending approval can never be
+   * approved on the user's behalf. Must fail closed: anything else is `false`. */
   isApproved: (args: { threadId: string; approvalId: string }) => Promise<boolean>;
-  /** Core `activity` plus the stopped run's id (the id your budget slot received). */
-  activity: () => Promise<{ errorCode: string | null; runId: string | null }>;
+  /** Core `activity`; its `runId` is the id your budget slot received. */
+  activity: () => Promise<{ errorCode: string | null; runId?: string | null }>;
   /** Host budget policy write. Runs in the same transaction as cancel and send. */
   raiseBudget: () => Promise<unknown>;
   /** Core `cancel` for the stopped thread. */
@@ -65,7 +68,7 @@ export type ResumeAfterBudgetStop<Receipt extends SendReceipt> = {
  *
  * Core never resumes a stopped run, because the step that tripped the budget may
  * have been paid for with an unknown outcome. The only supported path is:
- *   1. explicit spending consent (an approved `continue_budget` approval),
+ *   1. explicit spending consent, recorded by the host's approve action,
  *   2. the host updates its budget policy,
  *   3. cancel the stopped run (clears its recovery state and discards its notes),
  *   4. send a fresh request (a new run with its own run id).

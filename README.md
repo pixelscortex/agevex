@@ -404,9 +404,9 @@ Items: [todo](docs/site/content/docs/tools/todo.mdx) (100 items, 32 KiB/list),
 [ask-user](docs/site/content/docs/tools/ask-user.mdx) (a deferred tool: the owner
 answers with core `answer`, 2000-character question) and
 [continue-budget](docs/site/content/docs/tools/continue-budget.mdx) (native
-approval plus `resumeAfterBudgetStop`: verified consent, raise budget, cancel, fresh
-send, atomically in one host mutation). Todo/goals ship host table snippets to merge into your schema; the other
-two add no tables. Core `ToolContext` supplies ownership and the once-tool
+approval plus `resumeAfterBudgetStop`: host-recorded consent, raise budget, cancel,
+fresh send, atomically in one host mutation). Todo, goals and continue-budget ship
+host table snippets to merge into your schema; ask-user adds no tables. Core `ToolContext` supplies ownership and the once-tool
 ledger. Rows outlive threads: use each state module's bounded `cleanup`. Keep state functions internal. Budget consent does not change a budget.
 
 `bun run registry:build` rebuilds `/r/*.json`; `bun run test:tools` builds the

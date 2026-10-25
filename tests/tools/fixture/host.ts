@@ -120,13 +120,37 @@ export const setBudgetLimit = internalMutationGeneric({
   },
 });
 
+// Untyped on purpose: typing this module's own API from itself would be circular.
+const selfApi = anyApi;
+
+/**
+ * The host's approve action: core `respond({ approved: true })` and the consent
+ * record commit in one transaction. This is the only place consent is created.
+ */
+export const approveContinue = mutationGeneric({
+  args: { threadId: v.string(), approvalId: v.string() },
+  handler: async (ctx, { threadId, approvalId }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("UNAUTHENTICATED");
+    const response = await ctx.runMutation(selfApi.host.respond, {
+      threadId,
+      approvalId,
+      approved: true,
+    });
+    await ctx.runMutation(selfApi.continueBudgetState.record, {
+      subject: identity.subject,
+      threadId,
+      approvalId,
+    });
+    return response;
+  },
+});
+
 /**
  * The host's one-mutation resume. Every step goes through ctx.runQuery /
  * ctx.runMutation of core's authorized endpoints, so all of it shares this
  * mutation's transaction and the caller's identity.
  */
-// Untyped on purpose: typing this module's own API from itself would be circular.
-const selfApi = anyApi;
 export const resumeAfterBudget = mutationGeneric({
   args: {
     threadId: v.string(),
@@ -140,34 +164,9 @@ export const resumeAfterBudget = mutationGeneric({
       threadId,
       approvalId,
       instruction,
-      // Replaying the owner's own recorded response is idempotent in core and
-      // returns the saved response message; its exact id is then read directly.
-      isApproved: async (args) => {
-        const { messageId } = await ctx.runMutation(selfApi.host.respond, {
-          ...args,
-          approved: true,
-        });
-        const [saved] = await ctx.runQuery(agent.messages.getMessagesByIds, {
-          messageIds: [messageId],
-        });
-        const parts = saved?.message?.content;
-        return (
-          Array.isArray(parts) &&
-          parts.some(
-            (part) =>
-              part.type === "tool-approval-response" &&
-              part.approvalId === args.approvalId &&
-              part.approved === true,
-          )
-        );
-      },
-      activity: async () => {
-        const stopped = await ctx.runQuery(selfApi.host.activity, { threadId });
-        const row = await ctx.runQuery(component.queue.execution, {
-          assignmentId: stopped.assignmentId,
-        });
-        return { errorCode: stopped.errorCode, runId: row?.runId ?? null };
-      },
+      isApproved: (args) =>
+        ctx.runQuery(selfApi.continueBudgetState.has, { subject: identity.subject, ...args }),
+      activity: () => ctx.runQuery(selfApi.host.activity, { threadId }),
       raiseBudget: () =>
         ctx.runMutation(selfApi.host.setBudgetLimit, {
           subject: identity.subject,

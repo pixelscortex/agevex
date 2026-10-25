@@ -13,7 +13,15 @@ Start the docs site or replace its origin. The item copies
 The host must already have `agevex`.
 
 Use a TypeScript host with `"tsx": true` in `components.json` before installing
-so shadcn preserves the tool's types.
+so shadcn preserves the tool's types. The item copies three files: the tool,
+a table snippet and its state functions. Merge the table into your schema:
+
+```ts title="convex/schema.ts"
+import { defineSchema } from "convex/server";
+import { consentTables } from "./agevexTools/continueBudgetSchema.js";
+
+export default defineSchema({ ...consentTables }); // merge your existing tables
+```
 
 ```ts title="In your agevex Agent registration"
 import { createContinueBudgetTool } from "./agevexTools/continueBudget.js";
@@ -31,6 +39,41 @@ core `respond({ threadId, approvalId, approved })`. Only approval executes the
 tool; denial never returns an approved execution. **Consent does not raise any
 limit**: the tool changes no meter, budget or core counter.
 
+## Record consent in your approve action
+
+Core keeps approval decisions in the native Agent transcript and has no
+read-only "was it approved" query. Consent is therefore **host state**: your
+approve action is one mutation that calls core `respond({ approved: true })` and
+records the consent row in the same transaction (the row is
+`{ subject, threadId, approvalId }` in `agevexBudgetConsents`).
+
+```ts
+export const approveContinue = mutationGeneric({
+  args: { threadId: v.string(), approvalId: v.string() },
+  handler: async (ctx, { threadId, approvalId }) => {
+    const subject = await myAuthorize(ctx); // your host policy
+    const response = await ctx.runMutation(api.agents.respond, {
+      threadId,
+      approvalId,
+      approved: true,
+    });
+    await ctx.runMutation(internal.agevexTools.continueBudgetState.record, {
+      subject,
+      threadId,
+      approvalId,
+    });
+    return response;
+  },
+});
+```
+
+Denials are answered through plain `respond({ approved: false })` and record
+nothing. `record` is idempotent; `has` reads the row by exact owner, thread and
+approval id. Approval ids over 512 UTF-8 bytes cannot be indexed and are
+rejected, which rolls back the `respond` too. Rows outlive threads: call the
+shipped internal `cleanup({ subject, threadId? })` from your retention job (at
+most 128 rows per call; call again while `done` is false).
+
 ## Continue a stopped run
 
 When your `budget` slot denies a slice, core ends the turn with
@@ -40,36 +83,28 @@ paid step. `resumeAfterBudgetStop` runs the supported sequence, and you call it
 inside **one host mutation**:
 
 ```ts
-import { mutationGeneric } from "convex/server";
-import { v } from "convex/values";
 import { resumeAfterBudgetStop } from "./agevexTools/continueBudget.js";
 
 export const resumeAfterBudget = mutationGeneric({
   args: { threadId: v.string(), approvalId: v.string() },
-  handler: async (ctx, { threadId, approvalId }) =>
-    resumeAfterBudgetStop({
+  handler: async (ctx, { threadId, approvalId }) => {
+    const subject = await myAuthorize(ctx);
+    return resumeAfterBudgetStop({
       threadId,
       approvalId,
-      // true only for an approval the owner answered "approved" on this thread.
-      isApproved: ({ threadId, approvalId }) => myApprovalCheck(ctx, threadId, approvalId),
-      // core `activity` plus the stopped run's id (the id your budget slot saw).
-      // `activity` does not return the run id yet, so read it from the component.
-      activity: async () => {
-        const a = await ctx.runQuery(api.agents.activity, { threadId });
-        const row = await ctx.runQuery(components.agevex.queue.execution, {
-          assignmentId: a.assignmentId,
-        });
-        return { errorCode: a.errorCode, runId: row?.runId ?? null };
-      },
-      raiseBudget: () => ctx.runMutation(internal.budgets.raise, { threadId }), // idempotent
+      isApproved: (args) =>
+        ctx.runQuery(internal.agevexTools.continueBudgetState.has, { subject, ...args }),
+      activity: () => ctx.runQuery(api.agents.activity, { threadId }), // includes runId
+      raiseBudget: () => ctx.runMutation(internal.budgets.raise, { subject }), // idempotent
       cancel: () => ctx.runMutation(api.agents.cancel, { threadId }),
       send: (args) => ctx.runMutation(api.agents.send, { threadId, ...args }),
-    }),
+    });
+  },
 });
 // "no-consent" | "not-stopped" | "already-resumed" | { status: "resumed", receipt }
 ```
 
-Order: check the stop, verify consent, raise your budget policy, cancel the
+Order: check the stop, check consent, raise your budget policy, cancel the
 stopped run (clears its recovery state and discards its pending notes), then
 send a fresh request as a new run.
 
@@ -78,17 +113,18 @@ send a fresh request as a new run.
   Two overlapping resumes cannot both pass: the loser sees `not-stopped`. Run as
   separate transactions, the loser would cancel the fresh run the winner just sent.
   A rejected `send` throws, which rolls back the budget write and the cancel.
-- **One key per stop.** The request key is `after-budget:<threadId>:<stoppedRunId>`,
-  so the same thread can be stopped and resumed repeatedly. A `duplicate` receipt
-  maps to `already-resumed`, never `resumed`.
-- **Verified consent.** `isApproved` must fail closed for a denied, unknown or
-  foreign `approvalId`; the helper then returns `no-consent` and changes nothing.
-  Replaying core `respond({ threadId, approvalId, approved: true })` is idempotent
-  and returns the saved response message, which you can read by its exact id.
+- **One key per stop.** `activity.runId` is the id your budget slot received. The
+  request key `after-budget:<threadId>:<stoppedRunId>` is unique per stop, so the
+  same thread can be stopped and resumed repeatedly. A `duplicate` receipt maps to
+  `already-resumed`, never `resumed`.
+- **Consent is never inferred.** The helper only reads the recorded row and never
+  calls `respond`, so a pending approval cannot be approved on the user's behalf.
+  An approval answered through core alone, a denied one, or an unknown id returns
+  `no-consent` and changes nothing.
 - **What the model sees.** Cancel settles the model's original `continue_budget`
   call as an `execution-denied` tool result, because core never executes a call
   whose slice was stopped. That denial is not a refusal, so the fresh request
   starts with "The user approved continuing beyond the budget." (`CONSENT_TEXT`).
   The stopped run's budget note is discarded by the cancel.
 
-No item tables or schema changes. Budget policy and storage stay host-owned.
+Budget policy and storage stay host-owned.

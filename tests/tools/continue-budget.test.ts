@@ -4,6 +4,7 @@ import { setup, api, native, managed, state } from "./setup.js";
 import { requireReceipt } from "../receipt.js";
 import {
   CONSENT_TEXT,
+  CONSENT_LIMITS,
   CONTINUE_BUDGET_LIMITS,
 } from "../../docs/site/registry/continue-budget/continueBudget.js";
 import { LIMITS } from "../../src/client/index.js";
@@ -121,7 +122,13 @@ const budgetRows = (t: Test) => t.run((ctx) => ctx.db.query("budgets").collect()
  * denied by the slot with BUDGET_EXCEEDED. `slices` is the total the policy
  * allowed before this stop.
  */
-async function stoppedForBudget(t: Test, slices: number, requestKey: string, threadId?: string) {
+type Answer = "approve" | "core-only" | "deny";
+async function stoppedForBudget(
+  t: Test,
+  slices: number,
+  requestKey: string,
+  answer: Answer = "approve",
+) {
   const alice = t.withIdentity({ subject: "alice" });
   state.steps.splice(
     state.calls.length,
@@ -129,17 +136,15 @@ async function stoppedForBudget(t: Test, slices: number, requestKey: string, thr
     requestConsent(`consent-${requestKey}`, { reason: "Need more" }),
   );
   const receipt = requireReceipt(
-    threadId
-      ? await alice.mutation(api.host.send, { threadId, text: "Go on", requestKey })
-      : await alice.mutation(api.host.open, { agent: "Tools", prompt: "Go", requestKey }),
+    await alice.mutation(api.host.open, { agent: "Tools", prompt: "Go", requestKey }),
   );
   await drain(t);
   const approval = await approvalId(t, receipt.assignmentId);
-  await alice.mutation(api.host.respond, {
-    threadId: receipt.threadId,
-    approvalId: approval,
-    approved: true,
-  });
+  const args = { threadId: receipt.threadId, approvalId: approval };
+  // "approve" is the host's approve action (core respond + consent record in one
+  // transaction). "core-only" answers through core respond and records nothing.
+  if (answer === "approve") await alice.mutation(api.host.approveContinue, args);
+  else await alice.mutation(api.host.respond, { ...args, approved: answer === "core-only" });
   await drain(t);
   expect(await alice.query(api.host.activity, { threadId: receipt.threadId })).toMatchObject({
     turnStatus: "recovery_required",
@@ -155,7 +160,7 @@ const resume = (
   instruction?: string,
 ) => alice.mutation(api.host.resumeAfterBudget, { threadId, approvalId, instruction });
 
-it("a native approval alone never raises the budget or resumes: the run stays stopped until the resume mutation runs", async () => {
+it("recording consent alone never raises the budget or resumes: the run stays stopped until the resume mutation runs", async () => {
   const t = setup();
   await limit(t, "alice", 1);
   const { alice, receipt } = await stoppedForBudget(t, 2, "first");
@@ -168,7 +173,7 @@ it("a native approval alone never raises the budget or resumes: the run stays st
   ).resolves.toMatchObject({ status: "rejected", code: "RECOVERY_REQUIRED" });
 });
 
-it("with a verified approval one mutation raises the budget, cancels the stopped run and sends a fresh run that states the consent", async () => {
+it("with recorded host consent one mutation raises the budget, cancels the stopped run and sends a fresh run that states the consent", async () => {
   const t = setup();
   await limit(t, "alice", 1);
   const { alice, receipt, approval } = await stoppedForBudget(t, 2, "first");
@@ -228,10 +233,9 @@ it("the same thread can be stopped and resumed again: each stop gets its own req
   expect(state.calls).toHaveLength(2);
   const second = await approvalId(t, first.receipt.assignmentId);
   expect(second).not.toBe(first.approval);
-  await first.alice.mutation(api.host.respond, {
+  await first.alice.mutation(api.host.approveContinue, {
     threadId: first.receipt.threadId,
     approvalId: second,
-    approved: true,
   });
   await drain(t);
   expect(
@@ -253,71 +257,97 @@ it("the same thread can be stopped and resumed again: each stop gets its own req
   });
 });
 
-it.each(["denied approval", "foreign thread approval", "unknown approval"] as const)(
-  "%s is not consent: nothing is raised, cancelled or sent",
-  async (kind) => {
-    const t = setup();
-    await limit(t, "alice", 1);
-    const { alice, receipt, approval } = await stoppedForBudget(t, 2, "first");
-    let id = approval;
-    let thread = receipt.threadId;
-    if (kind === "unknown approval") id = "not-an-approval";
-    if (kind === "foreign thread approval") {
-      const other = requireReceipt(
-        await alice.mutation(api.host.open, {
-          agent: "Tools",
-          prompt: "Other",
-          requestKey: "other",
-        }),
-      );
-      thread = other.threadId;
-    }
-    if (kind === "denied approval") {
-      // A separate stopped thread whose user denied consent. Allow it one slice.
-      await t.run(async (ctx) => {
-        const [row] = await ctx.db.query("budgets").collect();
-        await ctx.db.patch("budgets", row._id, { limit: state.budget.checks + 1 });
-      });
-      state.steps.splice(
-        state.calls.length,
-        0,
-        requestConsent("consent-denied", { reason: "More?" }),
-      );
-      const denied = requireReceipt(
-        await alice.mutation(api.host.open, {
-          agent: "Tools",
-          prompt: "Denied",
-          requestKey: "denied",
-        }),
-      );
-      await drain(t);
-      const deniedId = await approvalId(t, denied.assignmentId);
-      await alice.mutation(api.host.respond, {
-        threadId: denied.threadId,
-        approvalId: deniedId,
-        approved: false,
-      });
-      await drain(t);
-      await expect(
-        alice.query(api.host.activity, { threadId: denied.threadId }),
-      ).resolves.toMatchObject({ errorCode: "BUDGET_EXCEEDED" });
-      id = deniedId;
-      thread = denied.threadId;
-    }
-    const before = (await budgetRows(t))[0].limit;
-    const calls = state.calls.length;
-    await expect(resume(alice, thread, id)).resolves.toEqual(
-      kind === "foreign thread approval" ? { status: "not-stopped" } : { status: "no-consent" },
-    );
-    expect((await budgetRows(t))[0].limit).toBe(before);
-    await drain(t);
-    expect(state.calls).toHaveLength(calls);
-    expect(await alice.query(api.host.activity, { threadId: receipt.threadId })).toMatchObject({
-      turnStatus: "recovery_required",
-      errorCode: "BUDGET_EXCEEDED",
-    });
-  },
-);
+it.each([
+  ["approved through core respond but never recorded as host consent", "core-only"],
+  ["denied approval", "deny"],
+  ["unknown approval id", "approve"],
+] as const)("%s is not consent: nothing is raised, cancelled or sent", async (kind, answer) => {
+  const t = setup();
+  await limit(t, "alice", 1);
+  const { alice, receipt, approval } = await stoppedForBudget(t, 2, "first", answer);
+  const before = (await budgetRows(t))[0].limit;
+  const calls = state.calls.length;
+  await expect(
+    resume(alice, receipt.threadId, kind === "unknown approval id" ? "not-an-approval" : approval),
+  ).resolves.toEqual({ status: "no-consent" });
+  expect((await budgetRows(t))[0].limit).toBe(before);
+  await drain(t);
+  expect(state.calls).toHaveLength(calls);
+  expect(await alice.query(api.host.activity, { threadId: receipt.threadId })).toMatchObject({
+    turnStatus: "recovery_required",
+    errorCode: "BUDGET_EXCEEDED",
+  });
+});
+
+it("a pending, never-approved approval is not consent and resuming responds to nothing on the user's behalf", async () => {
+  const t = setup();
+  state.steps.push(requestConsent("pending", { reason: "More" }));
+  const alice = t.withIdentity({ subject: "alice" });
+  const receipt = requireReceipt(
+    await alice.mutation(api.host.open, { agent: "Tools", prompt: "Go", requestKey: "pending" }),
+  );
+  await drain(t);
+  const approval = await approvalId(t, receipt.assignmentId);
+  const consentRows = () => t.run((ctx) => ctx.db.query("agevexBudgetConsents").collect());
+  expect(await consentRows()).toEqual([]);
+  await expect(resume(alice, receipt.threadId, approval)).resolves.toEqual({
+    status: "not-stopped",
+  });
+  // The approval is still pending: no response was saved, none was recorded as
+  // consent, and the paused turn did not move.
+  const execution = await t.query(managed.queue.execution, { assignmentId: receipt.assignmentId });
+  expect(execution?.approvalBlocked).toBe(true);
+  expect(["pending", undefined]).toContain(execution?.approvals?.requests[0].state);
+  expect(await consentRows()).toEqual([]);
+  const [request] = await t.query(native.messages.getMessagesByIds, {
+    messageIds: [execution!.approvals!.requests[0].messageId],
+  });
+  expect(JSON.stringify(request?.message)).not.toContain("tool-approval-response");
+  await drain(t);
+  expect(state.calls).toHaveLength(1);
+});
+
+it("consent is scoped to its owner, thread and approval, and is recorded idempotently", async () => {
+  const t = setup();
+  const scope = { subject: "alice", threadId: "thread-a", approvalId: "approval-1" };
+  const rows = () => t.run((ctx) => ctx.db.query("agevexBudgetConsents").collect());
+  expect(await t.query(api.continueBudgetState.has, scope)).toBe(false);
+  await t.mutation(api.continueBudgetState.record, scope);
+  await t.mutation(api.continueBudgetState.record, scope);
+  expect(await rows()).toHaveLength(1);
+  expect(await t.query(api.continueBudgetState.has, scope)).toBe(true);
+  for (const other of [
+    { ...scope, subject: "bob" },
+    { ...scope, threadId: "thread-b" },
+    { ...scope, approvalId: "approval-2" },
+  ])
+    expect(await t.query(api.continueBudgetState.has, other)).toBe(false);
+});
+
+it("consent storage rejects approval ids it cannot index and cleanup deletes one bounded batch", async () => {
+  const t = setup();
+  const scope = { subject: "alice", threadId: "thread-a" };
+  for (const approvalId of ["", "x".repeat(CONSENT_LIMITS.approvalIdBytes + 1), "界".repeat(171)])
+    await expect(
+      t.mutation(api.continueBudgetState.record, { ...scope, approvalId }),
+    ).rejects.toThrow("INVALID_APPROVAL_ID");
+  const widest = "界".repeat(Math.floor(CONSENT_LIMITS.approvalIdBytes / 3));
+  await t.mutation(api.continueBudgetState.record, { ...scope, approvalId: widest });
+  await t.run(async (ctx) => {
+    for (let i = 0; i < CONSENT_LIMITS.cleanupBatch; i++)
+      await ctx.db.insert("agevexBudgetConsents", { ...scope, approvalId: `a${i}` });
+    await ctx.db.insert("agevexBudgetConsents", { subject: "bob", threadId: "t", approvalId: "a" });
+  });
+  expect(await t.mutation(api.continueBudgetState.cleanup, { subject: "alice" })).toEqual({
+    deleted: CONSENT_LIMITS.cleanupBatch,
+    done: false,
+  });
+  expect(await t.mutation(api.continueBudgetState.cleanup, { subject: "alice" })).toEqual({
+    deleted: 1,
+    done: true,
+  });
+  expect(await t.run((ctx) => ctx.db.query("agevexBudgetConsents").collect())).toHaveLength(1);
+});
 
 it("a thread that is not stopped for budget is left untouched", async () => {
   const t = setup();
