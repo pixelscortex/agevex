@@ -1,6 +1,6 @@
 import { getFile, storeFile } from "@convex-dev/agent";
 import { RAG, type EntryId } from "@convex-dev/rag";
-import { embedMany, tool, wrapEmbeddingModel } from "ai";
+import { embedMany, tool, wrapEmbeddingModel, type ToolSet } from "ai";
 import { createFunctionHandle, internalActionGeneric, internalQueryGeneric } from "convex/server";
 import type { FunctionReference } from "convex/server";
 import { v } from "convex/values";
@@ -20,9 +20,12 @@ import type {
 import { LIMITS, bounded, integer, resolveLimits, sliceText, utf8 } from "./limits.js";
 import { ExtractError, isTextMime } from "./backends.js";
 import { cleanUsage, document, parseDocument, textWindow } from "./payload.js";
+import { extractSlot } from "./adapter.js";
+import type { ExtractSlot } from "../client/slots.js";
 
 export { directText, firecrawlParse, visionOcr, ExtractError } from "./backends.js";
 export { LIMITS } from "./limits.js";
+export { authorizeAttached } from "./adapter.js";
 export type {
   ExtractBackend,
   BackendInput,
@@ -38,7 +41,16 @@ export type {
 } from "./types.js";
 export type { ComponentApi } from "./component/_generated/component.js";
 
-type Scoped = { threadId: string };
+/**
+ * `subject` is the thread owner a caller already knows (the agevex slot's tool
+ * context carries it). It is forwarded to the host `authorize` callback so the
+ * exact-attachment check can name its subject; background calls (`execute`)
+ * have no caller and let the host resolve the owner from the thread instead.
+ */
+type Scoped = { threadId: string; subject?: string };
+/** Forward an optional subject without writing `subject: undefined` into scopes. */
+const subjectOf = (args: { subject?: string }) =>
+  args.subject === undefined ? {} : { subject: args.subject };
 type FileArgs = Scoped & { fileId: string; backend?: string; optionsHash?: string };
 type ArtifactArgs = Scoped & { artifactId: string };
 type Completion = FunctionReference<"mutation", "internal", { artifactId: string }, null | void>;
@@ -101,6 +113,7 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
     bounded(scope.threadId);
     if (scope.fileId !== undefined) bounded(scope.fileId);
     if (scope.namespace !== undefined) bounded(scope.namespace);
+    if (scope.subject !== undefined) bounded(scope.subject);
     await options.authorize(ctx, scope);
   }
   async function fileInfo(ctx: ActionCtx, fileId: string) {
@@ -148,7 +161,12 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
     bounded(args.artifactId);
     const row = await ctx.runQuery(component.artifacts.get, { artifactId: args.artifactId });
     if (!row) throw new ExtractError("OBJECT_UNAVAILABLE");
-    await authorize(ctx, { operation, threadId: args.threadId, fileId: row.fileId });
+    await authorize(ctx, {
+      operation,
+      threadId: args.threadId,
+      fileId: row.fileId,
+      ...subjectOf(args),
+    });
     return row;
   }
   function view(row: NonNullable<Awaited<ReturnType<typeof raw>>>) {
@@ -294,7 +312,12 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
   }
   const api = {
     async run(ctx: ActionCtx, args: FileArgs & { onComplete?: Completion }) {
-      await authorize(ctx, { operation: "run", threadId: args.threadId, fileId: args.fileId });
+      await authorize(ctx, {
+        operation: "run",
+        threadId: args.threadId,
+        fileId: args.fileId,
+        ...subjectOf(args),
+      });
       const { key } = await identity(ctx, args);
       return ctx.runMutation(component.artifacts.admit, {
         ...key,
@@ -305,7 +328,12 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
     },
     async get(ctx: ActionCtx, args: FileArgs | ArtifactArgs) {
       if ("artifactId" in args) return view(await raw(ctx, args, "get"));
-      await authorize(ctx, { operation: "get", threadId: args.threadId, fileId: args.fileId });
+      await authorize(ctx, {
+        operation: "get",
+        threadId: args.threadId,
+        fileId: args.fileId,
+        ...subjectOf(args),
+      });
       const { key } = await identity(ctx, args);
       const row = await ctx.runQuery(component.artifacts.lookup, key);
       return row ? view(row) : null;
@@ -369,7 +397,7 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
       return { pages, next };
     },
     async fromUrl(ctx: ActionCtx, args: Scoped & { url: string }) {
-      await authorize(ctx, { operation: "fromUrl", threadId: args.threadId });
+      await authorize(ctx, { operation: "fromUrl", threadId: args.threadId, ...subjectOf(args) });
       bounded(args.url, LIMITS.urlBytes);
       const url = new URL(args.url);
       if (url.protocol !== "https:" && url.protocol !== "http:")
@@ -391,6 +419,14 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
         { filename: "web-page.md" },
       );
       return { fileId: saved.file.fileId, ...(usage ? { usage } : {}) };
+    },
+    /**
+     * The agevex `extract` slot (`registerAgent(..., { extract: extract.slot() })`).
+     * Core calls `run` once per attached file at the first slice of a turn and
+     * binds `tools` to the running thread and subject; see ./adapter.ts.
+     */
+    slot(): ExtractSlot {
+      return extractSlot(api);
     },
     internalFunctions() {
       return {
@@ -414,8 +450,10 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
         }),
       };
     },
-    tools(context: Scoped & { ctx: ActionCtx }) {
+    tools(context: Scoped & { ctx: ActionCtx }): ToolSet {
       bounded(context.threadId);
+      if (context.subject !== undefined) bounded(context.subject);
+      const owner = subjectOf(context);
       const read_file = tool({
         description:
           "Read bounded extracted file text. The file must be attached to this thread. Pass the returned next arguments to continue reading.",
@@ -425,12 +463,17 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
           cursor: z.number().int().nonnegative().max(LIMITS.payloadBytes).optional(),
         }),
         execute: async ({ fileId, page, cursor }) => {
-          const artifact = await api.get(context.ctx, { fileId, threadId: context.threadId });
+          const artifact = await api.get(context.ctx, {
+            fileId,
+            threadId: context.threadId,
+            ...owner,
+          });
           if (!artifact || artifact.status !== "ready")
             return { status: artifact?.status ?? "missing" };
           const args = {
             artifactId: artifact.artifactId,
             threadId: context.threadId,
+            ...owner,
             maxBytes: LIMITS.toolBytes,
             cursor,
           };
@@ -452,7 +495,7 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
           };
         },
       });
-      if (!rag) return { read_file };
+      if (!rag) return { read_file } satisfies ToolSet;
       const search_files = tool({
         description:
           "Search indexed files in this thread, returning bounded text and file references.",
@@ -460,11 +503,12 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
         execute: async ({ query }) =>
           api.search(context.ctx, {
             threadId: context.threadId,
+            ...owner,
             namespace: context.threadId,
             query,
           }),
       });
-      return { read_file, search_files };
+      return { read_file, search_files } satisfies ToolSet;
     },
     async index(ctx: ActionCtx, args: ArtifactArgs & { namespace: string; key: string }) {
       if (!rag || !options.rag) throw new Error("EXTRACT_RAG_DISABLED");
@@ -473,6 +517,7 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
         operation: "index",
         threadId: args.threadId,
         namespace: args.namespace,
+        ...subjectOf(args),
       });
       const { row, doc } = await load(ctx, args);
       if (utf8(doc.text).length > LIMITS.indexBytes) throw new ExtractError("TOO_LARGE");
@@ -590,6 +635,7 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
         operation: "search",
         threadId: args.threadId,
         namespace: args.namespace,
+        ...subjectOf(args),
       });
       // RAG 0.7.8 src/client/index.ts:368 owns retrieval. No adjacent context:
       // <=10 hits * <=8 KiB own chunks = <=80 KiB upstream text; final tool text
@@ -606,7 +652,7 @@ export function defineExtract(component: ComponentApi, options: ExtractOptions) 
         const artifactId = entry.metadata?.artifactId;
         const fileId = entry.metadata?.fileId;
         if (typeof artifactId !== "string" || typeof fileId !== "string") continue;
-        const row = await raw(ctx, { artifactId, threadId: args.threadId });
+        const row = await raw(ctx, { artifactId, threadId: args.threadId, ...subjectOf(args) });
         if (
           row.status !== "ready" ||
           row.fileId !== fileId ||

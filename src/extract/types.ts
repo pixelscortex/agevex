@@ -39,6 +39,8 @@ export type Scope = {
   threadId: string;
   fileId?: string;
   namespace?: string;
+  /** Present when the caller knows the thread owner (the agevex slot's tools do). */
+  subject?: string;
 };
 export type WorkerArgs = { artifactId: string; attempt: number; claim: string; threadId: string };
 export type ExtractOptions = {
