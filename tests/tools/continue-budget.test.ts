@@ -1,6 +1,7 @@
 // @vitest-environment edge-runtime
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { setup, api, native, managed, state, child } from "./setup.js";
+import { rawAssignment } from "../fixture/api.js";
 import { requireReceipt } from "../receipt.js";
 import {
   CONSENT_TEXT,
@@ -27,7 +28,7 @@ const requestConsent = (toolCallId: string, input: unknown) => [
 
 /** Read the native approval id core recorded for the pending consent request. */
 async function approvalId(t: Test, assignmentId: string) {
-  const execution = await t.query(managed.queue.execution, { assignmentId });
+  const execution = await t.query(rawAssignment, { assignmentId });
   const [request] = await t.query(native.messages.getMessagesByIds, {
     messageIds: [execution!.approvals!.requests[0].messageId],
   });
@@ -49,7 +50,9 @@ it("continue_budget pauses at its hard maximum, authorizes the responder, and re
   );
   await drain(t);
   expect(state.calls).toHaveLength(1);
-  const execution = await t.query(managed.queue.execution, { assignmentId: receipt.assignmentId });
+  const execution = await t.query(managed.turns.slices.execution, {
+    assignmentId: receipt.assignmentId,
+  });
   expect(execution?.approvalBlocked).toBe(true);
   const response = {
     threadId: receipt.threadId,
@@ -110,7 +113,9 @@ it("continue_budget rejects blank, oversized and model-supplied ownership or bud
   );
   await drain(t);
   expect(state.calls).toHaveLength(4);
-  const execution = await t.query(managed.queue.execution, { assignmentId: receipt.assignmentId });
+  const execution = await t.query(managed.turns.slices.execution, {
+    assignmentId: receipt.assignmentId,
+  });
   expect(execution?.approvalBlocked).not.toBe(true);
 });
 
@@ -358,9 +363,9 @@ it("a pending, never-approved approval is not consent and resuming responds to n
   });
   // The approval is still pending: no response was saved, none was recorded as
   // consent, and the paused turn did not move.
-  const execution = await t.query(managed.queue.execution, { assignmentId: receipt.assignmentId });
+  const execution = await t.query(rawAssignment, { assignmentId: receipt.assignmentId });
   expect(execution?.approvalBlocked).toBe(true);
-  expect(["pending", undefined]).toContain(execution?.approvals?.requests[0].state);
+  expect(execution?.approvals?.requests[0].resolved).toBeUndefined();
   expect(await consentRows(t)).toEqual([]);
   const [request] = await t.query(native.messages.getMessagesByIds, {
     messageIds: [execution!.approvals!.requests[0].messageId],
@@ -470,7 +475,7 @@ it("a delegated child cannot record consent through the approve action, and call
     paginationOpts: { cursor: null, numItems: 10 },
   });
   const childThreadId = runs.page[0].childThreadId!;
-  const assignment = await t.query(managed.queue.assignment, { threadId: childThreadId });
+  const assignment = await t.query(managed.turns.send.assignment, { threadId: childThreadId });
   const childApproval = await approvalId(t, assignment!.assignmentId);
   // The host's approve action cannot bind consent to a child: `activity` is
   // root-only, so the whole action (including its respond) is refused.

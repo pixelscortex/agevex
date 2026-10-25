@@ -134,7 +134,7 @@ it("each saved model step creates one meter charge and replay adds no charges or
   const before = await t.run((ctx) => meter.threadCost(ctx, { threadId: receipt.threadId }));
   expect(before).toMatchObject({ totalNanos: 200_000_000, unknown: 0 });
   const scopeCount = scopes.mock.calls.length;
-  const execution = (await t.query(components.agevex.queue.execution, {
+  const execution = (await t.query(components.agevex.turns.slices.execution, {
     assignmentId: receipt.assignmentId,
   }))!;
   await t.action(api.agents.runTurn, {

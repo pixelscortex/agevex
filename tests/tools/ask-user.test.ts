@@ -1,6 +1,7 @@
 // @vitest-environment edge-runtime
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
-import { setup, api, native, managed, state } from "./setup.js";
+import { setup, api, native, state } from "./setup.js";
+import { rawAssignment } from "../fixture/api.js";
 import { requireReceipt } from "../receipt.js";
 import { ASK_USER_LIMITS } from "../../docs/site/registry/ask-user/askUser.js";
 
@@ -28,7 +29,7 @@ it("ask_user pauses the run as a pending deferred call; answer resumes it once a
   // Pending: the model produced its call and the turn is waiting, with no
   // second generation and no approval request (this is not a yes/no gate).
   expect(state.calls).toHaveLength(1);
-  const execution = await t.query(managed.queue.execution, { assignmentId: receipt.assignmentId });
+  const execution = await t.query(rawAssignment, { assignmentId: receipt.assignmentId });
   expect(execution?.approvals?.requests).toHaveLength(1);
   expect(execution?.approvals?.requests[0]).toMatchObject({ deferred: true });
   expect(await alice.query(api.host.activity, { threadId: receipt.threadId })).toMatchObject({
@@ -90,7 +91,7 @@ it("ask_user rejects blank, oversized and model-supplied ownership questions wit
   // Every invalid call became an ordinary tool error the model could correct;
   // the run finished after the fourth generation instead of waiting for a human.
   expect(state.calls).toHaveLength(4);
-  const execution = await t.query(managed.queue.execution, { assignmentId: receipt.assignmentId });
+  const execution = await t.query(rawAssignment, { assignmentId: receipt.assignmentId });
   expect(execution?.approvals?.requests ?? []).toHaveLength(0);
   expect(await alice.query(api.host.activity, { threadId: receipt.threadId })).toMatchObject({
     turnStatus: "idle",

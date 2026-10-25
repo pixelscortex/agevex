@@ -4,7 +4,7 @@ import { convexTest } from "convex-test";
 import agent from "@convex-dev/agent/test";
 import agevex from "../../src/test.js";
 import schema from "../fixture/schema.js";
-import { components } from "../fixture/api.js";
+import { components, rawAssignment } from "../fixture/api.js";
 import { api, exports, fixture, registration, reset, text } from "../hooks.host.js";
 import { requireReceipt } from "../receipt.js";
 import { opaqueKey } from "../../src/client/keys.js";
@@ -74,7 +74,7 @@ it("a managed fake-model turn exports all six slot facts on every span", async (
   const receipt = await open(t);
   await drain(t);
   expect(bodies).toHaveLength(1);
-  const execution = (await t.query(components.agevex.queue.execution, {
+  const execution = (await t.query(rawAssignment, {
     assignmentId: receipt.assignmentId,
   }))!;
   const turnKey = await opaqueKey("turn", execution.lastSlice);
@@ -145,7 +145,7 @@ it("two concurrent managed turns in one action flush only their own buffers", as
   const receipts = [await open(t), await open(t, "second")];
   const executions = await Promise.all(
     receipts.map((receipt) =>
-      t.query(components.agevex.queue.execution, { assignmentId: receipt.assignmentId }),
+      t.query(components.agevex.turns.slices.execution, { assignmentId: receipt.assignmentId }),
     ),
   );
   // Convex strips @internal _handler from its shipped declarations, though the

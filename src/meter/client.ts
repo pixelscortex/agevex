@@ -61,7 +61,7 @@ function unpriced(error: unknown): { reason: UnknownReason } {
 }
 /**
  * Core records model steps under `message.provider ?? "model"` and swallows
- * meter errors (src/client/runtime.ts ~1245), so a throw here would drop the
+ * meter errors (`recordStepUsage` in src/client/turn/slots.ts), so a throw here would drop the
  * charge and the budget gate would admit unmetered work. Every business
  * condition that prevents pricing becomes an `unknown` charge with a reason
  * instead; `check` denies while any unknown charge exists.
