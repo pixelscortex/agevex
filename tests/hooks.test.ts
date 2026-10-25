@@ -202,7 +202,7 @@ it("beforeTool denies an effect and beforeDelegate rewrites or refuses delegatio
   expect(JSON.stringify(calls("Builder")[0].args.prompt)).toContain("rewritten task");
 });
 
-it("a throwing tool hook fails the turn with HOOK_FAILED and stores private details outside the transcript", async () => {
+it("a throwing tool hook fails the turn with HOOK_FAILED and keeps its private details out of the transcript", async () => {
   fixture.steps.Main = () => call("echo", { text: "effect" });
   fixture.hooks.beforeTool = () => {
     throw new Error("private hook failure");
@@ -213,10 +213,6 @@ it("a throwing tool hook fails the turn with HOOK_FAILED and stores private deta
   expect((await status(t, receipt.threadId)).errorCode).toBe("HOOK_FAILED");
   expect(fixture.effects).toEqual([]);
   expect(JSON.stringify(await messages(t, receipt.threadId))).not.toContain("private hook failure");
-  const row = await t.query(components.agevex.queue.execution, {
-    assignmentId: receipt.assignmentId,
-  });
-  expect(row?.hookError).toContain("private hook failure");
 });
 
 it("model routing applies only at run start and persists across hook continuations", async () => {

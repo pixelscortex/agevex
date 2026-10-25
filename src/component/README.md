@@ -8,7 +8,7 @@ Workpool: root parallelism 2, child parallelism 4. Hosts export `runTurn` and
 - `assignments`: ownership, native thread references, workflow id, current run,
   one execution token and cancellation epoch, the next-run model policy, and
   bounded native approval/deferred-call references, exact message references,
-  side-review boundaries, note/turn counters and private hook errors.
+  side-review boundaries and note/turn counters.
   `logicalPromptMessageId` identifies the prompt read by `beforeTurn`, including
   a continuation. `promptMessageId` bounds native generation context.
   Posted notes wait for the next turn claim with no decided approvals awaiting

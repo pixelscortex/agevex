@@ -85,8 +85,8 @@ export const HOST_LIMITS = {
  * Subagent rows stay <=4 KiB: names/subjects/groups <=200 UTF-16 units,
  * hashed tool-call dedup keys, ids, counters and <=4 small events. Assignments
  * allow <=32 KiB: the original <=8 KiB (16 approval/deferred-call keys),
- * <=4 KiB exact message references, <=6 KiB side-review boundaries, <=3 KiB
- * private hook error, two prompt ids and scalar counters. The original 32 KiB
+ * <=4 KiB exact message references, <=6 KiB side-review boundaries, two
+ * prompt ids and scalar counters. The original 32 KiB
  * envelope remains conservative after removing the <=10 KiB control-id replay
  * list. Notes have their own bounded queue N; each raw row stays <=17 KiB
  * and is read only by separate per-assignment cleanup transactions (<864 KiB including ownership).
@@ -124,7 +124,6 @@ export const LIMITS = {
   fileMetadataBytes: 4 << 10,
   taskRepairs: 1,
   taskPromptLength: 16_000,
-  hookErrorLength: 1_000,
   agents: 64,
   sideAgents: 8,
   cadence: 1_000_000,

@@ -257,7 +257,6 @@ export const hookState = mutation({
     assignmentId: v.id("assignments"),
     executionId: v.string(),
     model: v.optional(v.string()),
-    error: v.optional(v.string()),
     complete: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
@@ -270,12 +269,8 @@ export const hookState = mutation({
       if (!run || !validModelOverrides(models)) throw new Error("INVALID_MODELS");
       await ctx.db.patch("runs", run._id, { models });
     }
-    await ctx.db.patch("assignments", row._id, {
-      ...(args.error !== undefined
-        ? { hookError: args.error.slice(0, LIMITS.hookErrorLength) }
-        : {}),
-      ...(args.complete ? { completedTurns: (row.completedTurns ?? 0) + 1 } : {}),
-    });
+    if (args.complete)
+      await ctx.db.patch("assignments", row._id, { completedTurns: (row.completedTurns ?? 0) + 1 });
     return (row.completedTurns ?? 0) + (args.complete ? 1 : 0);
   },
 });

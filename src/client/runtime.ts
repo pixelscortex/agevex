@@ -1327,13 +1327,10 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                       },
                     );
                   return result;
-                } catch (error) {
+                } catch {
+                  // The hook's own error is never persisted: nothing reads it and
+                  // it may carry private details. The turn reports HOOK_FAILED.
                   hookFailed = true;
-                  await ctx.runMutation(component.hooks.hookState, {
-                    assignmentId: claimed.assignmentId,
-                    executionId: args.turnToken,
-                    error: String(error),
-                  });
                   controller.abort();
                   throw new Error("HOOK_FAILED");
                 }

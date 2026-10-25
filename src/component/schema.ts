@@ -156,10 +156,6 @@ export const vPaginationResult = <T extends Validator<unknown, "required", strin
     page: v.array(item),
     continueCursor: v.string(),
     isDone: v.boolean(),
-    splitCursor: v.optional(v.union(v.string(), v.null())),
-    pageStatus: v.optional(
-      v.union(v.literal("SplitRecommended"), v.literal("SplitRequired"), v.null()),
-    ),
   });
 
 export const pendingGeneration = v.object({
@@ -210,7 +206,6 @@ export default defineSchema({
     // Only the first slice owns the shared routing bit; terminal fences settle it.
     routingAgentIndex: v.optional(v.number()),
     hookContinue: v.optional(v.boolean()),
-    hookError: v.optional(v.string()),
     subject: v.string(),
     agent: v.string(),
     threadId: v.string(),
@@ -219,6 +214,7 @@ export default defineSchema({
     runTurn: v.string(),
     workflowId: v.optional(v.string()),
     limits: v.optional(limitsValidator),
+    // Read by wake: a ping is only sent to a loop that is awaiting one. No index.
     loopWaiting: v.optional(v.boolean()),
     pinged: v.optional(v.boolean()),
     recoveryAt: v.optional(v.number()),
@@ -259,8 +255,9 @@ export default defineSchema({
             messageId: v.string(),
             providerExecuted: v.boolean(),
             // Exact native ids remain in messageId's document. Hashes keep even
-            // near-1 MiB call ids out of coordination rows. Optional for v1 rows.
-            toolCallKey: v.optional(v.bytes()),
+            // near-1 MiB call ids out of coordination rows. Read by write() to
+            // retire the request once its native tool result is saved.
+            toolCallKey: v.bytes(),
             state: v.optional(
               v.union(
                 v.literal("pending"),
@@ -279,9 +276,7 @@ export default defineSchema({
     activeRuns: v.optional(v.number()),
     historyRuns: v.optional(v.number()),
     nextRunSequence: v.optional(v.number()),
-  })
-    .index("by_thread", ["threadId"])
-    .index("by_loop_waiting", ["loopWaiting", "turnStatus"]),
+  }).index("by_thread", ["threadId"]),
   inbox: defineTable({
     assignmentId: v.id("assignments"),
     messageId: v.string(),
@@ -305,7 +300,6 @@ export default defineSchema({
     kind: v.union(
       v.literal("user"),
       v.literal("result"),
-      v.literal("steer"),
       v.literal("parent"),
       v.literal("note"),
       v.literal("continue"),

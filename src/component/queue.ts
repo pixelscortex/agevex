@@ -467,8 +467,7 @@ export const claim = mutation({
               q.eq("assignmentId", row._id).eq("passive", undefined),
             )
             .first();
-          if (!item || item.runId !== head.runId || item.kind === "user" || item.kind === "steer")
-            break;
+          if (!item || item.runId !== head.runId || item.kind === "user") break;
           await ctx.db.delete("inbox", item._id);
           const order = item.messageSequence ?? item.sequence;
           const noteOrder = item.earliestMessageSequence ?? order;
@@ -527,7 +526,6 @@ export const claim = mutation({
             logicalPromptMessageId: row.promptMessageId,
           }
         : {}),
-      ...(first || row.hookContinue ? { hookError: undefined } : {}),
       approvals: row.approvals
         ? {
             ...row.approvals,
@@ -1017,7 +1015,7 @@ export const write = mutation({
           .filter(
             ({ request }) =>
               !(providerConsumed && request.providerExecuted && request.state === "running") &&
-              (!request.toolCallKey || !resulted.has(keyString(request.toolCallKey))),
+              !resulted.has(keyString(request.toolCallKey)),
           );
         row.approvals = remaining.length
           ? {
@@ -1573,7 +1571,7 @@ export const cancel = mutation({
           approvalEpoch: approvalCleanup ? row.approvals!.epoch : undefined,
         });
       for (const item of inbox) {
-        if (!item.passive) await ctx.db.patch("runs", item.runId, { cancelled: true });
+        await ctx.db.patch("runs", item.runId, { cancelled: true });
         await ctx.db.delete("inbox", item._id);
       }
       if (row.runId) await ctx.db.patch("runs", row.runId, { cancelled: true });
