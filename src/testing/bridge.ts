@@ -92,6 +92,7 @@ export const fillHookMetadata = internalMutationGeneric({
       hookError: "\uFFFF".repeat(LIMITS.hookErrorLength),
       completedTurns: LIMITS.turnsPerLoop,
       notesTaken: HOST_LIMITS.notesPerTurn.max,
+      turnNotes: Array.from({ length: HOST_LIMITS.notesPerTurn.max }, () => crypto.randomUUID()),
     });
     return null;
   },

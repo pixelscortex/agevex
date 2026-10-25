@@ -25,6 +25,8 @@ export const HOST_LIMITS = {
   continuesPerRun: { default: 3, max: 8 },
   sideRunsPerRun: { default: 2, max: 8 },
   notesPerTurn: { default: 8, max: 24 },
+  // Passive inbox capacity is independent of the ready-work queue and turn cap.
+  notesPending: { default: 8, max: 24 },
   maxDepth: { default: 2, max: 2 },
   messagesPerChild: { default: 4, max: 8 },
   // Pool admission shares eight scheduled-action slots at both maxima together.
@@ -49,28 +51,35 @@ export const HOST_LIMITS = {
  * Cancel budget at ALL host maxima:
  * A = 1 root + 20 descendants = 21 assignments (depth never multiplies A).
  * Every assignment has <=100 regular queued rows, one reserved answer slot,
- * and its reserved head (or approval continuation). Use I=21*102=2,142 rows.
+ * and its reserved head (or approval continuation). Use I=21*102=2,142 ready rows.
+ * Independently, <=24 passive notes per assignment add N=21*24=504 rows.
  * This deliberately overcounts: many simultaneous child queues belong to
  * DIFFERENT user-run budgets, so a single run's 100 hops is not a valid bound
  * on the whole root's backlog. Depth two allows each parent its own results.
- * Each inbox row costs one run patch and one inbox delete: 2I=4,284 writes.
+ * Each ready row costs one run patch and one inbox delete: 2I=4,284 writes.
+ * Notes cost <=two metadata reads and one delete each; they cannot own executable work,
+ * so cancellation never reads/patches their historical run or native body.
  * Each assignment costs three patches, one current-run patch, two scheduler
  * cancels and one exact-id cleanup job: 7A=147. Add 20 child-run patches and
  * one final root patch. Reserve 64A=1,344 reads AND writes for Workflow's
  * current loop/turn, Workpool, scheduler and callback bookkeeping.
- * Writes <=2I+7A+20+1+64A=5,796 <8,000 <16,000.
- * Reads <=3I+4A+A+2A+2*20+2+64A=7,959 <8,192.
+ * Routing settlement adds <=2A reads/writes (one owner/run per assignment).
+ * Writes <=2I+N+9A+20+1+64A=6,342 <8,000 <16,000.
+ * Reads <=3I+2N+6A+A+2A+2*20+2+64A=9,009 <32,000.
  * Bytes: inbox/run reads 3I*1 KiB; assignment patch reads 4A*32 KiB;
  * current runs A*1 KiB; scheduler 2A*4 KiB; child runs 40*4 KiB;
  * ownership/final root 2*32 KiB; SDK allowance 64A*4 KiB:
- * <=14,903 KiB <16 MiB. Native messages (including each nearly
+ * Routing only patches the already-read assignment and reads one <=1 KiB run
+ * per owner. Add 2N*1 KiB for passive metadata and A*1 KiB for routing:
+ * <=14,903+1,008+21=15,932 KiB <16 MiB.
+ * Native messages (including each nearly
  * 1 MiB placeholder) are NEVER read by cancel; cleanup runs separately.
  * Subagent rows stay <=4 KiB: names/subjects/groups <=200 UTF-16 units,
  * hashed tool-call dedup keys, ids, counters and <=4 small events. Assignments
  * allow <=32 KiB: the original <=8 KiB (16 approval/deferred-call keys),
  * <=4 KiB exact message references, <=8 KiB side-review boundaries, <=4 KiB
- * private hook error, plus scalar counters. Notes share the existing queue
- * bound and never multiply I. Run additions are scalar counters plus
+ * private hook error, <=2 KiB consumed-note ids, plus scalar counters. Notes
+ * have their own bounded queue N. Run additions are scalar counters plus
  * two 64-bit start/routing masks, keeping each run within its <=1 KiB envelope.
  *
  * Other proportional paths: claim drains <=152 consecutive ready rows,
@@ -90,6 +99,7 @@ export const LIMITS = {
   continuesPerRun: HOST_LIMITS.continuesPerRun.default,
   sideRunsPerRun: HOST_LIMITS.sideRunsPerRun.default,
   notesPerTurn: HOST_LIMITS.notesPerTurn.default,
+  notesPending: HOST_LIMITS.notesPending.default,
   noteLength: 4_000,
   hookErrorLength: 1_000,
   agents: 64,
@@ -167,6 +177,7 @@ export const limitsValidator = v.object({
   continuesPerRun: v.optional(v.number()),
   sideRunsPerRun: v.optional(v.number()),
   notesPerTurn: v.optional(v.number()),
+  notesPending: v.number(),
   maxDepth: v.optional(v.number()),
   messagesPerChild: v.optional(v.number()),
   rootLane: v.number(),

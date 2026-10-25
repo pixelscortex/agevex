@@ -283,6 +283,7 @@ export type ManagedAgent = {
     target: { threadId: string },
     args: {
       promptMessageId: string;
+      messages?: { role: "user"; content: string }[];
       model?: Extract<LanguageModel, string | LanguageModelV4>;
       /** Only present when the managed delegation tool is merged in. */
       tools?: ToolSet;

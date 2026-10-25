@@ -24,7 +24,7 @@ import { LIMITS, limitsValidator } from "./limits.js";
 import { approvalKey, callKey, keyString, saveResponses } from "./approvals.js";
 import { modelOverrides, validModelOverrides } from "./models.js";
 import { sealGroups, settleIdleParent, settlementBlocked } from "./subagents.js";
-import { recordMessages, recordRefs, messageRef } from "./hooks.js";
+import { recordMessages, recordRefs, messageRef, settleRouting } from "./hooks.js";
 
 async function existing(
   ctx: Pick<QueryCtx, "db">,
@@ -291,6 +291,7 @@ export const accept = mutation({
         turnStatus: "idle",
         errorCode: null,
         queuedMessages: 0,
+        notesPending: 0,
         nextSequence: 0,
         nextTurn: 0,
         cancellationEpoch: 0,
@@ -470,7 +471,7 @@ export const claim = mutation({
       turnStatus: "running",
       continueSlice: false,
       hookContinue: false,
-      ...(first || row.hookContinue ? { notesTaken: 0, hookError: undefined } : {}),
+      ...(first || row.hookContinue ? { notesTaken: 0, turnNotes: [], hookError: undefined } : {}),
       approvals: row.approvals
         ? {
             ...row.approvals,
@@ -513,6 +514,10 @@ export const claim = mutation({
           ? { routingAgents: BigInt.asIntN(LIMITS.agents, (budget.routingAgents ?? 0n) | bit) }
           : {}),
       });
+    if (budget && isRunStart && routeModel) {
+      await ctx.db.patch("assignments", row._id, { routingAgentIndex: agentIndex ?? 0 });
+      row.routingAgentIndex = agentIndex ?? 0;
+    }
     const hooks = {
       isTurnStart: first || !!row.hookContinue,
       isRunStart,
@@ -618,6 +623,9 @@ export const finish = mutation({
 });
 
 async function disarmSlice(ctx: MutationCtx, row: Doc<"assignments">) {
+  // Every terminal fence, including watchdog/cancel and native approval exits,
+  // releases routing even if the action never reaches its finally block.
+  await settleRouting(ctx, row);
   if (row.watchdogId) {
     const job = await ctx.db.system.get(row.watchdogId);
     // A watchdog firing now already owns its scheduled job. Clear the slice
@@ -1347,14 +1355,17 @@ export const continueTurn = mutation({
     ) {
       await disarmSlice(ctx, row);
       await sealGroups(ctx, row);
+      // Keep the claimed ready-work prompt as the generation boundary across
+      // slices. Native Agent includes its whole response order, including this
+      // slice's tool results. Anchoring on the last tool result would place
+      // Agent's explicit `messages` between a tool call and its result.
       await ctx.db.patch("assignments", row._id, {
         continueSlice: true,
-        promptMessageId: args.messageId,
       });
       // Release sealed results inside this existing step; v1's positional
       // Workflow sequence remains untouched. A running slice cannot be claimed
       // again by wake, so its normal between-slice continuation still owns it.
-      await wake(ctx, { ...row, continueSlice: true, promptMessageId: args.messageId });
+      await wake(ctx, { ...row, continueSlice: true });
     }
     return null;
   },
@@ -1457,6 +1468,8 @@ export const cancel = mutation({
         loopWaiting: false,
         pinged: false,
         queuedMessages: 0,
+        notesPending: 0,
+        turnNotes: [],
         continueSlice: false,
         approvalBlocked: !!approvalCleanup,
         approvals: approvalCleanup ? { ...row.approvals!, cleanupPending: true } : undefined,
@@ -1464,9 +1477,13 @@ export const cancel = mutation({
       const inbox = await ctx.db
         .query("inbox")
         .withIndex("by_assignment_sequence", (q) => q.eq("assignmentId", row._id))
-        .take((row.limits ?? LIMITS).queueLength + 2);
+        .take(
+          (row.limits ?? LIMITS).queueLength +
+            (row.limits?.notesPending ?? LIMITS.notesPending) +
+            2,
+        );
       for (const item of inbox) {
-        await ctx.db.patch("runs", item.runId, { cancelled: true });
+        if (!item.passive) await ctx.db.patch("runs", item.runId, { cancelled: true });
         await ctx.db.delete("inbox", item._id);
       }
       if (row.runId) await ctx.db.patch("runs", row.runId, { cancelled: true });

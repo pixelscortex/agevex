@@ -66,33 +66,42 @@ export async function recordMessages(
 
 export const takeNotes = mutation({
   args: { assignmentId: v.id("assignments"), executionId: v.string(), getMessages: v.string() },
-  handler: async (ctx, args): Promise<string | null> => {
+  handler: async (ctx, args): Promise<{ role: "user"; content: string }[]> => {
     const row = await ctx.db.get("assignments", args.assignmentId);
     if (!row || row.cancelled || row.turnToken !== args.executionId || row.turnStatus !== "running")
-      return null;
+      return [];
     const cap = (row.limits?.notesPerTurn ?? LIMITS.notesPerTurn) - (row.notesTaken ?? 0);
-    if (cap <= 0) return row.promptMessageId ?? null;
-    const notes = await ctx.db
-      .query("inbox")
-      .withIndex("by_assignment_ready", (q) => q.eq("assignmentId", row._id).eq("passive", true))
-      .take(cap);
-    if (!notes.length) return row.promptMessageId ?? null;
-    // <=24 escaped notes *~50 KiB +one <=1 MiB anchor <2.25 MiB.
-    // Exact native orders prevent an older note from hiding a newer user prompt.
+    const notes =
+      cap > 0
+        ? await ctx.db
+            .query("inbox")
+            .withIndex("by_assignment_ready", (q) =>
+              q.eq("assignmentId", row._id).eq("passive", true),
+            )
+            .take(cap)
+        : [];
+    const messageIds = [...(row.turnNotes ?? []), ...notes.map((note) => note.messageId)];
+    if (!messageIds.length) return [];
+    // <=24 escaped notes *~50 KiB <1.25 MiB, plus <=24 small inbox rows.
+    // Read only the recorded ids. The generation anchor belongs to the claimed
+    // ready work: advancing it to a newer note would expose queued user turns.
+    // Retain the bounded ids until the next turn so notes survive later slices
+    // even though their original native order lies beyond this turn's anchor.
     const docs = (await ctx.runQuery(args.getMessages as FunctionHandle<"query">, {
-      messageIds: [row.promptMessageId!, ...notes.map((n) => n.messageId)],
+      messageIds,
     })) as MessageDoc[];
     const ordered = docs
       .filter(Boolean)
       .sort((a, b) => a.order - b.order || a.stepOrder - b.stepOrder);
-    const newest = ordered[ordered.length - 1];
     for (const note of notes) await ctx.db.delete("inbox", note._id);
     await ctx.db.patch("assignments", row._id, {
       notesTaken: (row.notesTaken ?? 0) + notes.length,
-      queuedMessages: row.queuedMessages - notes.length,
-      promptMessageId: newest?._id ?? row.promptMessageId,
+      notesPending: row.notesPending - notes.length,
+      turnNotes: messageIds,
     });
-    return newest?._id ?? row.promptMessageId ?? null;
+    return ordered
+      .filter((doc) => doc.message?.role === "user")
+      .map((doc) => ({ role: "user" as const, content: doc.text ?? "" }));
   },
 });
 
@@ -226,16 +235,7 @@ export const addNote = mutation({
       args.from.length > LIMITS.requestKeyLength
     )
       throw new Error("INVALID_NOTE");
-    const cap = row.limits?.notesPerTurn ?? LIMITS.notesPerTurn;
-    const notes = await ctx.db
-      .query("inbox")
-      .withIndex("by_assignment_ready", (q) => q.eq("assignmentId", row._id).eq("passive", true))
-      .take(cap);
-    if (
-      notes.length + (row.turnStatus === "running" ? (row.notesTaken ?? 0) : 0) >= cap ||
-      row.queuedMessages >= (row.limits ?? LIMITS).queueLength
-    )
-      return false;
+    if (row.notesPending >= (row.limits?.notesPending ?? LIMITS.notesPending)) return false;
     const escape = (text: string) =>
       text.replace(
         /[&<>"']/g,
@@ -263,7 +263,7 @@ export const addNote = mutation({
       passive: true,
     });
     await ctx.db.patch("assignments", row._id, {
-      queuedMessages: row.queuedMessages + 1,
+      notesPending: row.notesPending + 1,
       nextSequence: row.nextSequence + 1,
     });
     await recordMessages(ctx, row, saved.messages);
@@ -318,14 +318,27 @@ export const completeRouting = mutation({
       throw new Error("INVALID_AGENT_INDEX");
     const row = await ctx.db.get("assignments", args.assignmentId);
     if (!row || row.cancelled || row.turnToken !== args.executionId || !row.runId) return null;
-    const run = await ctx.db.get("runs", row.runId);
-    if (run)
-      await ctx.db.patch("runs", run._id, {
-        routingAgents: BigInt.asIntN(
-          LIMITS.agents,
-          (run.routingAgents ?? 0n) & ~(1n << BigInt(args.agentIndex)),
-        ),
-      });
+    if (row.routingAgentIndex === args.agentIndex) await settleRouting(ctx, row);
     return null;
   },
 });
+
+/** The first claimed slice owns one routing attempt, never a retry. A terminal
+ * owner keeps startedAgents set and releases routingAgents; waiting siblings
+ * use the last committed run model, or their default if no decision committed.
+ * Ownership lives on that assignment so watchdog/cancel can settle it without
+ * scanning siblings or trusting a failed action to run cleanup. <=1 run read,
+ * <=1 run patch and <=1 assignment patch; no native content is accessed.
+ */
+export async function settleRouting(ctx: MutationCtx, row: Doc<"assignments">) {
+  if (row.routingAgentIndex === undefined || !row.runId) return;
+  const run = await ctx.db.get("runs", row.runId);
+  if (run)
+    await ctx.db.patch("runs", run._id, {
+      routingAgents: BigInt.asIntN(
+        LIMITS.agents,
+        (run.routingAgents ?? 0n) & ~(1n << BigInt(row.routingAgentIndex)),
+      ),
+    });
+  await ctx.db.patch("assignments", row._id, { routingAgentIndex: undefined });
+}

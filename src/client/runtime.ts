@@ -1278,7 +1278,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                     return response;
                   },
                 });
-              const anchor = await fencedCtx.runMutation(component.hooks.takeNotes, {
+              const notes = await fencedCtx.runMutation(component.hooks.takeNotes, {
                 assignmentId: claimed.assignmentId,
                 executionId: args.turnToken,
                 getMessages: await createFunctionHandle(
@@ -1289,7 +1289,13 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                 fencedCtx,
                 { threadId: claimed.threadId },
                 {
-                  promptMessageId: anchor ?? claimed.promptMessageId,
+                  promptMessageId: claimed.promptMessageId,
+                  // Agent 0.7.7 src/vercel/client/start.ts:119-127 orders these
+                  // after recent history and before the anchor's prompt group.
+                  // saveInputMessages.ts:48-50 saves no input when an anchor is
+                  // supplied: notes already live in the thread, without copies
+                  // or moving this slice across another queued request.
+                  messages: notes,
                   // Agent 0.7.7 vercel/client/start.ts:107-108,234 supports this
                   // per-call override natively; never mutate a shared Agent's options.
                   ...(selectedModel
@@ -1452,6 +1458,20 @@ export function registerAgent(component: ComponentApi, config: Registration) {
               }
             }
           }
+
+          // Authorization runs before the generation try/finally. A denial
+          // must settle the same routing attempt as generation/hook failures;
+          // queue's terminal fences also cover actions that never return here.
+          if (
+            errorCode === "AUTHORIZATION_DENIED" &&
+            claimed.isRunStart &&
+            managed.hooks?.beforeTurn
+          )
+            await ctx.runMutation(component.hooks.completeRouting, {
+              assignmentId: claimed.assignmentId,
+              executionId: args.turnToken,
+              agentIndex: agentIndexes.get(claimed.agent)!,
+            });
 
           const current = await ctx.runQuery(component.queue.execution, {
             assignmentId: args.assignmentId,

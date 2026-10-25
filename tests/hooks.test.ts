@@ -195,6 +195,93 @@ it("an idle note never starts a turn and is included when the next user request 
   ).toBe(true);
 });
 
+it("an idle note leaves queueLength one available for the next send", async () => {
+  const t = setup({ queueLength: 1 });
+  const receipt = await open(t);
+  await drain(t);
+  expect(
+    await owner(t).mutation(api.agents.note, {
+      threadId: receipt.threadId,
+      text: "passive advice",
+      from: "critic",
+    }),
+  ).toBe(true);
+  expect(await send(t, receipt.threadId, "accepted after idle note")).toMatchObject({
+    status: "accepted",
+  });
+  await drain(t);
+  expect(calls()).toHaveLength(2);
+  expect(JSON.stringify(calls()[1].args.prompt)).toContain("passive advice");
+});
+
+it("a running request receives its note across slices without exposing or executing queued future work", async () => {
+  const held = gate();
+  fixture.steps.Main = async (n) => {
+    if (n === 0) await held.promise;
+    return n < 2 ? call("echo", { text: `slice ${n}` }) : text(`answer ${n}`);
+  };
+  const t = setup();
+  const receipt = await open(t);
+  await waitFor(t, () => calls().length === 1);
+  expect(await send(t, receipt.threadId, "future request B")).toMatchObject({ status: "accepted" });
+  expect(
+    await owner(t).mutation(api.agents.note, {
+      threadId: receipt.threadId,
+      text: '<advice for="A">',
+      from: 'critic"',
+    }),
+  ).toBe(true);
+  held.release();
+  await drain(t);
+  expect(calls()).toHaveLength(4);
+  for (const index of [1, 2]) {
+    const prompt = JSON.stringify(calls()[index].args.prompt);
+    expect(prompt).toContain("first request");
+    expect(prompt).toContain("&lt;advice for=&quot;A&quot;&gt;");
+    expect(prompt).toContain("critic&quot;");
+    expect(prompt).not.toContain("future request B");
+  }
+  expect(JSON.stringify(calls()[3].args.prompt)).toContain("future request B");
+  expect(fixture.effects).toEqual(["slice 0", "slice 1"]);
+  expect((await status(t, receipt.threadId)).queuedMessages).toBe(0);
+  expect(
+    (await messages(t, receipt.threadId)).page.filter((message) =>
+      message.text.includes('<note from="critic&quot;">'),
+    ),
+  ).toHaveLength(1);
+});
+
+it("pending notes have their own capacity even with a full ready queue and drain at the per-turn bound", async () => {
+  const held = gate();
+  fixture.steps.Main = async (n) => {
+    if (n === 0) {
+      await held.promise;
+      return call("echo", { text: "continue A" });
+    }
+    return text("done");
+  };
+  const t = setup({ queueLength: 1, notesPending: 2, notesPerTurn: 1 });
+  const receipt = await open(t);
+  await waitFor(t, () => calls().length === 1);
+  expect(await send(t, receipt.threadId, "queued B")).toMatchObject({ status: "accepted" });
+  const note = (text: string) =>
+    owner(t).mutation(api.agents.note, {
+      threadId: receipt.threadId,
+      text,
+      from: "critic",
+    });
+  expect(await note("first passive note")).toBe(true);
+  expect(await note("second passive note")).toBe(true);
+  expect(await note("over pending capacity")).toBe(false);
+  held.release();
+  await drain(t);
+  expect(calls()).toHaveLength(3);
+  expect(JSON.stringify(calls()[1].args.prompt)).toContain("first passive note");
+  expect(JSON.stringify(calls()[1].args.prompt)).not.toContain("second passive note");
+  expect(JSON.stringify(calls()[2].args.prompt)).toContain("second passive note");
+  expect(await note("capacity is reusable")).toBe(true);
+});
+
 it("a note arriving in a running slice becomes context in the next slice", async () => {
   const held = gate();
   fixture.steps.Main = async (n) => {
@@ -220,6 +307,7 @@ it("a note arriving in a running slice becomes context in the next slice", async
 it("notes enforce their hard count and length bounds and authorize the watched thread", async () => {
   const t = setup({
     notesPerTurn: HOST_LIMITS.notesPerTurn.max,
+    notesPending: HOST_LIMITS.notesPending.max,
     queueLength: HOST_LIMITS.queueLength.max,
   });
   const receipt = await open(t);
@@ -665,6 +753,94 @@ it("concurrent sibling turns share the first run-start model decision without du
   expect(calls("Routed")).toHaveLength(2);
   expect(calls("Builder")).toHaveLength(0);
 });
+
+it("a denied first Builder releases waiting siblings to the default model without repeating routing", async () => {
+  const held = gate();
+  let authorizations = 0;
+  const starts: boolean[] = [];
+  fixture.steps.Main = (n) =>
+    n === 0
+      ? [
+          ...call("agevex_delegate", { agent: "Builder", task: "denied first Builder" }),
+          ...call("agevex_delegate", { agent: "Builder", task: "waiting sibling Builder" }),
+        ]
+      : text("done");
+  fixture.authorizeExecution = async (_ctx, scope) => {
+    if (scope.agent === "Builder" && ++authorizations === 1) {
+      await held.promise;
+      throw new Error("private execution denial");
+    }
+  };
+  fixture.builderHooks.beforeTurn = (_hc, event) => {
+    starts.push(event.isRunStart);
+    if (event.isRunStart) throw new Error("classifier must never be retried");
+  };
+  const t = setup();
+  const receipt = await open(t);
+  await waitFor(t, () => starts.length === 1);
+  expect(starts).toEqual([false]);
+  expect(calls("Builder")).toHaveLength(0);
+  held.release();
+  await drain(t);
+  expect(calls("Builder")).toHaveLength(1);
+  expect(JSON.stringify(calls("Builder")[0].args.prompt)).toContain("waiting sibling Builder");
+  expect(starts).toEqual([false]);
+  const tree = await owner(t).query(api.agents.runTree, { threadId: receipt.threadId });
+  expect(tree.filter((run) => run.agent === "Builder").map((run) => run.status)).toEqual(
+    expect.arrayContaining(["failed", "completed"]),
+  );
+  expect(JSON.stringify(await messages(t, receipt.threadId))).not.toContain(
+    "private execution denial",
+  );
+});
+
+it.each(["hook failure", "abandoned action"])(
+  "a routing owner's %s releases its sibling without repeating the classifier",
+  async (path) => {
+    const held = gate();
+    const starts: boolean[] = [];
+    let ownerThreadId = "";
+    fixture.steps.Main = (n) =>
+      n === 0
+        ? [
+            ...call("agevex_delegate", { agent: "Builder", task: "first routing owner" }),
+            ...call("agevex_delegate", { agent: "Builder", task: "waiting sibling" }),
+          ]
+        : text("done");
+    fixture.builderHooks.beforeTurn = async (hc, event) => {
+      starts.push(event.isRunStart);
+      if (event.isRunStart) {
+        ownerThreadId = hc.threadId;
+        await held.promise;
+        if (path === "hook failure") throw new Error("private classifier failure");
+        return { model: "routed" };
+      }
+    };
+    const t = setup();
+    const receipt = await open(t);
+    await waitFor(t, () => starts.length === 2);
+    if (path === "abandoned action") {
+      const tree = await owner(t).query(api.agents.runTree, { threadId: receipt.threadId });
+      const first = tree.find((run) => run.childThreadId === ownerThreadId)!;
+      await t.mutation(components.agevex.queue.ambiguous, {
+        assignmentId: first.childAssignmentId!,
+        turnToken: `${first.childAssignmentId}:0`,
+      });
+      // The uncooperative owner is still held. Durable terminal fencing must
+      // release the sibling before the owner's finally block can possibly run.
+      await waitFor(t, () => calls("Builder").length === 1);
+    }
+    held.release();
+    await drain(t);
+    expect(starts).toEqual([true, false]);
+    expect(calls("Builder")).toHaveLength(1);
+    expect(calls("Routed")).toHaveLength(0);
+    expect(JSON.stringify(calls("Builder")[0].args.prompt)).toContain("waiting sibling");
+    expect(JSON.stringify(await messages(t, receipt.threadId))).not.toContain(
+      "private classifier failure",
+    );
+  },
+);
 
 it("queued future prompts never hide an earlier assistant response from the next review delta", async () => {
   fixture.sides = [{ agent: critic, every: { turns: 1 }, sees: "delta" }];

@@ -129,7 +129,10 @@ const main = new Agent(components.agent, {
 ```
 
 `beforeTurn` can choose an allowlisted model only when `isRunStart` is true;
-that choice persists for the agent's run. `afterTurn.continue` requests another
+that choice persists for the agent's run. Concurrent siblings share the first
+routing attempt. If its owner is denied, fails or is cancelled, siblings use
+the committed model or their default; the classifier is never retried.
+`afterTurn.continue` requests another
 bounded turn (default 3 per run, hard maximum 8). A throwing hook fails the turn
 with `HOOK_FAILED`; private details stay outside the transcript. Tool execution
 hooks include native and `defineOnceTool` effects. The SDK's delegate, message
@@ -140,7 +143,9 @@ a local tool execution function to intercept inside the action.
 Inside an authorized host mutation, call
 `runtime.note(ctx, { threadId, text, from })`. It authorizes operation `note`
 and returns false at capacity. Notes are escaped user-role `<note from="…">`
-messages, capped at 4,000 characters and 8 per turn (hard maximum 24). They
+messages, capped at 4,000 characters and 8 per turn (hard maximum 24).
+`limits.notesPending` separately bounds the passive backlog (default 8, hard
+maximum 24); notes never consume `queueLength` capacity. They
 enter context between slices, or on the next requested turn when idle. They
 never start a turn or schedule work.
 

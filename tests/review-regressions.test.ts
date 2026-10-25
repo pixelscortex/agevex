@@ -632,6 +632,22 @@ it("cancel commits a full approval-blocked backlog with maximum limits, children
     );
   }
   const alice = t.withIdentity({ subject: "alice" });
+  // Independent passive capacity can coexist with every ready-work slot. Use
+  // real, maximum-size escaped native notes on all 21 affected assignments;
+  // cancel must delete only their small inbox metadata within the same budget.
+  const addMessages = await t.run(() =>
+    createFunctionHandle(components.agent.messages.addMessages),
+  );
+  for (const turn of turns)
+    for (let i = 0; i < HOST_LIMITS.notesPending.max; i++)
+      expect(
+        await t.mutation(components.agevex.hooks.addNote, {
+          assignmentId: turn.assignmentId,
+          text: '"'.repeat(LIMITS.noteLength),
+          from: '"'.repeat(LIMITS.requestKeyLength),
+          addMessages,
+        }),
+      ).toBe(true);
   for (let i = 1; i < HOST_LIMITS.queueLength.max; i++) {
     await alice.mutation(api.agents.send, {
       threadId: receipt.threadId,
@@ -657,7 +673,9 @@ it("cancel commits a full approval-blocked backlog with maximum limits, children
     );
   const before = await queuedWork();
   expect(before.inbox).toHaveLength(
-    HOST_LIMITS.queueLength.max + HOST_LIMITS.activeChildrenPerRoot.max,
+    HOST_LIMITS.queueLength.max +
+      HOST_LIMITS.activeChildrenPerRoot.max +
+      turns.length * HOST_LIMITS.notesPending.max,
   );
   expect(before.runs.every((run: { cancelled: boolean }) => !run.cancelled)).toBe(true);
   // Inspect the actual public cancel transaction, including ownership reads.
@@ -679,6 +697,7 @@ it("cancel commits a full approval-blocked backlog with maximum limits, children
       cancelled: true,
       cancellationEpoch: 1,
       queuedMessages: 0,
+      notesPending: 0,
       turnStatus: "idle",
     });
   expect(

@@ -389,6 +389,7 @@ export const attach = mutation({
       turnStatus: "idle",
       errorCode: null,
       queuedMessages: 1,
+      notesPending: 0,
       nextSequence: 1,
       nextTurn: 0,
       cancellationEpoch: 0,

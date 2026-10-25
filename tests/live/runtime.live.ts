@@ -69,7 +69,8 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
             active: 0,
             history: delegation || depth ? 2 : critic ? 1 : 0,
             rootCalls: depth ? 2 : delegation ? 3 : 1,
-            queued: critic ? 1 : 0,
+            // Passive critic notes have their own capacity, never ready work.
+            queued: 0,
             errorCode: null,
           });
         if (critic) {

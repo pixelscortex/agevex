@@ -31,6 +31,7 @@ export const fixture = {
   sides: [] as SideAgent[],
   calls: [] as { agent: string; args: Args }[],
   effects: [] as string[],
+  authorizeExecution: undefined as Registration["authorizeExecution"] | undefined,
   steps: {} as Record<
     string,
     (n: number, args: Args) => LanguageModelV4Content[] | Promise<LanguageModelV4Content[]>
@@ -102,6 +103,7 @@ export function reset() {
   fixture.sides = [];
   fixture.calls = [];
   fixture.effects = [];
+  fixture.authorizeExecution = undefined;
   fixture.steps = {};
 }
 export function registration(limits?: Registration["limits"]) {
@@ -129,8 +131,9 @@ export function registration(limits?: Registration["limits"]) {
       if (!user) throw new Error("FORBIDDEN");
       return { subject: user.subject };
     },
-    authorizeExecution: async (_ctx, scope) => {
+    authorizeExecution: async (ctx, scope) => {
       if (scope.subject !== "alice") throw new Error("FORBIDDEN");
+      await fixture.authorizeExecution?.(ctx, scope);
     },
   });
 }

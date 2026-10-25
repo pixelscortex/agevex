@@ -192,6 +192,12 @@ export default defineSchema({
     ),
     completedTurns: v.optional(v.number()),
     notesTaken: v.optional(v.number()),
+    // Read by note admission/draining/cancel; never charged to ready work.
+    notesPending: v.number(),
+    // Exact native ids consumed this turn, replayed as context on later slices.
+    turnNotes: v.optional(v.array(v.string())),
+    // Only the first slice owns the shared routing bit; terminal fences settle it.
+    routingAgentIndex: v.optional(v.number()),
     hookContinue: v.optional(v.boolean()),
     hookError: v.optional(v.string()),
     subject: v.string(),
