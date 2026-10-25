@@ -46,6 +46,11 @@ export default defineSchema({
     payloadStorageId: v.optional(v.string()),
     failure: v.optional(failure),
     usage: v.optional(usage),
+    // Distinct completion callback handles of every admitter of this identity
+    // (LIMITS.callbacksPerArtifact of LIMITS.callbackBytes). Read and cleared by
+    // the dispatch that owns the row when its workflow completes, so a caller
+    // superseded by a re-dispatch or a retry still gets exactly one callback.
+    callbacks: v.optional(v.array(v.string())),
   })
     .index("by_identity", ["fileId", "backend", "version", "optionsHash"])
     // Host-only purge walks every extraction of one native file.

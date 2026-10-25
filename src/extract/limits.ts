@@ -13,17 +13,22 @@ const MiB = 2 ** 20;
  *   Uint8Array N and about three base64/JSON copies of 4/3 N each = 6N.
  * - Output phase: the Blob stays cached for the checksum and backend, N, plus
  *   response chunks and their merge 2P, decoded string up to 2P (UTF-16),
- *   parsed object up to 2P, = N + 6P. Serializing the result (text 2P + JSON
- *   string 2P + Blob P = 5P) is smaller. Direct text is the extreme: blob N,
- *   arrayBuffer N, string 2N, JSON 2N, output Blob N = 7N.
+ *   parsed object up to 2P, = N + 6P. Serializing the result is smaller: text
+ *   2P + JSON string 2P + Blob P = 5P. That holds only because `document()`
+ *   computes the exact serialized size first and rejects before stringifying:
+ *   control characters escape to six characters each and one non-Latin-1
+ *   character makes the string two-byte, so an unguarded JSON string of a
+ *   4 MiB text would be 6 * 4 MiB * 2 bytes = 48 MiB (12N). Direct text is the
+ *   extreme: blob N, arrayBuffer N, decoded string 2N, JSON string 2P, output
+ *   Blob P = 4N + 3P.
  * - Reads: Blob P + string 2P + parsed 2P + one UTF-8 window encoding P = 6P.
  *   The hash is computed in streamed chunks, so it adds no whole-file copy.
  *
  * Default runtime: document 12 MiB -> 3N = 36 MiB; image 6 MiB -> 6N = 36 MiB;
- * text 4 MiB -> 7N = 28 MiB; payload 6 MiB -> N + 6P = 12 + 36 = 48 MiB (the
+ * text 4 MiB -> 4N + 3P = 34 MiB; payload 6 MiB -> N + 6P = 12 + 36 = 48 MiB (the
  * whole working set, hence exactly 64 MiB with the reserve) and reads 36 MiB.
  * Node runtime: document 50 MB -> 3N = 150 MB; image 10 MB -> 6N = 60 MB;
- * text 8 MiB -> 7N = 56 MiB; payload 32 MiB -> N + 6P = 50 + 192 = 242 MB;
+ * text 8 MiB -> 4N + 3P = 128 MiB; payload 32 MiB -> N + 6P = 50 + 192 = 242 MB;
  * reads 192 MiB; all well under 496 MiB. Files above a default ceiling run in
  * the optional Node worker, never in the default one.
  */
@@ -60,6 +65,14 @@ export const LIMITS = {
    * module never retries by itself, and the fourth failure is final.
    */
   maxAttempts: 3,
+  /**
+   * Completion callbacks kept on one artifact row: at most this many distinct
+   * handles of at most `callbackBytes` each (4 * 512 = 2 KiB, which keeps the
+   * row far below 8 KiB with its other bounded fields). Callers beyond the
+   * limit are told `callback: "dropped"` and must poll `get`.
+   */
+  callbacksPerArtifact: 4,
+  callbackBytes: 512,
   /** Artifact rows per `purge` transaction: 32 * < 4 KiB read and written. */
   purgeBatch: 32,
   indexLeaseMs: 10 * 60 * 1000,

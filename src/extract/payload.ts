@@ -42,16 +42,64 @@ export function readDocument(value: unknown): ExtractedDoc {
     throw new ExtractError("INVALID_OUTPUT");
   return doc as ExtractedDoc;
 }
+/**
+ * Exact UTF-8 size of `JSON.stringify(text)`, computed without allocating the
+ * output: quotes and backslash take 2 bytes, control characters 2 (\b \t \n
+ * \f \r) or 6 (\u00XX), lone surrogates 6 (well-formed JSON escapes them),
+ * everything else its UTF-8 width.
+ */
+function jsonStringBytes(text: string): number {
+  let bytes = 2;
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    if (code < 0x20)
+      bytes += code === 8 || code === 9 || code === 10 || code === 12 || code === 13 ? 2 : 6;
+    else if (code === 0x22 || code === 0x5c) bytes += 2;
+    else if (code < 0x80) bytes += 1;
+    else if (code < 0x800) bytes += 2;
+    else if (code >= 0xd800 && code <= 0xdbff) {
+      const next = text.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        bytes += 4;
+        index++;
+      } else bytes += 6;
+    } else if (code >= 0xdc00 && code <= 0xdfff) bytes += 6;
+    else bytes += 3;
+  }
+  return bytes;
+}
+/** Exact UTF-8 size of `JSON.stringify(value)` for the plain values a document holds. */
+function jsonBytes(value: unknown): number {
+  if (typeof value === "string") return jsonStringBytes(value);
+  if (typeof value === "number") return Number.isFinite(value) ? String(value).length : 4;
+  if (typeof value === "boolean") return value ? 4 : 5;
+  if (value === null) return 4;
+  if (Array.isArray(value))
+    return (
+      2 + Math.max(0, value.length - 1) + value.reduce((sum, item) => sum + jsonBytes(item), 0)
+    );
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).filter(
+      ([, item]) => item !== undefined,
+    );
+    return (
+      2 +
+      Math.max(0, entries.length - 1) +
+      entries.reduce((sum, [key, item]) => sum + jsonStringBytes(key) + 1 + jsonBytes(item), 0)
+    );
+  }
+  return 4;
+}
 /** Serialize only on writes; a read must not allocate another full 32 MiB JSON blob. */
 export function document(value: unknown, maxBytes: number): { doc: ExtractedDoc; blob: Blob } {
   const doc = parseDocument(value);
-  const json = JSON.stringify(doc);
-  // UTF-8 never takes fewer bytes than the string has UTF-16 units, so a string
-  // already over the ceiling is rejected BEFORE a Blob copies it. Control
-  // characters escape to six characters each (\u0001), so a text near the byte
-  // limit can serialize to several times that; the Blob would be one more copy.
-  if (json.length > maxBytes) throw new ExtractError("TOO_LARGE");
-  const blob = new Blob([json], { type: "application/json" });
+  // Decide from the exact serialized size BEFORE `JSON.stringify` allocates: a
+  // text near the input limit made of control characters escapes to six
+  // characters each, and one non-Latin-1 character makes the whole output a
+  // two-byte string (12x the input in memory). Past this check the string is at
+  // most `maxBytes` characters, so at most 2 * maxBytes bytes.
+  if (jsonBytes(doc) > maxBytes) throw new ExtractError("TOO_LARGE");
+  const blob = new Blob([JSON.stringify(doc)], { type: "application/json" });
   if (blob.size > maxBytes) throw new ExtractError("TOO_LARGE");
   return { doc, blob };
 }

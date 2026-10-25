@@ -6,9 +6,11 @@ import { agentComponent } from "./setup.js";
 import { utf8 } from "../../src/extract/limits.js";
 import { makeFunctionReference, type FunctionReference } from "convex/server";
 
-const callback = makeFunctionReference<"mutation", { artifactId: string }, null>(
-  "host:onComplete",
-) as unknown as FunctionReference<"mutation", "internal", { artifactId: string }, null>;
+const reference = (name: string) =>
+  makeFunctionReference<"mutation", { artifactId: string }, null>(
+    `host:${name}`,
+  ) as unknown as FunctionReference<"mutation", "internal", { artifactId: string }, null>;
+const callback = reference("onComplete");
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
@@ -178,7 +180,7 @@ it("a queued job does not expire before it starts and is dispatched again only a
   const again = await h.action((ctx) =>
     h.extract.run(ctx, { ...scope, fileId: other, onComplete: callback }),
   );
-  expect(again).toEqual({ artifactId: queued.artifactId, action: "run" });
+  expect(again).toEqual({ artifactId: queued.artifactId, action: "run", callback: "stored" });
   // The stale dispatch's start is fenced out: it cannot begin, so it cannot pay.
   expect(
     await h.t.mutation(component.artifacts.start, {
@@ -200,6 +202,60 @@ it("a queued job does not expire before it starts and is dispatched again only a
   // Both dispatches registered a callback, but only the one owning the row's
   // claim reports: the stale dispatch finishing late must not fire a second one.
   expect(h.state.completions).toEqual(["ready"]);
+});
+it("a run caller superseded by a re-dispatch and a wait caller each get exactly one callback", async () => {
+  const h = setup();
+  const fileId = await h.upload();
+  // Caller A starts the job with a callback, then the queue deadline passes.
+  const a = await h.action((ctx) => h.extract.run(ctx, { ...scope, fileId, onComplete: callback }));
+  expect(a).toMatchObject({ action: "run", callback: "stored" });
+  vi.setSystemTime(Date.now() + LIMITS.queueMs + 1000);
+  // Caller B (no callback) re-admits the stale queued job: a new dispatch now
+  // owns the row. A's callback must survive the supersession.
+  const b = await h.action((ctx) => h.extract.run(ctx, { ...scope, fileId }));
+  expect(b).toEqual({ artifactId: a.artifactId, action: "run" });
+  // Caller W waits on the live dispatch and registers its own callback.
+  const w = await h.action((ctx) =>
+    h.extract.run(ctx, { ...scope, fileId, onComplete: reference("onCompleteWaiter") }),
+  );
+  expect(w).toMatchObject({ action: "wait", callback: "stored" });
+  // The same caller repeating itself does not take a second slot or fire twice.
+  expect(
+    await h.action((ctx) =>
+      h.extract.run(ctx, { ...scope, fileId, onComplete: reference("onCompleteWaiter") }),
+    ),
+  ).toMatchObject({ action: "wait", callback: "stored" });
+  await drain(h);
+  expect(h.state.calls).toBe(1);
+  expect([...h.state.completions].sort()).toEqual(["ready", "waiter:ready"]);
+  // A terminal artifact fires nothing more; reuse stores no callback.
+  expect(
+    await h.action((ctx) => h.extract.run(ctx, { ...scope, fileId, onComplete: callback })),
+  ).toEqual({ artifactId: a.artifactId, action: "reuse" });
+  await drain(h);
+  expect([...h.state.completions].sort()).toEqual(["ready", "waiter:ready"]);
+});
+it("a fifth distinct callback is dropped and the admission says so", async () => {
+  const h = setup();
+  const fileId = await h.upload();
+  const outcomes: (string | undefined)[] = [];
+  for (let n = 0; n <= LIMITS.callbacksPerArtifact; n++) {
+    const job = await h.action((ctx) =>
+      h.extract.run(ctx, { ...scope, fileId, onComplete: reference(`caller${n}`) }),
+    );
+    outcomes.push((job as { callback?: string }).callback);
+  }
+  expect(outcomes).toEqual([...Array(LIMITS.callbacksPerArtifact).fill("stored"), "dropped"]);
+  // A handle over the byte bound is refused outright.
+  await expect(
+    h.action((ctx) =>
+      h.extract.run(ctx, {
+        ...scope,
+        fileId,
+        onComplete: reference("c".repeat(LIMITS.callbackBytes)),
+      }),
+    ),
+  ).rejects.toThrow("INVALID_EXTRACT_ARGUMENT");
 });
 it("a host refusal in the worker is a retryable failure, never an unknown outcome", async () => {
   const h = setup();
@@ -575,6 +631,29 @@ it("publishes a paid result when the file is detached mid-run and a later attach
   expect(h.state.events).toHaveLength(1);
   expect((await h.action((ctx) => h.extract.readText(ctx, args))).text).toBe("private");
 });
+it("a mostly-control-character text with one wide character is rejected before JSON.stringify allocates", async () => {
+  const h = setup({ backends: [directText()] });
+  // 4 MiB of U+0001 plus one euro sign: every U+0001 escapes to six characters
+  // and the euro makes the whole serialization a two-byte string (48 MiB).
+  const text = "\u0001".repeat(LIMITS.maxBytes.text - 3) + "\u20ac";
+  const fileId = await h.upload(text);
+  const stringify = vi.spyOn(JSON, "stringify");
+  try {
+    const args = await run(h, fileId);
+    expect(await h.action((ctx) => h.extract.get(ctx, args))).toMatchObject({
+      status: "failed",
+      failure: { code: "TOO_LARGE" },
+    });
+    const serializedDocs = stringify.mock.calls.filter(
+      ([value]) =>
+        typeof (value as { text?: unknown })?.text === "string" &&
+        (value as { text: string }).text.length > 1_000_000,
+    );
+    expect(serializedDocs).toHaveLength(0);
+  } finally {
+    stringify.mockRestore();
+  }
+}, 30_000);
 it("a control-character text near the limit is TOO_LARGE before any oversized Blob is built", async () => {
   const h = setup({ backends: [directText()] });
   // Each U+0001 serializes to the six characters \u0001: a text within the 4 MiB

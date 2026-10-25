@@ -42,7 +42,7 @@ async function dispatch(
   artifactId: Id<"artifacts">,
   attempt: number,
   claim: string,
-  args: { threadId: string; subject?: string; worker: string; onComplete?: string },
+  args: { threadId: string; subject?: string; worker: string },
 ) {
   await manager.start(
     ctx,
@@ -59,12 +59,9 @@ async function dispatch(
     {
       startAsync: true,
       onComplete: internal.workflows.done,
-      context: {
-        artifactId,
-        attempt,
-        claim,
-        ...(args.onComplete ? { onComplete: args.onComplete } : {}),
-      },
+      // No callback handle here: callers' handles live on the row so that a
+      // superseded dispatch cannot take them with it.
+      context: { artifactId, attempt, claim },
     },
   );
 }
@@ -97,7 +94,11 @@ export const admit = mutation({
   handler: async (
     ctx,
     args,
-  ): Promise<{ artifactId: Id<"artifacts">; action: "run" | "wait" | "reuse" }> => {
+  ): Promise<{
+    artifactId: Id<"artifacts">;
+    action: "run" | "wait" | "reuse";
+    callback?: "stored" | "dropped";
+  }> => {
     bounded(args.fileId);
     bounded(args.backend);
     bounded(args.version);
@@ -105,13 +106,30 @@ export const admit = mutation({
     bounded(args.threadId);
     if (args.subject !== undefined) bounded(args.subject);
     bounded(args.worker, LIMITS.urlBytes);
-    if (args.onComplete) bounded(args.onComplete, LIMITS.urlBytes);
+    if (args.onComplete) bounded(args.onComplete, LIMITS.callbackBytes);
     const dispatchArgs = {
       threadId: args.threadId,
       ...(args.subject === undefined ? {} : { subject: args.subject }),
       worker: args.worker,
-      ...(args.onComplete ? { onComplete: args.onComplete } : {}),
     };
+    /**
+     * Append the caller's handle (a repeat of a stored handle is a no-op) for
+     * any admission that will be followed by a completion: run, wait and
+     * re-admits alike. A full list drops the new handle and says so.
+     */
+    const callbacks = (existing: string[] | undefined) => {
+      const stored = existing ?? [];
+      if (!args.onComplete) return { list: stored, outcome: undefined };
+      if (stored.includes(args.onComplete)) return { list: stored, outcome: "stored" as const };
+      if (stored.length >= LIMITS.callbacksPerArtifact)
+        return { list: stored, outcome: "dropped" as const };
+      return { list: [...stored, args.onComplete], outcome: "stored" as const };
+    };
+    const result = (
+      artifactId: Id<"artifacts">,
+      action: "run" | "wait",
+      outcome: "stored" | "dropped" | undefined,
+    ) => ({ artifactId, action, ...(outcome ? { callback: outcome } : {}) });
     const row = await ctx.db
       .query("artifacts")
       .withIndex("by_identity", (q) =>
@@ -126,12 +144,14 @@ export const admit = mutation({
       const expired = row.leaseUntil <= Date.now();
       if (row.status === "pending" && expired) {
         const claim = crypto.randomUUID();
+        const kept = callbacks(row.callbacks);
         await ctx.db.patch("artifacts", row._id, {
           claim,
           leaseUntil: Date.now() + LIMITS.queueMs,
+          callbacks: kept.list.length ? kept.list : undefined,
         });
         await dispatch(ctx, row._id, row.attempt, claim, dispatchArgs);
-        return { artifactId: row._id, action: "run" };
+        return result(row._id, "run", kept.outcome);
       }
       if (row.status === "running" && expired) {
         await ctx.db.patch("artifacts", row._id, { status: "unknown" });
@@ -145,20 +165,27 @@ export const admit = mutation({
       ) {
         const claim = crypto.randomUUID();
         const attempt = row.attempt + 1;
+        const kept = callbacks(row.callbacks);
         await ctx.db.patch("artifacts", row._id, {
           status: "pending",
           attempt,
           claim,
           leaseUntil: Date.now() + LIMITS.queueMs,
           failure: undefined,
+          callbacks: kept.list.length ? kept.list : undefined,
         });
         await dispatch(ctx, row._id, attempt, claim, dispatchArgs);
-        return { artifactId: row._id, action: "run" };
+        return result(row._id, "run", kept.outcome);
       }
-      return {
-        artifactId: row._id,
-        action: row.status === "pending" || row.status === "running" ? "wait" : "reuse",
-      };
+      if (row.status === "pending" || row.status === "running") {
+        // Waiting on a live dispatch: the caller is notified when it completes.
+        const kept = callbacks(row.callbacks);
+        if (kept.list.length !== (row.callbacks?.length ?? 0))
+          await ctx.db.patch("artifacts", row._id, { callbacks: kept.list });
+        return result(row._id, "wait", kept.outcome);
+      }
+      // Already terminal: no completion will follow, so nothing is stored.
+      return { artifactId: row._id, action: "reuse" };
     }
     const claim = crypto.randomUUID();
     const attempt = LIMITS.initialAttempt;
@@ -171,9 +198,10 @@ export const admit = mutation({
       attempt,
       claim,
       leaseUntil: Date.now() + LIMITS.queueMs,
+      ...(args.onComplete ? { callbacks: [args.onComplete] } : {}),
     });
     await dispatch(ctx, artifactId, attempt, claim, dispatchArgs);
-    return { artifactId, action: "run" };
+    return result(artifactId, "run", args.onComplete ? "stored" : undefined);
   },
 });
 /**
@@ -362,14 +390,18 @@ export const purge = mutation({
  */
 export const abandon = internalMutation({
   args: { artifactId: v.string(), attempt: v.number(), claim: v.string() },
-  handler: async (ctx, args): Promise<boolean> => {
+  handler: async (ctx, args): Promise<{ owned: boolean; callbacks: string[] }> => {
     validateFence(args);
     const id = ctx.db.normalizeId("artifacts", args.artifactId);
     const row = id ? await ctx.db.get("artifacts", id) : null;
-    if (!row || !current(row, args)) return false;
-    if (row.status === "running") await ctx.db.patch("artifacts", row._id, { status: "unknown" });
-    // True: this dispatch's claim is the row's current claim.
-    return true;
+    if (!row || !current(row, args)) return { owned: false, callbacks: [] };
+    // The owning dispatch takes every stored handle exactly once, atomically
+    // clearing the list; a stale dispatch takes none and clears nothing.
+    await ctx.db.patch("artifacts", row._id, {
+      ...(row.status === "running" ? { status: "unknown" as const } : {}),
+      callbacks: undefined,
+    });
+    return { owned: true, callbacks: row.callbacks ?? [] };
   },
 });
 export const expire = internalMutation({

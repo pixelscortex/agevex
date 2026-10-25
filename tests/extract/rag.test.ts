@@ -187,64 +187,99 @@ it("repeated failed and concurrent indexing keeps one pending entry then succeed
     (await h.action((ctx) => h.extract.search(ctx, { ...scope, query: "x" }))).references,
   ).toContainEqual({ fileId, artifactId: job.artifactId });
 }, 30_000);
-it.each(["release", "ownership"] as const)(
-  "%s fences indexing before a late embedding can publish",
-  async (change) => {
-    let release!: () => void;
-    let entered!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const started = new Promise<void>((resolve) => {
-      entered = resolve;
-    });
-    const embedding = new MockEmbeddingModelV4({
-      doEmbed: async ({ values }) => {
-        entered();
-        await gate;
-        return {
-          embeddings: values.map(() =>
-            Array.from({ length: LIMITS.embeddingDimensions[0] }, () => 1),
-          ),
-          usage: { tokens: values.length },
-          warnings: [],
-        };
-      },
-    });
-    const h = setup({
-      rag: {
-        component: ragComponent,
-        embedding,
-        embeddingDimension: LIMITS.embeddingDimensions[0],
-      },
-    });
-    await registerRag(h);
-    const fileId = await h.upload();
-    const job = await h.action((ctx) => h.extract.run(ctx, { ...scope, fileId }));
-    await h.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100));
-    const args = { ...scope, artifactId: job.artifactId, key: "fenced-file" };
-    const indexing = h.action((ctx) => h.extract.index(ctx, args));
-    await started;
-    if (change === "release") await h.action((ctx) => h.extract.release(ctx, args));
-    else h.state.attachments.delete(fileId);
-    release();
-    await expect(indexing).rejects.toThrow(
-      change === "release" ? "EXTRACT_INDEX_FENCED" : "FORBIDDEN",
-    );
-    const row = await indexRow(h, job.artifactId);
-    if (change === "release") {
-      // Released: the fenced record is dropped and its native entry deleted by
-      // exact id, so the late embedding leaves nothing behind.
-      expect(row).toBeNull();
-    } else {
-      expect(row?.status).toBe("failed");
-      expect((await h.t.query(ragComponent.entries.get, { entryId: row!.entryId! }))?.status).toBe(
-        "pending",
-      );
-    }
-    expect(embedding.doEmbedCalls).toHaveLength(1);
-  },
-);
+it("release fences indexing before a late embedding can publish", async () => {
+  let release!: () => void;
+  let entered!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const embedding = new MockEmbeddingModelV4({
+    doEmbed: async ({ values }) => {
+      entered();
+      await gate;
+      return {
+        embeddings: values.map(() =>
+          Array.from({ length: LIMITS.embeddingDimensions[0] }, () => 1),
+        ),
+        usage: { tokens: values.length },
+        warnings: [],
+      };
+    },
+  });
+  const h = setup({
+    rag: { component: ragComponent, embedding, embeddingDimension: LIMITS.embeddingDimensions[0] },
+  });
+  await registerRag(h);
+  const fileId = await h.upload();
+  const job = await h.action((ctx) => h.extract.run(ctx, { ...scope, fileId }));
+  await h.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100));
+  const args = { ...scope, artifactId: job.artifactId, key: "fenced-file" };
+  const indexing = h.action((ctx) => h.extract.index(ctx, args));
+  await started;
+  await h.action((ctx) => h.extract.release(ctx, args));
+  release();
+  await expect(indexing).rejects.toThrow("EXTRACT_INDEX_FENCED");
+  // Released: the fenced record is dropped and its native entry deleted by
+  // exact id, so the late embedding leaves nothing behind.
+  expect(await indexRow(h, job.artifactId)).toBeNull();
+  expect(embedding.doEmbedCalls).toHaveLength(1);
+});
+it("a paid index is published when the file is detached mid-embedding; search re-authorizes and a re-attach needs no second embedding", async () => {
+  let release!: () => void;
+  let entered!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const embedding = new MockEmbeddingModelV4({
+    maxEmbeddingsPerCall: LIMITS.ragBatch,
+    doEmbed: async ({ values }) => {
+      entered();
+      await gate;
+      return {
+        embeddings: values.map(() => Array.from({ length: dimension }, () => 1)),
+        usage: { tokens: values.length },
+        warnings: [],
+      };
+    },
+  });
+  const h = await threads({
+    rag: { component: ragComponent, embedding, embeddingDimension: dimension },
+  });
+  const fileId = await h.upload("detached while embedding");
+  h.attach("a", fileId);
+  const job = await h.action((ctx) => h.extract.run(ctx, { threadId: "a", fileId }));
+  await h.drain();
+  const args = { threadId: "a", artifactId: job.artifactId, namespace: "a", key: "k" };
+  const indexing = h.action((ctx) => h.extract.index(ctx, args));
+  await started;
+  // The message is deleted while the paid embedding is in flight.
+  h.attached.get("a")!.clear();
+  release();
+  const published = await indexing;
+  expect(published.status).toBe("ready");
+  expect(await indexRow(h, job.artifactId, "a")).toMatchObject({ status: "ready" });
+  expect(embedding.doEmbedCalls).toHaveLength(1);
+  const search = () =>
+    h.action((ctx) => h.extract.search(ctx, { threadId: "a", namespace: "a", query: "detached" }));
+  // Detached: nothing leaks, because search re-authorizes every hit.
+  expect(await search()).toMatchObject({ text: "", references: [] });
+  // Re-attached: the same index is searchable and nothing is embedded again.
+  h.attach("a", fileId);
+  expect((await search()).references).toEqual([{ fileId, artifactId: job.artifactId }]);
+  // (Each search embeds its query; only the re-index below must add nothing.)
+  const beforeReindex = embedding.doEmbedCalls.length;
+  expect(await h.action((ctx) => h.extract.index(ctx, args))).toMatchObject({
+    status: "ready",
+    entryId: published.entryId,
+  });
+  expect(embedding.doEmbedCalls).toHaveLength(beforeReindex);
+});
 
 async function recoveryHarness(indexLeaseMs: number = LIMITS.indexLeaseMs) {
   let pause = false;

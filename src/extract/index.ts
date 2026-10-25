@@ -894,16 +894,11 @@ function extractRuntime(component: ComponentApi, options: ExtractOptions, nodeRu
           });
           if (!inserted) throw new Error("EXTRACT_INDEX_FENCED");
         }
-        // The embedding is already paid for. Re-authorize with the SAME scope
-        // facts as the first check: without the subject a subject-requiring
-        // policy would refuse here and discard the paid index.
-        await authorize(ctx, {
-          operation: "index",
-          threadId: args.threadId,
-          fileId: row.fileId,
-          namespace: args.namespace,
-          ...subjectOf(args),
-        });
+        // No authorization re-check after the paid embedding (the check before
+        // it already ran, and `index` is refused up front for an unattached
+        // file). Discarding the index here would pay again on the next attach;
+        // publishing leaks nothing because `search` re-authorizes every hit
+        // against the then-current attachment and skips detached files.
         if (
           !(await ctx.runMutation(component.indexing.complete, {
             ...fence,

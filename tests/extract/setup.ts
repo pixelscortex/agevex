@@ -123,6 +123,16 @@ export function setup(
             return null;
           },
         }),
+        // A second, distinct caller callback (its handle differs from onComplete's).
+        onCompleteWaiter: internalMutationGeneric({
+          args: { artifactId: v.string() },
+          returns: v.null(),
+          handler: async (ctx, args) => {
+            const row = await ctx.runQuery(component.artifacts.get, args);
+            state.completions.push(`waiter:${row?.status ?? "missing"}`);
+            return null;
+          },
+        }),
       }),
     },
   });

@@ -50,15 +50,14 @@ export const done = internalMutation({
       artifactId: v.string(),
       attempt: v.number(),
       claim: v.string(),
-      onComplete: v.optional(v.string()),
     }),
   },
   returns: v.null(),
   handler: async (ctx, args): Promise<null> => {
     // A crashed action has an unknown paid outcome. The lease covers crashes in
     // this callback too; neither path admits a new provider attempt.
-    const { onComplete, ...fence } = args.context;
-    const owned = await ctx.runMutation(internal.artifacts.abandon, fence);
+    const fence = args.context;
+    const { callbacks } = await ctx.runMutation(internal.artifacts.abandon, fence);
     // Native Workflow completion runs even when the action failed after saving
     // a result (for example, a host usage hook failed). The callback must see
     // that terminal row too, without replaying any provider work. It is a
@@ -66,7 +65,9 @@ export const done = internalMutation({
     // Only the dispatch that still owns the row's claim reports: a stale
     // dispatch (re-dispatched after its queue deadline) completing late must
     // not fire a second callback for an outcome it did not produce.
-    if (onComplete && owned)
+    // Every stored handle (the callers of run, wait and re-admits alike) is
+    // called exactly once: `abandon` returned and cleared them atomically.
+    for (const onComplete of callbacks)
       await ctx.runMutation(onComplete as FunctionHandle<"mutation">, {
         artifactId: fence.artifactId,
       });
