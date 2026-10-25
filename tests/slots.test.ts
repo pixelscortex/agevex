@@ -514,7 +514,9 @@ it("each attached file starts extraction and file tools are bound to the owned t
     files.push(await upload(t, "alice", `extract ${n}`));
   const receipt = await open(t, files);
   await drain(t);
-  expect(admitted).toEqual(files.map((fileId) => ({ fileId, threadId: receipt.threadId })));
+  expect(admitted).toEqual(
+    files.map((fileId) => ({ fileId, threadId: receipt.threadId, subject: "alice" })),
+  );
   expect(bound[0]).toMatchObject({ threadId: receipt.threadId, subject: "alice" });
   expect(JSON.stringify(fixture.calls[0].args.prompt)).toContain("Attached files");
   expect(

@@ -1347,7 +1347,11 @@ export function registerAgent(component: ComponentApi, config: Registration) {
                   // Admission is the extract module's durable, deduplicated run;
                   // core never retries extraction or reads its component state.
                   for (const fileId of files)
-                    await config.extract.run(fencedCtx, { fileId, threadId: claimed.threadId });
+                    await config.extract.run(fencedCtx, {
+                      fileId,
+                      threadId: claimed.threadId,
+                      subject: claimed.subject,
+                    });
                 }
                 let selectedModel = claimed.modelId;
                 if (claimed.isTurnStart && managed.hooks?.beforeTurn) {

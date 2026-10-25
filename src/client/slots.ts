@@ -50,7 +50,12 @@ export type SandboxSlot = {
   tools(context: ToolContext): ToolSet;
 };
 export type ExtractSlot = {
-  run(ctx: SlotActionCtx, args: { fileId: string; threadId: string }): Promise<unknown>;
+  /** `subject` is the server-derived owner of the thread, so the adapter can
+   * authorize with `runtime.fileAttached` without reading core state. */
+  run(
+    ctx: SlotActionCtx,
+    args: { fileId: string; threadId: string; subject: string },
+  ): Promise<unknown>;
   tools(context: ToolContext): ToolSet;
 };
 
