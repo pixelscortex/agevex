@@ -1,0 +1,43 @@
+README.md
+  s_d863bd773ba186::t_0adb4ab8a50e5c 593-668
+docs/site/content/docs/modules/meta.json
+  s_d863bd773ba186::t_31a0a63bf0f04e 8-9
+docs/site/content/docs/modules/telemetry.mdx
+  s_d863bd773ba186::t_5fc2acf4431b77 1-170
+package.json
+  s_d863bd773ba186::t_6e5de9b915a035 36,48-51,65-66
+src/telemetry/exporters.ts
+  s_d863bd773ba186::t_1c4f6c92f34781 1-107
+src/telemetry/index.ts
+  s_d863bd773ba186::t_93a43659b0f329 1-576
+src/telemetry/limits.ts
+  s_d863bd773ba186::t_72916b3caba78f 1-91
+src/telemetry/otlp.ts
+  s_d863bd773ba186::t_0561e012bb99ba 1-97
+tests/telemetry/live/otlp.live.ts
+  s_d863bd773ba186::t_61a55bae004bee 1-68
+tests/telemetry/script.ts
+  s_d863bd773ba186::t_cf111d2e6c595b 1-98
+tests/telemetry/slots.test.ts
+  s_d863bd773ba186::t_2fc3f91176badd 1-330
+tests/telemetry/telemetry.test.ts
+  s_d863bd773ba186::t_7c2b7cb9022bec 1-685
+tests/telemetry/vite.live.config.ts
+  s_d863bd773ba186::t_a8aca9c172364b 1-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eebdc4fe173403dffe69904ff103b837d671c11b",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
