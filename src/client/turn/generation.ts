@@ -8,7 +8,7 @@
 // and the routing attempt always completed. Called by `turn/run-turn.ts`.
 
 import { LIMITS } from "../../component/limits.js";
-import { boundedDownload } from "../download.js";
+import { boundedDownload } from "./download.js";
 import type { RuntimeContext } from "../registration/context.js";
 import { scopedMeter } from "../slots.js";
 import { bindTaskContext } from "../tasks.js";

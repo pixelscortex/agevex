@@ -1,3 +1,11 @@
+// Bounded attachment downloads for one generation.
+//
+// `boundedDownload` is passed to native `streamText` as `experimental_download`
+// by `turn/generation.ts`. It streams every URL the model cannot fetch itself and
+// enforces one shared byte budget (the turn's `attachmentBytes`) across all files
+// of the generation, so an attacker-controlled file can never exhaust the
+// action's memory. Touches no tables.
+
 import type { Experimental_DownloadFunction } from "ai";
 import { ConvexError } from "convex/values";
 

@@ -11,14 +11,13 @@
 import type { ComponentApi } from "../component/_generated/component.js";
 import { buildCoordinate } from "./coordinate/coordinator.js";
 import { authorizedEndpoints } from "./endpoints/index.js";
-import type { NoteArgs } from "./hooks.js";
 import {
   fileAttached,
   registerFile,
   type FileAttachedArgs,
   type RegisterFileArgs,
 } from "./host/files.js";
-import { note, sandboxComplete, type SandboxCompletion } from "./host/notes.js";
+import { note, sandboxComplete, type NoteArgs, type SandboxCompletion } from "./host/notes.js";
 import {
   createRuntimeContext,
   type CoordinatorCtx,

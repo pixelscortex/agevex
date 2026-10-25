@@ -4,13 +4,33 @@
 // `note` lets host code add a note for the thread's next turn after the host
 // `note` policy authorizes the current caller; `sandboxComplete` turns a sandbox
 // job completion into a bounded note after the host `sandbox` policy re-checks the
-// stored owner. Both read `queue.assignment` and admit through `hooks.addNote`
-// (via `postNote`), which holds the note until the next safe turn claim.
+// stored owner. Both read `queue.assignment` and admit through `postNote`
+// (`hooks.addNote`), which holds the note until the next safe turn claim; side
+// agent delivery (`coordinate/delivery.ts`) posts its notes the same way.
 
 import { assertFact } from "../../component/facts.js";
 import { LIMITS } from "../../component/limits.js";
-import { postNote, type NoteArgs } from "../hooks.js";
 import type { CoordinatorCtx, RuntimeContext } from "../registration/context.js";
+
+export type NoteArgs = { threadId: string; text: string; from: string };
+
+/**
+ * Admit one note for the assignment's next turn. Mutation-only admission: all
+ * payloads wait for the next turn claim, never a slice boundary between tool
+ * calls. Returns false when the component refuses it (pending-note cap).
+ */
+export async function postNote(
+  ctx: CoordinatorCtx,
+  component: RuntimeContext["component"],
+  assignmentId: string,
+  args: NoteArgs,
+): Promise<boolean> {
+  return ctx.runMutation(component.hooks.addNote, {
+    assignmentId,
+    text: args.text,
+    from: args.from,
+  });
+}
 
 /** A sandbox job's terminal report, delivered by the sandbox module's callback. */
 export type SandboxCompletion = {

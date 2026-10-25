@@ -9,7 +9,7 @@
 // `subagents.deliver`. Settlement itself lives in `settle.ts`.
 
 import { LIMITS } from "../../component/limits.js";
-import { postNote } from "../hooks.js";
+import { postNote } from "../host/notes.js";
 import { saveTrackedMessage } from "../native-saves.js";
 import {
   observe,
