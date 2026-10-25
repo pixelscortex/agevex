@@ -1,0 +1,40 @@
+src/client/runtime.ts
+  s_d863bd773ba186::t_46ef81131520ca 1330-1332
+src/component/schema.ts
+  s_d863bd773ba186::t_21cfdd29a774b9 217
+  s_c6ae84d5242d28::t_2e69978acd81af 258-260,279
+src/component/README.md
+  s_d863bd773ba186::t_98ae2c1e21ea40 11
+src/component/hooks.ts
+  s_d863bd773ba186::t_67c4fca5017a01 272-273
+src/component/limits.ts
+  s_d863bd773ba186::t_1810ae89ba4cf7 88-89
+src/component/queue.ts
+  s_d863bd773ba186::t_e99e2e72a8ce16 470,1018,1574
+tests/hooks.test.ts
+  s_d863bd773ba186::t_b914a5a4dce48e 205
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "82798137aa1a9cddc082a2214b9ad7db0bfdf683",
+  "prompts": {},
+  "sessions": {
+    "s_c6ae84d5242d28": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ab07c541e59d88321",
+        "model": "unknown"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
