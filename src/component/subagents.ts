@@ -304,7 +304,7 @@ export const reserve = mutation({
       const members = await ctx.db
         .query("subagentRuns")
         .withIndex("by_group", (q) =>
-          q.eq("actorAssignmentId", row._id).eq("parentRunId", budget._id).eq("group", group),
+          q.eq("parentRunId", budget._id).eq("actorAssignmentId", row._id).eq("group", group),
         )
         .take(wait === "all" ? root.limits.activeChildrenPerRoot : 1);
       if (members.some((member) => (member.join ? "all" : "each") !== wait))
@@ -690,8 +690,8 @@ async function applyDelivery(
       .query("subagentRuns")
       .withIndex("by_group", (q) =>
         q
-          .eq("actorAssignmentId", parent._id)
           .eq("parentRunId", run.parentRunId)
+          .eq("actorAssignmentId", parent._id)
           .eq("group", run.group ?? ""),
       )
       .take(root.limits.activeChildrenPerRoot);
@@ -881,8 +881,8 @@ export const releaseGroups = mutation({
       .query("subagentRuns")
       .withIndex("by_group", (q) =>
         q
-          .eq("actorAssignmentId", parent._id)
           .eq("parentRunId", candidate.parentRunId)
+          .eq("actorAssignmentId", parent._id)
           .eq("group", candidate.group ?? ""),
       )
       .take(root.limits.activeChildrenPerRoot);
@@ -1151,6 +1151,16 @@ export const questionContext = query({
  * query boundary; no transcript bodies or execution capabilities are exposed.
  * <=58 model/side launch rows *4 KiB + <=32 KiB root metadata <288 KiB,
  * <64 document reads.
+ *
+ * A run budget belongs to exactly one root: accept creates it for that root's
+ * request, and every descendant inherits it (attach copies the parent run id;
+ * every inbox row a descendant can claim carries it), while reserve writes
+ * parentRunId = actor.runId with rootAssignmentId = the actor's root. So the
+ * parentRunId prefix of by_group is exactly the old (root, run) range. Its size
+ * is launches + sideRuns of that budget: only reserve increments either, by
+ * one per insert, after refusing at runLaunches / sideRunsPerRun (row.limits,
+ * copied from this root and never patched). The take therefore returns every
+ * row, and sorting by sequence restores reservation order.
  */
 export const runTree = query({
   args: { threadId: v.string(), subject: v.string() },
@@ -1163,10 +1173,9 @@ export const runTree = query({
     if (!root.runId) return [];
     const rows = await ctx.db
       .query("subagentRuns")
-      .withIndex("by_root_run", (q) =>
-        q.eq("rootAssignmentId", root._id).eq("parentRunId", root.runId!),
-      )
+      .withIndex("by_group", (q) => q.eq("parentRunId", root.runId!))
       .take(root.limits.runLaunches + root.limits.sideRunsPerRun);
+    rows.sort((a, b) => a.sequence - b.sequence);
     return rows.map((run) => ({
       runId: run.runId,
       side: run.side ?? false,

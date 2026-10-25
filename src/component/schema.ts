@@ -442,6 +442,7 @@ export default defineSchema({
     // Every reader pins actor, epoch and one join state: settlementBlocked
     // (open/sealed/ready), releaseGroups (ready [+ run]), sealGroups (open + run).
     .index("by_join", ["actorAssignmentId", "rootCancellationEpoch", "join", "parentRunId"])
-    .index("by_group", ["actorAssignmentId", "parentRunId", "group"])
-    .index("by_root_run", ["rootAssignmentId", "parentRunId", "sequence"]),
+    // Cohort readers (reserve, delivery, release) pin all three fields; runTree
+    // reads the parentRunId prefix, i.e. one root request's whole tree.
+    .index("by_group", ["parentRunId", "actorAssignmentId", "group"]),
 });

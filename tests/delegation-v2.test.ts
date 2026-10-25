@@ -1081,12 +1081,14 @@ it("a 15-member closed group bounds native results and large call ids, rejects e
   await drain(t);
 }, 30_000);
 
-it("the run launch budget counts all 50 descendants across turns and runTree reads that full bounded history", async () => {
+it("the run launch budget counts all 50 descendants across turns and runTree reads that full bounded history with every side run in reservation order", async () => {
   const t = setup(maxima);
   const root = await manualRoot(t);
   const parent = await launch(t, root, "Builder");
+  const reserved = [parent.runId];
   for (let i = 1; i < HOST_LIMITS.runLaunches.max; i++) {
     const child = await launch(t, parent, "Reviewer");
+    reserved.push(child.runId);
     await t.mutation(components.agevex.subagents.settle, {
       assignmentId: child.assignmentId,
       turnToken: child.turnToken,
@@ -1117,7 +1119,25 @@ it("the run launch budget counts all 50 descendants across turns and runTree rea
       task: "over-budget",
     }),
   ).toMatchObject({ status: "denied", code: "RUN_BUDGET" });
-  expect(await tree(t, root.threadId)).toHaveLength(50);
+  // Side runs spend their own budget in the same request run. Reserve every
+  // one, alternating actors, so the tree spans both parents and both budgets.
+  for (let i = 0; i < HOST_LIMITS.sideRunsPerRun.max; i++) {
+    const actor = i % 2 ? root : parent;
+    const side = await t.run(async (ctx) =>
+      ctx.runMutation(components.agevex.subagents.reserve, {
+        assignmentId: actor.assignmentId,
+        turnToken: actor.turnToken,
+        side: true,
+        toolCallId: "side-" + i,
+        agent: "Reviewer",
+        payloadFingerprint: "side-" + i,
+        coordinateHandle: await createFunctionHandle(coordinateReference()),
+      }),
+    );
+    if (side.kind !== "reserved") throw new Error(JSON.stringify(side));
+    reserved.push(side.runId);
+  }
+  expect((await tree(t, root.threadId)).map((run) => run.runId)).toEqual(reserved);
   await owner(t).mutation(api.agents.cancel, { threadId: root.threadId });
   await drain(t);
 }, 30_000);
