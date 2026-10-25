@@ -1,0 +1,35 @@
+README.md
+  s_ca761f50d785e7::t_7c265f8ab8abf3 99-100,113-121
+src/client/runtime.ts
+  s_ca761f50d785e7::t_30de02372e003b 624,960,1046-1047,1051
+src/client/types.ts
+  s_ca761f50d785e7::t_ea91d8fe08ab7d 168
+src/component/limits.ts
+  s_ca761f50d785e7::t_95503003f090a1 48-49,53,58-59,63,69-75
+src/component/queue.ts
+  s_ca761f50d785e7::t_53e2b1093ba317 25,148-149,163-166,356-379,381-389,391,457,498,527-545,565,600,752,1103
+src/component/schema.ts
+  s_ca761f50d785e7::t_81a114af3bf1f9 49,215-217,228,265-267,277-278,305-306,308-310
+src/component/subagents.ts
+  s_ca761f50d785e7::t_c29728de6b97e8 49-94,112-115,360,379,436-438,526,588-589,605-606,631-654,689,719,721-734,737-740,743,757,759-760,763-775,778,867,892-893,916-923,959,961,1000
+tests/delegation-v2.test.ts
+  s_ca761f50d785e7::t_af070833592949 410-411,416-417,422-426,433,454,551,563-564,571,603,861-862,1370,1552-2036
+tests/review-regressions.test.ts
+  s_ca761f50d785e7::t_4e729034a146e1 971,994-995,997-998
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5bf48afb84a5c7d90138b09615b16372bd7b1f5d",
+  "prompts": {},
+  "sessions": {
+    "s_ca761f50d785e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17067-cc8b-78b2-9606-d2e117ad4daf",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
