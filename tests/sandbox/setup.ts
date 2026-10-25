@@ -23,6 +23,8 @@ export function setup(
   state.limits = limits;
   state.authorized = true;
   state.deniedWith = "HOST_DENIED";
+  state.deniedAsConvexError = false;
+  state.beforeUse = undefined;
   state.crashPolls = 0;
   state.callbackFails = false;
   state.usageFails = false;

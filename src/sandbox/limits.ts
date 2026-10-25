@@ -31,6 +31,11 @@ export const LIMITS = {
   // the command's timeout itself, so Daytona's is set this much later: the
   // wrapper must always get to kill the command's process group first.
   execKillMarginS: 5,
+  // Marker-based kill (job directory gone): scan-and-kill passes before giving
+  // up, and the pause that lets killed processes leave /proc between passes.
+  // 3 * (scan + 0.05 s) stays far inside the 10 s kill budget.
+  markerKillPasses: 3,
+  markerKillPassPauseS: 0.05,
   // Claims made at or after the deadline that may die unsettled. The first
   // two still run the kill and notify path; the next one ends the job.
   lateAttemptsMax: 2,

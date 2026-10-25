@@ -901,7 +901,7 @@ it("a poll action that dies right after its wake is retried by the lease backsto
   expect(fake.calls.background).toHaveLength(1);
 });
 
-it("a transient authorization failure at wake time is retried, while only FORBIDDEN revokes", async () => {
+it("a transient authorization failure at wake time is retried within the poll backoff, while only FORBIDDEN revokes", async () => {
   const fake = fakeSandboxProvider({
     background: () => [{ state: "done", exitCode: 0, logTail: "ok" }],
   });
@@ -913,12 +913,52 @@ it("a transient authorization failure at wake time is retried, while only FORBID
   state.deniedWith = "HOST_POLICY_OUTAGE";
   await advance(s.t, 100);
   state.authorized = true;
-  // Not revoked: still running, claim left to expire.
+  // Not revoked: still running, and woken again after the normal backoff
+  // (2 * pollMinMs), not after the ~555 s lease of the failed claim.
   expect(await s.t.query(s.component.state.getJob, { jobId })).toMatchObject({ state: "running" });
-  await advance(s.t, LIMITS.actionBudgetMs + LIMITS.backgroundKillBudgetMs);
-  await advance(s.t, LIMITS.backgroundLeaseMarginMs);
+  await advance(s.t, 200);
   expect(await s.t.query(s.component.state.getJob, { jobId })).toMatchObject({ state: "done" });
   expect(await s.t.query(api.host.events, {})).toHaveLength(1);
+});
+
+it.each(["plain", "convex-error"])(
+  "a persistent %s non-FORBIDDEN authorization error ends the job unknown after the late-attempt limit without a kill",
+  async (kind) => {
+    const fake = fakeSandboxProvider({ background: () => [{ state: "running" }] });
+    const s = setup("thread", { pollMinMs: 100, pollMaxMs: 400, jobTimeoutMs: 1_000 }, fake);
+    const { jobId } = (await invoke(s.t, "sandbox_run_background", { command: "x" })) as {
+      jobId: string;
+    };
+    state.authorized = false;
+    state.deniedWith = "HOST_POLICY_OUTAGE";
+    state.deniedAsConvexError = kind === "convex-error";
+    await advance(s.t, 1_000 + 2_000);
+    expect(await s.t.query(s.component.state.getJob, { jobId })).toMatchObject({
+      state: "unknown",
+      code: "SANDBOX_JOB_DEADLINE",
+    });
+    expect(fake.calls.cancel).toHaveLength(0);
+    expect(fake.calls.poll).toHaveLength(0);
+  },
+);
+
+it.each([
+  ["Error", false, "FORBIDDEN"],
+  ["Error", false, "SANDBOX_FORBIDDEN"],
+  ["ConvexError", true, "FORBIDDEN"],
+])("revoked authority is recognized from a %s denial (%s %s)", async (_name, convex, message) => {
+  const s = setup("thread", { pollMinMs: 10 });
+  const result = (await invoke(s.t, "sandbox_run_background", { command: "work" })) as {
+    jobId: string;
+  };
+  state.authorized = false;
+  state.deniedWith = message;
+  state.deniedAsConvexError = convex;
+  await advance(s.t, 10);
+  state.authorized = true;
+  expect(await invoke(s.t, "job", { jobId: result.jobId })).toMatchObject({ state: "unknown" });
+  expect(s.fake.calls.poll).toHaveLength(0);
+  expect(await s.t.query(api.host.events, {})).toHaveLength(0);
 });
 
 it("one dead post-deadline attempt still gets the kill and the host notification", async () => {
@@ -995,4 +1035,24 @@ it("exec reports timedOut from the provider, so a real exit 124 is not mistaken 
     exitCode: 124,
     timedOut: false,
   });
+});
+
+it("an export racing a delete that lands just before its reservation is not found and revives nothing", async () => {
+  const s = setup("thread", { ttl: 1 });
+  await invoke(s.t, "sandbox_write_file", { path: "/f", content: "x" });
+  await advance(s.t, LIMITS.actionBudgetMs + 1);
+  // The row is live when export checks it; the delete completes inside the
+  // host authorization that runs right before prepare's reserve.
+  state.beforeUse = async (ctx) => {
+    const key = await keyFor();
+    const binding = await ctx.runMutation(s.component.state.claimDelete, {
+      scopeKey: key,
+      expiredOnly: false,
+    });
+    await ctx.runMutation(s.component.state.save, { scopeKey: key, ...binding!, state: "deleted" });
+  };
+  await expect(invoke(s.t, "export", { path: "/f" })).rejects.toThrow("SANDBOX_NOT_FOUND");
+  expect(state.beforeUse).toBeUndefined();
+  expect(s.fake.calls.create).toBe(1);
+  expect(await row(s)).toMatchObject({ state: "deleted" });
 });

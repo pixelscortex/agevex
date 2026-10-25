@@ -24,12 +24,23 @@ export const get = query({
 
 /** Admission is transactional: a lost create result cannot authorize another create. */
 export const reserve = mutation({
-  args: { scopeKey: v.string(), provider: v.string(), ttl: v.number() },
+  args: {
+    scopeKey: v.string(),
+    provider: v.string(),
+    ttl: v.number(),
+    // Export: never create, revive or wait; only an existing, live sandbox.
+    existingOnly: v.optional(v.boolean()),
+  },
   handler: async (ctx, args) => {
     bounded(args.provider, LIMITS.providerChars, "PROVIDER");
     integer(args.ttl, HARD_LIMITS.ttl, "TTL");
     const row = await sandbox(ctx, args.scopeKey);
     const now = Date.now();
+    if (
+      args.existingOnly &&
+      (!row || !row.sandboxId || row.state === "deleted" || row.state === "deleting")
+    )
+      throw new Error("SANDBOX_NOT_FOUND");
     if (row && row.state === "deleted") {
       // A deleted sandbox is gone for good, so the scope is simply free again.
       // A new claim fences every action of the old binding (save/finish all

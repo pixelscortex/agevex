@@ -288,18 +288,28 @@ else:
 d=${JSON.stringify(directory)}
 if not os.path.isdir(d):
  marker=${JSON.stringify(`AGEVEX_JOB=${jobId}`)}.encode()
- victims=[]
- with os.scandir('/proc') as entries:
-  for entry in entries:
-   if not entry.name.isdigit(): continue
-   try:
-    with open('/proc/'+entry.name+'/environ','rb') as f: env=f.read(${LIMITS.backgroundEnvironmentBytes + 1})
-   except (FileNotFoundError,ProcessLookupError,PermissionError): continue
-   if len(env)>${LIMITS.backgroundEnvironmentBytes}: raise ValueError('unverified process')
-   if marker in env.split(b'\\0'): victims.append(int(entry.name))
- for pid in victims:
-  try: os.kill(pid,signal.SIGKILL)
-  except ProcessLookupError: pass
+ # A marked process can fork a marked child while we kill its parent, so
+ # repeat until a whole pass finds none. Bounded: after the last pass anything
+ # still marked is reported as not killed (the call fails, the job stays unknown).
+ clean=False
+ for attempt in range(${LIMITS.markerKillPasses}):
+  victims=[]
+  with os.scandir('/proc') as entries:
+   for entry in entries:
+    if not entry.name.isdigit(): continue
+    try:
+     with open('/proc/'+entry.name+'/environ','rb') as f: env=f.read(${LIMITS.backgroundEnvironmentBytes + 1})
+    except (FileNotFoundError,ProcessLookupError,PermissionError): continue
+    if len(env)>${LIMITS.backgroundEnvironmentBytes}: raise ValueError('unverified process')
+    if marker in env.split(b'\\0'): victims.append(int(entry.name))
+  if not victims:
+   clean=True
+   break
+  for pid in victims:
+   try: os.kill(pid,signal.SIGKILL)
+   except ProcessLookupError: pass
+  time.sleep(${LIMITS.markerKillPassPauseS})
+ if not clean: raise RuntimeError('marked processes remain')
  raise SystemExit
 if not os.path.exists(d+'/status.exit') and not os.path.exists(d+'/cancelled'):
  fd,path=tempfile.mkstemp(dir=d)

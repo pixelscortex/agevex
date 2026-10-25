@@ -106,10 +106,18 @@ export function sandboxNodeExport(options: SandboxOptions) {
   });
 }
 
-/** A definite host denial, as opposed to an outage or timeout while checking. */
+/**
+ * A definite host denial, as opposed to an outage or timeout while checking.
+ * Accepted shapes, exactly: `new ConvexError("FORBIDDEN")`,
+ * `new ConvexError({ code: "FORBIDDEN" })`, or an `Error` whose message is
+ * `FORBIDDEN` or `SANDBOX_FORBIDDEN` (optionally followed by a non-word
+ * character and detail). Everything else is treated as transient.
+ */
 function isForbidden(error: unknown) {
-  if (error instanceof ConvexError)
-    return (error.data as { code?: unknown } | undefined)?.code === "FORBIDDEN";
+  if (error instanceof ConvexError) {
+    const data = error.data as unknown;
+    return data === "FORBIDDEN" || (data as { code?: unknown } | undefined)?.code === "FORBIDDEN";
+  }
   return error instanceof Error && /^(SANDBOX_)?FORBIDDEN\b/.test(error.message);
 }
 
@@ -237,7 +245,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
   }
 
   /** Reserve once, save the provider id, then resume within the shared action deadline. */
-  async function prepare(tc: SandboxCall) {
+  async function prepare(tc: SandboxCall, opts: { existingOnly?: boolean } = {}) {
     tc.signal.throwIfAborted();
     remaining(tc.ctx);
     const trusted = facts(tc);
@@ -247,6 +255,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
       scopeKey: key,
       provider: provider.id,
       ttl: limits.ttl,
+      ...(opts.existingOnly ? { existingOnly: true } : {}),
     });
     if (reservation.status === "running" || reservation.status === "unknown")
       throw new Error(`SANDBOX_${reservation.status.toUpperCase()}`);
@@ -594,9 +603,14 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
           // finalizing our own metadata is safe housekeeping. Keep the
           // uncertainty visible so a later authorized host can reconcile it
           // through job(). Anything else (an outage, a timeout) is transient:
-          // leave the claim to expire and the backstop retries, bounded by the
-          // deadline and the late-attempt limit.
-          if (!isForbidden(error)) return null;
+          // release the claim into the normal backoff (not the long lease), so
+          // the next wake comes within the poll delay. Retries are bounded by
+          // the deadline and the late-attempt limit, after which the job ends
+          // unknown without a kill.
+          if (!isForbidden(error)) {
+            await ctx.runMutation(component.state.again, { jobId: known._id, claim: job.claim });
+            return null;
+          }
           await ctx.runMutation(component.state.finishJob, {
             jobId: known._id,
             claim: job.claim,
@@ -844,7 +858,9 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
         toolCallId: "export",
       };
       // Download from the id prepare resolved, not the row read above.
-      const { sandboxId } = await prepare(tc);
+      // existingOnly makes the reservation itself refuse a scope deleted (or
+      // freed) after the check above, inside its own transaction.
+      const { sandboxId } = await prepare(tc, { existingOnly: true });
       // Every component transaction holds constant-size metadata. Only this
       // action buffers bytes, in <=512 KiB windows; overflow creates no storage.
       const maximum = nodeExport ? limits.exportBytesNode : limits.exportBytes;

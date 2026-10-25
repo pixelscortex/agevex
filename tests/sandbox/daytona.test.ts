@@ -776,8 +776,14 @@ def scandir(path):
 def open_file(path,*args,**kwargs):
  if str(path).startswith('/proc/'): path=${JSON.stringify(procDirectory)}+str(path)[5:]
  return original_open(path,*args,**kwargs)
+original_kill=os.kill
+def kill(pid,sig):
+ original_kill(pid,sig)
+ try: os.remove(${JSON.stringify(procDirectory)}+'/'+str(pid)+'/environ')  # the process left /proc
+ except FileNotFoundError: pass
 os.scandir=scandir
 builtins.open=open_file
+os.kill=kill
 `,
   );
   const s = adapterSetup(
@@ -816,6 +822,72 @@ builtins.open=open_file
       } catch {
         /* already gone */
       }
+    await rm(patchDirectory, { recursive: true, force: true });
+  }
+}, 30_000);
+
+it("the marker kill repeats until a pass finds nothing, so a child forked mid-kill does not survive", async () => {
+  const patchDirectory = await mkdtemp(join(tmpdir(), "agevex-passes-"));
+  const procDirectory = join(patchDirectory, "proc");
+  // macOS has no /proc: supply only that view. Killing a pid whose
+  // `after-<pid>` file exists makes the named child appear marked, as if it
+  // had been forked while the first pass was running.
+  await writeFile(
+    join(patchDirectory, "sitecustomize.py"),
+    `import os,builtins
+original_scandir=os.scandir
+original_open=builtins.open
+original_kill=os.kill
+def scandir(path):
+ return original_scandir(${JSON.stringify(procDirectory)} if path=='/proc' else path)
+def open_file(path,*args,**kwargs):
+ if str(path).startswith('/proc/'): path=${JSON.stringify(procDirectory)}+str(path)[5:]
+ return original_open(path,*args,**kwargs)
+def kill(pid,sig):
+ original_kill(pid,sig)
+ try: os.remove(${JSON.stringify(procDirectory)}+'/'+str(pid)+'/environ')  # the process left /proc
+ except FileNotFoundError: pass
+ later=${JSON.stringify(procDirectory)}+'/after-'+str(pid)
+ if os.path.exists(later):
+  child=original_open(later).read().strip()
+  os.makedirs(${JSON.stringify(procDirectory)}+'/'+child,exist_ok=True)
+  with original_open(${JSON.stringify(procDirectory)}+'/'+child+'/environ','w') as f: f.write(open_marker)
+os.scandir=scandir
+builtins.open=open_file
+os.kill=kill
+open_marker='AGEVEX_JOB='+os.environ['TEST_JOB']+'\\0'
+`,
+  );
+  const jobId = crypto.randomUUID();
+  const { ctx, provider } = harness({ PYTHONPATH: patchDirectory, TEST_JOB: jobId });
+  const spawn = (await import("node:child_process")).spawn;
+  const parent = spawn("sleep", ["120"], { stdio: "ignore" });
+  const child = spawn("sleep", ["120"], { stdio: "ignore" });
+  const alive = (pid: number) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  try {
+    await mkdir(`${procDirectory}/${parent.pid}`, { recursive: true });
+    await writeFile(`${procDirectory}/${parent.pid}/environ`, `AGEVEX_JOB=${jobId}\0`);
+    await writeFile(`${procDirectory}/after-${parent.pid}`, String(child.pid));
+    await provider.cancelBackground(ctx, jobId, {
+      sandboxId: "local",
+      directory: join(patchDirectory, "missing-job-dir"),
+    });
+    await vi.waitFor(
+      () => expect([alive(parent.pid!), alive(child.pid!)]).toEqual([false, false]),
+      {
+        timeout: 3000,
+      },
+    );
+  } finally {
+    parent.kill("SIGKILL");
+    child.kill("SIGKILL");
     await rm(patchDirectory, { recursive: true, force: true });
   }
 }, 30_000);

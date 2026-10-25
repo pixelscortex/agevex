@@ -5,7 +5,7 @@ import {
   makeFunctionReference,
   type FunctionReference,
 } from "convex/server";
-import { v, type Value } from "convex/values";
+import { ConvexError, v, type Value } from "convex/values";
 import type { Tool } from "ai";
 import type { AgentComponent } from "@convex-dev/agent";
 import { bindOnceTool, noopMeter, type ToolContext } from "../../../src/client/once.js";
@@ -22,6 +22,7 @@ import type {
   SandboxOptions,
   SandboxExportArgs,
   SandboxExportResult,
+  SandboxContext,
 } from "../../../src/sandbox/types.js";
 import { fakeSandboxProvider } from "../../../src/testing/sandbox.js";
 
@@ -44,6 +45,10 @@ export const state = {
   authorized: true,
   /** What the host's policy throws while `authorized` is false. */
   deniedWith: "HOST_DENIED",
+  /** Throw `new ConvexError(deniedWith)` instead of an Error. */
+  deniedAsConvexError: false,
+  /** Runs once, inside the next "use" authorization (just before its reserve). */
+  beforeUse: undefined as undefined | ((ctx: SandboxContext) => Promise<void>),
   /** Poll actions that die before doing any work, like a killed isolate. */
   crashPolls: 0,
   callbackFails: false,
@@ -80,7 +85,15 @@ export function config(): SandboxOptions {
       cleanup: () => ref<"action", Record<string, never>>("cleanup"),
     },
     authorize: async (_ctx, request) => {
-      if (!state.authorized) throw new Error(state.deniedWith);
+      if (!state.authorized)
+        throw state.deniedAsConvexError
+          ? new ConvexError(state.deniedWith)
+          : new Error(state.deniedWith);
+      if (request.operation === "use" && state.beforeUse) {
+        const hook = state.beforeUse;
+        state.beforeUse = undefined;
+        await hook(_ctx as SandboxContext);
+      }
       return { subject: request.subject ?? "owner" };
     },
     resolveThread: async (_ctx, threadId) =>
