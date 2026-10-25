@@ -1,0 +1,41 @@
+src/modules/tools/README.md
+  s_85f066bf84a49a::t_d756819429cd2f 3-5,7-51
+src/modules/tools/client/index.ts
+  s_85f066bf84a49a::t_1c01f2c33c0ffe 1-5
+src/modules/tools/registry/ask-user/askUser.ts
+  s_85f066bf84a49a::t_33756197bfea77 1-5
+src/modules/tools/registry/continue-budget/continueBudget.ts
+  s_85f066bf84a49a::t_ea83c27ee4527e 1-5
+src/modules/tools/registry/continue-budget/continueBudgetSchema.ts
+  s_85f066bf84a49a::t_318e73df3d1dfb 1-5
+src/modules/tools/registry/continue-budget/continueBudgetState.ts
+  s_85f066bf84a49a::t_2a795050334150 1-5,29
+src/modules/tools/registry/goals/goals.ts
+  s_85f066bf84a49a::t_cd986a37938568 1-5,20
+src/modules/tools/registry/goals/goalsSchema.ts
+  s_85f066bf84a49a::t_6354e7873d4c76 1-5
+src/modules/tools/registry/goals/goalsState.ts
+  s_85f066bf84a49a::t_b835bb370ae8f4 1-5,20,44
+src/modules/tools/registry/todo/todo.ts
+  s_85f066bf84a49a::t_234008d4833a10 1-5
+src/modules/tools/registry/todo/todoSchema.ts
+  s_85f066bf84a49a::t_71842b20530168 1-5
+src/modules/tools/registry/todo/todoState.ts
+  s_85f066bf84a49a::t_cefeb6a2d0f310 1-5,46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f289aadf1e6eaf59634534862e5de520192f7f60",
+  "prompts": {},
+  "sessions": {
+    "s_85f066bf84a49a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17570-9252-7242-8993-f524c34cf25d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
