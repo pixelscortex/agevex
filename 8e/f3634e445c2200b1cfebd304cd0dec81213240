@@ -1,0 +1,101 @@
+README.md
+  s_d863bd773ba186::t_33bd135c45e12d 10-162,617-692
+docs/site/content/docs/modules/meta.json
+  s_d863bd773ba186::t_8ed4e29ae5f136 8-9
+docs/site/content/docs/modules/sandbox.mdx
+  s_d863bd773ba186::t_5d9ff85bd4e2d0 4-5,8-76,79-225,227,229-232,234,236-238
+docs/site/content/docs/modules/telemetry.mdx
+  s_d863bd773ba186::t_1823c32643cdf0 1-170
+package.json
+  s_d863bd773ba186::t_66ee095ce4be87 36-52,65,67-68,72-74
+src/sandbox/component/_generated/api.ts
+  s_d863bd773ba186::t_2a30a85352e512 1-5
+src/sandbox/component/_generated/component.ts
+  s_d863bd773ba186::t_be42a253f404a2 1-13
+src/sandbox/component/_generated/dataModel.ts
+  s_d863bd773ba186::t_59bf4307ac6676 1-7
+src/sandbox/component/_generated/server.ts
+  s_d863bd773ba186::t_bedf794fa6431b 1-8
+src/sandbox/component/convex.config.ts
+  s_d863bd773ba186::t_de0792df0ea9d4 1-3
+src/sandbox/component/schema.ts
+  s_d863bd773ba186::t_bcca9dede5a540 1-64
+src/sandbox/component/state.ts
+  s_d863bd773ba186::t_a6b6e59b7d6e2c 1-438
+src/sandbox/daytona.ts
+  s_d863bd773ba186::t_155cb6ff725aee 1-397
+src/sandbox/index.ts
+  s_d863bd773ba186::t_cbd344258f3e4e 1-927
+src/sandbox/limits.ts
+  s_d863bd773ba186::t_e91bf85b11c89b 1-145
+src/sandbox/test.ts
+  s_d863bd773ba186::t_7de69a95fa969c 1-16
+src/sandbox/types.ts
+  s_d863bd773ba186::t_7378617ac72aad 1-163
+src/telemetry/exporters.ts
+  s_d863bd773ba186::t_d0fb2972da9eab 1-107
+src/telemetry/index.ts
+  s_d863bd773ba186::t_b8cdcdb3f88028 1-576
+src/telemetry/limits.ts
+  s_d863bd773ba186::t_77253418351dda 1-91
+src/telemetry/otlp.ts
+  s_d863bd773ba186::t_e576ad87d8ecbb 1-97
+src/testing/sandbox.ts
+  s_d863bd773ba186::t_d1f438c357bd5e 1-133
+src/testing/test.ts
+  s_d863bd773ba186::t_54d76b67e5079f 1-5
+tests/sandbox/daytona.live.ts
+  s_d863bd773ba186::t_14641078de54a5 1-112
+tests/sandbox/daytona.test.ts
+  s_d863bd773ba186::t_da320d3ff1f007 1-893
+tests/sandbox/fixture/_generated/api.ts
+  s_d863bd773ba186::t_e7de8ee05d9e0e 1-3
+tests/sandbox/fixture/daytona.ts
+  s_d863bd773ba186::t_bd0381a27e654f 1-142
+tests/sandbox/fixture/host.ts
+  s_d863bd773ba186::t_2bf54282115258 1-207
+tests/sandbox/fixture/node.ts
+  s_d863bd773ba186::t_b311266b7b77dd 1-6
+tests/sandbox/fixture/schema.ts
+  s_d863bd773ba186::t_bec2926a174076 1-3
+tests/sandbox/fixture/seed.ts
+  s_d863bd773ba186::t_fa3c96249bf169 1-24
+tests/sandbox/sandbox.test.ts
+  s_d863bd773ba186::t_79043e87f26b2f 1-1058
+tests/sandbox/setup.ts
+  s_d863bd773ba186::t_1b171de5fb759c 1-59
+tests/sandbox/slot.host.ts
+  s_d863bd773ba186::t_66d091e2db8b5a 1-180
+tests/sandbox/slot.test.ts
+  s_d863bd773ba186::t_ec5ae5ba146d27 1-248
+tests/sandbox/slot/_generated/api.ts
+  s_d863bd773ba186::t_d34823b281a70c 1-3
+tests/sandbox/vite.live.config.ts
+  s_d863bd773ba186::t_bc2ba1ed83a98b 1-9
+tests/telemetry/live/otlp.live.ts
+  s_d863bd773ba186::t_845ab14c4d999d 1-68
+tests/telemetry/script.ts
+  s_d863bd773ba186::t_9e0954ee9a3cd0 1-98
+tests/telemetry/slots.test.ts
+  s_d863bd773ba186::t_8ebc119e472a0a 1-330
+tests/telemetry/telemetry.test.ts
+  s_d863bd773ba186::t_764903ab3f1dd0 1-685
+tests/telemetry/vite.live.config.ts
+  s_d863bd773ba186::t_f082d6aa9a09eb 1-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8ef3634e445c2200b1cfebd304cd0dec81213240",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
