@@ -1,0 +1,50 @@
+src/client/turn/admission.ts
+  s_d863bd773ba186::t_c504c1f5174346 1-94
+src/client/turn/slots.ts
+  s_d863bd773ba186::t_0c7487a18461cf 1-162
+  s_d863bd773ba186::t_c1f6c097b0a7e8 163-165
+src/client/turn/hook-runner.ts
+  s_d863bd773ba186::t_c771d7c8ce60b4 1-92
+  s_d863bd773ba186::t_7e35fc983fb518 93-95
+src/client/turn/collaboration-tools.ts
+  s_d863bd773ba186::t_d273070cf85e48 1-120
+src/client/turn/finish.ts
+  s_d863bd773ba186::t_275a9591157f06 1-135
+src/client/turn/tools.ts
+  s_d863bd773ba186::t_b47a9936dfd6e4 1-136
+src/client/runtime.ts
+  s_d863bd773ba186::t_5c12a129a11838 1-10,13-14,27-29,31,40-42,47,60,62,65
+src/client/turn/generation.ts
+  s_d863bd773ba186::t_e5c5bbc5cd9c65 1-156
+  s_d863bd773ba186::t_a117933a7e304c 157-161
+src/client/turn/fence.ts
+  s_d863bd773ba186::t_6ce4beec903c6f 1-207
+src/client/turn/context.ts
+  s_d863bd773ba186::t_8376499d1b69bd 1-106
+src/client/turn/completion.ts
+  s_d863bd773ba186::t_8a6f566dbbcd1b 1-162
+  s_d863bd773ba186::t_7868ab84aa42da 163-166
+src/client/turn/run-turn.ts
+  s_d863bd773ba186::t_60f74d9055e731 1-78
+  s_d863bd773ba186::t_5b544823364dfd 79-82
+src/client/turn/claim.ts
+  s_d863bd773ba186::t_4885cdf3dcd673 1-73
+src/client/turn/routing.ts
+  s_d863bd773ba186::t_18be4a9f378065 1-105
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1c9d036e27ffc612dd682adf41dfd2801cbd878e",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
