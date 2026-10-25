@@ -17,3 +17,4 @@ export type {
   SinkEvent,
   WriteCtx,
 } from "./types.js";
+export type { ComponentApi } from "./component/_generated/component.js";

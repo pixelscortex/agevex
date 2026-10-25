@@ -5,10 +5,6 @@ description: Standalone cost recording, aggregate reads, budget gates and durabl
 status: Available
 ---
 
-Meter records provider costs independently of core, attributes them to subjects,
-runs and threads, and delivers corrected or settled amounts to billing sinks.
-Unknown costs remain visible and deny budget admission.
-
 ## Setup
 
 Mount the component, then register providers and any internal host workers.
@@ -47,7 +43,6 @@ export const { meterLookup, meterDeliver } = meter.internalFunctions();
 ```
 
 Lookup providers require `workers.lookup`; sinks require `workers.deliver`.
-These internal host actions keep callbacks and credentials in host code.
 Authorize public wrappers with the host's ownership policy; optional
 `authorize(ctx, scope)` runs before every client read/write.
 
@@ -186,8 +181,8 @@ freezes its original projection membership for future updates and workers.
 
 These are aggregate document writes, excluding the charge row and optional
 Workpool admissions: roughly 12 per insert or 24 per replacement per projection.
-State movement is part of replacement, not an extra projection. Conservative
-split/merge bounds are 48 per insert and 96 per replacement per projection.
+State movement is part of replacement, not an extra projection. The conservative
+split/merge bound is 96 operations per projection.
 Replays and stale operations do no aggregate writes; a new stale diagnostic may
 patch the charge row. Each mutation handles one charge.
 
@@ -275,21 +270,14 @@ From exported `LIMITS`; only `maxCharges`, `maxGroups`, `maxDays` and
 
 ## Guarantees
 
-- Creation replays contribute once; operation replays preserve their original outcomes and cannot overwrite newer corrections.
-- Settlement survives concurrent/replayed corrections; expired unknowns reject corrections while accepting late real evidence once.
-- Unknown costs deny admission; budgets include estimates and isolate subjects and runs.
-- Default charges write only always-on projections; opt-ins add exactly their selected projections and remain frozen per charge.
-- Root/child thread axes and UTC breakdowns return bounded continuation pages without charge scans.
-- Sink failures cannot roll back recording; recovery reuses uncertain event ids, and corrections preserve immutable in-flight delivery snapshots.
-- Polar serializes signed nanos as exact decimal cents; both built-in adapters bound HTTP batches to 100 events.
-- Saved-step identities deduplicate usage hooks; billing observation failures preserve provider results and original errors.
-- Maximum-capacity fixtures exercise all projections, full receipts, four sinks, updates and maximum reads within Convex transaction bounds; the next new key is rejected.
+- [Sink](#sinks) failures cannot roll back cost recording.
+- Maximum-capacity fixtures exercise all [projections](#projections-and-write-cost), full receipts, four sinks, updates and maximum reads within Convex transaction bounds; the next new key is rejected.
 
 ## Known limits
 
 - No core runtime, `ToolContext`, automatic `tc.meter` wiring, gateway pricing integration or embedding middleware is included. Standalone keys and host attribution are required.
 - Root/child relationships are supplied by the host; Meter does not discover them from Agent messages.
-- Fal and Daytona have no per-request cost endpoint. Profiles are assumptions; Firecrawl credits need an explicit plan rate.
+- Fal has no per-request cost endpoint. Profiles are assumptions; Firecrawl credits need an explicit plan rate.
 - Breakdown opt-ins have no backfill. Budget gates reserve no future spend, and HTTP delivery requires recipient deduplication.
 - Capacity management and retention are external. At `METER_CAPACITY`, existing-charge updates and reads continue, but new keys fail. Receipts have a lifetime cap and cannot be evicted.
 - There are no browser-facing host endpoints; ownership checks remain the host's responsibility.
