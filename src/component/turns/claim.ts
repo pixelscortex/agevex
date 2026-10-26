@@ -324,6 +324,13 @@ async function markRunStart(
   const bit = 1n << BigInt(agentIndex ?? 0);
   const isRunStart = !!budget && (budget.startedAgents & bit) === 0n;
 
+  if (budget && !row.childRunId)
+    await ctx.db.patch("runs", budget._id, {
+      startedAt: budget.startedAt ?? Date.now(),
+      turnEndedAt: undefined,
+      errorCode: null,
+    });
+
   if (budget && isRunStart)
     await ctx.db.patch("runs", budget._id, {
       startedAgents: BigInt.asIntN(LIMITS.agents, budget.startedAgents | bit),

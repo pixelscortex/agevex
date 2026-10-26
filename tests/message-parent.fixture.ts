@@ -1,3 +1,4 @@
+import { delegationState } from "./delegation-state.js";
 /** Fake native models and real Workflow lanes for child progress guarantees. */
 import { componentsGeneric, type FunctionReference } from "convex/server";
 import { convexTest } from "convex-test";
@@ -124,7 +125,7 @@ export const open = (t: Test) =>
 export const calls = (name: string) => v2.calls.filter((entry) => entry.agent === name);
 export const drain = (t: Test) =>
   t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100), 3000);
-export const tree = (t: Test, threadId: string) => owner(t).query(api.agents.runTree, { threadId });
+export const tree = delegationState;
 export const transcript = (t: Test, threadId: string) =>
   owner(t).query(api.agents.messages, {
     threadId,

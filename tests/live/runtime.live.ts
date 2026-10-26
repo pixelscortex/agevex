@@ -267,11 +267,11 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
           });
 
           expect(
-            tree.map((run) => ({ agent: run.agent, depth: run.depth, status: run.status })),
+            tree!.nodes.slice(1).map((run) => ({ agent: run.agent, status: run.status })),
             JSON.stringify(deliveries.page),
           ).toEqual([
-            { agent: "Builder", depth: 1, status: "completed" },
-            { agent: "Reviewer", depth: 2, status: "completed" },
+            { agent: "Builder", status: "done" },
+            { agent: "Reviewer", status: "done" },
           ]);
         }
 

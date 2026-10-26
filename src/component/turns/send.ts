@@ -24,6 +24,7 @@ import { newRun } from "./runs.js";
 import { textConfig } from "../text/values.js";
 import { queueText } from "../text/jobs.js";
 import { wake } from "./wake.js";
+import { taskPreview } from "../run-tree-values.js";
 import { activity as vActivity, receipt as vReceipt, scope } from "../schema.js";
 import { activityView, assignmentScope } from "./views.js";
 
@@ -34,6 +35,7 @@ export const acceptArgs = {
   requestKey: v.string(),
   fingerprint: v.string(),
   promptMessageId: v.string(),
+  task: v.optional(v.string()),
   savedMessage: v.optional(messageRef),
   trackContext: v.optional(v.boolean()),
   runTurn: v.string(),
@@ -105,7 +107,12 @@ export async function acceptSend(ctx: MutationCtx, args: ObjectType<typeof accep
 
   const runId = await ctx.db.insert(
     "runs",
-    newRun(models, args.settings ?? [{ agent: args.agent, settings: resolveRunSettings() }]),
+    newRun(models, args.settings ?? [{ agent: args.agent, settings: resolveRunSettings() }], {
+      rootAssignmentId: row._id,
+      rootCancellationEpoch: row.cancellationEpoch,
+      taskMessageId: args.promptMessageId,
+      taskPreview: taskPreview(args.task ?? ""),
+    }),
   );
 
   await ctx.db.insert("inbox", {

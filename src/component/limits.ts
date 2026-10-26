@@ -68,30 +68,36 @@ export const HOST_LIMITS = {
  * Children only receive work from their fixed parentRunId; only the root
  * accepts new user requests. Across all queues there are therefore at most
  * U=100 root messages +50 result budgets +head/answer/current +15 child budgets=168
- * distinct runs. Cancel deduplicates those ids before patching 16 KiB rows.
+ * distinct runs. Cancel deduplicates those ids before reading and conditionally
+ * patching 16 KiB rows; a terminal run is never rewritten.
  * Retain the old per-ready-row run-patch count as conservative write headroom.
  * Passive note bodies and retained control rows are NEVER read by cancel.
  * One finite cleanup job per assignment handles <=24 raw notes separately.
- * Keep the old 2N metadata/delete allowance below as conservative headroom;
- * it also covers the extra <=A cleanup jobs (<=4 KiB each).
+ * Keep the old 2N metadata/delete document allowance below as conservative
+ * headroom; byte accounting instead reserves <=A cleanup jobs (<=4 KiB each).
  * Each assignment costs one combined state patch, one current-run patch,
  * two scheduler cancels and one exact-id cleanup job: 5A=80. Add C child-run patches and
  * one final root patch. Reserve 64A=1,024 reads AND writes for Workflow's
  * current loop/turn, Workpool, scheduler and callback bookkeeping.
+ * Managed SDK records carry only ids/handles and small control outcomes (no
+ * messages): <=3 KiB each. Workflow 0.4.10 workflow.ts:350-455 reads only each
+ * loop/turn's in-progress step; Workpool 0.4.14 lib.ts:137-150,238-259 reads
+ * globals/work/pending-cancel and pings the worker. The 64A doc allowance is
+ * retained; current-run reads/patches are already included in the unique U.
  * Routing settlement adds one write and TWO reads per owner: get the run
  * and read it again to patch it. Cancel clears routing ownership, watchdog
  * and recovery fields in its single assignment patch, saving 3A*32 KiB
  * compared with separate disarm/routing state patches.
  * Writes <=2I+N+6A+C+1+64A=6,384 <8,000 <16,000.
- * Reads <=3I+2N+4A+A+2A+2C+2+64A=9,232 <32,000.
+ * Reads <=3I+2N+4A+A+2A+2C+2+64A+U=9,400 <32,000.
  * Indexed queries <=3 child-status ranges +A inbox ranges +64A SDK allowance
  * =1,043 <4,096; point reads above do not execute indexed range queries.
- * Bytes (KiB): inbox reads 2I=4,864; unique runs U*16=2,688;
- * assignment read/patch 2A*32=1,024; current runs A*16=256; scheduler 2A*4=128; child runs 2C*4=120;
- * ownership/final root 2*32=64; SDK allowance 64A*4=4,096;
- * passive metadata 2N=768; routing A*(16+16)=512.
- * Total <=14,520 KiB; staged continuations add <=1,040 KiB (turns/cancel.ts):
- * <=15,560 KiB <16,384 KiB, leaving 824 KiB read headroom.
+ * Bytes (KiB): inbox reads 2I=4,864; unique run guard+patch 2U*16=5,376;
+ * assignment read/patch 2A*32=1,024; scheduler 2A*4=128; child runs 2C*4=120;
+ * ownership/final root 2*32=64; SDK allowance 64A*3=3,072;
+ * cleanup jobs A*4=64; routing A*(16+16)=512.
+ * Total <=15,224 KiB; staged continuations add <=1,040 KiB (turns/cancel.ts):
+ * <=16,264 KiB <16,384 KiB, leaving 120 KiB read headroom.
  * Written bytes: run patches/inbox deletes <=U*16+I KiB, note deletes
  * <=N KiB, coordination <=2A*32+A*16+2A*4 KiB,
  * children <=C*4 KiB, final root <=32 KiB, SDK <=64A*4 KiB, and routing

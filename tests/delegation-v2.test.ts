@@ -1,3 +1,4 @@
+import { delegationState } from "./delegation-state.js";
 // @vitest-environment edge-runtime
 import { requireReceipt } from "./receipt.js";
 import { beforeEach, afterEach, it, expect, vi } from "vite-plus/test";
@@ -66,7 +67,7 @@ const open = (t: Test, requestKey = "v2") =>
 
 const drain = (t: Test) => t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100), 3000);
 const calls = (agent: string) => v2.calls.filter((entry) => entry.agent === agent);
-const tree = (t: Test, threadId: string) => owner(t).query(api.agents.runTree, { threadId });
+const tree = delegationState;
 
 const tick = (t: Test) =>
   t.action(async () => {
@@ -377,26 +378,14 @@ it("runTree exposes the full current tree and rejects non-owners and child threa
   const receipt = await open(t);
 
   await drain(t);
-  const rows = await tree(t, receipt.threadId);
+  const projection = (await owner(t).query(api.agents.runTree, { threadId: receipt.threadId }))!;
+  const rows = projection.nodes;
 
-  expect(rows.map((run) => run.depth)).toEqual([1, 2]);
-  expect(rows[1].parentAssignmentId).toBe(rows[0].childAssignmentId);
-
-  expect(Object.keys(rows[0]).sort()).toEqual([
-    "agent",
-    "childAssignmentId",
-    "childThreadId",
-    "createdAt",
-    "depth",
-    "finishedAt",
-    "group",
-    "parentAssignmentId",
-    "runId",
-    // Public run records now expose their side-run discriminator.
-    "side",
-    "startedAt",
-    "status",
-  ]);
+  expect(rows.map((node) => node.agent)).toEqual(["Main", "Builder", "Reviewer"]);
+  expect(rows[0]).toMatchObject({ id: projection.rootRunId, parentId: null, status: "done" });
+  expect(rows[1].parentId).toBe(rows[0].id);
+  expect(rows[2].parentId).toBe(rows[1].id);
+  expect(rows.every((node) => node.currentTool === null && node.usage === null)).toBe(true);
 
   await expect(
     t
@@ -404,7 +393,9 @@ it("runTree exposes the full current tree and rejects non-owners and child threa
       .query(api.agents.runTree, { threadId: receipt.threadId }),
   ).rejects.toThrow("FORBIDDEN");
 
-  await expect(tree(t, rows[0].childThreadId!)).rejects.toThrow("FORBIDDEN");
+  await expect(
+    owner(t).query(api.agents.runTree, { threadId: rows[1].messages.threadId }),
+  ).rejects.toThrow("FORBIDDEN");
 });
 
 it("managed tool names are offered only on parents and children where they are meaningful", async () => {
@@ -1720,7 +1711,12 @@ it("the run launch budget counts all 50 descendants across turns and runTree rea
     reserved.push(side.runId);
   }
 
-  expect((await tree(t, root.threadId)).map((run) => run.runId)).toEqual(reserved);
+  expect(
+    (await owner(t).query(api.agents.runTree, { threadId: root.threadId }))!.nodes
+      .slice(1)
+      .map((node) => node.id),
+  ).toEqual(reserved);
+
   await owner(t).mutation(api.agents.cancel, { threadId: root.threadId });
   await drain(t);
 }, 30_000);

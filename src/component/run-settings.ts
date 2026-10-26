@@ -14,15 +14,17 @@ export const RUN_LIMITS = {
   sliceDeadlineMs: 300_000,
   watchdogMarginMs: 30_000,
   metadataBytes: 16 << 10,
-  // Native id/time envelope plus growth of bounded counters and JSON masks.
-  nativeEnvelopeBytes: 256,
+  // 256 bytes native id/time + <=256 lifecycle (ids, times, error) + <=512
+  // counter/mask growth and JSON escaping. Reserve before accepting a run.
+  nativeEnvelopeBytes: 1 << 10,
   // Root messages/results + reserved head/answer/current + one budget per child.
   cancelBudgets:
     HOST_LIMITS.queueLength.max +
     HOST_LIMITS.runLaunches.max +
     HOST_LIMITS.activeChildrenPerRoot.max +
     3,
-  // Reserve 1 KiB for ids, model overrides, counters and the native envelope.
+  // Snapshot cap; the combined initial row must also fit metadataBytes minus
+  // nativeEnvelopeBytes, so settings and model choices share the remaining room.
   settingsBytes: 15 << 10,
 } as const;
 

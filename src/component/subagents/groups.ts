@@ -15,6 +15,7 @@ import type { MutationCtx } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
 import { groupMembers, isSettled } from "./runs.js";
 import { settleIdleParent } from "./settle.js";
+import { closeRootRun } from "../turns/run-lifecycle.js";
 
 /** Readiness belongs to one sealed cohort, never a prefix of historical runs.
  * One representative is sufficient for indexed discovery; release marks every
@@ -219,6 +220,8 @@ export async function releaseReadyCohort(
   const released = await releaseGroup(ctx, parent, root, members);
 
   if (released) await settleIdleParent(ctx, (await ctx.db.get("assignments", parent._id))!);
+
+  if (released) await closeRootRun(ctx, root, candidate.parentRunId);
 
   return released;
 }

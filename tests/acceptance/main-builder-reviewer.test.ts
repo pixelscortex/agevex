@@ -41,7 +41,7 @@ async function transcript(t: Test, threadId: string) {
   });
 }
 
-// Use stable delegation history for fixture ids. G owns the runTree envelope.
+// Paginated delegation history supplies the persisted child thread ids.
 async function history(t: Test, threadId: string) {
   return (
     await owner(t).query(api.agents.delegations, {
@@ -132,6 +132,39 @@ it("Main → Builder → Reviewer delivers one note before the result, fences Bu
   const build = runs.find((run) => run.agent === "Builder")!;
   const review = runs.find((run) => run.agent === "Reviewer")!;
 
+  await waitFor(t, async () => {
+    const tree = await owner(t).query(api.agents.runTree, { threadId: receipt.threadId });
+
+    return tree?.nodes.filter((node) => node.status === "asleep").length === 2;
+  });
+
+  const active = (await owner(t).query(api.agents.runTree, { threadId: receipt.threadId }))!;
+
+  expect(active.nodes).toHaveLength(3);
+
+  expect(active.nodes).toEqual([
+    expect.objectContaining({
+      id: active.rootRunId,
+      parentId: null,
+      agent: "Main",
+      status: "asleep",
+      reason: "children",
+    }),
+    expect.objectContaining({
+      id: build.runId,
+      parentId: active.rootRunId,
+      agent: "Builder",
+      status: "asleep",
+      reason: "children",
+    }),
+    expect.objectContaining({
+      id: review.runId,
+      parentId: build.runId,
+      agent: "Reviewer",
+      status: "running",
+    }),
+  ]);
+
   expect(build.status).toBe("running");
   expect(review.status).toBe("running");
   expect(calls("Main")).toHaveLength(1);
@@ -201,11 +234,32 @@ it("Main → Builder → Reviewer delivers one note before the result, fences Bu
 
   expect(new Set(evidence.map((entry) => entry.key)).size).toBe(evidence.length);
   expect(evidence).toHaveLength(v2.calls.length);
-  /* TODO(step G — owner adds after rebase):
-   * Assert the run-tree envelope includes Main, Builder and Reviewer; sleeping
-   * parents show children as the reason; terminal nodes have no currentTool;
-   * exclusive node usage sums to the root total.
-   */
+  const done = (await owner(t).query(api.agents.runTree, { threadId: receipt.threadId }))!;
+
+  expect(done.rootRunId).toBe(active.rootRunId);
+
+  expect(done.nodes.map(({ id, parentId, agent }) => ({ id, parentId, agent }))).toEqual(
+    active.nodes.map(({ id, parentId, agent }) => ({ id, parentId, agent })),
+  );
+
+  expect(done.nodes.every((node) => node.status === "done" && node.currentTool === null)).toBe(
+    true,
+  );
+
+  expect(done.nodes.every((node) => node.usage?.reporting === "available")).toBe(true);
+  expect(done.usage!.inputTokens).toBeGreaterThan(0);
+  expect(done.usage!.settledUsd).toBeGreaterThan(0);
+
+  for (const metric of [
+    "inputTokens",
+    "outputTokens",
+    "estimatedUsd",
+    "settledUsd",
+    "unknown",
+  ] as const)
+    expect(done.nodes.reduce((sum, node) => sum + node.usage![metric]!, 0)).toBeCloseTo(
+      done.usage![metric]!,
+    );
 });
 
 it("the default root-only policy denies a child ask_user without creating a human pause", async () => {
@@ -309,6 +363,14 @@ it("cancel mid-review fences all three agents and discards late review output", 
 
   expect(runs).toHaveLength(2);
   expect(runs.every((run) => run.status === "failed")).toBe(true);
+
+  const cancelled = (await owner(t).query(api.agents.runTree, { threadId: receipt.threadId }))!;
+
+  expect(cancelled.nodes).toHaveLength(3);
+  expect(cancelled.nodes.map((node) => node.agent)).toEqual(["Main", "Builder", "Reviewer"]);
+
+  for (const node of cancelled.nodes)
+    expect(node).toMatchObject({ status: "failed", reason: "cancelled", currentTool: null });
 
   for (const threadId of [receipt.threadId, ...runs.map((run) => run.childThreadId!)]) {
     const row = (await t.query(node, { threadId }))!;

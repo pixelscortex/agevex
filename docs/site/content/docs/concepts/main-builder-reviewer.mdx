@@ -91,5 +91,8 @@ stores the corrected body under a new app id.
 The acceptance test checks the exact note/result order, two app records, Main's
 final id and exclusive usage attribution for all three nodes. It also forces a
 child `ask_user` call and checks that it cannot create a human pause. Cancelling
-mid-review fences all three agents and discards late output. Run-tree envelope
-assertions are marked TODO until Step G lands.
+mid-review fences all three agents and discards late output. The `runTree`
+envelope includes Main, Builder and Reviewer with their parent links. Main and
+Builder show `asleep` with reason `children` while Reviewer works; all three
+finish as `done` with no current tool, and their exclusive usage sums to the
+request total. After cancellation, all three show `failed` with reason `cancelled`.

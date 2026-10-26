@@ -18,8 +18,9 @@ import { type MutationCtx, mutation, query } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
 import { denialCode } from "../schema.js";
 import { LIMITS } from "../limits.js";
+import { taskPreview } from "../run-tree-values.js";
 import { approvalKey } from "../approvals.js";
-import { groupMembers, newSubagentRun, runById } from "./runs.js";
+import { assertRunMetadata, groupMembers, newSubagentRun, runById } from "./runs.js";
 import { messageRef, recordRefs } from "../hooks/refs.js";
 import { newChildAssignment } from "../turns/assignments.js";
 import { wake } from "../turns/wake.js";
@@ -222,6 +223,7 @@ export const attachArgs = {
   runId: v.string(),
   childThreadId: v.string(),
   promptMessageId: v.string(),
+  task: v.optional(v.string()),
   savedMessage: v.optional(messageRef),
   trackContext: v.optional(v.boolean()),
 };
@@ -263,10 +265,15 @@ export async function attachChild(ctx: MutationCtx, args: ObjectType<typeof atta
     runId: run.parentRunId,
   });
 
-  await ctx.db.patch("subagentRuns", run._id, {
+  const attached = {
+    taskMessageId: args.promptMessageId,
+    taskPreview: taskPreview(args.task ?? ""),
     childAssignmentId: childId,
     childThreadId: args.childThreadId,
-  });
+  };
+
+  assertRunMetadata({ ...run, ...attached });
+  await ctx.db.patch("subagentRuns", run._id, attached);
 
   if (args.savedMessage)
     await recordRefs(ctx, (await ctx.db.get("assignments", childId))!, [args.savedMessage]);

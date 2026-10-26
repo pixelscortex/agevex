@@ -87,12 +87,53 @@ follow-ups or answer its questions.
 
 ## Reading the tree
 
-`runTree({ threadId })` is owner-authorized and root-only. It returns the
-current request's descendants with agent, status, depth, group, parent
-assignment, native child thread and timings. `delegations({ threadId,
-paginationOpts })` returns the root thread's delegation history across requests,
-newest-first, at most 50 runs per page. Every run
-carries `side: boolean`, marking a side review as distinct from a child.
+`runTree({ threadId, rootRunId? })` is owner-authorized and root-only. One reactive
+query returns `{ rootRunId, usage, nodes }`, or `null` before the first request.
+Omit `rootRunId` for the current or last request; supply it for retained history
+in this same root thread. Foreign roots and subjects are refused.
+
+**Breaking change:** `runTree` previously returned a descendant array. Read
+`.nodes` on the envelope and include its root node. Node ids are the root
+request id or delegation id; `parentId` links the immediate parent.
+
+```ts
+const tree = await client.query(api.agents.runTree, { threadId });
+const builder = tree?.nodes.find((node) => node.agent === "Builder");
+// Read conversation content separately, when the app opens that conversation.
+const builderThreadId = builder?.messages.threadId;
+```
+
+Each node includes `agent`, a task preview of at most 256 encoded bytes,
+`createdAt`, nullable `startedAt`/`finishedAt`, `currentTool`, exclusive `usage`,
+and `messages` links (`threadId`, plus stored `taskId`, `resultId`,
+`parentResultId` and `questionId` when available). A reserved child may have an
+empty `threadId` until attachment. Full task bodies stay in native messages.
+
+Projected statuses are `queued`, `running`, `asleep`, `done` and `failed`.
+Waiting parents remain `asleep` with `reason: "children"`, `"approval"` or
+`"ask"`; a budget stop uses `"budget"`, recovery failures use `"recovery"`, and
+cancellation is `failed` with `"cancelled"`. `error` is a stored error code.
+An idle turn alone never means done: ready work, ordinary pending deliveries
+and unjoined groups fence root completion. Side reviews may finish later.
+
+`currentTool` is the last-started still-active local tool, including managed
+collaboration tools. It is not a concurrent tool inventory, and finished nodes
+always return `null`. No tool inputs, outputs or execution capabilities appear.
+Markers are best effort: unavailable or slow progress writes cannot change a
+tool result. Slice completion clears stale markers, and late writes are fenced.
+Cancelling live work preserves any root outcome and finish time already recorded.
+
+Without a usage adapter's query-safe `view`, envelope and node usage are `null`.
+`meter.usageSlot()` supplies live exclusive totals, so each node is summed once
+to obtain the envelope total, including root title/summary work. `estimatedUsd`
+and `settledUsd` remain separate; `unknown` and `reporting` describe coverage.
+Corrections replace estimated cost without repeating generation.
+
+The tree includes at most 50 ordinary launches and 8 side reviews, plus the
+root. Reads stay below 8 MiB including the meter projection; output is capped
+at 128 KiB. `delegations({ threadId, paginationOpts })` retains its existing
+history contract across requests: newest-first, at most 50 runs per page, with
+stored statuses and `side: boolean` distinguishing side reviews.
 
 ## Per-agent model overrides
 

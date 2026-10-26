@@ -3,7 +3,7 @@
  */
 import { v, type Infer } from "convex/values";
 import type { QueryCtx } from "./_generated/server.js";
-import { bySubject, summary } from "./aggregates.js";
+import { components } from "./_generated/api.js";
 import { LIMITS, text } from "../shared/limits.js";
 
 export const usageViewArgs = {
@@ -26,8 +26,11 @@ export const usageProjection = v.object({
 });
 
 /** Complete namespaces read <=7 docs per aggregate operation (lazy root and
- * <=5 children plus metadata). 60*(4 cost + 4 token) <=3360 docs / <7 MiB
- * at <=2 KiB/node; <4096 queries. Output <=60*512 bytes <32 KiB.
+ * <=5 children plus metadata). 60*6*7 <=2520 docs /5040 KiB at <=2 KiB/node;
+ * pending-operation probes add <=60 docs /120 KiB. Combined with core's
+ * 2249 KiB tree metadata: <=7409 KiB <8 MiB. Output <=60*512 bytes <32 KiB.
+ * Aggregate's supported btree.aggregateBetweenBatch returns count AND sum
+ * (aggregate src/component/btree.ts:1279), avoiding duplicate count/sum reads.
  */
 export async function readUsage(
   ctx: QueryCtx,
@@ -59,22 +62,27 @@ export async function readUsage(
 
 /** Missing token evidence is null. A real observed zero remains zero. */
 async function readNode(ctx: QueryCtx, costs: string[], tokens: string[], partial = false) {
-  const cost = await summary(ctx, bySubject, costs);
-  const input = [...tokens, "tokens", "inputTokens"];
-  const count = await bySubject.count(ctx, { namespace: input });
-  const missing = await bySubject.count(ctx, { namespace: [...tokens, "missingTokens"] });
-  const inputTokens = await bySubject.sum(ctx, { namespace: input });
-
-  const outputTokens = await bySubject.sum(ctx, {
-    namespace: [...tokens, "tokens", "outputTokens"],
-  });
+  const [estimated, settled, unknown, input, output, missing] = await ctx.runQuery(
+    components.costBySubject.btree.aggregateBetweenBatch,
+    {
+      queries: [
+        [...costs, "estimate"],
+        [...costs, "settled"],
+        [...costs, "unknown"],
+        [...tokens, "tokens", "inputTokens"],
+        [...tokens, "tokens", "outputTokens"],
+        [...tokens, "missingTokens"],
+      ].map((namespace) => ({ namespace })),
+    },
+  );
 
   return {
-    inputTokens: count ? inputTokens : null,
-    outputTokens: count ? outputTokens : null,
-    estimatedUsd: cost.usd.estimated,
-    settledUsd: cost.usd.settled,
-    unknown: cost.unknown,
-    reporting: partial || cost.unknown || missing ? ("partial" as const) : ("available" as const),
+    inputTokens: input.count ? input.sum : null,
+    outputTokens: input.count ? output.sum : null,
+    estimatedUsd: estimated.sum / LIMITS.nanosPerUsd,
+    settledUsd: settled.sum / LIMITS.nanosPerUsd,
+    unknown: unknown.count,
+    reporting:
+      partial || unknown.count || missing.count ? ("partial" as const) : ("available" as const),
   };
 }
