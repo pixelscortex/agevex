@@ -72,11 +72,6 @@ send updates the next run only: omitting `models` inherits the last accepted
 thread policy, and `{}` restores the Agent defaults. A map holds at most 8
 entries and 512 Convex-encoded bytes, with ids of at most 200 characters.
 
-```ts title="Managed delegation tool"
-agevex_delegate({
-  agent: "Builder",
-  task: "Draft the migration guide",
-  group: "draft", // at most 200 characters
-  wait: "all", // "each" (default) | "all"
-});
-```
+The model calls `agevex_delegate` with `agent: "Builder"`, a task,
+`group: "draft"` and `wait: "all"`. This is a managed model tool, not a
+JavaScript function exported to the host.

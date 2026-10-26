@@ -13,7 +13,9 @@
     "fmt": "bun run --cwd ../.. fmt",
     "fmt:check": "bun run --cwd ../.. fmt:check",
     "lint": "bun run --cwd ../.. lint",
-    "check": "bun run fmt:check && bun run lint && bun run typecheck"
+    "check": "bun run fmt:check && bun run lint && bun run typecheck",
+    "api:build": "bun run scripts/generate-api-reference.ts",
+    "check:snippets": "bun run --cwd ../.. build && bun run scripts/check-snippets.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

@@ -11,22 +11,14 @@ Workflow steps. The five hooks are `beforeTurn`, `afterTurn`, `beforeTool`,
 `block`, `input`, `output`, `continue` or `model`, with a `HookContext` that
 omits `toolCallId`.
 
-```ts title="Hooks and a side agent"
-const critic = new Agent(components.agent, {
-  name: "Critic",
-  languageModel,
-  instructions: "Review the delta. Return a short note, or NONE.",
-});
-const main = new Agent(components.agent, {
-  name: "Main",
-  languageModel,
-  hooks: {
-    beforeTurn: (_hc, { prompt }) =>
-      prompt.trim() ? undefined : { block: "A prompt is required." },
-    afterTool: (_hc, { output }) => ({ output: redact(output) }),
-  },
-  sideAgents: [{ agent: critic, every: { turns: 3 }, sees: "delta" }],
-});
+```ts title="convex/hooks.ts"
+import type { AgentHooks } from "agevex";
+
+export const hooks = {
+  beforeTurn: (_hc, { prompt }) => (prompt.trim() ? undefined : { block: "A prompt is required." }),
+  beforeTool: (_hc, { tool }) =>
+    tool === "delete_account" ? { block: "Use the account settings page." } : undefined,
+} satisfies AgentHooks;
 ```
 
 `beforeTool` may replace the input with `input`, and `afterTool` may replace

@@ -1,77 +1,79 @@
 ---
 title: Telemetry
-icon: Activity
-description: Bounded, action-scoped AI SDK 7 traces with Langfuse and Braintrust export.
+description: Bounded action-local traces with one-shot OTLP export.
 status: Available
 ---
 
+Telemetry observes AI SDK calls and exports bounded OTLP JSON. Use it for model,
+step and tool traces. It runs entirely in the host action. It owns no Convex
+component, tables, transcript reader or durable outbox.
+
 ## Wire it into agevex
 
-Pass the slot to `registerAgent`; core supplies attribution and flushes each managed turn in `finally`.
-No component mount is required.
+Install the [built package and peers](/docs/getting-started). There is no extra
+package or convex.config mount. Set `LANGFUSE_PUBLIC_KEY`,
+`LANGFUSE_SECRET_KEY` and `LANGFUSE_BASE_URL` in the host environment.
 
-```ts title="Managed turns → Langfuse OTLP"
+Replace `convex/agents.ts` from getting started, keeping its `agentConfig.ts`:
+
+```ts title="convex/agents.ts"
 import { registerAgent } from "agevex";
+import { components } from "./_generated/api.js";
+import { registration } from "./agentConfig.js";
 import { langfuse, telemetry } from "agevex/telemetry";
 
-const runtime = registerAgent(components.agevex, {
-  agents: [main],
-  refs: { runTurn: () => internal.agents.runTurn },
-  authorize,
-  authorizeExecution,
+export const runtime = registerAgent(components.agevex, {
+  ...registration,
   telemetry: telemetry.slot({
     exporters: [
       langfuse({
-        baseUrl: "https://cloud.langfuse.com",
+        baseUrl: process.env.LANGFUSE_BASE_URL!,
         publicKey: process.env.LANGFUSE_PUBLIC_KEY!,
         secretKey: process.env.LANGFUSE_SECRET_KEY!,
       }),
     ],
   }),
 });
+export const { runTurn, coordinate } = runtime.internalFunctions();
+export const {
+  open,
+  send,
+  cancel,
+  respond,
+  answer,
+  messages,
+  streams,
+  activity,
+  runTree,
+  delegations,
+} = runtime.authorizedEndpoints();
 ```
 
-A propagated fact (subject, thread, run, agent or turn key) over 256 bytes is exported as `sha256:<hex>` of its value instead of being rejected; empty facts are still rejected.
+Core supplies server-derived facts and an opaque turn key. Each key owns an
+isolated buffer, flushed in `finally` with cancellation/deadline propagation.
+For Braintrust, use `braintrust({ apiKey, projectId })` instead of Langfuse.
 
-For Braintrust, use `braintrust({ apiKey, projectId })` from the same subpath
-instead; it posts to `https://api.braintrust.dev/otel/v1/traces`. The slot gives
-each `turnKey` its own bounded buffer, exports it once, then discards it even
-on cancellation or failure. Core bounds flush to 3 s and fails open. Stable
-run/turn facts produce stable IDs; retries may export duplicates.
+## Direct AI SDK calls
 
-## Direct AI SDK setup
+Create a fresh buffer for each turn. Consume the stream before flushing:
 
-For SDK calls outside managed turns, create a fresh buffer per turn and register its integration on the call.
-Consume the stream before flushing in `finally`.
-
-```ts title="Register telemetry on an AI SDK call"
+```ts title="convex/tracedTurn.ts"
 import { streamText, type LanguageModel } from "ai";
-import { langfuse, telemetry, type Facts } from "agevex/telemetry";
+import { telemetry, type Facts, type Exporter } from "agevex/telemetry";
 
-export async function tracedTurn(options: {
-  model: LanguageModel;
-  prompt: string;
-  facts: Facts;
-  publicKey: string;
-  secretKey: string;
-}) {
-  const trace = telemetry({
-    exporters: [
-      langfuse({
-        baseUrl: "https://cloud.langfuse.com",
-        publicKey: options.publicKey,
-        secretKey: options.secretKey,
-      }),
-    ],
-    recordInputs: false,
-    recordOutputs: false,
-  });
+export async function tracedTurn(
+  model: LanguageModel,
+  prompt: string,
+  facts: Facts,
+  exporters: Exporter[],
+) {
+  const trace = telemetry({ exporters });
   try {
     const result = streamText({
-      model: options.model,
-      prompt: options.prompt,
+      model,
+      prompt,
       maxRetries: 0,
-      telemetry: { integrations: [trace.integration(options.facts)] },
+      telemetry: { integrations: [trace.integration(facts)] },
     });
     await result.consumeStream();
     return await result.text;
@@ -81,92 +83,55 @@ export async function tracedTurn(options: {
 }
 ```
 
-Supply `subject`, `rootThreadId`, `threadId`, `runId`, `agent` and `turnKey`
-as nonempty strings in `facts`. Agent 0.7.7 passes unknown `streamText` arguments through unchanged, so `telemetry` reaches the AI SDK. Per-call integrations replace AI SDK
-global integrations; AI SDK 7 has no `tracer` option.
+Facts contain `subject`, `rootThreadId`, `threadId`, `runId`, `agent`
+and `turnKey`. Empty facts throw; facts over 256 UTF-8 bytes export as digests.
 
-## API
+## Content and delivery
 
-- `telemetry(options: TelemetryOptions): TurnTelemetry` — creates a one-turn buffer; `exporters` is required (an empty array is valid).
-- `telemetry.slot(options: TelemetryOptions): TelemetrySlot` — creates the registration adapter with isolated buffers per `turnKey`; its `integration(facts)` and `flush(facts, signal?)` implement core's slot contract.
-- `integration(facts: Facts): Telemetry` — returns SDK callbacks for `streamText` or `generateText`; validates and copies attribution facts.
-- `flush(signal?: AbortSignal): Promise<void>` — seals and drains the buffer once; repeated calls share the same promise.
-- `langfuse(options: { baseUrl: string; publicKey: string; secretKey: string }): Exporter` — posts to `<baseUrl>/api/public/otel/v1/traces` using Basic auth and v4 ingestion.
-- `braintrust(options: { apiKey: string; projectId: string }): Exporter` — posts to `https://api.braintrust.dev/otel/v1/traces` using Bearer auth and `x-bt-parent: project_id:<projectId>`.
+`recordInputs` and `recordOutputs` default to false. Enable explicitly
+and supply `sanitize(value, attributeName)` to redact host data. Returning
+undefined drops an attribute. SDK recording opt-outs still apply. Raw provider
+error diagnostics are never recorded.
 
-```ts title="Telemetry options and custom exporter contract"
-import type { Exporter, Sanitize, TelemetryOptions } from "agevex/telemetry";
+Export seals the buffer once; repeated flushes share its promise. Late callbacks
+are ignored. Exporters run concurrently, fail open and make one attempt. Stable
+ids preserve ancestry but action retries can export duplicates. There is no
+durable delivery guarantee.
 
-const sanitize: Sanitize = (value, attribute) =>
-  attribute === "langfuse.user.id" ? undefined : value;
+## API reference
 
-const exporter: Exporter = {
-  export(payload, signal) {
-    // Send the bounded OTLP payload to your own destination.
-    // Return void or a PromiseLike<void>; honor signal when possible.
-  },
-};
+{/* GENERATED_API_START */}
 
-const options: TelemetryOptions = {
-  exporters: [exporter],
-  recordInputs: false,
-  recordOutputs: false,
-  sanitize,
-};
-```
+Generated from the current exported TypeScript signatures in [the module entry](https://github.com/pixelscortex/agevex/blob/HEAD/src/modules/telemetry/client/index.ts). TypeScript does not encode thrown errors; the error column describes implementation behavior.
 
-`recordInputs` and `recordOutputs` default to `false`: prompts, instructions,
-model output and tool arguments/results are omitted. Set either to `true` to
-opt in; SDK recording flags can further disable recording. Raw error diagnostics
-are never recorded. User/session/run/agent facts are included on every span by
-default; sanitize them when needed.
+Telemetry contracts are exported from `agevex/telemetry`. `Telemetry` is the AI SDK integration type from `ai`.
 
-`sanitize(value, attributeName)` transforms bounded attribute values and dynamic
-span name components before buffering. Returning `undefined` omits an attribute;
-throwing drops its value and marks truncation. Omitted, empty or rejected name
-components become `redacted`. Sanitizer output is bounded again.
+| Name                | Arguments                                                             | Returns         | Errors / failure behavior                                 |
+| ------------------- | --------------------------------------------------------------------- | --------------- | --------------------------------------------------------- |
+| `telemetry`         | `options: TelemetryOptions`                                           | `TurnTelemetry` | Invalid options throw.                                    |
+| `telemetry.slot`    | `options: TelemetryOptions`                                           | `TelemetrySlot` | Invalid options throw; managed flush fails open.          |
+| `braintrust`        | `options: { apiKey: string; projectId: string }`                      | `Exporter`      | Invalid credentials/project id throw; export fails open.  |
+| `langfuse`          | `options: { baseUrl: string; publicKey: string; secretKey: string; }` | `Exporter`      | Invalid credentials or base URL throw; export fails open. |
+| `trace.integration` | `facts: Facts`                                                        | `Telemetry`     | Invalid facts throw; oversized facts export as digests.   |
+| `trace.flush`       | `signal?: AbortSignal`                                                | `Promise<void>` | Export errors/timeouts are swallowed; no retries.         |
 
-Langfuse `baseUrl` is an HTTP(S) host URL, optionally with a deployment path;
-credentials in the URL, query strings and fragments are rejected. Braintrust
-uses its US endpoint. Invalid configuration or facts throw during setup.
+{/* GENERATED_API_END */}
 
 ## Limits
 
-`LIMITS` is exported from `agevex/telemetry`. These values are fixed, not
-configurable; byte bounds use UTF-8.
+| Bound                       | Fixed ceiling                               |
+| --------------------------- | ------------------------------------------- |
+| Spans per turn              | 128 across all integrations                 |
+| Encoded attributes per span | 16 KiB                                      |
+| Value / key                 | 4 KiB                                       |
+| Name / fact                 | 256 UTF-8 bytes; oversized facts are hashed |
+| Configuration strings       | 4 KiB                                       |
+| Exporters                   | 4 concurrent                                |
+| Value traversal             | 128 nodes, depth 8                          |
+| Export deadline             | 3 seconds, or core's supplied signal        |
+| Complete request            | Less than 2.25 MiB                          |
 
-| Constant                | Default      | Hard maximum / fixed behavior                                       |
-| ----------------------- | ------------ | ------------------------------------------------------------------- |
-| `maxSpansPerTurn`       | 128          | 128 across all integrations in the buffer                           |
-| `maxAttributeBytes`     | 16,384 bytes | 16 KiB of encoded attributes per span, including JSON escaping      |
-| `maxValueBytes`         | 4,096 bytes  | 4 KiB per string/key during traversal and per encoded string value  |
-| `maxNameBytes`          | 256 bytes    | 256 per span name and dynamic name component                        |
-| `maxFactBytes`          | 256 bytes    | 256 per fact before it is hashed; 256 for the Braintrust project ID |
-| `maxConfigurationBytes` | 4,096 bytes  | 4 KiB per Langfuse configuration string and Braintrust API key      |
-| `maxExporters`          | 4            | 4 concurrent exporters                                              |
-| `maxValueNodes`         | 128          | 128 visited nodes per bounded value traversal                       |
-| `maxValueDepth`         | 8            | 8 nesting levels below the traversal root                           |
-| `exportTimeoutMs`       | 3,000 ms     | 3 s export deadline, with abort and promise race                    |
-| `traceIdHexLength`      | 32           | Fixed 32 hexadecimal characters                                     |
-| `spanIdHexLength`       | 16           | Fixed 16 hexadecimal characters                                     |
-| `nanosPerMillisecond`   | 1,000,000    | Fixed timestamp conversion factor                                   |
-
-Oversized values use `[truncated]` and `agevex.truncated` markers; excess spans
-are dropped while retaining valid ancestry (a call that loses child spans this
-way stays OK and its root gets `agevex.truncated`). Empty facts and invalid
-configuration strings are rejected rather than truncated; facts over 256 bytes
-are hashed. The bounded OTLP request is less
-than 2.25 MiB.
-
-## Guarantees
-
-- Stable `runId`, `turnKey` and call order yield deterministic SHA-256 IDs; [integrations](#api) sharing a buffer use distinct span paths.
-- Empty buffers and pre-aborted [flushes](#api) send nothing; unfinished spans export as errors.
-- Provider errors, interrupted finishes and incomplete streams mark affected spans as errors with safe reasons; see [recording](#api).
-- [Export](#api) fails open on network errors, non-2xx responses, exceptions and timeouts; exporters run concurrently with one attempt each.
-
-## Known limits
-
-- The buffer is action-scoped and in memory, with no durable outbox or export retries. Callbacks after flush are ignored.
-- Stable IDs do not guarantee exactly-once delivery: action retries can export duplicates, and Langfuse v4 does not guarantee deduplication by ID. Hosts needing exactly-once export must use their own durable outbox.
-- The 3 s bound applies to export, not model execution. Synchronous host code, including sanitizers or custom exporters, must return control for cancellation and timers to run.
+Synchronous sanitizers and exporters must return control for timers to run.
+Langfuse accepts HTTP(S) base URLs without embedded credentials, query or fragment;
+Braintrust uses its US OTLP endpoint. See the
+[module README](https://github.com/pixelscortex/agevex/blob/HEAD/src/modules/telemetry/README.md).

@@ -1,0 +1,77 @@
+---
+title: Architecture
+description: Component boundaries, package layout, and the life of a turn.
+status: Available
+---
+
+## Component and host
+
+Core runs durable coordination in `src/component/`. The host imports
+`src/client/` as `agevex` and exports authorized endpoints, `runTurn` and
+`coordinate`. Models, hooks, tools, provider credentials and policy run in host
+functions. Native Agent owns transcript bodies and streams. Workflow owns
+journals and dispatch.
+
+## Package layout
+
+| Area                            | Role                                           | Package entry                 |
+| ------------------------------- | ---------------------------------------------- | ----------------------------- |
+| `src/component/`                | Core schema and registered Convex functions    | `agevex/convex.config`        |
+| `src/client/`                   | Managed Agent and host runtime                 | `agevex`                      |
+| `src/test.ts`                   | Core test registration                         | `agevex/test`                 |
+| `src/modules/<name>/component/` | Optional module's schema and functions         | `agevex/<name>/convex.config` |
+| `src/modules/<name>/client/`    | Host factory and provider adapters             | `agevex/<name>`               |
+| `src/modules/<name>/shared/`    | Pure shared contracts and bounds, where needed | Internal                      |
+| `src/modules/<name>/test.ts`    | Module and nested dependency registration      | `agevex/<name>/test`          |
+
+Meter, sandbox and extract own components. Telemetry is a host library. Tools
+provide host factories and installable state under `registry/`.
+
+Use the repository file maps:
+[client](https://github.com/pixelscortex/agevex/blob/HEAD/src/client/README.md),
+[component](https://github.com/pixelscortex/agevex/blob/HEAD/src/component/README.md),
+[meter](https://github.com/pixelscortex/agevex/blob/HEAD/src/modules/meter/README.md),
+[sandbox](https://github.com/pixelscortex/agevex/blob/HEAD/src/modules/sandbox/README.md),
+[extract](https://github.com/pixelscortex/agevex/blob/HEAD/src/modules/extract/README.md),
+[telemetry](https://github.com/pixelscortex/agevex/blob/HEAD/src/modules/telemetry/README.md)
+and [tools](https://github.com/pixelscortex/agevex/blob/HEAD/src/modules/tools/README.md).
+
+## Life of a turn
+
+1. Send: authorize, dedupe, save the native prompt and accept it atomically.
+2. Inbox: retain a FIFO reference to ready work and its request budget.
+3. Wake: reserve the oldest row and start or ping the thread's Workflow loop.
+4. Claim: consume the head, merge eligible results, save pending notes and arm the watchdog.
+5. Generate: recheck execution policy and budget, then run one native model step.
+6. Continue: admit another bounded slice after tools or a hook continuation.
+7. Finish/settle: idle or stop the turn; settle a child after its remaining fences clear.
+8. Deliver: save the verified child result in the parent and enqueue or join its wake.
+
+## Table ownership
+
+| Owner                | Tables or state                                      | Contents                                                                                 |
+| -------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Core                 | `assignments`                                        | Owner, native thread, execution token, epoch, pauses, counters, bounded references       |
+| Core                 | `inbox`                                              | Ready references, passive notes and retained origin/control metadata                     |
+| Core                 | `runs`                                               | Accepted request's model snapshot, launch/hop budgets and cancellation                   |
+| Core                 | `receipts`                                           | Request/effect fingerprints, claims, leases, bounded results and file attestations       |
+| Core                 | `subagentRuns`                                       | Child linkage, verified result id, delivery capability and bounded events                |
+| Meter                | `charges`, `deliveries`, `claims`                    | Charge/operation receipts and sink outbox; nested Aggregate and Workpool own their state |
+| Sandbox              | `sandboxes`, `jobs`                                  | Scope identities, provider references, claims and deadlines                              |
+| Extract              | `artifacts`, `indexes`                               | Extraction identities and namespace publication fences; nested Workflow owns its journal |
+| Native Agent         | Native tables                                        | Threads, messages, files and stream state                                                |
+| Workflow / Workpool  | Their component tables                               | Journals, events and dispatch bookkeeping                                                |
+| Optional native RAG  | Its component tables                                 | Chunks and vectors                                                                       |
+| Host-installed tools | `agevexTodos`, `agevexGoals`, `agevexBudgetConsents` | Owner/thread state and single-use consent                                                |
+| Telemetry            | No tables                                            | Action-local span buffers                                                                |
+
+## Guarantees
+
+| Mechanism                              | Guarantee                                                                       | Boundary                                                               |
+| -------------------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Execution token and cancellation epoch | Stale managed writes cannot commit after cancellation or a new turn             | Does not undo a provider effect already sent                           |
+| Indexed count and byte bounds          | Reads and writes stay bounded at hard maximum host limits                       | Payloads belong in native Agent or storage                             |
+| Request receipts                       | Identical retries reuse acceptance; changed input conflicts                     | Retention limits the replay window                                     |
+| Effect claims and leases               | Concurrent effects are fenced; unknown paid outcomes do not retry automatically | Provider idempotency is still needed for external exactly-once effects |
+| Exact native ids                       | Verification and origin reads use saved references                              | No transcript scan to discover an effect                               |
+| Host policy checks                     | Public access and every generation recheck authority                            | Host wrappers must enforce current policy                              |

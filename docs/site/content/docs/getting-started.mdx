@@ -1,74 +1,132 @@
 ---
 title: Getting started
-icon: Rocket
-description: Install from git, mount the components, and review the planned setup.
-status: Planned
+description: Build the package, mount components, and register an authorized agent.
+status: Available
 ---
 
-**Preview: API in development.** The package is git-only. The mount below is
-available today; the one-screen registration API is planned and is not a
-runnable example against the current package.
+## Install
 
-## Install from git
+The package is private and has no published npm release. Build a checkout first;
+package exports resolve to `dist/`, and there is no install-time prepare script.
+From a checkout of the revision you intend to consume:
 
-Replace `<commit-sha>` with the full commit you want to consume. There is no
-npm release. Pin git dependencies to a commit for repeatable installs.
-
-```sh title="Terminal"
-bun add git+https://github.com/pixelscortex/agevex.git#<commit-sha>
-bun add convex @convex-dev/agent ai
+```sh title="Package checkout"
+bun install
+bun run build
 ```
 
-The host must also satisfy the package’s declared peer dependencies. The git
-revision needs built `dist/` output or an install-time build; the current package
-does not have a `prepare` script. If consuming an unbuilt checkout, run
-`bun install` and `bun run build` in that package before using it. This guide
-does not change the package’s distribution pipeline.
+In your Convex host, install that built checkout and install its peer dependencies.
+Replace the path with your checkout. Use versions matching its package.json.
 
-## Mount the components (available)
+```sh title="Host app"
+bun add /absolute/path/to/agevex
+bun add convex@1.47.0 @convex-dev/agent@0.7.7 ai@7.0.153 convex-helpers@0.1.128 @ai-sdk/provider@4.0.34 @ai-sdk/provider-utils@5.0.68
+bun add @openrouter/ai-sdk-provider@3.1.0
+```
 
-Mount the native Agent component and the SDK separately. The current SDK
-component mounts Workpool; the host owns the native Agent component.
+Set `OPENROUTER_API_KEY` in the host deployment environment. Keep credentials
+out of client code and component arguments.
+
+## Mount
 
 ```ts title="convex/convex.config.ts"
 import { defineApp } from "convex/server";
-import nativeAgent from "@convex-dev/agent/convex.config";
-import sdk from "agevex/convex.config";
+import agent from "@convex-dev/agent/convex.config";
+import agevex from "agevex/convex.config";
 
 const app = defineApp();
-app.use(nativeAgent, { name: "agent" });
-app.use(sdk);
+app.use(agent, { name: "agent" });
+app.use(agevex, { name: "agevex" });
 export default app;
 ```
 
-Run the host app’s `bunx convex dev` to generate its component bindings. Mount
-optional components only when you use them; their future subpaths are described
-on the [module pages](/docs/modules/sandbox).
+Run `bunx convex dev` in the host to generate component bindings. Core mounts
+two Workflow lanes and their nested Workpools. The host exports no workflows.
 
-## One-screen setup (planned)
+## Register
 
-This API shape comes from the draft spec. `languageModel`, `instructions`,
-`authorize` and `meter` are supplied by the host; `components` comes from its
-generated bindings. `defineAgents`, `sdk.api()`, `cancel` and `threadCost` are
-not current exports.
+This single-owner example checks the same configured principal for public and
+background operations. Replace `OWNER_SUBJECT` with your authentication subject.
+For a multi-user app, replace both policies with current membership checks using
+host-owned records. Background calls have no interactive user identity.
 
-```ts title="Planned one-screen setup"
-const researcher = new Agent(components.agent, { name: "Researcher", languageModel, instructions });
+```ts title="convex/agentConfig.ts"
+import { Agent, type Registration } from "agevex";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { components, internal } from "./_generated/api.js";
+
+const OWNER_SUBJECT = "replace-with-your-auth-subject";
+const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY });
 const main = new Agent(components.agent, {
   name: "Main",
-  languageModel,
-  instructions,
-  subagents: [researcher],
+  languageModel: openrouter.chat("openrouter/free", { usage: { include: true } }),
+  instructions: "Answer concisely. Ask when required information is missing.",
 });
 
-export const sdk = defineAgents(components.sdk, { agents: [main], authorize, meter });
-export const { open, send, cancel, messages, activity, delegations, threadCost } = sdk.api();
-
-// anywhere in the host
-const cost = await sdk.meter.threadCost(ctx, { threadId }); // { totalNanos, unknown, byAgent, byModel }
+export const registration: Registration = {
+  agents: [main],
+  refs: {
+    runTurn: () => internal.agents.runTurn,
+    coordinate: () => internal.agents.coordinate,
+  },
+  authorize: async (ctx, scope) => {
+    const subject =
+      "subject" in scope ? scope.subject : (await ctx.auth.getUserIdentity())?.subject;
+    if (subject !== OWNER_SUBJECT) throw new Error("FORBIDDEN");
+    return { subject };
+  },
+  authorizeExecution: async (_ctx, scope) => {
+    if (scope.subject !== OWNER_SUBJECT) throw new Error("FORBIDDEN");
+  },
+};
 ```
 
-The current registration export is `registerAgevex`. It requires host-owned
-`authorize` and `authorizeExecution` callbacks and explicit internal entry
-points. Consult the repository README for the current complete registration.
-The planned lower-level registration is covered in [runtime](/docs/concepts/runtime).
+Export the runtime from the file named by the internal references:
+
+```ts title="convex/agents.ts"
+import { registerAgent } from "agevex";
+import { components } from "./_generated/api.js";
+import { registration } from "./agentConfig.js";
+
+export const runtime = registerAgent(components.agevex, registration);
+export const { runTurn, coordinate } = runtime.internalFunctions();
+export const {
+  open,
+  send,
+  cancel,
+  respond,
+  answer,
+  messages,
+  streams,
+  activity,
+  runTree,
+  delegations,
+} = runtime.authorizedEndpoints();
+```
+
+`registerAgent` validates the graph, slots and limits at module load. The
+internal references must point to the exports in this host module.
+
+## Send a request
+
+Call the generated host API from an authenticated client. This function accepts
+a connected `ConvexClient`; reuse the request key only for an identical retry.
+
+```ts title="client/start.ts"
+import type { ConvexClient } from "convex/browser";
+import { api } from "../convex/_generated/api.js";
+
+export async function start(client: ConvexClient, requestKey: string) {
+  const receipt = await client.mutation(api.agents.open, {
+    agent: "Main",
+    prompt: "Explain the life of a turn.",
+    requestKey,
+  });
+  if (receipt.status === "rejected") throw new Error(receipt.code);
+  return receipt.threadId;
+}
+```
+
+`open` and `send` return [receipts](/docs/concepts/receipts) before generation.
+Subscribe to `messages`, `streams` and `activity` through those same authorized
+host endpoints. See [runtime](/docs/concepts/runtime) for their arguments.

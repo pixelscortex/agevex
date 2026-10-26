@@ -16,16 +16,20 @@ a native `createTool` also gets the facts on its injected context and
 128 UTF-8 bytes; `nativeToolCallId` preserves the provider id, while `signal`
 and `meter` are objects.
 
-```ts title="Optional slots"
-const runtime = registerAgent(components.agevex, {
-  agents: [main],
-  refs: { runTurn: () => internal.agents.runTurn },
-  authorize: hostPolicy,
-  authorizeExecution: hostExecutionPolicy,
-  usage: { scope: (ctx, facts) => usageMeter.scope(ctx, facts) },
-  budget: { check: (ctx, args) => hostBudget.check(ctx, args) },
-});
+```ts title="convex/budget.ts"
+import type { BudgetSlot } from "agevex";
+
+const allowedSubjects = new Set(["replace-with-your-auth-subject"]);
+export const budget: BudgetSlot = {
+  async check(_ctx, { subject }) {
+    return { allowed: allowedSubjects.has(subject) };
+  },
+};
 ```
+
+This fixed allowlist is a minimal policy. For a spending cap, use the
+[meter budget slot](/docs/modules/meter), which checks host-owned totals.
+Pass the adapter as `budget` in the [registration](/docs/getting-started).
 
 ## Meter
 
