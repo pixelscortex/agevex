@@ -39,6 +39,21 @@ agent index, and `open` looks roots up in `config.agents`.
 Collaboration tools and side reviews call the `coordinate` mutation
 (`coordinate/coordinator.ts`), which runs each op in one transaction.
 
+## Reactive run tree
+
+`runTree({ threadId, rootRunId? })` authorizes the owned root thread and returns
+`{ rootRunId, usage, nodes } | null`. This breaks the previous descendant-array
+contract: consume `.nodes`, including the root. Explicit ids select history
+only within that thread. One query tracks projected queued/running/asleep/done/
+failed statuses, bounded task previews, timestamps, current local tool and exact
+message links. Finished nodes never show tools. Transcript bodies stay native.
+
+`usage.view` runs in the host query, after authorization; without it all usage
+is null. Meter supplies exclusive per-node totals and the request total, keeping
+estimates and settled cost distinct. `delegations` retains paginated stored-state
+history. `turn/tools.ts` records bounded progress around local tools and streams;
+slice/turn/cancellation fences clear it even if the action does not return.
+
 ## Background text
 
 `text/options.ts` validates default-on title policy and opt-in summary/cadence

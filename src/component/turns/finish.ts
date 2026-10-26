@@ -20,6 +20,7 @@ import { disarmRecovery } from "./recovery.js";
 import { disarmSlice } from "./boundaries.js";
 import { completeTextTurn } from "../text/jobs.js";
 import { wake } from "./wake.js";
+import { endRootTurn } from "./run-lifecycle.js";
 
 type ErrorCode = Doc<"assignments">["errorCode"];
 
@@ -45,6 +46,8 @@ export async function finishTurn(
     await failChild(ctx, row, args.errorCode);
     await markRecoveryRequired(ctx, row, args.errorCode);
   } else {
+    await endRootTurn(ctx, row, null);
+
     await ctx.db.patch("assignments", row._id, {
       turnStatus: "idle",
       turnToken: undefined,
@@ -96,7 +99,10 @@ export async function markRecoveryRequired(
   row: Doc<"assignments">,
   code: ErrorCode,
 ) {
+  await endRootTurn(ctx, row, code);
+
   await ctx.db.patch("assignments", row._id, {
+    activeTools: undefined,
     turnStatus: "recovery_required",
     errorCode: code,
   });

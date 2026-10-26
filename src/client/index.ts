@@ -5,6 +5,7 @@
 // implementation is organised by concept; see `client/README.md` for the map.
 
 export type { RunSettings, ResolvedRunSettings } from "../component/run-settings.js";
+export type { RunNode, RunTree } from "../component/run-tree-values.js";
 export { Agent } from "./agent.js";
 export {
   DELEGATE_TOOL_NAME,

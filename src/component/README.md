@@ -135,7 +135,11 @@ the definition, the schema and helpers used across folders and by the client.
 | `subagents/history.ts`    | Registered: `delegations`, `runTree`.                                                               |
 | `subagents/runs.ts`       | `subagentRuns` lookups, event ring, cohort read, row builder.                                       |
 | `subagents/groups.ts`     | Wait-"all" cohorts: seal, ready, release.                                                           |
-| `subagents/views.ts`      | Trusted contexts, delegation history page, request tree.                                            |
+| `subagents/views.ts`      | Trusted contexts and delegation history page.                                                       |
+| `subagents/tree.ts`       | Root-inclusive reactive tree, projected status and message links.                                   |
+| `run-tree-values.ts`      | Tree/usage validators and hard byte/count ceilings.                                                 |
+| `turns/run-lifecycle.ts`  | Request-scoped ready/delivery/group fences and root closure snapshots.                              |
+| `turns/tools.ts`          | Fenced start/end markers for bounded concurrent local tools.                                        |
 | `hooks/notes.ts`          | Registered: `addNote`, `beforeTurnNote`, `cancelNotes`; claim-time note saving.                     |
 | `hooks/state.ts`          | Registered: `hookState`, `continueAdmission`.                                                       |
 | `hooks/routing.ts`        | Registered: `routing`, `completeRouting`; beforeTurn model-routing ownership.                       |
@@ -153,6 +157,27 @@ the definition, the schema and helpers used across folders and by the client.
 live-fenced progress admission and atomic native note/receipt publication.
 
 ## Tables
+
+`runTree` now returns `{ rootRunId, usage, nodes } | null`, a breaking change
+from its descendant array. It includes the root and derives asleep/done status
+without changing stored turn/delegation enums. Explicit history ids must belong
+to the authorized root. The host composes the optional query-safe usage slot;
+core imports no meter module. `delegations` keeps its existing history contract.
+
+Root task references/previews and lifecycle times live on `runs`; exact child
+task links/previews live on `subagentRuns`, captured with native saves. The
+`by_root` index includes implicit creation ordering; `by_run_ready` and the
+request suffix on `by_parent_delivery` prevent later sends from fencing old
+requests. Only ordinary descendants/deliveries/groups fence successful closure.
+Assignments carry at most 16 active tool markers, checked against the complete
+32 KiB row envelope; every slice disarm and cancellation clears them. Query
+projection also suppresses tools on terminal nodes. No new tables are added.
+
+At hard maxima the core tree reads at most 2249 KiB: 59 assignment rows ×32 KiB,
+58 child rows ×4 KiB, three ownership reads ×32 KiB, two root metadata reads
+×16 KiB and one 1 KiB ready probe. Meter adds at most 5160 KiB through batched
+full-namespace aggregates: combined 7409 KiB <8 MiB. The host enforces the
+128 KiB output cap. Maximum-envelope fixtures enforce transaction limits.
 
 | Table          | Written by                                                                                                                                                                                                                                                                                              | Notes                                           |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |

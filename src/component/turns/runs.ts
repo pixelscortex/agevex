@@ -17,10 +17,15 @@ import type { Doc } from "../_generated/dataModel.js";
 export function newRun(
   models: Doc<"runs">["models"],
   settings: Doc<"runs">["settings"] = [],
+  metadata: Pick<
+    Doc<"runs">,
+    "rootAssignmentId" | "rootCancellationEpoch" | "taskMessageId" | "taskPreview"
+  > = {},
 ): WithoutSystemFields<Doc<"runs">> {
   assertSettingsSnapshot(settings);
 
   const row = {
+    ...metadata,
     settings,
     models,
     // 64-bit agent-index masks: who started in this run / who owns routing.

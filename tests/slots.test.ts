@@ -1,3 +1,4 @@
+import { delegationState } from "./delegation-state.js";
 // @vitest-environment edge-runtime
 import { beforeEach, afterEach, it, expect, vi } from "vite-plus/test";
 import { convexTest } from "convex-test";
@@ -895,9 +896,9 @@ it.each(["admitted", "full before claim", "full during denial"])(
 
     await waitFor(t, () => continuing && fixture.calls.some((call) => call.agent === "Critic"));
 
-    const builderRun = (
-      await owner(t).query(api.agents.runTree, { threadId: receipt.threadId })
-    ).find((run) => run.agent === "Builder")!;
+    const builderRun = (await delegationState(t, receipt.threadId)).find(
+      (run) => run.agent === "Builder",
+    )!;
 
     const threadId = builderRun.childThreadId!;
 

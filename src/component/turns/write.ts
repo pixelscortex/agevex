@@ -24,7 +24,7 @@ import { recordMessages } from "../hooks/refs.js";
 import { runById } from "../subagents/runs.js";
 import { disarmRecovery } from "./recovery.js";
 import { disarmSlice } from "./boundaries.js";
-import { deferChildFailure, failChild } from "./finish.js";
+import { deferChildFailure, failChild, markRecoveryRequired } from "./finish.js";
 import {
   collectPause,
   countPauseRequests,
@@ -175,10 +175,9 @@ async function rejectApprovalOverflow(ctx: MutationCtx, row: Doc<"assignments">)
   if (await deferChildFailure(ctx, row, "APPROVAL_LIMIT")) return null;
 
   await failChild(ctx, row, "APPROVAL_LIMIT");
+  await markRecoveryRequired(ctx, row, "APPROVAL_LIMIT");
 
   await ctx.db.patch("assignments", row._id, {
-    turnStatus: "recovery_required",
-    errorCode: "APPROVAL_LIMIT",
     turnToken: undefined,
   });
 
@@ -217,7 +216,7 @@ async function recordNativeSave(
   // even without a tool-result. Pending placeholders are not responses.
   if (row.approvals) await retireConsumedApprovals(ctx, row, messages);
 
-  if (row.childRunId) await recordChildResult(ctx, row, messages);
+  await recordResult(ctx, row, messages);
 
   await trackPendingGeneration(ctx, row, args, messages);
 
@@ -230,15 +229,10 @@ async function recordNativeSave(
     });
 }
 
-/** Point the child's run at the last successful, non-empty assistant message
- * of this save: the candidate result that settle later verifies. */
-async function recordChildResult(
-  ctx: MutationCtx,
-  row: Doc<"assignments">,
-  messages: MessageDoc[],
-) {
-  const run = await runById(ctx, row.childRunId!);
-
+/** Capture the exact last successful non-empty assistant message with its native
+ * save. Root history must never reuse a modelStep from a previous user request;
+ * the child's candidate is still verified by settlement before delivery. */
+async function recordResult(ctx: MutationCtx, row: Doc<"assignments">, messages: MessageDoc[]) {
   const finals = messages.filter(
     (message) =>
       message.message?.role === "assistant" && message.status === "success" && message.text?.trim(),
@@ -246,8 +240,17 @@ async function recordChildResult(
 
   const final = finals[finals.length - 1];
 
-  if (run && final)
-    await ctx.db.patch("subagentRuns", run._id, { childResultMessageId: final._id });
+  if (!final) return;
+
+  if (!row.childRunId) {
+    if (row.runId) await ctx.db.patch("runs", row.runId, { resultMessageId: final._id });
+
+    return;
+  }
+
+  const run = await runById(ctx, row.childRunId);
+
+  if (run) await ctx.db.patch("subagentRuns", run._id, { childResultMessageId: final._id });
 }
 
 /** Track the one pending (streaming) placeholder this save created, so cancel

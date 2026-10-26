@@ -19,6 +19,7 @@ import { laneManager, startLoop } from "../workflows/lanes.js";
 import { firstReady } from "./inbox.js";
 import { runById } from "../subagents/runs.js";
 import { settleIdleParent } from "../subagents/settle.js";
+import { closeRootRun } from "./run-lifecycle.js";
 import {
   armRecovery,
   cancelIfPending,
@@ -58,6 +59,8 @@ export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = tru
   }
 
   row = await drainEmptyCohorts(ctx, row);
+
+  await closeRootRun(ctx, row);
 
   // Re-evaluate R3 after every blocker-clearing wake, including failed delivery
   // and empty group release. Idle children cannot wait for nonexistent work.

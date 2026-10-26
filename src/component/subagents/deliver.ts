@@ -21,6 +21,7 @@ import {
 import type { Doc } from "../_generated/dataModel.js";
 import { groupMembers, isSettled, runById, appendEvent } from "./runs.js";
 import { wake } from "../turns/wake.js";
+import { closeRootRun } from "../turns/run-lifecycle.js";
 import { markGroupReady, releaseReadyCohort } from "./groups.js";
 import type { FunctionReference } from "convex/server";
 import { v } from "convex/values";
@@ -93,6 +94,8 @@ export async function applyDelivery(ctx: MutationCtx, args: Delivery) {
   else if (args.deliveryStatus === "accepted" && args.parentMessageId)
     await enqueueResult(ctx, run, parent, args.parentMessageId);
   else await wake(ctx, parent);
+
+  await closeRootRun(ctx, root, run.parentRunId);
 
   return null;
 }

@@ -41,7 +41,13 @@ export async function recordHookState(
 
     // A routing choice can enlarge the model map after acceptance. Reuse the
     // row builder's envelope check before changing this run's bounded metadata.
-    newRun(models, run.settings);
+    newRun(models, run.settings, {
+      rootAssignmentId: run.rootAssignmentId,
+      rootCancellationEpoch: run.rootCancellationEpoch,
+      taskMessageId: run.taskMessageId,
+      taskPreview: run.taskPreview,
+    });
+
     await ctx.db.patch("runs", run._id, { models });
   }
 

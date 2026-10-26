@@ -57,7 +57,8 @@ export async function cancelRoot(
 
   // <=168 distinct runs *16 KiB <2.63 MiB, even with full settings maps.
   // Deduplicate across assignments: every child belongs to one root budget.
-  for (const runId of runIds) await ctx.db.patch("runs", runId, { cancelled: true });
+  for (const runId of runIds)
+    await ctx.db.patch("runs", runId, { cancelled: true, finishedAt: Date.now() });
 
   for (const run of children) {
     await ctx.db.patch("subagentRuns", run._id, {
@@ -146,6 +147,7 @@ async function cancelAssignment(
 function cancelledState(row: Doc<"assignments">, approvalCleanup: boolean) {
   return {
     cancelled: true,
+    activeTools: undefined,
     cancellationEpoch: row.cancellationEpoch + 1,
     turnStatus: "idle" as const,
     errorCode: null,

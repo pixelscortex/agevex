@@ -1,3 +1,4 @@
+import { delegationState } from "./delegation-state.js";
 // @vitest-environment edge-runtime
 import { beforeEach, afterEach, it, expect, vi } from "vite-plus/test";
 import { convexTest } from "convex-test";
@@ -838,7 +839,7 @@ it("delegations and runTree distinguish side runs from ordinary children", async
   const receipt = await open(t);
 
   await drain(t);
-  const tree = await owner(t).query(api.agents.runTree, { threadId: receipt.threadId });
+  const tree = await delegationState(t, receipt.threadId);
 
   const runs = (
     await owner(t).query(api.agents.delegations, {
@@ -950,7 +951,7 @@ it("side reviews follow turn cadence, preserve skipped deltas and deliver passiv
   expect(second).toContain("third boundary");
   expect(second).not.toContain("first request");
   expect(calls()).toHaveLength(4);
-  const tree = await owner(t).query(api.agents.runTree, { threadId: receipt.threadId });
+  const tree = await delegationState(t, receipt.threadId);
   const child = tree.find((run) => run.agent === "Critic")!;
 
   expect(
@@ -1060,7 +1061,7 @@ it.each(
 
       if (response?.status !== "queued") throw new Error(JSON.stringify(response));
 
-      const tree = await owner(t).query(api.agents.runTree, { threadId: receipt.threadId });
+      const tree = await delegationState(t, receipt.threadId);
       const child = tree.find((run) => run.runId === response.runId)!;
 
       const turn = {
@@ -1123,9 +1124,8 @@ it.each(
       ).toBe(true);
 
     const builderStatus = async () =>
-      (await owner(t).query(api.agents.runTree, { threadId: receipt.threadId })).find(
-        (run) => run.runId === builder.runId,
-      )!.status;
+      (await delegationState(t, receipt.threadId)).find((run) => run.runId === builder.runId)!
+        .status;
 
     const fail = async (child: typeof side) => {
       await t.mutation(components.agevex.subagents.settle.settle, {
@@ -1487,7 +1487,7 @@ it("a denied first Builder releases waiting siblings to the default model withou
   expect(calls("Builder")).toHaveLength(1);
   expect(JSON.stringify(calls("Builder")[0].args.prompt)).toContain("waiting sibling Builder");
   expect(starts).toEqual([false]);
-  const tree = await owner(t).query(api.agents.runTree, { threadId: receipt.threadId });
+  const tree = await delegationState(t, receipt.threadId);
 
   expect(tree.filter((run) => run.agent === "Builder").map((run) => run.status)).toEqual(
     expect.arrayContaining(["failed", "completed"]),
@@ -1532,7 +1532,7 @@ it.each(["hook failure", "abandoned action"])(
     await waitFor(t, () => starts.length === 2);
 
     if (path === "abandoned action") {
-      const tree = await owner(t).query(api.agents.runTree, { threadId: receipt.threadId });
+      const tree = await delegationState(t, receipt.threadId);
       const first = tree.find((run) => run.childThreadId === ownerThreadId)!;
 
       await t.mutation(components.agevex.turns.failures.ambiguous, {
@@ -1684,9 +1684,9 @@ it("an in-flight note survives a failed child turn and is delivered once at the 
 
   await waitFor(t, () => calls("Builder").length === 2 && calls("Critic").length >= 1);
 
-  const builderRun = (
-    await owner(t).query(api.agents.runTree, { threadId: receipt.threadId })
-  ).find((run) => run.agent === "Builder")!;
+  const builderRun = (await delegationState(t, receipt.threadId)).find(
+    (run) => run.agent === "Builder",
+  )!;
 
   await owner(t).mutation(api.agents.note, {
     threadId: builderRun.childThreadId!,

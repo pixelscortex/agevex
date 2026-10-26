@@ -69,6 +69,9 @@ export async function buildTurnTools(rt: RuntimeContext, gen: Generation): Promi
 
   installCollaborationTools(rt, gen, tools, eligible);
 
+  for (const [name, tool] of Object.entries(tools))
+    if (tool.execute) tools[name] = withToolProgress(rt, gen, name, tool);
+
   return boundToolDeadlines(gen, tools, () => assertBudget(rt, gen));
 }
 
@@ -188,3 +191,47 @@ type ApprovedInput = {
   effectiveHash: string;
   edited: boolean;
 };
+
+/** Native Agent preserves our execute receiver (vercel/client/createTool.ts:378).
+ * Mark all local calls, including collaboration, without exposing their inputs.
+ * A stream stays active through consumption, cancellation or its final yield.
+ */
+function withToolProgress(rt: RuntimeContext, gen: Generation, name: string, tool: Tool): Tool {
+  return {
+    ...tool,
+    execute: async function (input, options) {
+      const { rawCtx, args, turnKey } = gen.turn;
+      const key = await opaqueKey("tool-progress", turnKey, options.toolCallId);
+      const marker = { ...args, key };
+      const mark = rt.component.turns.tools.mark;
+      const clear = () => rawCtx.runMutation(mark, marker);
+
+      await rawCtx.runMutation(mark, { ...marker, name });
+
+      let streaming = false;
+
+      try {
+        const output = await tool.execute!.call(this, input, options);
+
+        if (output && typeof output === "object" && Symbol.asyncIterator in output) {
+          streaming = true;
+
+          return progressStream(output as AsyncIterable<unknown>, clear);
+        }
+
+        return output;
+      } finally {
+        if (!streaming) await clear();
+      }
+    },
+  } as Tool;
+}
+
+/** Async-generator finally handles both normal exhaustion and consumer return. */
+async function* progressStream(output: AsyncIterable<unknown>, clear: () => Promise<null>) {
+  try {
+    yield* output;
+  } finally {
+    await clear();
+  }
+}
