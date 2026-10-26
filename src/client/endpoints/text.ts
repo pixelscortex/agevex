@@ -25,7 +25,11 @@ export function titleEndpoint(ep: EndpointContext) {
 
       const native = await getThreadMetadata(ctx, row.native.component, args);
 
-      return { text: native.title ?? null, source: state.source, version: state.version };
+      return {
+        text: native.title ?? null,
+        source: state.source ?? (native.title !== undefined ? "user" : null),
+        version: state.version,
+      };
     },
   });
 }
@@ -76,7 +80,7 @@ export function renameEndpoint(ep: EndpointContext) {
   });
 }
 
-/** Summary text is displayable whether or not compaction is enabled. */
+/** Summary text is display-only; native context remains unchanged. */
 export function summaryEndpoint(ep: EndpointContext) {
   return queryGeneric({
     args: { threadId: v.string() },

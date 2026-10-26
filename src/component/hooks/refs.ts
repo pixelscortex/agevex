@@ -78,7 +78,7 @@ export async function recordMessages(
       .filter(
         (message) =>
           message.status === "success" &&
-          (row.textConfig?.summary || ["user", "assistant"].includes(message.message?.role ?? "")),
+          ["user", "assistant"].includes(message.message?.role ?? ""),
       )
       .map((message) => ({
         id: message._id,

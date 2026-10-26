@@ -1,5 +1,5 @@
 /** Select exact native identities, accounting for full document read sizes.
- * Gaps remain display-only; only a contiguous complete prefix may compact. */
+ * Summaries are display-only; native model context always owns its history. */
 import type { Doc } from "../_generated/dataModel.js";
 import { TEXT_LIMITS } from "./values.js";
 
@@ -46,18 +46,11 @@ export function summaryWindow(row: Doc<"assignments">) {
 
   const sequences = refs.map((ref) => ref.sequence).sort((a, b) => a - b);
 
-  const complete =
-    (previous?.complete ?? true) &&
-    (!previous || previous.epoch === row.cancellationEpoch) &&
-    sequences[0] === (previous?.through.sequence ?? 0) + 1 &&
-    sequences.every((sequence, i) => sequence === sequences[0] + i);
-
   const last = refs[refs.length - 1];
 
   return {
     refs,
     previous: previous?.text ?? "",
-    complete,
     through: {
       id: last.id,
       order: last.order,

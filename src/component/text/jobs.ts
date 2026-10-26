@@ -23,9 +23,8 @@ export function newTextJob(row: Doc<"assignments">, runId: Id<"runs">, kind: "ti
   };
 }
 
-/** Coalesce running summary requests. Unknown outcomes are sticky: neither a
- * later send nor cadence can silently purchase a retry. A known failure can be
- * retried by a fresh explicit request, never by completion/cadence alone. */
+/** Coalesce only live work. Unknown paid outcomes need a fresh explicit key;
+ * a known failure permits the next cadence point to schedule new work. */
 export async function queueText(
   ctx: MutationCtx,
   row: Doc<"assignments">,
@@ -42,13 +41,11 @@ export async function queueText(
 
   if (kind === "title" && (previous || row.titleSource === "user")) return;
 
-  if (previous?.status === "unknown") return;
-
-  if (previous?.status === "failed" && !explicit) return;
+  if (previous?.status === "unknown" && !explicit) return;
 
   if (previous?.status === "queued" && previous.epoch === row.cancellationEpoch) return;
 
-  if (previous?.status === "running") {
+  if (previous?.status === "running" && previous.epoch === row.cancellationEpoch) {
     await ctx.db.patch("assignments", row._id, { [field]: { ...previous, again: runId } });
 
     return;

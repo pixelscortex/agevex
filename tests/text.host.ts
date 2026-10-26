@@ -1,6 +1,4 @@
 /** Deterministic host for background-text guarantees; no provider or network. */
-import { tool } from "ai";
-import { z } from "zod";
 import { mockModel } from "@convex-dev/agent";
 import {
   anyApi,
@@ -29,8 +27,8 @@ export const state = {
   titleGate: undefined as Promise<void> | undefined,
   mainGate: undefined as Promise<void> | undefined,
   summaryGate: undefined as Promise<void> | undefined,
-  toolAt: undefined as number | undefined,
-  approval: false,
+  authorizeGate: undefined as Promise<void> | undefined,
+  authorizing: 0,
   summaryText: "Summary of earlier turns",
   padding: "",
   answer: "assistant answer",
@@ -63,17 +61,7 @@ function model(kind: "main" | "title" | "summary") {
           });
 
     const source = mockModel({
-      content:
-        actual === "main" && state.mainCalls.length === state.toolAt
-          ? [
-              {
-                type: "tool-call",
-                toolCallId: "fixed-tool-id",
-                toolName: "echo",
-                input: JSON.stringify({ text: "retained reference" }),
-              },
-            ]
-          : [{ type: "text", text }],
+      content: [{ type: "text", text }],
     });
 
     return {
@@ -94,14 +82,6 @@ const main = new Agent(components.agent, {
   name: "Main",
   languageModel: model("main"),
   run: { mode: "generate" },
-  tools: {
-    echo: tool({
-      description: "Return a reference",
-      inputSchema: z.object({ text: z.string() }),
-      needsApproval: () => state.approval,
-      execute: async ({ text }) => text,
-    }),
-  },
 });
 
 /** Resolve references exactly as a host exporting runtime.internalFunctions. */
@@ -128,6 +108,11 @@ export function registration() {
       return { subject: identity.subject };
     },
     authorizeExecution: async (_ctx, scope) => {
+      if (scope.purpose) {
+        state.authorizing++;
+        await state.authorizeGate;
+      }
+
       if (scope.subject !== "alice" || (state.revoke && scope.purpose))
         throw new Error("FORBIDDEN");
     },
@@ -163,8 +148,8 @@ export const api = anyApi as unknown as ApiFromModules<{ agents: ReturnType<type
 
 /** Each test starts with title on and summary absent, matching public defaults. */
 export function reset() {
-  state.toolAt = undefined;
-  state.approval = false;
+  state.authorizeGate = undefined;
+  state.authorizing = 0;
   state.summaryText = "Summary of earlier turns";
   state.padding = "";
   state.answer = "assistant answer";

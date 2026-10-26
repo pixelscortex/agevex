@@ -22,6 +22,7 @@ export const textArgs = { assignmentId: v.string(), kind: textKind, key: v.strin
 export const textConfig = v.object({
   worker: v.string(),
   updateThread: v.string(),
+  getThread: v.string(),
   title: v.boolean(),
   summary: v.boolean(),
   everyTurns: v.optional(v.number()),
@@ -44,6 +45,7 @@ export const textJob = v.object({
     v.literal("failed"),
     v.literal("unknown"),
   ),
+  dispatched: v.optional(v.boolean()),
   again: v.optional(v.id("runs")),
   deferred: v.optional(v.boolean()),
   titleRef: v.optional(
@@ -53,8 +55,6 @@ export const textJob = v.object({
 export const storedSummary = v.object({
   text: v.string(),
   through: textBoundary,
-  complete: v.boolean(),
-  epoch: v.number(),
 });
 
 /** Count encoded output as well as characters before either metadata store. */

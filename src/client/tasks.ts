@@ -8,7 +8,13 @@
 // lets hooks call `runTask` with the turn's attribution, key and cancellation
 // fence; outside a turn `registerAgent(...).runTask` supplies the component.
 
-import { generateText, Output, NoObjectGeneratedError, type LanguageModel } from "ai";
+import {
+  wrapLanguageModel,
+  generateText,
+  Output,
+  NoObjectGeneratedError,
+  type LanguageModel,
+} from "ai";
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import { convexToJson, getConvexSize, type Value } from "convex/values";
 import type { FunctionReturnType, GenericActionCtx, GenericDataModel } from "convex/server";
@@ -40,6 +46,8 @@ export type TaskOptions = {
   /** Bounded overrides for small background calls and their exact-message input. */
   maxOutputTokens?: number;
   maxPromptLength?: number;
+  /** Final admission immediately before each provider dispatch, after model resolution. */
+  beforeDispatch?: () => Promise<void>;
 };
 export type TaskOutcome<Output> =
   | { status: "done"; value: Output }
@@ -344,6 +352,22 @@ async function generateOnce<Input, Output>(
         repairText === undefined
           ? call.prompt
           : `${call.prompt}\n\nYour previous response did not match the output schema. Return valid JSON matching the schema.\nPrevious response:\n${repairText}`,
+      prepareStep: call.options.beforeDispatch
+        ? ({ model }) => ({
+            model: wrapLanguageModel({
+              // AI SDK generate-text.ts:590,907 passes the already resolved
+              // model to prepareStep; this preserves the host default provider.
+              model: model as LanguageModelV4,
+              middleware: {
+                wrapGenerate: async ({ doGenerate }) => {
+                  await call.options.beforeDispatch!();
+
+                  return doGenerate();
+                },
+              },
+            }),
+          })
+        : undefined,
       maxRetries: LIMITS.modelRetries,
       maxOutputTokens: call.options.maxOutputTokens ?? LIMITS.outputTokens,
       abortSignal: call.signal,

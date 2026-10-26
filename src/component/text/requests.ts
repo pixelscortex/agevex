@@ -38,7 +38,7 @@ export const rename = mutation({
 });
 
 /** Same key replays scheduling, including after a known failure. A fresh key
- * may request known-failed work, but unknown paid outcomes remain blocked. */
+ * may request new work after failed or unknown outcomes; it never replays them. */
 export const summarize = mutation({
   args: { assignmentId: v.id("assignments"), requestKey: v.string() },
   returns: v.object({ status: v.union(v.literal("queued"), v.literal("replayed")) }),
@@ -62,8 +62,6 @@ export const summarize = mutation({
     const runId = row.runId ?? head?.runId;
 
     if (!runId) throw new Error("NO_RUN");
-
-    if (row.summaryTask?.status === "unknown") throw new Error("TEXT_TASK_UNKNOWN");
 
     await queueText(ctx, row, "summary", runId, true);
     await armPurge(ctx);

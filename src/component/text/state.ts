@@ -1,8 +1,10 @@
-/** Capability/epoch/version fences for background work. Native title writes
- * occur inside the commit mutation, so readers never see split metadata. */
+/** Capability/version fences for background work. A lease starts only at paid
+ * dispatch. Titles belong to the accepted first message; summaries belong to
+ * the current execution epoch. Native title checks and writes share a mutation. */
 import { v } from "convex/values";
 import type { FunctionHandle } from "convex/server";
-import { mutation, query, internalMutation } from "../_generated/server.js";
+import type { Doc } from "../_generated/dataModel.js";
+import { mutation, query, internalMutation, type MutationCtx } from "../_generated/server.js";
 import { internal } from "../_generated/api.js";
 import { messageRef } from "../hooks/refs.js";
 import { TEXT_LIMITS, storedSummary, textBoundary, textKind, validText } from "./values.js";
@@ -11,62 +13,71 @@ import { queueText } from "./jobs.js";
 
 const jobArgs = { assignmentId: v.id("assignments"), kind: textKind, key: v.string() };
 
+type JobArgs = { kind: "title" | "summary"; key: string };
+
+/** Foreground cancellation cannot invalidate the first accepted message's title. */
+function liveJob(row: Doc<"assignments"> | null, args: JobArgs) {
+  const job = row?.[args.kind === "title" ? "titleTask" : "summaryTask"];
+
+  if (!row || job?.key !== args.key) return null;
+
+  if (args.kind === "summary" && (row.cancelled || job.epoch !== row.cancellationEpoch))
+    return null;
+
+  return job;
+}
+
+/** Native Agent threads.ts:35-41 reads one exact thread, at most 1 MiB. This
+ * remains below the 16 MiB transaction budget with the <=32 KiB assignment. */
+async function hasNativeTitle(ctx: Pick<MutationCtx, "runQuery">, row: Doc<"assignments">) {
+  const thread = await ctx.runQuery(
+    row.textConfig!.getThread as FunctionHandle<
+      "query",
+      { threadId: string },
+      { title?: string } | null
+    >,
+    { threadId: row.threadId },
+  );
+
+  return thread?.title !== undefined;
+}
+
 export const snapshot = v.object({
   subject: v.string(),
   agent: v.string(),
   threadId: v.string(),
   runId: v.id("runs"),
-  epoch: v.number(),
   modelId: v.optional(v.string()),
   refs: v.array(messageRef),
   previous: v.string(),
-  complete: v.boolean(),
   through: v.optional(textBoundary),
 });
 
-/** Recheck the job capability immediately before receipt-backed paid admission,
- * after potentially asynchronous host policy and exact native message reads. */
+/** Cheap preflight before task preparation; dispatch repeats it atomically. */
 export const active = query({
   args: jobArgs,
   returns: v.boolean(),
-  handler: async (ctx, args) => {
-    const row = await ctx.db.get("assignments", args.assignmentId);
-    const job = row?.[args.kind === "title" ? "titleTask" : "summaryTask"];
-
-    return (
-      !!row &&
-      !row.cancelled &&
-      job?.key === args.key &&
-      job.status === "running" &&
-      job.epoch === row.cancellationEpoch
-    );
-  },
+  handler: async (ctx, args) =>
+    liveJob(await ctx.db.get("assignments", args.assignmentId), args)?.status === "running",
 });
 
-/** One atomic claim, before auth/budget/model work. A crashed worker becomes
- * unknown after a finite lease; a duplicate cannot buy another generation. */
+/** Claim only preparation. Slow authorization or input reads cannot consume a
+ * paid lease or turn a pre-dispatch cancellation into an unknown outcome. */
 export const claim = mutation({
   args: jobArgs,
   returns: v.union(v.null(), snapshot),
   handler: async (ctx, args) => {
     const row = await ctx.db.get("assignments", args.assignmentId);
-    const field = args.kind === "title" ? "titleTask" : "summaryTask";
-    const job = row?.[field];
+    const job = liveJob(row, args);
 
-    if (
-      !row ||
-      row.cancelled ||
-      !job ||
-      job.key !== args.key ||
-      job.epoch !== row.cancellationEpoch ||
-      job.status !== "queued"
-    )
-      return null;
+    if (!row || job?.status !== "queued") return null;
+
+    if (args.kind === "title" && (await hasNativeTitle(ctx, row))) return null;
 
     const window = args.kind === "summary" ? summaryWindow(row) : null;
+    const field = args.kind === "title" ? "titleTask" : "summaryTask";
 
     await ctx.db.patch("assignments", row._id, { [field]: { ...job, status: "running" } });
-    await ctx.scheduler.runAfter(TEXT_LIMITS.leaseMs, internal.text.state.expire, args);
     const run = await ctx.db.get("runs", job.runId);
 
     return {
@@ -74,20 +85,41 @@ export const claim = mutation({
       agent: row.agent,
       threadId: row.threadId,
       runId: job.runId,
-      epoch: job.epoch,
       modelId: run?.models?.[row.agent],
       refs: (window?.refs ?? (job.titleRef ? [job.titleRef] : [])).map(
         ({ id, order, stepOrder, bytes }) => ({ id, order, stepOrder, bytes }),
       ),
       previous: window?.previous ?? "",
-      complete: window?.complete ?? false,
       through: window?.through,
     };
   },
 });
 
-/** Timeout detection never schedules paid work. Cancellation fences commits
- * even if an uncooperative provider completes after the host stopped waiting. */
+/** Final admission immediately before the provider's doGenerate call. A worker
+ * crash after this transaction is the first point where a paid outcome can be
+ * unknown. Duplicate/stale workers cannot start a second dispatch. */
+export const dispatch = mutation({
+  args: jobArgs,
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get("assignments", args.assignmentId);
+    const job = liveJob(row, args);
+
+    if (!row || job?.status !== "running" || job.dispatched) return false;
+
+    if (args.kind === "title" && (await hasNativeTitle(ctx, row))) return false;
+
+    const field = args.kind === "title" ? "titleTask" : "summaryTask";
+
+    await ctx.db.patch("assignments", row._id, { [field]: { ...job, dispatched: true } });
+    await ctx.scheduler.runAfter(TEXT_LIMITS.leaseMs, internal.text.state.expire, args);
+
+    return true;
+  },
+});
+
+/** Timeout detection never schedules paid work. Only dispatched jobs can have
+ * an unknown paid outcome; preparing/queued jobs remain retryable. */
 export const expire = internalMutation({
   args: jobArgs,
   returns: v.null(),
@@ -96,7 +128,7 @@ export const expire = internalMutation({
     const field = args.kind === "title" ? "titleTask" : "summaryTask";
     const job = row?.[field];
 
-    if (row && job?.key === args.key && job.status === "running")
+    if (row && job?.key === args.key && job.status === "running" && job.dispatched)
       await ctx.db.patch("assignments", row._id, {
         [field]: { ...job, status: "unknown", again: undefined },
       });
@@ -105,67 +137,66 @@ export const expire = internalMutation({
   },
 });
 
-/** Generated text is a suggestion: a user rename or a newer epoch always wins.
- * Title bodies live only on the native thread, not in a duplicate core store. */
+/** A native app rename outside our endpoint also wins, atomically. */
+async function commitTitle(ctx: MutationCtx, row: Doc<"assignments">, text: string) {
+  const job = row.titleTask!;
+
+  if (
+    row.titleSource === "user" ||
+    (row.titleVersion ?? 0) !== job.version ||
+    (await hasNativeTitle(ctx, row))
+  )
+    return;
+
+  await ctx.runMutation(
+    row.textConfig!.updateThread as FunctionHandle<
+      "mutation",
+      { threadId: string; patch: { title: string } },
+      unknown
+    >,
+    { threadId: row.threadId, patch: { title: text } },
+  );
+
+  await ctx.db.patch("assignments", row._id, {
+    titleVersion: job.version + 1,
+    titleSource: "auto",
+  });
+}
+
+/** Known failures can advance at the next cadence; unknown jobs need an
+ * explicit fresh request key. No failed/unknown job itself is ever replayed. */
 export const commit = mutation({
   args: {
     ...jobArgs,
     status: v.union(v.literal("done"), v.literal("failed"), v.literal("unknown")),
     text: v.optional(v.string()),
     through: v.optional(textBoundary),
-    complete: v.optional(v.boolean()),
   },
   returns: v.boolean(),
   handler: async (ctx, args) => {
     const row = await ctx.db.get("assignments", args.assignmentId);
     const field = args.kind === "title" ? "titleTask" : "summaryTask";
-    const job = row?.[field];
+    const job = liveJob(row, args);
 
-    if (
-      !row ||
-      row.cancelled ||
-      job?.key !== args.key ||
-      job.status !== "running" ||
-      job.epoch !== row.cancellationEpoch
-    )
-      return false;
+    if (!row || job?.status !== "running") return false;
 
     const done =
-      args.status === "done" && args.text !== undefined && validText(args.text, args.kind);
+      args.status === "done" &&
+      job.dispatched &&
+      args.text !== undefined &&
+      validText(args.text, args.kind);
 
-    const patch = {
-      [field]: {
-        ...job,
-        status: done
-          ? ("done" as const)
-          : args.status === "unknown"
-            ? ("unknown" as const)
-            : ("failed" as const),
-        again: undefined,
-      },
-    };
+    const status = done
+      ? ("done" as const)
+      : args.status === "unknown" && job.dispatched
+        ? ("unknown" as const)
+        : ("failed" as const);
+
+    const patch = { [field]: { ...job, status, again: undefined } };
 
     await ctx.db.patch("assignments", row._id, patch);
 
-    if (
-      done &&
-      args.kind === "title" &&
-      row.titleSource !== "user" &&
-      (row.titleVersion ?? 0) === job.version
-    ) {
-      const handle = row.textConfig!.updateThread as FunctionHandle<
-        "mutation",
-        { threadId: string; patch: { title: string } },
-        unknown
-      >;
-
-      await ctx.runMutation(handle, { threadId: row.threadId, patch: { title: args.text! } });
-
-      await ctx.db.patch("assignments", row._id, {
-        titleVersion: job.version + 1,
-        titleSource: "auto",
-      });
-    }
+    if (done && args.kind === "title") await commitTitle(ctx, row, args.text!);
 
     if (
       done &&
@@ -174,12 +205,7 @@ export const commit = mutation({
       (!row.textSummary || after(args.through, row.textSummary.through))
     )
       await ctx.db.patch("assignments", row._id, {
-        textSummary: {
-          text: args.text!,
-          through: args.through,
-          complete: args.complete ?? false,
-          epoch: job.epoch,
-        },
+        textSummary: { text: args.text!, through: args.through },
       });
 
     if (
@@ -191,20 +217,17 @@ export const commit = mutation({
     )
       await queueText(ctx, { ...row, ...patch } as typeof row, "summary", job.again);
 
-    return done;
+    return !!done;
   },
 });
 
-/** Bounded metadata projection, shared by host reads and compaction selection. */
+/** Bounded display metadata; summaries never alter native conversation context. */
 export const view = query({
   args: { assignmentId: v.id("assignments") },
   returns: v.object({
     version: v.number(),
     source: v.union(v.null(), v.literal("auto"), v.literal("user")),
     summary: v.union(v.null(), storedSummary),
-    refs: v.array(v.object({ ...messageRef.fields, sequence: v.number() })),
-    epoch: v.number(),
-    cancelled: v.boolean(),
   }),
   handler: async (ctx, args) => {
     const row = await ctx.db.get("assignments", args.assignmentId);
@@ -215,9 +238,6 @@ export const view = query({
       version: row.titleVersion ?? 0,
       source: row.titleSource ?? null,
       summary: row.textSummary ?? null,
-      refs: row.contextMessages ?? [],
-      epoch: row.cancellationEpoch,
-      cancelled: row.cancelled,
     };
   },
 });

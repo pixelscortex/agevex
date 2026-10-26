@@ -12,8 +12,8 @@ export type TextTaskOptions = {
 export type ThreadTextOptions = {
   /** On by default, once after the first user message. User renames always win. */
   title?: false | TextTaskOptions;
-  /** Opt in for on-demand summaries; cadence and context compaction are separate opt-ins. */
-  summary?: false | (TextTaskOptions & { everyTurns?: number; compact?: boolean });
+  /** Opt in for on-demand summaries; cadence is a separate opt-in. */
+  summary?: false | (TextTaskOptions & { everyTurns?: number });
 };
 export type TextTaskArgs = { assignmentId: string; kind: "title" | "summary"; key: string };
 
@@ -40,11 +40,10 @@ export function assertTextOptions(config: Registration) {
 
   if (
     summary &&
-    ((summary.everyTurns !== undefined &&
-      (!Number.isSafeInteger(summary.everyTurns) ||
-        summary.everyTurns < 1 ||
-        summary.everyTurns > TEXT_LIMITS.everyTurns)) ||
-      (summary.compact !== undefined && typeof summary.compact !== "boolean"))
+    summary.everyTurns !== undefined &&
+    (!Number.isSafeInteger(summary.everyTurns) ||
+      summary.everyTurns < 1 ||
+      summary.everyTurns > TEXT_LIMITS.everyTurns)
   )
     throw new Error("INVALID_TEXT_OPTIONS");
 
@@ -64,6 +63,7 @@ export async function persistedTextConfig(config: Registration, native: ManagedA
   return {
     worker: await createFunctionHandle(config.refs.textTask!()),
     updateThread: await createFunctionHandle(native.component.threads.updateThread),
+    getThread: await createFunctionHandle(native.component.threads.getThread),
     title: config.title !== false,
     summary: !!config.summary,
     everyTurns: config.summary ? config.summary.everyTurns : undefined,

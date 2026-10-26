@@ -40,7 +40,7 @@ export const done = internalMutation({
         await ctx.db.patch("assignments", row._id, {
           [field]: {
             ...job,
-            status: job.status === "queued" ? "failed" : "unknown",
+            status: job.dispatched ? "unknown" : "failed",
             again: undefined,
           },
         });

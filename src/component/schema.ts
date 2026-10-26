@@ -190,7 +190,7 @@ export default defineSchema({
     summaryTask: v.optional(textJob),
     // Only a successfully completed root turn advances the safe input boundary.
     textCompleted: v.optional(textBoundary),
-    // Read by summary endpoint and opt-in native context selection.
+    // Read by summary endpoint and the next incremental display summary.
     textSummary: v.optional(storedSummary),
     // Fixed-size references only: the native component continues to own bodies.
     // Exact step identity captured with the native save, consumed by usage

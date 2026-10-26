@@ -216,7 +216,6 @@ export const activity = query({
   },
 });
 
-
 /** Configure the bounded exact-message ring before recording the accepted prompt. */
 async function configureText(
   ctx: MutationCtx,

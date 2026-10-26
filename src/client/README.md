@@ -39,17 +39,16 @@ Collaboration tools and side reviews call the `coordinate` mutation
 
 ## Background text
 
-`text/options.ts` validates default-on title policy and opt-in summary/cadence/
-compaction settings. Hosts export `textTask` and supply `refs.textTask`, or opt
+`text/options.ts` validates default-on title policy and opt-in summary/cadence
+settings. Hosts export `textTask` and supply `refs.textTask`, or opt
 out with `title: false` while leaving summary off. `endpoints/text.ts` authorizes
 root title/rename/summary/summarize operations. `text/task.ts` rechecks execution
 policy (`purpose: title | summary`) and budget, reads exact bounded native ids,
 and invokes a receipt-backed task without tools or repairs. Usage records the
 triggering run, purpose and exact provider response id; evidence failures mark
-reporting partial and cannot retry the model. `text/compact.ts` installs native
-context selection only for a contiguous, plain-text covered prefix, preserving
-the current prompt and a bounded exact suffix. Missing refs and non-text
-exchanges fall back to native selection.
+reporting partial and cannot retry the model. Summaries are display-only and
+never modify native model context. Dispatch starts the paid lease; preparation
+can be cancelled without an unknown outcome. Native app titles always win.
 
 ## File map
 

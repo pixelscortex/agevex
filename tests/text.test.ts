@@ -72,6 +72,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   vi.clearAllTimers();
   vi.useRealTimers();
 });
@@ -249,35 +250,7 @@ it("background usage records title and summary purpose with the triggering root 
   expect(state.summaryCalls[0].maxOutputTokens).toBe(2048);
 });
 
-it("summary compaction keeps bounded context and preserves the current user task and transcript", async () => {
-  state.title = false;
-  state.summary = { model: summaryModel, everyTurns: 2, compact: true };
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-
-  for (let n = 2; n <= 12; n++) {
-    await send(t, receipt.threadId, `task ${n}`);
-    await drain(t);
-  }
-
-  const last = JSON.stringify(state.mainCalls[state.mainCalls.length - 1].prompt);
-
-  expect(last).toContain("Summary of earlier turns");
-  expect(last).toContain("task 12");
-  expect(last).not.toContain("first user message");
-  expect(state.mainCalls[state.mainCalls.length - 1].prompt.length).toBeLessThanOrEqual(5);
-
-  const transcript = await owner(t).query(api.agents.messages, {
-    threadId: receipt.threadId,
-    paginationOpts: { cursor: null, numItems: 100 },
-  });
-
-  expect(transcript.page.some((doc) => doc.text === "first user message")).toBe(true);
-});
-
-it("display summaries leave native context unchanged unless compaction is opted in", async () => {
+it("display summaries always leave native context unchanged", async () => {
   state.summary = { model: summaryModel, everyTurns: 1 };
   const t = setup();
   const receipt = await open(t);
@@ -289,7 +262,7 @@ it("display summaries leave native context unchanged unless compaction is opted 
   expect(JSON.stringify(state.mainCalls[1].prompt)).not.toContain("Conversation summary:");
 });
 
-it("cancel fences late text commits while retaining incurred usage", async () => {
+it("title generation survives cancellation while retaining incurred usage", async () => {
   const held = gate();
 
   state.titleGate = held.promise;
@@ -300,7 +273,7 @@ it("cancel fences late text commits while retaining incurred usage", async () =>
   await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
   held.release();
   await drain(t);
-  expect((await title(t, receipt.threadId)).text).toBeNull();
+  expect((await title(t, receipt.threadId)).text).toBe("Generated title");
   expect(state.usage.some((entry) => entry.facts.purpose === "title")).toBe(true);
 });
 
@@ -410,13 +383,15 @@ it("metadata timeout stops waiting for an uncooperative model and never retries 
   expect(state.usage.filter((entry) => entry.facts.purpose === "title")).toHaveLength(1);
 });
 
-it("cancelled queued metadata never calls the model", async () => {
+it("a cancelled first turn still gets a title from its accepted message", async () => {
   const t = setup();
   const receipt = await open(t);
 
   await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
   await drain(t);
-  expect(state.titleCalls).toHaveLength(0);
+  expect(state.titleCalls).toHaveLength(1);
+  expect((await title(t, receipt.threadId)).text).toBe("Generated title");
+  expect(JSON.stringify(state.titleCalls[0].prompt)).toContain("first user message");
 });
 
 it("background authorization is rechecked before metadata spend", async () => {
@@ -468,9 +443,9 @@ it("title uses the configured prompt and rejects oversized output without a repa
   });
 });
 
-it("summary hard-maximum windows bound full native reads and never compact across a dropped prefix", async () => {
+it("summary hard-maximum windows bound full native reads", async () => {
   state.title = false;
-  state.summary = { model: summaryModel, compact: true };
+  state.summary = { model: summaryModel };
   // Twelve native assistant docs at 210 KiB each overflow the 2 MiB exact-read
   // budget while the 24-ref ring is full. Provider metadata is not model input.
   state.padding = "x".repeat(210 << 10);
@@ -505,7 +480,7 @@ it("summary hard-maximum windows bound full native reads and never compact acros
 
 it("summary input obeys its byte ceiling even when the full ring fits the read budget", async () => {
   state.title = false;
-  state.summary = { model: summaryModel, compact: true };
+  state.summary = { model: summaryModel };
   state.answer = "x".repeat(20 << 10);
   const t = setup();
   const receipt = await open(t);
@@ -533,70 +508,6 @@ it("summary input obeys its byte ceiling even when the full ring fits the read b
   );
 });
 
-it("compaction preserves native tool exchanges instead of dropping a partial covered prefix", async () => {
-  state.title = false;
-  state.summary = { model: summaryModel, everyTurns: 1, compact: true };
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-  state.toolAt = 2;
-  await send(t, receipt.threadId, "call a tool");
-  await drain(t);
-  await send(t, receipt.threadId, "use the reference");
-  await drain(t);
-  const context = JSON.stringify(state.mainCalls[state.mainCalls.length - 1].prompt);
-
-  expect(context).toContain("fixed-tool-id");
-  expect(context).toContain("retained reference");
-  expect(context).not.toContain("Conversation summary:");
-});
-
-it("compaction preserves an unresolved native approval and its later response", async () => {
-  state.title = false;
-  state.summary = { model: summaryModel, compact: true, everyTurns: 1 };
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-  state.toolAt = 2;
-  state.approval = true;
-  await send(t, receipt.threadId, "approval request");
-  await drain(t);
-
-  const row = await t.query(rawAssignment, { assignmentId: receipt.assignmentId });
-
-  const [message] = await t.query(components.agent.messages.getMessagesByIds, {
-    messageIds: [row!.approvals!.requests[0].messageId],
-  });
-
-  const content = message?.message?.content;
-
-  const approval = Array.isArray(content)
-    ? content.find((part) => part.type === "tool-approval-request")
-    : undefined;
-
-  if (!approval || approval.type !== "tool-approval-request") throw new Error("missing approval");
-
-  expect(approval).toBeDefined();
-  await send(t, receipt.threadId, "queued current task");
-  await drain(t);
-  expect(state.mainCalls).toHaveLength(2);
-
-  await owner(t).mutation(api.agents.respond, {
-    threadId: receipt.threadId,
-    approvalId: approval.approvalId,
-    approved: true,
-  });
-
-  await drain(t);
-  const contexts = JSON.stringify(state.mainCalls.slice(2).map((call) => call.prompt));
-
-  expect(contexts).toContain("fixed-tool-id");
-  expect(contexts).toContain("queued current task");
-  expect(contexts).toContain("retained reference");
-});
-
 it("a maximum encoded summary and full reference ring stay within the assignment envelope", async () => {
   state.title = false;
   state.summary = { model: summaryModel, everyTurns: 1 };
@@ -613,12 +524,9 @@ it("a maximum encoded summary and full reference ring stay within the assignment
 
   expect((await summary(t, receipt.threadId))?.text).toBe(state.summaryText);
 
-  const view = await t.query(components.agevex.text.state.view, {
-    assignmentId: receipt.assignmentId,
-  });
-
-  expect(view.refs).toHaveLength(24);
   const row = await t.query(rawAssignment, { assignmentId: receipt.assignmentId });
+
+  expect(row?.contextMessages).toHaveLength(24);
 
   expect(getConvexSize(row)).toBeLessThanOrEqual(32 << 10);
 });
@@ -662,4 +570,163 @@ it("an early on-demand summary waits for a completed boundary without occupying 
   await drain(t);
   expect(state.summaryCalls).toHaveLength(1);
   expect(await summary(t, receipt.threadId)).not.toBeNull();
+});
+
+it("slow authorization does not consume the model dispatch lease", async () => {
+  state.title = false;
+  state.summary = { model: summaryModel, everyTurns: 1 };
+  const held = gate();
+
+  state.authorizeGate = held.promise;
+  const t = setup();
+  const receipt = await open(t);
+
+  await until(t, () => state.authorizing === 1);
+
+  await t.action(async () => {
+    await vi.advanceTimersByTimeAsync(40_000);
+  });
+
+  held.release();
+  await drain(t);
+  expect(state.summaryCalls).toHaveLength(1);
+  expect(await summary(t, receipt.threadId)).not.toBeNull();
+});
+
+it("cancellation during pre-dispatch authorization leaves summaries retryable", async () => {
+  state.title = false;
+  state.summary = { model: summaryModel };
+  const held = gate();
+
+  state.authorizeGate = held.promise;
+  const t = setup();
+  const receipt = await open(t);
+
+  await drain(t);
+
+  await owner(t).mutation(api.agents.summarize, {
+    threadId: receipt.threadId,
+    requestKey: "first-summary",
+  });
+
+  await until(t, () => state.authorizing === 1);
+  await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
+  held.release();
+  await drain(t);
+  expect(state.summaryCalls).toHaveLength(0);
+  state.authorizeGate = undefined;
+  await send(t, receipt.threadId, "new run");
+  await drain(t);
+
+  await owner(t).mutation(api.agents.summarize, {
+    threadId: receipt.threadId,
+    requestKey: "fresh",
+  });
+
+  await drain(t);
+  expect(state.summaryCalls).toHaveLength(1);
+  expect(await summary(t, receipt.threadId)).not.toBeNull();
+});
+
+it("a fresh summary key works after an unknown outcome without replaying paid work", async () => {
+  state.title = false;
+  state.summary = { model: summaryModel, everyTurns: 1 };
+  state.failSummary = true;
+  const t = setup();
+  const receipt = await open(t);
+
+  await drain(t);
+  state.failSummary = false;
+  await send(t, receipt.threadId, "next cadence");
+  await drain(t);
+  expect(state.summaryCalls).toHaveLength(1);
+  const args = { threadId: receipt.threadId, requestKey: "fresh" };
+
+  expect(await owner(t).mutation(api.agents.summarize, args)).toEqual({ status: "queued" });
+  await drain(t);
+  expect(await owner(t).mutation(api.agents.summarize, args)).toEqual({ status: "replayed" });
+  await drain(t);
+  expect(state.summaryCalls).toHaveLength(2);
+  expect(await summary(t, receipt.threadId)).not.toBeNull();
+});
+
+it("cadence summaries resume at the next cadence point after a known failure", async () => {
+  state.title = false;
+  state.summary = { model: summaryModel, everyTurns: 1 };
+  state.invalidSummary = true;
+  const t = setup();
+  const receipt = await open(t);
+
+  await drain(t);
+  expect(await summary(t, receipt.threadId)).toBeNull();
+  state.invalidSummary = false;
+  await send(t, receipt.threadId, "next cadence");
+  await drain(t);
+  expect(state.summaryCalls).toHaveLength(2);
+  expect(await summary(t, receipt.threadId)).not.toBeNull();
+});
+
+it.each(["before dispatch", "during dispatch"])(
+  "native app titles survive automatic generation (%s)",
+  async (when) => {
+    const held = gate();
+
+    state.titleGate = held.promise;
+    const t = setup();
+    const receipt = await open(t);
+
+    if (when === "during dispatch") await until(t, () => state.titleCalls.length === 1);
+
+    await t.mutation(components.agent.threads.updateThread, {
+      threadId: receipt.threadId,
+      patch: { title: "App title" },
+    });
+
+    held.release();
+    await drain(t);
+    expect((await title(t, receipt.threadId)).text).toBe("App title");
+    expect(state.titleCalls).toHaveLength(when === "before dispatch" ? 0 : 1);
+  },
+);
+
+it("background string models use the host default provider", async () => {
+  const resolved: string[] = [];
+
+  vi.stubGlobal("AI_SDK_DEFAULT_PROVIDER", {
+    specificationVersion: "v4",
+    languageModel: (id: string) => {
+      resolved.push(id);
+
+      return id === "host/title" ? titleModel : summaryModel;
+    },
+  });
+
+  state.title = { model: "host/title" };
+  state.summary = { model: "host/summary", everyTurns: 1 };
+  const t = setup();
+  const receipt = await open(t);
+
+  await drain(t);
+  expect(resolved).toEqual(expect.arrayContaining(["host/title", "host/summary"]));
+  expect((await title(t, receipt.threadId)).text).toBe("Generated title");
+  expect(await summary(t, receipt.threadId)).not.toBeNull();
+  expect(state.titleCalls).toHaveLength(1);
+  expect(state.summaryCalls).toHaveLength(1);
+});
+
+it("cancellation fences dispatched summary results while retaining their usage", async () => {
+  state.title = false;
+  state.summary = { model: summaryModel, everyTurns: 1 };
+  const held = gate();
+
+  state.summaryGate = held.promise;
+  const t = setup();
+  const receipt = await open(t);
+
+  await until(t, () => state.summaryCalls.length === 1);
+  await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
+  held.release();
+  await drain(t);
+  expect(await summary(t, receipt.threadId)).toBeNull();
+  expect(state.usage.some((entry) => entry.facts.purpose === "summary")).toBe(true);
 });

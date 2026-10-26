@@ -44,23 +44,24 @@ was lost.
 
 No tables are added. Root `assignments` carry:
 
-- `textConfig`: child-lane worker/native-title-update handles and summary cadence;
+- `textConfig`: child-lane worker/native-title-read/update handles and summary cadence;
   read when accepting or completing a root turn and dispatching jobs.
 - `titleVersion/titleSource`: optimistic rename and generated-commit fences;
   the title body stays on the native thread and commits in the same mutation.
 - `titleTask/summaryTask`: one-shot key, triggering run, epoch, captured title
-  version and status; optional first-message ref, deferred-first-boundary flag or
+  version, dispatch marker and status; optional first-message ref, deferred-first-boundary flag or
   coalesced next-run ref.
-  Claim, completion and timeout read these; unknown outcomes never retry.
+  Claim, dispatch, completion and timeout read these. A fresh summary key may
+  request new work after an unknown outcome; cadence resumes after known failures.
 - `textCompleted`: exact saved boundary of the last successful root turn;
   summary claims exclude active/queued tasks beyond this boundary.
-- `textSummary`: at most 8 KiB text, exact covered boundary/sequence, complete-
-  prefix flag and epoch; read by display and opt-in compaction.
+- `textSummary`: at most 8 KiB text and its exact boundary/sequence; read by
+  display and the next incremental summary.
 - Existing `contextMessages`: at most 24 exact identities, captured with saves.
-  Summary-enabled roots also capture successful native tool messages. Non-text
-  coverage/suffixes conservatively disable compaction.
+  Summaries and side reviews read successful user/assistant message references.
 
-A worker reads one <=32 KiB assignment plus one <=16 KiB run. Exact native
+A worker reads one <=32 KiB assignment plus one <=16 KiB run. Title claim/commit
+also read one exact native thread <=1 MiB to preserve app titles atomically. Exact native
 message reads total <=2 MiB, at most 24 ids; serialized messages total <=48 KiB,
 plus <=8 KiB prior summary. Both full native sizes and encoded input are checked.
 The ring stays <4 KiB, summary <9 KiB, both jobs/config <4 KiB; the existing

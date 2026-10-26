@@ -1,6 +1,6 @@
 ---
 title: Background text
-description: Default titles, optional summaries, rename fences and context compaction.
+description: Default titles, optional summaries, rename fences and dispatch leases.
 status: Available
 ---
 
@@ -20,7 +20,8 @@ cycles can use `RegisteredAction<"internal", TextTaskArgs, null>` from
 
 `title({ threadId })` returns `{ text: string | null, source: "auto" | "user" |
 null, version: number }`. Call `rename({ threadId, text, expectedVersion })` with
-that version. A user rename always wins over a late generated title. An identical
+that version. A user rename or title already set directly on the native thread always wins
+over a late generated title. An identical
 retry replays; competing text at an outdated version throws `VERSION_CONFLICT`.
 The shared `{ messageId, replayed }` response receipt identifies the native thread
 in `messageId`; renaming creates no transcript message. All four metadata
@@ -43,16 +44,7 @@ claimed. One summary runs per thread; later requests coalesce into one follow-up
 for newer completed work. An early on-demand request waits for the first completed
 root boundary without occupying a worker or polling.
 
-## Opt in to context compaction separately
-
-`summary: { everyTurns: 10, compact: true }` uses a summary at a safe subsequent
-root turn. Only a contiguous, completely covered plain-text prefix qualifies.
-The selected context includes the summary, a bounded recent suffix, the current
-user task and existing same-order responses. Original native messages remain
-available for display. File references, tool/approval exchanges, ring gaps,
-byte-truncated windows, changed/deleted documents and cancelled epochs fall back
-to native selection. This conservative implementation keeps such exchanges
-native rather than compacting partial coverage. Display summaries still work.
+Summaries are display-only and never change native model context.
 
 ## Capacity, usage and failure
 
@@ -66,11 +58,15 @@ character configuration bound. Tasks use no tools, no repairs and no paid retrie
 Usage passes through the ordinary usage slot with `title`/`summary` purpose,
 the triggering root run and an exact provider response id when available.
 Reconciliation can settle after that run closes. Recording failures mark usage
-partial without changing metadata or buying another call. Cancellation blocks
-queued work and late metadata commits; incurred usage remains recorded.
+partial without changing metadata or buying another call. Reconciliation scheduling
+failure alone does not mark usage partial. Cancellation blocks queued summaries
+and late summary commits; titles still describe the first accepted message even
+when its turn is cancelled. Incurred usage remains recorded.
 
 Failures preserve previous text and conversation progress. A fresh explicit
-summary request can try again after a known-invalid result. Repeating its old
-request key only replays scheduling. Unknown outcomes block further summary
-work, including fresh keys, so neither cadence nor a later send silently retries
-paid work. Title generation is attempted once per thread.
+summary request can start new work after a failed or unknown result. Repeating
+its old request key only replays scheduling. Unknown outcomes block automatic
+cadence work; known failures permit the next cadence point. A lease starts only
+when provider dispatch starts, after authorization and bounded input reads.
+Preparation cancelled before dispatch never becomes an unknown paid outcome.
+Title generation is attempted once per thread.

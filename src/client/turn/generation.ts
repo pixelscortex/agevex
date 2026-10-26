@@ -33,7 +33,6 @@ import { extractAttachedFiles, meterBackend, telemetryIntegrations } from "./slo
 import { buildTurnTools } from "./tools.js";
 import { markUsagePartial } from "./usage.js";
 import { assertBudget } from "./admission.js";
-import { compactContext } from "../text/compact.js";
 
 /**
  * Run one admitted turn's generation.
@@ -183,13 +182,11 @@ async function nativeGeneration(
 
   const target = { threadId: turn.claimed.threadId };
   const storageOptions = { saveMessages: "promptAndOutput" as const };
-  const contextHandler = await compactContext(rt, turn);
 
   if (turn.claimed.settings.mode === "generate") {
     const result = await fence.wait(
       turn.managed.generateText(fence.ctx, target, args, {
         storageOptions,
-        ...(contextHandler ? { contextHandler } : {}),
       }),
     );
 
@@ -204,7 +201,6 @@ async function nativeGeneration(
     turn.managed.streamText(fence.ctx, target, args, {
       saveStreamDeltas: { chunking: "word", throttleMs: LIMITS.streamThrottleMs },
       storageOptions,
-      ...(contextHandler ? { contextHandler } : {}),
     }),
   );
 

@@ -284,7 +284,8 @@ Titles are on by default: one tool-free background call after the first user
 message, using the root model (including an accepted model override). Configure
 `title: { model, prompt }` or disable with `title: false`. Export the supplied
 `textTask` internal action and provide `refs.textTask` when either feature is on.
-A user `rename({ threadId, text, expectedVersion })` always wins over late work.
+Native app titles and user `rename({ threadId, text, expectedVersion })` always
+win over late work. Titles are generated even if the first turn is cancelled.
 `title` returns `{ text, source, version }`; conflicting renames throw
 `VERSION_CONFLICT`. Rename receipts identify the native thread in `messageId`;
 renaming adds no transcript message.
@@ -292,15 +293,14 @@ renaming adds no transcript message.
 Summaries are off. `summary: {}` enables on-demand
 `summarize({ threadId, requestKey })`; `everyTurns: N` adds completed-root-turn
 cadence. `summary({ threadId })` returns text and an exact `throughMessageId`.
-`compact: true` additionally selects a complete covered prefix as summary context
-on subsequent safe turns. Gaps, non-text exchanges and read limits leave native
-selection in place. Recent messages, the current task and the original transcript
-remain intact. See [background text](docs/site/content/docs/concepts/background-text.mdx).
+Summaries are display-only and never change native model context. See [background text](docs/site/content/docs/concepts/background-text.mdx).
 
 Jobs use child capacity, 30-second model deadlines, no tools, no repairs and no
 paid retries. Their usage carries `title`/`summary` purpose labels on the
 triggering root run. Authorization and budget are rechecked before spend; failures
-leave the conversation and previous metadata unaffected.
+leave the conversation and previous metadata unaffected. A fresh summary key
+can request new work after an unknown/failed result; cadence resumes after known
+failures. A job lease starts at provider dispatch, after authorization and input reads.
 
 ## Durable execution
 
