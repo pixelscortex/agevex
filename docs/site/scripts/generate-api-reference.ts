@@ -93,10 +93,13 @@ function failure(label: string, fallback: string) {
     "extract.purge": "Invalid file id. Caller must enforce admin authorization.",
     "trace.flush": "Export errors/timeouts are swallowed; no retries.",
     "trace.integration": "Invalid facts throw; oversized facts export as digests.",
-    "telemetry.slot": "Invalid options throw; managed flush fails open.",
+    "telemetry.slot":
+      "Invalid options throw; `enabled` resolves once per turn and fails closed; managed flush fails open.",
     telemetry: "Invalid options throw.",
-    langfuse: "Invalid credentials or base URL throw; export fails open.",
-    braintrust: "Invalid credentials/project id throw; export fails open.",
+    langfuse:
+      "Invalid literal credentials or base URL throw; getters resolve at export, which fails open.",
+    braintrust:
+      "Invalid literal credentials or project id throw; getters resolve at export, which fails open.",
     sandboxCompletion: "Callback authorization/failure rolls back settlement.",
     createTodoTools: "Model validation; managed receipt denied/failed/unknown outcomes.",
     createGoalTools: "Model validation; managed receipt denied/failed/unknown outcomes.",
@@ -218,7 +221,7 @@ for (const name of ["meter", "extract", "sandbox", "telemetry", "tools"]) {
           ? "`Meter`, context, provider and charge types are exported from `agevex/meter`. Budget and usage slot types are exported from `agevex`; `UsageHandler` comes from `@convex-dev/agent`."
           : name === "tools"
             ? "AI SDK tool types come from `ai`. Local `Result` is `{ todos: { id: string; text: string; done: boolean }[] }`; `Context` is the AI SDK context type."
-            : "Telemetry contracts are exported from `agevex/telemetry`. `Telemetry` is the AI SDK integration type from `ai`.";
+            : "Telemetry contracts are exported from `agevex/telemetry`. `Telemetry` is the AI SDK integration type from `ai`. `Setting` is `string | (() => string | Promise<string>)`; `TelemetryOptions` also takes `enabled?: boolean | (() => boolean | Promise<boolean>)` (default `true`), `exporters`, `recordInputs`, `recordOutputs` and `sanitize`.";
 
   const table = `{/* GENERATED_API_START */}\n\nGenerated from the current exported TypeScript signatures in [the module entry](https://github.com/pixelscortex/agevex/blob/HEAD/src/modules/${name}/client/index.ts). TypeScript does not encode thrown errors; the error column describes implementation behavior.\n\n${intro}\n\n| Name | Arguments | Returns | Errors / failure behavior |\n| --- | --- | --- | --- |\n${rows.filter(Boolean).join("\n")}\n\n{/* GENERATED_API_END */}`;
   const path = join(repo, `docs/site/content/docs/modules/${name}.mdx`);

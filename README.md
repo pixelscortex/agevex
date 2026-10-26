@@ -860,7 +860,7 @@ const trace = telemetry({
       publicKey: () => process.env.LANGFUSE_PUBLIC_KEY!,
       secretKey: () => process.env.LANGFUSE_SECRET_KEY!,
     }),
-    // braintrust({ apiKey: () => process.env.BRAINTRUST_API_KEY!, projectId }),
+    // braintrust({ apiKey: () => process.env.BRAINTRUST_API_KEY!, projectId: () => process.env.BRAINTRUST_PROJECT_ID! }),
   ],
 });
 try {
@@ -892,6 +892,10 @@ For managed turns, pass `telemetry: telemetry.slot({ exporters: [langfuse({
 baseUrl: "https://cloud.langfuse.com", publicKey, secretKey })] })` to
 `registerAgent`. Core supplies facts and flushes each turn's isolated buffer;
 export failures and cancellation discard it without failing the turn.
+`braintrust({ projectId })` and `langfuse({ baseUrl })` also accept getters
+resolved at export; a missing value sends nothing. `telemetry.slot({ enabled })`
+(boolean or sync/async getter, default `true`) is resolved once per turn: when it
+is not `true` that turn buffers no spans and makes no request.
 Per-call integrations replace AI SDK global integrations. AI SDK 7 has no
 `tracer` option.
 
