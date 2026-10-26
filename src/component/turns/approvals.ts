@@ -25,7 +25,7 @@ import {
   type Decision,
   type JsonSchema,
 } from "../../shared/decisions.js";
-import { readPending } from "./decision-reads.js";
+import { readPending, readProposal } from "./decision-reads.js";
 import { wake } from "./wake.js";
 
 /** `replayed` is true when an identical retry was served from the response
@@ -45,9 +45,10 @@ type ResponseReceipt = { scope: string; key: string; fingerprint: string };
  * total additional I/O, independent of the <=16 calls in a pause. Together with
  * answer's <13 MiB native/readiness budget below, this remains <13.25 MiB.
  * Edited host responses additionally read <=2*32 KiB assignments, <=2*32 KiB
- * exact proposals and <=2*64 KiB receipts; the <=33 KiB effective-input receipt
- * includes one bounded call id, input and hashes. Even overcounting these reads
- * and writes together keeps the response path below 13.8 MiB <16 MiB.
+ * exact proposals and <=2*64 KiB receipts, and rewrite one proposal with its
+ * <=33 KiB approved-input annotation (one bounded call id, input and hashes).
+ * Even overcounting these reads and writes together keeps the response path
+ * below 13.8 MiB <16 MiB.
  */
 async function responseReceipt(
   ctx: MutationCtx,
@@ -210,6 +211,9 @@ export async function answerDeferredCall(
 
   const call = await readPending(ctx, row, request);
 
+  // A truncated proposal lost its form schema; never accept an unvalidated answer.
+  if (call.truncated) throw new ConvexError({ code: "PROPOSAL_TRUNCATED" });
+
   validateAnswer(args.value, call.schema as JsonSchema | undefined);
   const toolName = call.tool;
 
@@ -306,8 +310,11 @@ export const answer = mutation({
   handler: (ctx, args) => answerDeferredCall(ctx, args),
 });
 
-/** Bind immutable input to the exact call before the native decision can wake it.
- * One <=32 KiB proposal plus <=64 KiB receipt. Original proposal is never rewritten.
+/** Bind the approved input to the exact call before the native decision can wake it.
+ * One <=32 KiB proposal read and write; the original proposal fields are kept as is.
+ * The annotation rides on that non-expiring proposal, which is deleted with the
+ * request, so it outlives sibling decisions (an effect receipt would expire).
+ * Truncated proposals have no input to bind: refuse rather than fail at execution.
  */
 async function recordEffectiveInput(
   ctx: MutationCtx,
@@ -323,7 +330,9 @@ async function recordEffectiveInput(
   if (args.effectiveInput === undefined) return;
 
   assertJson(args.effectiveInput);
-  const call = await readPending(ctx, row, request);
+  const { result: call } = await readProposal(ctx, request);
+
+  if (call.truncated) throw new ConvexError({ code: "PROPOSAL_TRUNCATED" });
 
   const annotation = {
     edited: !!args.decision.edit,
@@ -333,17 +342,7 @@ async function recordEffectiveInput(
     effectiveHash: await approvalKey(canonicalJson(args.effectiveInput)),
   };
 
-  await armPurge(ctx);
-
-  await ctx.db.insert(
-    "receipts",
-    newDoneReceipt({
-      scope: "approved-input",
-      key: await approvalKey(JSON.stringify([row.threadId, call.toolCallId])),
-      fingerprint: annotation.effectiveHash,
-      result: annotation,
-    }),
-  );
+  await ctx.db.patch("receipts", request.proposalId, { result: { ...call, approved: annotation } });
 
   return annotation;
 }
