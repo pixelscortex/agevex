@@ -1,0 +1,88 @@
+---
+title: React hooks
+description: Headless subscriptions over your app's authorized functions.
+---
+
+`agevex/react` supplies hooks. Bring your own UI and use your existing
+`ConvexProvider` and authentication. The server entry `agevex` does not load React.
+Install React in your app; it is an optional peer dependency.
+
+Export the endpoints your app needs:
+
+```ts
+// convex/agents.ts — runtime is your registerAgent(...) registration.
+export const {
+  messages,
+  streams,
+  send,
+  cancel,
+  runTree,
+  pendingApprovals,
+  respond,
+  answer,
+  title,
+  rename,
+  summary,
+  summarize,
+} = runtime.authorizedEndpoints();
+```
+
+Pass your generated public refs to the factory:
+
+```ts
+import { createAgevexHooks } from "agevex/react";
+import { api } from "../convex/_generated/api";
+
+export const agents = createAgevexHooks(api.agents);
+
+// Call in your app's component or custom hook, under ConvexProvider.
+const thread = agents.useThread(threadId);
+const tree = agents.useRunTree(threadId, rootRunId);
+const title = agents.useTitle(threadId);
+await thread.send("Review the next card");
+await title.rename("Card review");
+```
+
+All refs are optional when creating the factory. A hook throws a clear error if
+one of the refs it needs was omitted. Hooks only call these app refs; your server
+ownership checks and auth errors remain in force.
+
+Every query state has `status: "skipped" | "loading" | "ready"` and optional
+`data`. A missing thread id skips the subscription and clears its data. An empty
+ready result differs from loading. Changing threads clears the previous data
+immediately. Convex query errors reach your error boundary; mutation promises
+reject with the original server error.
+
+`useThread` returns `messages`, `loadMore()`, `canLoadMore`, `evicted`,
+`loadLatest()`, `send(text)` and `cancel()`, as well as query state. It loads one
+50-message native page and syncs streams. It only fetches older pages when you
+call `loadMore`. At most ten pages and 500 visible messages remain in the window.
+Browsing farther back evicts the newest page and pauses live streams; call
+`loadLatest()` to return to current work. `evicted` also signals a clipped live
+window. Each `send` call creates a fresh request key; Convex transport retries
+reuse that call's arguments. Calling `send` again expresses a new user intent.
+
+Decisions stay pending until the server commits their receipt:
+
+```ts
+const approvals = agents.usePendingApprovals(threadId);
+const asks = agents.useAsk(threadId);
+
+const approval = approvals.data?.[0];
+if (approval) {
+  await approvals.edit(approval, { body: "Revised text" });
+  // Alternatives: approve(approval), reject(approval, "Reason").
+}
+const ask = asks.data?.[0];
+if (ask) await asks.answer(ask, { choice: "short" });
+```
+
+Both hooks share the `pendingApprovals({ threadId })` query and filter its items.
+Pass the pending item to the action so a descendant approval addresses its own
+thread. Read each ask's schema/question to build your form. The server validates
+structured answers and edited inputs. Hooks never imply approval before a receipt.
+
+`useTitle` returns the title metadata in `data` and `rename(text)`, using the
+observed version to prevent overwrites. `useSummary` returns summary data and
+`summarize()`. `useRunTree` preserves the supplied function ref's return type;
+its shape follows your exported endpoint.

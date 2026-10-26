@@ -1,0 +1,95 @@
+---
+title: Main, Builder and Reviewer
+description: Pass work by app-owned id and receive progress before the final result.
+---
+
+Main delegates to Builder. Builder saves work, asks Reviewer to fetch it by id,
+receives a progress note and a final review, saves a fixed version, then returns
+its id. Main reports that id to the user.
+
+The executable example is
+`tests/acceptance/main-builder-reviewer.test.ts`, with its host setup in
+`tests/acceptance/work.fixture.ts`. It uses fake models and real Convex-test
+components with transaction limits enabled. Run it with:
+
+```sh
+bunx vp test --run tests/acceptance
+```
+
+Work storage belongs to the app. Define a small table with `subject` and `body`,
+and internal `store`/`fetch` functions. `store` bounds the body before inserting;
+`fetch` reads one exact id and checks its owner. For large bodies, store a file id.
+Expose them as app tools with trusted owner facts:
+
+```ts
+import { defineOnceTool } from "agevex";
+import { z } from "zod";
+
+const storeWork = defineOnceTool({
+  name: "store_work",
+  input: z.object({ body: z.string().max(2000) }),
+  run: (input, tc) =>
+    tc.ctx.runMutation(internal.work.store, {
+      ...input,
+      subject: tc.subject,
+    }), // returns { id }
+});
+const fetchWork = defineOnceTool({
+  name: "fetch_work",
+  input: z.object({ id: z.string() }),
+  run: (input, tc) =>
+    tc.ctx.runQuery(internal.work.fetch, {
+      ...input,
+      subject: tc.subject,
+    }), // returns { body }
+});
+```
+
+The app supplies these tools and chooses their storage policy. Agevex supplies
+managed tool receipts, delegation, progress delivery and completion fences.
+
+```ts
+const reviewer = new Agent(components.agent, {
+  name: "Reviewer",
+  languageModel: model,
+  askUser: false,
+  tools: { fetch_work: fetchWork },
+  instructions: `Fetch the work id from the task. Send one actionable
+    agevex_message_parent note while working, then finish with feedback.`,
+});
+const builder = new Agent(components.agent, {
+  name: "Builder",
+  languageModel: model,
+  subagents: [reviewer],
+  tools: { store_work: storeWork },
+  instructions: `Store the original work once. Delegate to Reviewer with
+    its id in the task text. Read its note and final result, store a fixed
+    version, and finish with the new id.`,
+});
+const main = new Agent(components.agent, {
+  name: "Main",
+  languageModel: model,
+  subagents: [builder],
+  instructions: `Delegate to Builder. Report its final work id to the user.`,
+});
+```
+
+Register Main with your authorization policies and internal `runTurn` /
+`coordinate` refs. Export `runtime.authorizedEndpoints()` and call
+`open({ agent: "Main", prompt, requestKey })` through your authenticated app.
+Use [React hooks](/docs/concepts/react-hooks) to subscribe to the conversation.
+
+Builder delegates with
+`agevex_delegate({ agent: "Reviewer", task: "Review work id ..." })`.
+Reviewer calls `fetch_work({ id })`, then
+`agevex_message_parent({ text: "Fix the wording" })`. The note wakes Builder
+without pausing Reviewer. Reviewer can address only its immediate persisted
+parent. Builder may consume the note, but cannot finish its delegated run while
+Reviewer remains live. The final review arrives after the note, and Builder
+stores the corrected body under a new app id.
+
+The acceptance test checks the exact note/result order, two app records, Main's
+final id and exclusive usage attribution for all three nodes. It also forces a
+child `ask_user` call and checks that it cannot create a human pause. Cancelling
+mid-review fences all three agents and discards late output. Run-tree envelope
+assertions are marked TODO until Step G lands.
