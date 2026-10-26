@@ -8,72 +8,72 @@ status: Available
 `LIMITS` is the single source of runtime bounds. The policy rows come first;
 only they can be raised, through `registerAgent({ limits })`.
 
-| Limit | Default | Hard max |
-| --- | --- | --- |
-| `attachmentBytes` | 8 MiB | 16 MiB |
-| `continuesPerRun` | 3 | 8 |
-| `sideRunsPerRun` | 2 | 8 |
-| `notesPending` | 8 | 24 |
-| `maxDepth` | 2 | 2 |
-| `messagesPerChild` | 4 | 8 |
-| `rootLane` | 2 | 4 |
-| `childLane` | 4 | 4 |
-| `runLaunches` | 12 | 50 |
-| `runHops` | 24 | 100 |
-| `activeChildrenPerRoot` | 5 | 15 |
-| `taskLength` | 4,000 | 16,000 |
-| `queueLength` | 20 | 100 |
-| `slicesPerTurn` | 16 | 64 |
-| `leaseMs` | 10 minutes | 24 hours |
-| `noteLength` | 4,000 | 4,000 |
-| `firstPromptOrder` | 1 | 1 |
-| `telemetryFlushMs` | 3 seconds | 3 seconds |
-| `filesPerMessage` | 8 | 8 |
-| `factBytes` | 128 | 128 |
-| `fileIdLength` | 200 | 200 |
-| `functionHandleLength` | 1,024 | 1,024 |
-| `sandboxExitCode` | 2,147,483,647 | 2,147,483,647 |
-| `fileMetadataBytes` | 4 KiB | 4 KiB |
-| `taskRepairs` | 1 | 1 |
-| `taskPromptLength` | 16,000 | 16,000 |
-| `agents` | 64 | 64 |
-| `sideAgents` | 8 | 8 |
-| `cadence` | 1,000,000 | 1,000,000 |
-| `minuteMs` | 60,000 | 60,000 |
-| `contextMessages` | 24 | 24 |
-| `assignmentBytes` | 32 KiB | 32 KiB |
-| `contextBytes` | 48 KiB | 48 KiB |
-| `contextReadBytes` | 2 MiB | 2 MiB |
-| `groupLength` | 200 | 200 |
-| `turnsPerLoop` | 50 | 50 |
-| `workflowVersion` | 1 | 1 |
-| `generationAbortMs` | 90 seconds | 90 seconds |
-| `executionWatchdogMs` | 2 minutes | 2 minutes |
-| `cancelPollMs` | 1 second | 1 second |
-| `outputTokens` | 4,096 | 4,096 |
-| `messageLength` | 16,000 | 16,000 |
-| `requestKeyLength` | 200 | 200 |
-| `runEvents` | 4 | 4 |
-| `maxDelegationPage` | 50 | 50 |
-| `approvalsPerPause` | 16 | 16 |
-| `nativeCallIdLength` | 1,048,576 | 1,048,576 |
-| `nativeEnvelopeBytes` | 4,096 | 4,096 |
-| `streamCursors` | 2 | 2 |
-| `messagePage` | 100 | 100 |
-| `messagePageBytes` | 512 KiB | 512 KiB |
-| `cleanupMessageBytes` | 512 KiB | 512 KiB |
-| `receiptRetentionMs` | 7 days | 7 days |
-| `receiptResultBytes` | 64 KiB | 64 KiB |
-| `reconcileIntervalMs` | 30 seconds | 30 seconds |
-| `reconcileMaxIntervalMs` | 5 minutes | 5 minutes |
-| `purgeBatch` | 50 | 50 |
-| `purgeIntervalMs` | 60 minutes | 60 minutes |
-| `streamThrottleMs` | 0 | 0 |
-| `modelRetries` | 0 | 0 |
-| `modelOverrides` | 8 | 8 |
-| `modelOverridesBytes` | 512 | 512 |
-| `modelIdLength` | 200 | 200 |
-| `modelAllowlist` | 100 | 100 |
+| Limit                    | Default       | Hard max      |
+| ------------------------ | ------------- | ------------- |
+| `attachmentBytes`        | 8 MiB         | 16 MiB        |
+| `continuesPerRun`        | 3             | 8             |
+| `sideRunsPerRun`         | 2             | 8             |
+| `notesPending`           | 8             | 24            |
+| `maxDepth`               | 2             | 2             |
+| `messagesPerChild`       | 4             | 8             |
+| `rootLane`               | 2             | 4             |
+| `childLane`              | 4             | 4             |
+| `runLaunches`            | 12            | 50            |
+| `runHops`                | 24            | 100           |
+| `activeChildrenPerRoot`  | 5             | 15            |
+| `taskLength`             | 4,000         | 16,000        |
+| `queueLength`            | 20            | 100           |
+| `slicesPerTurn`          | 16            | 64            |
+| `leaseMs`                | 10 minutes    | 24 hours      |
+| `noteLength`             | 4,000         | 4,000         |
+| `firstPromptOrder`       | 1             | 1             |
+| `telemetryFlushMs`       | 3 seconds     | 3 seconds     |
+| `filesPerMessage`        | 8             | 8             |
+| `factBytes`              | 128           | 128           |
+| `fileIdLength`           | 200           | 200           |
+| `functionHandleLength`   | 1,024         | 1,024         |
+| `sandboxExitCode`        | 2,147,483,647 | 2,147,483,647 |
+| `fileMetadataBytes`      | 4 KiB         | 4 KiB         |
+| `taskRepairs`            | 1             | 1             |
+| `taskPromptLength`       | 16,000        | 16,000        |
+| `agents`                 | 64            | 64            |
+| `sideAgents`             | 8             | 8             |
+| `cadence`                | 1,000,000     | 1,000,000     |
+| `minuteMs`               | 60,000        | 60,000        |
+| `contextMessages`        | 24            | 24            |
+| `assignmentBytes`        | 32 KiB        | 32 KiB        |
+| `contextBytes`           | 48 KiB        | 48 KiB        |
+| `contextReadBytes`       | 2 MiB         | 2 MiB         |
+| `groupLength`            | 200           | 200           |
+| `turnsPerLoop`           | 50            | 50            |
+| `workflowVersion`        | 1             | 1             |
+| `generationAbortMs`      | 90 seconds    | 90 seconds    |
+| `executionWatchdogMs`    | 2 minutes     | 2 minutes     |
+| `cancelPollMs`           | 1 second      | 1 second      |
+| `outputTokens`           | 4,096         | 4,096         |
+| `messageLength`          | 16,000        | 16,000        |
+| `requestKeyLength`       | 200           | 200           |
+| `runEvents`              | 4             | 4             |
+| `maxDelegationPage`      | 50            | 50            |
+| `approvalsPerPause`      | 16            | 16            |
+| `nativeCallIdLength`     | 1,048,576     | 1,048,576     |
+| `nativeEnvelopeBytes`    | 4,096         | 4,096         |
+| `streamCursors`          | 2             | 2             |
+| `messagePage`            | 100           | 100           |
+| `messagePageBytes`       | 512 KiB       | 512 KiB       |
+| `cleanupMessageBytes`    | 512 KiB       | 512 KiB       |
+| `receiptRetentionMs`     | 7 days        | 7 days        |
+| `receiptResultBytes`     | 64 KiB        | 64 KiB        |
+| `reconcileIntervalMs`    | 30 seconds    | 30 seconds    |
+| `reconcileMaxIntervalMs` | 5 minutes     | 5 minutes     |
+| `purgeBatch`             | 50            | 50            |
+| `purgeIntervalMs`        | 60 minutes    | 60 minutes    |
+| `streamThrottleMs`       | 0             | 0             |
+| `modelRetries`           | 0             | 0             |
+| `modelOverrides`         | 8             | 8             |
+| `modelOverridesBytes`    | 512           | 512           |
+| `modelIdLength`          | 200           | 200           |
+| `modelAllowlist`         | 100           | 100           |
 
 Policy rows can be lowered even when their default equals their maximum;
 non-policy rows are fixed. `PLATFORM` adds

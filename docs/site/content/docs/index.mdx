@@ -43,14 +43,19 @@ One obvious way to do each thing, short names, typed results and little ceremony
 The planned one-screen setup is:
 
 ```ts title="Planned one-screen setup"
-const researcher = new Agent(components.agent, { name: "Researcher", languageModel, instructions })
-const main = new Agent(components.agent, { name: "Main", languageModel, instructions, subagents: [researcher] })
+const researcher = new Agent(components.agent, { name: "Researcher", languageModel, instructions });
+const main = new Agent(components.agent, {
+  name: "Main",
+  languageModel,
+  instructions,
+  subagents: [researcher],
+});
 
-export const sdk = defineAgents(components.sdk, { agents: [main], authorize, meter })
-export const { open, send, cancel, messages, activity, delegations, threadCost } = sdk.api()
+export const sdk = defineAgents(components.sdk, { agents: [main], authorize, meter });
+export const { open, send, cancel, messages, activity, delegations, threadCost } = sdk.api();
 
 // anywhere in the host
-const cost = await sdk.meter.threadCost(ctx, { threadId })   // { totalNanos, unknown, byAgent, byModel }
+const cost = await sdk.meter.threadCost(ctx, { threadId }); // { totalNanos, unknown, byAgent, byModel }
 ```
 
 Errors have typed codes and a one-line reason. The planned `LIMITS` export keeps

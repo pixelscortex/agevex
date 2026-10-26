@@ -69,7 +69,7 @@ const provider = createOpenAI({
     // require_parameters (src/types/openrouter-chat-settings.ts:196) keeps forced
     // tool choice mandatory. Bound batching with host hooks below instead of
     // asking free endpoints for unsupported parallel_tool_calls.
-    const body = JSON.parse(String(init?.body));
+    const body = JSON.parse(String(init?.body as string | undefined));
 
     const response = await fetch(url, {
       ...init,

@@ -9,8 +9,6 @@ import {
 import { v } from "convex/values";
 import type { FunctionReference } from "convex/server";
 import agent from "@convex-dev/agent/test";
-import workflow from "@convex-dev/workflow/test";
-import workpool from "@convex-dev/workpool/test";
 
 import { storeFile, mockModel } from "@convex-dev/agent";
 import type { AgentComponent } from "@convex-dev/agent";
@@ -22,12 +20,11 @@ import {
   type ExtractOptions,
   type WorkerArgs,
   type NodeReadArgs,
-} from "../../src/extract/index.js";
-import schema from "../../src/extract/component/schema.js";
-import type { ActionCtx } from "../../src/extract/types.js";
+} from "../../src/modules/extract/client/index.js";
+import extractTest from "../../src/modules/extract/test.js";
+import type { ActionCtx } from "../../src/modules/extract/client/types.js";
 
 const hostModules = import.meta.glob("./fixture/**/*.ts");
-const modules = import.meta.glob("../../src/extract/component/**/*.ts");
 const mounts = componentsGeneric();
 
 export const component = mounts.extract as unknown as ComponentApi;
@@ -169,9 +166,7 @@ export function setup(
   });
 
   agent.register(t);
-  t.registerComponent("extract", schema, modules);
-  workflow.register(t, "extract/workflow");
-  workpool.register(t, "extract/workflow/workpool");
+  extractTest.register(t, "extract");
 
   const uploadBlob = async (blob: Blob, filename?: string) => {
     const fileId = await t.action(

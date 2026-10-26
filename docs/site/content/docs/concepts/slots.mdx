@@ -24,7 +24,7 @@ const runtime = registerAgent(components.agevex, {
   authorizeExecution: hostExecutionPolicy,
   usage: { scope: (ctx, facts) => usageMeter.scope(ctx, facts) },
   budget: { check: (ctx, args) => hostBudget.check(ctx, args) },
-})
+});
 ```
 
 ## Meter

@@ -11,7 +11,7 @@ import {
   type OtlpPayload,
   type Span,
   type TelemetryOptions,
-} from "../../src/telemetry/index.js";
+} from "../../src/modules/telemetry/client/index.js";
 import { facts, scripted } from "./script.js";
 
 const spansIn = (body: OtlpPayload) =>

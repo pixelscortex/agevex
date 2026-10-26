@@ -5,9 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it, vi } from "vite-plus/test";
 import type { ComponentApi } from "@daytona/convex";
-import { daytona } from "../../src/sandbox/daytona.js";
-import { HARD_LIMITS, LIMITS } from "../../src/sandbox/limits.js";
-import type { SandboxContext } from "../../src/sandbox/types.js";
+import { daytona } from "../../src/modules/sandbox/client/daytona.js";
+import { HARD_LIMITS, LIMITS } from "../../src/modules/sandbox/shared/limits.js";
+import type { SandboxContext } from "../../src/modules/sandbox/client/types.js";
 import { fakeSandboxProvider } from "../../src/testing/sandbox.js";
 import { setup, api, state, EXPORT_TEST_TIMEOUT_MS } from "./setup.js";
 

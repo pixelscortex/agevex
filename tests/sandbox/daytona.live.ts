@@ -3,8 +3,8 @@ import { convexTest } from "convex-test";
 import { anyApi, type ApiFromModules } from "convex/server";
 import daytonaTest from "@daytona/convex/test";
 import agentTest from "@convex-dev/agent/test";
-import sandboxTest from "../../src/sandbox/test.js";
-import type { BackgroundJob } from "../../src/sandbox/types.js";
+import sandboxTest from "../../src/modules/sandbox/test.js";
+import type { BackgroundJob } from "../../src/modules/sandbox/client/types.js";
 import schema from "./fixture/schema.js";
 import type * as daytona from "./fixture/daytona.js";
 

@@ -22,9 +22,9 @@ const pixels = Buffer.alloc(height * (1 + width * 3), 255);
 
 for (let y = 0; y < height; y++) pixels[y * (1 + width * 3)] = 0;
 
-for (const [index, letter] of [..."AGEVEX 42"].entries())
+for (const [index, letter] of Array.from("AGEVEX 42").entries())
   for (const [y, row] of font[letter].entries())
-    for (const [x, bit] of [...row].entries())
+    for (const [x, bit] of Array.from(row).entries())
       if (bit === "1")
         for (let dy = 0; dy < scale; dy++)
           for (let dx = 0; dx < scale; dx++) {

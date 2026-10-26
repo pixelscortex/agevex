@@ -20,11 +20,13 @@ const runtime = registerAgent(components.agevex, {
   authorize,
   authorizeExecution,
   telemetry: telemetry.slot({
-    exporters: [langfuse({
-      baseUrl: "https://cloud.langfuse.com",
-      publicKey: process.env.LANGFUSE_PUBLIC_KEY!,
-      secretKey: process.env.LANGFUSE_SECRET_KEY!,
-    })],
+    exporters: [
+      langfuse({
+        baseUrl: "https://cloud.langfuse.com",
+        publicKey: process.env.LANGFUSE_PUBLIC_KEY!,
+        secretKey: process.env.LANGFUSE_SECRET_KEY!,
+      }),
+    ],
   }),
 });
 ```
@@ -133,21 +135,21 @@ uses its US endpoint. Invalid configuration or facts throw during setup.
 `LIMITS` is exported from `agevex/telemetry`. These values are fixed, not
 configurable; byte bounds use UTF-8.
 
-| Constant | Default | Hard maximum / fixed behavior |
-| --- | --- | --- |
-| `maxSpansPerTurn` | 128 | 128 across all integrations in the buffer |
-| `maxAttributeBytes` | 16,384 bytes | 16 KiB of encoded attributes per span, including JSON escaping |
-| `maxValueBytes` | 4,096 bytes | 4 KiB per string/key during traversal and per encoded string value |
-| `maxNameBytes` | 256 bytes | 256 per span name and dynamic name component |
-| `maxFactBytes` | 256 bytes | 256 per fact before it is hashed; 256 for the Braintrust project ID |
-| `maxConfigurationBytes` | 4,096 bytes | 4 KiB per Langfuse configuration string and Braintrust API key |
-| `maxExporters` | 4 | 4 concurrent exporters |
-| `maxValueNodes` | 128 | 128 visited nodes per bounded value traversal |
-| `maxValueDepth` | 8 | 8 nesting levels below the traversal root |
-| `exportTimeoutMs` | 3,000 ms | 3 s export deadline, with abort and promise race |
-| `traceIdHexLength` | 32 | Fixed 32 hexadecimal characters |
-| `spanIdHexLength` | 16 | Fixed 16 hexadecimal characters |
-| `nanosPerMillisecond` | 1,000,000 | Fixed timestamp conversion factor |
+| Constant                | Default      | Hard maximum / fixed behavior                                       |
+| ----------------------- | ------------ | ------------------------------------------------------------------- |
+| `maxSpansPerTurn`       | 128          | 128 across all integrations in the buffer                           |
+| `maxAttributeBytes`     | 16,384 bytes | 16 KiB of encoded attributes per span, including JSON escaping      |
+| `maxValueBytes`         | 4,096 bytes  | 4 KiB per string/key during traversal and per encoded string value  |
+| `maxNameBytes`          | 256 bytes    | 256 per span name and dynamic name component                        |
+| `maxFactBytes`          | 256 bytes    | 256 per fact before it is hashed; 256 for the Braintrust project ID |
+| `maxConfigurationBytes` | 4,096 bytes  | 4 KiB per Langfuse configuration string and Braintrust API key      |
+| `maxExporters`          | 4            | 4 concurrent exporters                                              |
+| `maxValueNodes`         | 128          | 128 visited nodes per bounded value traversal                       |
+| `maxValueDepth`         | 8            | 8 nesting levels below the traversal root                           |
+| `exportTimeoutMs`       | 3,000 ms     | 3 s export deadline, with abort and promise race                    |
+| `traceIdHexLength`      | 32           | Fixed 32 hexadecimal characters                                     |
+| `spanIdHexLength`       | 16           | Fixed 16 hexadecimal characters                                     |
+| `nanosPerMillisecond`   | 1,000,000    | Fixed timestamp conversion factor                                   |
 
 Oversized values use `[truncated]` and `agevex.truncated` markers; excess spans
 are dropped while retaining valid ancestry (a call that loses child spans this

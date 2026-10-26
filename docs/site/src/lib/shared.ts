@@ -1,18 +1,19 @@
-import { createGetUrl } from 'fumadocs-core/source';
+import { createGetUrl } from "fumadocs-core/source";
 
-import { siteConfig } from '@/site.config';
+import { siteConfig } from "@/site.config";
 
 export const appName = siteConfig.name;
-export const docsRoute = '/docs';
+export const docsRoute = "/docs";
 
 const getDocsUrl = createGetUrl(docsRoute);
 
 export function getPageMarkdownUrl(page: { slugs: string[]; locale?: string }) {
   const segments = [...page.slugs];
+
   if (segments.length === 0) {
-    segments.push('index.md');
+    segments.push("index.md");
   } else {
-    segments[segments.length - 1] += '.md';
+    segments[segments.length - 1] += ".md";
   }
 
   return { segments, url: getDocsUrl(segments, page.locale) };
@@ -23,7 +24,10 @@ export function decodeMarkdownUrl(segments: string[]) {
   if (segments.length === 0) return [];
 
   const out = [...segments];
-  out[out.length - 1] = out[out.length - 1].replace(/\.md$/, '');
-  if (out.length === 1 && out[0] === 'index') out.pop();
+
+  out[out.length - 1] = out[out.length - 1].replace(/\.md$/, "");
+
+  if (out.length === 1 && out[0] === "index") out.pop();
+
   return out;
 }

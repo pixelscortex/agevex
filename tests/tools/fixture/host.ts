@@ -21,13 +21,19 @@ import {
 } from "convex/server";
 import { v } from "convex/values";
 import { scriptedModel } from "../../../src/test.js";
-import { createTodoTools, type TodoFunctions } from "../../../docs/site/registry/todo/todo.js";
-import { createGoalTools, type GoalFunctions } from "../../../docs/site/registry/goals/goals.js";
-import { createAskUserTool } from "../../../docs/site/registry/ask-user/askUser.js";
+import {
+  createTodoTools,
+  type TodoFunctions,
+} from "../../../src/modules/tools/registry/todo/todo.js";
+import {
+  createGoalTools,
+  type GoalFunctions,
+} from "../../../src/modules/tools/registry/goals/goals.js";
+import { createAskUserTool } from "../../../src/modules/tools/registry/ask-user/askUser.js";
 import {
   createContinueBudgetTool,
   resumeAfterBudgetStop,
-} from "../../../docs/site/registry/continue-budget/continueBudget.js";
+} from "../../../src/modules/tools/registry/continue-budget/continueBudget.js";
 
 export const state = {
   steps: [] as LanguageModelV4Content[][],
@@ -51,8 +57,8 @@ const component = componentsGeneric().agevex as unknown as ComponentApi;
 const agent = componentsGeneric().agent as unknown as NativeApi;
 
 const hostApi = anyApi as unknown as ApiFromModules<{
-  todoState: typeof import("../../../docs/site/registry/todo/todoState.js");
-  goalsState: typeof import("../../../docs/site/registry/goals/goalsState.js");
+  todoState: typeof import("../../../src/modules/tools/registry/todo/todoState.js");
+  goalsState: typeof import("../../../src/modules/tools/registry/goals/goalsState.js");
 }>;
 
 export const todoRefs = hostApi.todoState satisfies TodoFunctions;

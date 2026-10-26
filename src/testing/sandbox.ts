@@ -1,4 +1,4 @@
-import type { SandboxProvider, JobOutcome, FileEntry } from "../sandbox/types.js";
+import type { SandboxProvider, JobOutcome, FileEntry } from "../modules/sandbox/client/types.js";
 
 type FakeMachine = {
   state: "creating" | "ready" | "stopped" | "archived" | "error" | "deleted";

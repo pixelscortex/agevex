@@ -16,7 +16,7 @@ const critic = new Agent(components.agent, {
   name: "Critic",
   languageModel,
   instructions: "Review the delta. Return a short note, or NONE.",
-})
+});
 const main = new Agent(components.agent, {
   name: "Main",
   languageModel,
@@ -26,7 +26,7 @@ const main = new Agent(components.agent, {
     afterTool: (_hc, { output }) => ({ output: redact(output) }),
   },
   sideAgents: [{ agent: critic, every: { turns: 3 }, sees: "delta" }],
-})
+});
 ```
 
 `beforeTool` may replace the input with `input`, and `afterTool` may replace

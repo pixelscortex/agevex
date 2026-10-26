@@ -29,10 +29,12 @@ export const meter = defineMeter(components.meter, {
     firecrawl: { credits: { usdPerCredit: 0.001 } },
   },
   breakdowns: ["thread.model", "thread.provider"],
-  sinks: [polarSink({
-    meter: "ai_usage",
-    accessToken: process.env.POLAR_ACCESS_TOKEN!,
-  })],
+  sinks: [
+    polarSink({
+      meter: "ai_usage",
+      accessToken: process.env.POLAR_ACCESS_TOKEN!,
+    }),
+  ],
   workers: {
     lookup: internal.billing.meterLookup,
     deliver: internal.billing.meterDeliver,
@@ -65,7 +67,9 @@ import { registerAgent } from "agevex";
 import { meter } from "./billing";
 
 const runtime = registerAgent(components.agevex, {
-  agents: [main], authorize, refs,
+  agents: [main],
+  authorize,
+  refs,
   usage: meter.usageSlot(),
   budget: meter.budgetSlot(),
 });
@@ -96,13 +100,13 @@ Read the result with `meter.threadCost(ctx, { threadId })` using the root thread
 
 Providers are host-named `Provider` objects; capabilities can be combined.
 
-| Configuration | Evidence and behavior |
-| --- | --- |
-| `inline(decode?)` | Defaults to `providerMetadata.openrouter.usage.cost`. Custom decoders return `{ usd }`, `{ credits }` or `undefined`; valid zero settles, absent evidence records unknown. |
-| `profiles: { [name]: { unit, usd } }` | Host assumptions for per-unit estimates and quantity corrections. |
-| `credits: { usdPerCredit }` | Explicit conversion rate required for credit evidence; credits are not dollars. |
-| `lookup: async (ctx, requestId) => Cost \| undefined` | Read-only billing evidence after attachment; never repeat a paid operation. `lookupFor` accepts milliseconds, `"1h"` or `"1d"`. |
-| No cost evidence | A record remains unknown; an unpriced estimate contributes an unknown to reads. |
+| Configuration                                         | Evidence and behavior                                                                                                                                                      |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `inline(decode?)`                                     | Defaults to `providerMetadata.openrouter.usage.cost`. Custom decoders return `{ usd }`, `{ credits }` or `undefined`; valid zero settles, absent evidence records unknown. |
+| `profiles: { [name]: { unit, usd } }`                 | Host assumptions for per-unit estimates and quantity corrections.                                                                                                          |
+| `credits: { usdPerCredit }`                           | Explicit conversion rate required for credit evidence; credits are not dollars.                                                                                            |
+| `lookup: async (ctx, requestId) => Cost \| undefined` | Read-only billing evidence after attachment; never repeat a paid operation. `lookupFor` accepts milliseconds, `"1h"` or `"1d"`.                                            |
+| No cost evidence                                      | A record remains unknown; an unpriced estimate contributes an unknown to reads.                                                                                            |
 
 `record` and `estimate` never throw on a charge they cannot price: it is
 recorded `unknown` with a `reason` and `check` denies. Reasons: `NO_COST`,
@@ -123,10 +127,17 @@ import { meter } from "./billing";
 
 // ctx is the action context; ids and model come from the host operation.
 const scoped = meter.scope(ctx, {
-  subject, rootThreadId, threadId, runId, agent: "Builder", model,
+  subject,
+  rootThreadId,
+  threadId,
+  runId,
+  agent: "Builder",
+  model,
 });
 const charge = await scoped.estimate("fal", {
-  key: toolCallId, profile: "image", quantity: 6,
+  key: toolCallId,
+  profile: "image",
+  quantity: 6,
 });
 await charge.attach({ requestId, key: `${toolCallId}:attach` });
 await charge.correct({ quantity: 5, key: `${toolCallId}:correct` });
@@ -161,33 +172,33 @@ Signatures use the types exported from `agevex/meter`; `ComponentApi` is the
 meter component type, slot types come from `agevex`, and `UsageHandler` comes
 from `@convex-dev/agent`.
 
-| Function / signature | Purpose |
-| --- | --- |
-| `defineMeter(component: ComponentApi, options: MeterOptions): Meter` | Register providers, projections, budgets, guards and workers. |
-| `inline(decode?: NonNullable<Provider["inline"]>): Provider` | Create an inline cost provider. |
-| `meter.scope(ctx: WriteCtx, attribution: Attribution): ScopedMeter` | Bind required subject and optional root/thread/run/agent/model attribution. |
-| `meter.usageSlot(options?: { providers?: Record<string, string> }): UsageSlot` | Adapt core usage and managed tool calls to the attributed, idempotent meter; resolves AI SDK provider ids. |
-| `meter.budgetSlot(policy?: MeterOptions["budgets"]): BudgetSlot` | Gate core slices with the configured or overridden budget policy. |
-| `scoped.estimate(provider: string, args: { key: string; profile?: string; quantity: number }): Promise<ChargeHandle>` | Create or replay an estimate. |
-| `scoped.record(provider: string, args: { key: string; usage?: unknown; providerMetadata?: unknown }): Promise<ChargeHandle>` | Decode inline evidence and record settled or unknown cost. |
-| `charge.attach(args: { requestId: string; key: string }): Promise<Charge>` | Save request identity and start a configured lookup. |
-| `charge.correct(args: { quantity: number; key: string }): Promise<Charge>` | Reprice using the charge's registered profile; requires that profile. |
-| `charge.settle(args: Cost & { key: string }): Promise<Charge>` | Supply authoritative USD or credits. |
-| `charge.get(): Promise<Charge \| null>` | Read current state by the handle's exact key. |
-| `meter.threadCost(ctx: ReadCtx, args: { threadId: string; cursors?: Partial<Record<"agent" \| "model" \| "provider", string>> }): Promise<ThreadCost>` | Read root totals and independent axis pages. |
-| `meter.subjectCost(ctx: ReadCtx, args: { subject: string; runId?: string })` | Read subject lifetime or run totals. |
-| `meter.breakdown(ctx: ReadCtx, args: { subject: string; from: number; to: number; by: "day" \| "agent" \| "model" \| "provider"; cursor?: string })` | Read bounded aggregate pages. |
-| `meter.check(ctx: ReadCtx, args: { subject: string; runId?: string })` | Return totals, `allowed` and `maxNanos` (null without a budget). |
-| `meter.retrySinks(ctx: WriteCtx, args: { key: string; subject: string }): Promise<null>` | Resume pending deliveries after checking the stored subject. |
-| `meter.prune(ctx: WriteCtx, args: { before: number; limit?: number }): Promise<{ deleted: number; more: boolean }>` | Host admin retention (no `authorize`; keep behind your own admin check): delete settled, fully delivered charges created before `before`. |
-| `meter.internalFunctions()` | Return internal `meterLookup` and `meterDeliver` actions for host export. |
-| `openRouterCost(providerMetadata: unknown): number \| undefined` | Extract finite nonnegative OpenRouter USD evidence, including zero. |
-| `usageHandlerFor(meter: Meter, options: { provider?: string; identity: (args: Parameters<UsageHandler>[1]) => Pick<Attribution, "subject" \| "rootThreadId" \| "runId"> & { messageId: string; step: number } }): UsageHandler` | Record saved Agent steps using host identity. |
-| `observeProviderOutcome<T>(options: { invoke: () => Promise<T>; onSuccess: (result: T) => void \| Promise<void>; onFailure?: (error: unknown) => void \| Promise<void>; onObservationError?: (error: unknown) => void \| Promise<void> }): Promise<T>` | Observe evidence while preserving the provider result or original error. |
-| `polarSink(options: { meter: string; accessToken: string; server?: "production" \| "sandbox"; name?: string; fetch?: typeof fetch }): Sink` | Deliver Polar ingest events; production is the default. |
-| `webhookSink(options: { url: string; name?: string; headers?: Record<string, string>; fetch?: typeof fetch }): Sink` | POST `{ events }` to an HTTP(S) endpoint. |
-| `new SinkDeliveryError(retryAfterMs?: number, rateLimited?: boolean)` | Signal a sink failure with an optional retry delay; `rateLimited` marks a 429. |
-| `new BreakdownDisabledError(breakdown: Breakdown)` | Identify a required projection with `code: "BREAKDOWN_DISABLED"`. |
+| Function / signature                                                                                                                                                                                                                                   | Purpose                                                                                                                                   |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `defineMeter(component: ComponentApi, options: MeterOptions): Meter`                                                                                                                                                                                   | Register providers, projections, budgets, guards and workers.                                                                             |
+| `inline(decode?: NonNullable<Provider["inline"]>): Provider`                                                                                                                                                                                           | Create an inline cost provider.                                                                                                           |
+| `meter.scope(ctx: WriteCtx, attribution: Attribution): ScopedMeter`                                                                                                                                                                                    | Bind required subject and optional root/thread/run/agent/model attribution.                                                               |
+| `meter.usageSlot(options?: { providers?: Record<string, string> }): UsageSlot`                                                                                                                                                                         | Adapt core usage and managed tool calls to the attributed, idempotent meter; resolves AI SDK provider ids.                                |
+| `meter.budgetSlot(policy?: MeterOptions["budgets"]): BudgetSlot`                                                                                                                                                                                       | Gate core slices with the configured or overridden budget policy.                                                                         |
+| `scoped.estimate(provider: string, args: { key: string; profile?: string; quantity: number }): Promise<ChargeHandle>`                                                                                                                                  | Create or replay an estimate.                                                                                                             |
+| `scoped.record(provider: string, args: { key: string; usage?: unknown; providerMetadata?: unknown }): Promise<ChargeHandle>`                                                                                                                           | Decode inline evidence and record settled or unknown cost.                                                                                |
+| `charge.attach(args: { requestId: string; key: string }): Promise<Charge>`                                                                                                                                                                             | Save request identity and start a configured lookup.                                                                                      |
+| `charge.correct(args: { quantity: number; key: string }): Promise<Charge>`                                                                                                                                                                             | Reprice using the charge's registered profile; requires that profile.                                                                     |
+| `charge.settle(args: Cost & { key: string }): Promise<Charge>`                                                                                                                                                                                         | Supply authoritative USD or credits.                                                                                                      |
+| `charge.get(): Promise<Charge \| null>`                                                                                                                                                                                                                | Read current state by the handle's exact key.                                                                                             |
+| `meter.threadCost(ctx: ReadCtx, args: { threadId: string; cursors?: Partial<Record<"agent" \| "model" \| "provider", string>> }): Promise<ThreadCost>`                                                                                                 | Read root totals and independent axis pages.                                                                                              |
+| `meter.subjectCost(ctx: ReadCtx, args: { subject: string; runId?: string })`                                                                                                                                                                           | Read subject lifetime or run totals.                                                                                                      |
+| `meter.breakdown(ctx: ReadCtx, args: { subject: string; from: number; to: number; by: "day" \| "agent" \| "model" \| "provider"; cursor?: string })`                                                                                                   | Read bounded aggregate pages.                                                                                                             |
+| `meter.check(ctx: ReadCtx, args: { subject: string; runId?: string })`                                                                                                                                                                                 | Return totals, `allowed` and `maxNanos` (null without a budget).                                                                          |
+| `meter.retrySinks(ctx: WriteCtx, args: { key: string; subject: string }): Promise<null>`                                                                                                                                                               | Resume pending deliveries after checking the stored subject.                                                                              |
+| `meter.prune(ctx: WriteCtx, args: { before: number; limit?: number }): Promise<{ deleted: number; more: boolean }>`                                                                                                                                    | Host admin retention (no `authorize`; keep behind your own admin check): delete settled, fully delivered charges created before `before`. |
+| `meter.internalFunctions()`                                                                                                                                                                                                                            | Return internal `meterLookup` and `meterDeliver` actions for host export.                                                                 |
+| `openRouterCost(providerMetadata: unknown): number \| undefined`                                                                                                                                                                                       | Extract finite nonnegative OpenRouter USD evidence, including zero.                                                                       |
+| `usageHandlerFor(meter: Meter, options: { provider?: string; identity: (args: Parameters<UsageHandler>[1]) => Pick<Attribution, "subject" \| "rootThreadId" \| "runId"> & { messageId: string; step: number } }): UsageHandler`                        | Record saved Agent steps using host identity.                                                                                             |
+| `observeProviderOutcome<T>(options: { invoke: () => Promise<T>; onSuccess: (result: T) => void \| Promise<void>; onFailure?: (error: unknown) => void \| Promise<void>; onObservationError?: (error: unknown) => void \| Promise<void> }): Promise<T>` | Observe evidence while preserving the provider result or original error.                                                                  |
+| `polarSink(options: { meter: string; accessToken: string; server?: "production" \| "sandbox"; name?: string; fetch?: typeof fetch }): Sink`                                                                                                            | Deliver Polar ingest events; production is the default.                                                                                   |
+| `webhookSink(options: { url: string; name?: string; headers?: Record<string, string>; fetch?: typeof fetch }): Sink`                                                                                                                                   | POST `{ events }` to an HTTP(S) endpoint.                                                                                                 |
+| `new SinkDeliveryError(retryAfterMs?: number, rateLimited?: boolean)`                                                                                                                                                                                  | Signal a sink failure with an optional retry delay; `rateLimited` marks a 429.                                                            |
+| `new BreakdownDisabledError(breakdown: Breakdown)`                                                                                                                                                                                                     | Identify a required projection with `code: "BREAKDOWN_DISABLED"`.                                                                         |
 
 ### Reads and budget gates
 
@@ -220,12 +231,12 @@ a snapshot, not an atomic reservation for future work.
 agent pages, subject totals and UTC-day reads, plus run totals when `runId`
 exists. Each optional breakdown adds one projection per new charge:
 
-| Projection | Enable with |
-| --- | --- |
-| Thread model pages | `"thread.model"` |
-| Thread provider pages | `"thread.provider"` |
-| Subject agent/date pages | `"subject.agent"` |
-| Subject model/date pages | `"subject.model"` |
+| Projection                  | Enable with          |
+| --------------------------- | -------------------- |
+| Thread model pages          | `"thread.model"`     |
+| Thread provider pages       | `"thread.provider"`  |
+| Subject agent/date pages    | `"subject.agent"`    |
+| Subject model/date pages    | `"subject.model"`    |
 | Subject provider/date pages | `"subject.provider"` |
 
 A disabled subject axis, or a cursor for a disabled thread model/provider axis,
@@ -300,8 +311,7 @@ or random identity fallback is used.
 
 ### Retention
 
-`meter.prune(ctx, { before, limit })` deletes up to `limit` (default 100, max
-500) settled charges whose sinks all acknowledged, created before `before`, and
+`meter.prune(ctx, { before, limit })` deletes up to `limit` (default 100, max 500) settled charges whose sinks all acknowledged, created before `before`, and
 their aggregate contributions. It stops early at its transaction budget and
 returns `{ deleted, more }`; call it from a host cron (it performs no `authorize`) until `more` is false. It
 never reschedules itself. Totals then cover retained charges only; pick `before`
@@ -315,29 +325,29 @@ run and subject totals. `prune` refuses a cutoff newer than now minus
 From exported `LIMITS`; only `maxThreadCharges`, `maxGroups`, `maxDays`,
 `maxAttempts` and `pruneMinAgeMs` accept positive integer overrides, and only downward.
 
-| Limit | Default | Hard maximum |
-| --- | --- | --- |
-| `maxThreadCharges` per root thread (then `THREAD_CAPACITY`) | 100,000 | 100,000 |
-| `maxGroups` per axis page | 4 | 4 |
-| `maxDays` per day page | 7 | 7 |
-| `maxAttempts` per lookup/delivery sequence | 8 | 8 |
-| `maxOperations` receipts per charge | 32 | 32 |
-| `maxChargeNanos` (then `OVER_CAP`) | 90,000,000,000 ($90) | Same |
-| `maxKeyBytes` (creation/operation keys) | 256 UTF-8 bytes | 256 |
-| `maxStringBytes` (labels/request ids) | 128 UTF-8 bytes | 128 |
-| `maxQuantity` (quantity/credits/step ordinal) | 1,000,000 | 1,000,000 |
-| `maxProviders` | 16 | 16 |
-| `maxProfiles` per provider | 32 | 32 |
-| `maxSinks` | 4 | 4 |
-| Lookup window (`lookupMs` / `maxLookupMs`) | 3,600,000 ms (1h) | 86,400,000 ms (1d) |
-| Backoff (`backoffMs` / `maxBackoffMs`) | 1,000 ms base, multiplier 2 | 60,000 ms exponential delay |
-| `maxParallelism` (Workpool) | 4 | 4 |
-| `sinkBatch` (events per delivery job) | 100 events | 100 |
-| `pruneLimit` / `maxPruneLimit` | 100 | 500 |
-| `pruneMinAgeMs` (then `PRUNE_TOO_RECENT`) | 604,800,000 ms (7 days) | Same |
-| `maxResponseBytes` (Polar acknowledgement) | 16,384 bytes | 16,384 |
-| `requestTimeoutMs` (built-in HTTP sinks) | 30,000 ms | 30,000 |
-| `maxTimestamp` (breakdown endpoints) | 8,640,000,000,000,000 ms ceiling | Same |
+| Limit                                                       | Default                          | Hard maximum                |
+| ----------------------------------------------------------- | -------------------------------- | --------------------------- |
+| `maxThreadCharges` per root thread (then `THREAD_CAPACITY`) | 100,000                          | 100,000                     |
+| `maxGroups` per axis page                                   | 4                                | 4                           |
+| `maxDays` per day page                                      | 7                                | 7                           |
+| `maxAttempts` per lookup/delivery sequence                  | 8                                | 8                           |
+| `maxOperations` receipts per charge                         | 32                               | 32                          |
+| `maxChargeNanos` (then `OVER_CAP`)                          | 90,000,000,000 ($90)             | Same                        |
+| `maxKeyBytes` (creation/operation keys)                     | 256 UTF-8 bytes                  | 256                         |
+| `maxStringBytes` (labels/request ids)                       | 128 UTF-8 bytes                  | 128                         |
+| `maxQuantity` (quantity/credits/step ordinal)               | 1,000,000                        | 1,000,000                   |
+| `maxProviders`                                              | 16                               | 16                          |
+| `maxProfiles` per provider                                  | 32                               | 32                          |
+| `maxSinks`                                                  | 4                                | 4                           |
+| Lookup window (`lookupMs` / `maxLookupMs`)                  | 3,600,000 ms (1h)                | 86,400,000 ms (1d)          |
+| Backoff (`backoffMs` / `maxBackoffMs`)                      | 1,000 ms base, multiplier 2      | 60,000 ms exponential delay |
+| `maxParallelism` (Workpool)                                 | 4                                | 4                           |
+| `sinkBatch` (events per delivery job)                       | 100 events                       | 100                         |
+| `pruneLimit` / `maxPruneLimit`                              | 100                              | 500                         |
+| `pruneMinAgeMs` (then `PRUNE_TOO_RECENT`)                   | 604,800,000 ms (7 days)          | Same                        |
+| `maxResponseBytes` (Polar acknowledgement)                  | 16,384 bytes                     | 16,384                      |
+| `requestTimeoutMs` (built-in HTTP sinks)                    | 30,000 ms                        | 30,000                      |
+| `maxTimestamp` (breakdown endpoints)                        | 8,640,000,000,000,000 ms ceiling | Same                        |
 
 ## Guarantees
 

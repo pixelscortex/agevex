@@ -1,5 +1,5 @@
 import { expect, it } from "vite-plus/test";
-import { LIMITS, type Charge } from "../../src/meter/index.js";
+import { LIMITS, type Charge } from "../../src/modules/meter/client/index.js";
 import { setup, attribution } from "./setup.js";
 
 it.each([

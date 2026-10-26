@@ -3,10 +3,10 @@ import { beforeEach, afterEach, it, expect, vi } from "vite-plus/test";
 import { convexTest } from "convex-test";
 import agent from "@convex-dev/agent/test";
 import agevex from "../../src/test.js";
-import sandboxModule from "../../src/sandbox/test.js";
+import sandboxModule from "../../src/modules/sandbox/test.js";
 import schema from "../fixture/schema.js";
 import { requireReceipt } from "../receipt.js";
-import { LIMITS } from "../../src/sandbox/index.js";
+import { LIMITS } from "../../src/modules/sandbox/client/index.js";
 import { fakeSandboxProvider } from "../../src/testing/sandbox.js";
 import { fixture, reset, exports, wiring, api, call, text } from "./slot.host.js";
 

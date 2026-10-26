@@ -3,7 +3,11 @@ import { it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { MockEmbeddingModelV4 } from "ai/test";
 import { APICallError } from "@ai-sdk/provider";
 import { componentsGeneric, createFunctionHandle } from "convex/server";
-import { LIMITS, authorizeAttached, type ExtractOptions } from "../../src/extract/index.js";
+import {
+  LIMITS,
+  authorizeAttached,
+  type ExtractOptions,
+} from "../../src/modules/extract/client/index.js";
 import { setup, component } from "./setup.js";
 
 const ragComponent = componentsGeneric().rag as unknown as NonNullable<

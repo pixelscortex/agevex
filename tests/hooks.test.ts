@@ -221,7 +221,7 @@ it.each(["echo", "native", "once"])(
   async (name) => {
     fixture.steps.Main = (n) => (n === 0 ? call(name, { text: "original" }) : text("finished"));
     fixture.hooks.beforeTool = () => ({ input: { text: "rewritten" } });
-    fixture.hooks.afterTool = (_hc, event) => ({ output: `redacted:${event.output}` });
+    fixture.hooks.afterTool = (_hc, event) => ({ output: `redacted:${String(event.output)}` });
     const t = setup();
 
     await open(t);
@@ -1795,7 +1795,9 @@ it("claim-time notes follow every result in a multi-tool step and precede the ne
   }
 
   expect(unresolved.size).toBe(0);
-  expect(fixture.effects).toEqual(["first effect", "second effect"]);
+  // Native Agent executes both tools concurrently; only their completion before
+  // the note is promised above, not the order in which their effects finish.
+  expect([...fixture.effects].sort()).toEqual(["first effect", "second effect"]);
 });
 
 it("cancel discards a staged hook continuation and its notes before a fresh send", async () => {

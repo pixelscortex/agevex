@@ -4,8 +4,8 @@ import type { LanguageModelV4Content } from "@ai-sdk/provider";
 import { setup, api, state } from "./setup.js";
 import { LIMITS } from "../../src/client/index.js";
 import { requireReceipt } from "../receipt.js";
-import { TODO_LIMITS } from "../../docs/site/registry/todo/todo.js";
-import { GOAL_LIMITS } from "../../docs/site/registry/goals/goals.js";
+import { TODO_LIMITS } from "../../src/modules/tools/registry/todo/todo.js";
+import { GOAL_LIMITS } from "../../src/modules/tools/registry/goals/goals.js";
 
 beforeEach(() => vi.useFakeTimers());
 

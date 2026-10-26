@@ -16,17 +16,17 @@
       "docs": "Use a TypeScript host with tsx: true in components.json before installing. Merge todoTables from the installed schema snippet into convex/schema.ts. Pass internal.agevexTools.todoState to createTodoTools and register on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. No schema is overwritten. See /docs/tools/todo.",
       "files": [
         {
-          "path": "registry/todo/todo.ts",
+          "path": "../../src/modules/tools/registry/todo/todo.ts",
           "type": "registry:file",
           "target": "~/convex/agevexTools/todo.ts"
         },
         {
-          "path": "registry/todo/todoSchema.ts",
+          "path": "../../src/modules/tools/registry/todo/todoSchema.ts",
           "type": "registry:file",
           "target": "~/convex/agevexTools/todoSchema.ts"
         },
         {
-          "path": "registry/todo/todoState.ts",
+          "path": "../../src/modules/tools/registry/todo/todoState.ts",
           "type": "registry:file",
           "target": "~/convex/agevexTools/todoState.ts"
         }
@@ -45,17 +45,17 @@
       "docs": "Use a TypeScript host with tsx: true in components.json before installing. Merge goalTables from the installed schema snippet into convex/schema.ts. Pass internal.agevexTools.goalsState to createGoalTools and register on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. No schema is overwritten. See /docs/tools/goals.",
       "files": [
         {
-          "path": "registry/goals/goals.ts",
+          "path": "../../src/modules/tools/registry/goals/goals.ts",
           "type": "registry:file",
           "target": "~/convex/agevexTools/goals.ts"
         },
         {
-          "path": "registry/goals/goalsSchema.ts",
+          "path": "../../src/modules/tools/registry/goals/goalsSchema.ts",
           "type": "registry:file",
           "target": "~/convex/agevexTools/goalsSchema.ts"
         },
         {
-          "path": "registry/goals/goalsState.ts",
+          "path": "../../src/modules/tools/registry/goals/goalsState.ts",
           "type": "registry:file",
           "target": "~/convex/agevexTools/goalsState.ts"
         }
@@ -74,7 +74,7 @@
       "docs": "Use a TypeScript host with tsx: true in components.json before installing. Register createAskUserTool() on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. Answer with core answer, never by saving a native tool result directly. See /docs/tools/ask-user.",
       "files": [
         {
-          "path": "registry/ask-user/askUser.ts",
+          "path": "../../src/modules/tools/registry/ask-user/askUser.ts",
           "type": "registry:file",
           "target": "~/convex/agevexTools/askUser.ts"
         }
@@ -93,17 +93,17 @@
       "docs": "Use a TypeScript host with tsx: true in components.json before installing. Merge consentTables from the installed schema snippet into convex/schema.ts. Register createContinueBudgetTool() on an agevex Agent with host authorize/authorizeExecution. Your approve action must call core respond and internal.agevexTools.continueBudgetState.record in one mutation; call resumeAfterBudgetStop inside ONE host mutation with your own budget policy write. Requires the host's existing agevex package. No schema is overwritten. See /docs/tools/continue-budget.",
       "files": [
         {
-          "path": "registry/continue-budget/continueBudget.ts",
+          "path": "../../src/modules/tools/registry/continue-budget/continueBudget.ts",
           "type": "registry:file",
           "target": "~/convex/agevexTools/continueBudget.ts"
         },
         {
-          "path": "registry/continue-budget/continueBudgetSchema.ts",
+          "path": "../../src/modules/tools/registry/continue-budget/continueBudgetSchema.ts",
           "type": "registry:file",
           "target": "~/convex/agevexTools/continueBudgetSchema.ts"
         },
         {
-          "path": "registry/continue-budget/continueBudgetState.ts",
+          "path": "../../src/modules/tools/registry/continue-budget/continueBudgetState.ts",
           "type": "registry:file",
           "target": "~/convex/agevexTools/continueBudgetState.ts"
         }

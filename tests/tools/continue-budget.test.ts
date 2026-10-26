@@ -7,7 +7,7 @@ import {
   CONSENT_TEXT,
   CONSENT_LIMITS,
   CONTINUE_BUDGET_LIMITS,
-} from "../../docs/site/registry/continue-budget/continueBudget.js";
+} from "../../src/modules/tools/registry/continue-budget/continueBudget.js";
 import { LIMITS } from "../../src/client/index.js";
 
 beforeEach(() => vi.useFakeTimers());

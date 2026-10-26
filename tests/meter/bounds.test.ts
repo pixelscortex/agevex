@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { mutationGeneric, type FunctionReference } from "convex/server";
 import { v, compareValues, type GenericId, type Value } from "convex/values";
 import aggregate from "@convex-dev/aggregate/test";
-import { LIMITS, type SinkEvent } from "../../src/meter/index.js";
+import { LIMITS, type SinkEvent } from "../../src/modules/meter/client/index.js";
 import { setup, allBreakdowns } from "./setup.js";
 
 const TEST_LIMITS = { seedBatch: 256, timeoutMs: 180_000, days: LIMITS.maxDays, idBytes: 64 };

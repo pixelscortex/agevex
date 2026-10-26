@@ -2,8 +2,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import { it, expect } from "vite-plus/test";
 import { createOpenAI } from "@ai-sdk/openai";
 import { setup } from "./setup.js";
-import { directText, firecrawlParse, visionOcr } from "../../src/extract/index.js";
-import { readResponse } from "../../src/extract/backends.js";
+import { directText, firecrawlParse, visionOcr } from "../../src/modules/extract/client/index.js";
+import { readResponse } from "../../src/modules/extract/client/backends.js";
 const LIVE_LIMITS = { calls: 3, providerMs: 180_000, pdfBytes: 64 * 1024 } as const;
 const scope = { threadId: "owner" };
 let firecrawlCalls = 0;
@@ -55,7 +55,7 @@ it.skipIf(!process.env.FIRECRAWL_API_KEY)(
     const original = globalThis.fetch;
 
     globalThis.fetch = (async (url, init) => {
-      if (String(url).startsWith("https://api.firecrawl.dev/")) {
+      if (String(url as string).startsWith("https://api.firecrawl.dev/")) {
         if (++firecrawlCalls > LIVE_LIMITS.calls) throw new Error("LIVE_FIRECRAWL_CAP");
       }
 

@@ -16,7 +16,7 @@ import {
   telemetry,
   type OtlpPayload,
   type Span,
-} from "../../src/telemetry/index.js";
+} from "../../src/modules/telemetry/client/index.js";
 import { facts, scripted } from "./script.js";
 
 const modules = import.meta.glob(["../fixture/**/*.ts", "../fixture/**/*.js"]);

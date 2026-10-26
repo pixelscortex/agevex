@@ -1,45 +1,48 @@
-import { createFileRoute, notFound } from '@tanstack/react-router';
-import { DocsLayout } from 'fumadocs-ui/layouts/spacious';
-import { createServerFn } from '@tanstack/react-start';
-import { docs, source } from '@/lib/source';
+import { createFileRoute, notFound } from "@tanstack/react-router";
+import { DocsLayout } from "fumadocs-ui/layouts/spacious";
+import { createServerFn } from "@tanstack/react-start";
+import { docs, source } from "@/lib/source";
 import {
   DocsBody,
   DocsDescription,
   DocsPage,
   DocsTitle,
   MarkdownCopyButton,
-} from 'fumadocs-ui/layouts/spacious/page';
-import { baseOptions } from '@/lib/layout.shared';
-import { getPageMarkdownUrl } from '@/lib/shared';
-import { useFumadocsLoader } from 'fumadocs-core/source/client';
-import { Suspense, use } from 'react';
-import mdxComponents from '@/components/mdx';
-import { siteConfig } from '@/site.config';
+} from "fumadocs-ui/layouts/spacious/page";
+import { baseOptions } from "@/lib/layout.shared";
+import { getPageMarkdownUrl } from "@/lib/shared";
+import { useFumadocsLoader } from "fumadocs-core/source/client";
+import { Suspense, use } from "react";
+import mdxComponents from "@/components/mdx";
+import { siteConfig } from "@/site.config";
 
-export const Route = createFileRoute('/docs/$')({
+export const Route = createFileRoute("/docs/$")({
   component: Page,
   loader: async ({ params }) => {
-    const slugs = params._splat?.split('/') ?? [];
+    const slugs = params._splat?.split("/") ?? [];
     const data = await serverLoader({ data: slugs });
+
     await docs.getPage(data.path)?.preload();
+
     return data;
   },
   head: ({ loaderData }) => ({
     meta: loaderData
       ? [
           { title: `${loaderData.title} | ${siteConfig.name}` },
-          { name: 'description', content: loaderData.description },
+          { name: "description", content: loaderData.description },
         ]
       : [],
   }),
 });
 
 const serverLoader = createServerFn({
-  method: 'GET',
+  method: "GET",
 })
   .validator((slugs: string[]) => slugs)
   .handler(async ({ data: slugs }) => {
     const page = source.getPage(slugs);
+
     if (!page) throw notFound();
 
     return {
@@ -53,6 +56,7 @@ const serverLoader = createServerFn({
 
 function Content({ path, markdownUrl }: { path: string; markdownUrl: string }) {
   const page = docs.getPage(path);
+
   if (!page) throw new Error(`unknown page: ${path}`);
 
   const { toc } = use(page.load());

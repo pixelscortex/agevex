@@ -1,9 +1,14 @@
 // @vitest-environment edge-runtime
 import { it, expect, vi } from "vite-plus/test";
 import { mockModel } from "@convex-dev/agent";
-import { directText, firecrawlParse, visionOcr, LIMITS } from "../../src/extract/index.js";
+import {
+  directText,
+  firecrawlParse,
+  visionOcr,
+  LIMITS,
+} from "../../src/modules/extract/client/index.js";
 import { setup } from "./setup.js";
-import { readResponse } from "../../src/extract/backends.js";
+import { readResponse } from "../../src/modules/extract/client/backends.js";
 
 const input = (blob: Blob) => ({
   bytes: async () => blob,

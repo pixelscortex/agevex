@@ -75,13 +75,13 @@ Tools receive trusted facts, rather than an SDK permission system:
 
 ```ts title="Planned tool context"
 type ToolContext = {
-  ctx: ActionCtx        // the normal Convex action ctx
-  subject: string       // whose request this is (the thread owner)
-  threadId: string      // the thread this call runs in (root or child)
-  runId: string         // the user request it belongs to (grouping, costs)
-  toolCallId: string    // unique per call; a ready-made idempotency key
-  signal: AbortSignal   // fires on cancel or deadline; pass to fetch/providers
-}
+  ctx: ActionCtx; // the normal Convex action ctx
+  subject: string; // whose request this is (the thread owner)
+  threadId: string; // the thread this call runs in (root or child)
+  runId: string; // the user request it belongs to (grouping, costs)
+  toolCallId: string; // unique per call; a ready-made idempotency key
+  signal: AbortSignal; // fires on cancel or deadline; pass to fetch/providers
+};
 ```
 
 The host enforces tool permissions. See [delegation](/docs/concepts/delegation),

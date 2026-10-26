@@ -1,16 +1,16 @@
-import { llms, loader } from 'fumadocs-core/source';
-import { lucideIconsPlugin } from 'fumadocs-core/source/lucide-icons';
-import { docsRoute } from './shared';
-import { defineDocs } from 'fumadocs-mdx/macro';
-import { metaSchema, pageSchema } from 'fumadocs-core/source/schema';
-import { z } from 'zod';
+import { llms, loader } from "fumadocs-core/source";
+import { lucideIconsPlugin } from "fumadocs-core/source/lucide-icons";
+import { docsRoute } from "./shared";
+import { defineDocs } from "fumadocs-mdx/macro";
+import { metaSchema, pageSchema } from "fumadocs-core/source/schema";
+import { z } from "zod";
 
 export const docs = defineDocs({
-  dir: 'content/docs',
+  dir: "content/docs",
   docs: {
     async: true,
     schema: pageSchema.extend({
-      status: z.enum(['Planned', 'In progress', 'Available']),
+      status: z.enum(["Planned", "In progress", "Available"]),
     }),
     postprocess: {
       includeProcessedMarkdown: true,
@@ -33,5 +33,5 @@ export const docsLlms = llms(source, {
 
 Status: ${page.data.status}
 
-${await page.data.getText('processed')}`,
+${await page.data.getText("processed")}`,
 });

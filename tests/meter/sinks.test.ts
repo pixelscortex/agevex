@@ -7,7 +7,7 @@ import {
   openRouterCost,
   LIMITS,
   type SinkEvent,
-} from "../../src/meter/index.js";
+} from "../../src/modules/meter/client/index.js";
 
 function event(index: number): SinkEvent {
   return {
@@ -48,7 +48,7 @@ it("Polar serializes signed integer nanos as exact decimal cents within twelve p
     meter: "usage",
     accessToken: "test-token",
     fetch: async (_url, init) => {
-      const body = String(init?.body);
+      const body = String(init?.body as string | undefined);
 
       // Inspect the wire number: parsing alone would conceal excess decimal places.
       const tokens = [...body.matchAll(/"amount":(-?\d+(?:\.\d+)?(?:e[+-]?\d+)?)/g)].map(
@@ -86,7 +86,7 @@ it("one delivery job drains up to 100 pending charges into a single Polar ingest
       fetch: async (url, init) => {
         expect(url).toBe("https://sandbox-api.polar.sh/v1/events/ingest");
 
-        const payload = JSON.parse(String(init?.body)) as {
+        const payload = JSON.parse(String(init?.body as string | undefined)) as {
           events: {
             external_id: string;
             external_customer_id: string;
@@ -162,7 +162,9 @@ it("webhook delivery bounds batches and retains signed correction deltas and sta
   const sink = webhookSink({
     url: "https://ledger.example/events",
     fetch: async (_url, init) => {
-      bodies.push((JSON.parse(String(init?.body)) as { events: SinkEvent[] }).events);
+      bodies.push(
+        (JSON.parse(String(init?.body as string | undefined)) as { events: SinkEvent[] }).events,
+      );
 
       return new Response(null, { status: 204 });
     },

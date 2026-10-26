@@ -1,8 +1,13 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { internalActionGeneric } from "convex/server";
 import { v } from "convex/values";
-import { LIMITS, polarSink, type Meter, type SinkEvent } from "../../src/meter/index.js";
-import { deliveryJob } from "../../src/meter/component/contracts.js";
+import {
+  LIMITS,
+  polarSink,
+  type Meter,
+  type SinkEvent,
+} from "../../src/modules/meter/client/index.js";
+import { deliveryJob } from "../../src/modules/meter/shared/contracts.js";
 import { setup, attribution } from "./setup.js";
 
 beforeEach(() => {

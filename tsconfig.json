@@ -11,7 +11,11 @@
     "isolatedModules": true,
     "declaration": true,
     "rootDir": "./src",
-    "outDir": "./dist"
+    "outDir": "./dist",
+    "paths": {
+      "agevex": ["./src/client/index.ts"],
+      "agevex/tools": ["./src/modules/tools/client/index.ts"]
+    }
   },
   "include": ["./src/**/*"]
 }

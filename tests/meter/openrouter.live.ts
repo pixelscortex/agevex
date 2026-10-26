@@ -6,7 +6,7 @@ import agent from "@convex-dev/agent/test";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { componentsGeneric } from "convex/server";
 import type { ComponentApi as AgentComponent } from "@convex-dev/agent/_generated/component.js";
-import { usageHandlerFor } from "../../src/meter/index.js";
+import { usageHandlerFor } from "../../src/modules/meter/client/index.js";
 import { setup } from "./setup.js";
 
 // Avoid the native constructor's intersection of two expanding gateway unions
@@ -51,7 +51,9 @@ it.skipIf(!apiKey)(
       fetch: async (url, init) => {
         if (++requests > 1) throw new Error("LIVE_REQUEST_CAP");
 
-        const body = JSON.parse(String(init?.body)) as { usage?: { include?: boolean } };
+        const body = JSON.parse(String(init?.body as string | undefined)) as {
+          usage?: { include?: boolean };
+        };
 
         expect(body.usage?.include).toBe(true);
 

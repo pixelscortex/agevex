@@ -53,14 +53,19 @@ generated bindings. `defineAgents`, `sdk.api()`, `cancel` and `threadCost` are
 not current exports.
 
 ```ts title="Planned one-screen setup"
-const researcher = new Agent(components.agent, { name: "Researcher", languageModel, instructions })
-const main = new Agent(components.agent, { name: "Main", languageModel, instructions, subagents: [researcher] })
+const researcher = new Agent(components.agent, { name: "Researcher", languageModel, instructions });
+const main = new Agent(components.agent, {
+  name: "Main",
+  languageModel,
+  instructions,
+  subagents: [researcher],
+});
 
-export const sdk = defineAgents(components.sdk, { agents: [main], authorize, meter })
-export const { open, send, cancel, messages, activity, delegations, threadCost } = sdk.api()
+export const sdk = defineAgents(components.sdk, { agents: [main], authorize, meter });
+export const { open, send, cancel, messages, activity, delegations, threadCost } = sdk.api();
 
 // anywhere in the host
-const cost = await sdk.meter.threadCost(ctx, { threadId })   // { totalNanos, unknown, byAgent, byModel }
+const cost = await sdk.meter.threadCost(ctx, { threadId }); // { totalNanos, unknown, byAgent, byModel }
 ```
 
 The current registration export is `registerAgevex`. It requires host-owned

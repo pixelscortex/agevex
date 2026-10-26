@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, it, vi } from "vite-plus/test";
-import { langfuse, telemetry } from "../../../src/telemetry/index.js";
+import { langfuse, telemetry } from "../../../src/modules/telemetry/client/index.js";
 import { facts, scripted } from "../script.js";
 
 // Only this file is consulted; shell credentials cannot accidentally enable a live
