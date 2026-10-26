@@ -1,0 +1,100 @@
+src/component/subagents/parent-notes.ts
+  s_fed1b8b814d0ca::t_e7c4f621d2058a 20,36-39,48-53,65-68,90-91,104,107-117
+  s_fed1b8b814d0ca::t_abadd7e327ff76 1-19,21-35,40,42-47,54-64,69-89,92-103,105-106,119-122
+  s_fed1b8b814d0ca::t_be62ef668ab973 41,118
+src/component/_generated/api.ts
+  s_fed1b8b814d0ca::t_34a340fc0fe679 27,62
+README.md
+  s_fed1b8b814d0ca::t_171691f12143d4 535-547
+src/client/types.ts
+  s_fed1b8b814d0ca::t_5deb7e412ec510 233-236,249-251,286
+  s_fed1b8b814d0ca::t_c44494ccdf2a61 268-273,293
+  s_fed1b8b814d0ca::t_9aae55a8176827 267
+tests/delegation.test.ts
+  s_fed1b8b814d0ca::t_d2b498ba49b197 329
+  s_fed1b8b814d0ca::t_5b041f446d44e1 330-333
+src/client/turn/collaboration-tools.ts
+  s_fed1b8b814d0ca::t_c44494ccdf2a61 4,18,42-62
+tests/delegation-v2.test.ts
+  s_fed1b8b814d0ca::t_d2b498ba49b197 186
+  s_fed1b8b814d0ca::t_6ca5e433c1e8a6 187-191,429,432
+src/component/limits.ts
+  s_fed1b8b814d0ca::t_c44494ccdf2a61 37,151-153,224
+tests/message-parent.fixture.ts
+  s_fed1b8b814d0ca::t_62322b9bf39b17 1-24,28-107,110-115,117-118
+  s_fed1b8b814d0ca::t_267ea0510466c6 25-27,116
+  s_fed1b8b814d0ca::t_5a37ba0cdc5835 108-109
+  s_fed1b8b814d0ca::t_558a93fcc53d90 119-163
+src/component/_generated/component.ts
+  s_fed1b8b814d0ca::t_34a340fc0fe679 24,65
+src/client/runtime.ts
+  s_fed1b8b814d0ca::t_c44494ccdf2a61 31-36
+src/component/schema.ts
+  s_fed1b8b814d0ca::t_c44494ccdf2a61 66-69,451-454
+src/component/subagents/messages.ts
+  s_fed1b8b814d0ca::t_be62ef668ab973 182,192
+  s_fed1b8b814d0ca::t_d26793d53d36b7 46,84,89-92,95-96,99-103,144,154,234-251,315
+  s_fed1b8b814d0ca::t_c44494ccdf2a61 20-21,26,33,47-48
+  s_fed1b8b814d0ca::t_abadd7e327ff76 58-62,93-94,110,117
+  s_fed1b8b814d0ca::t_5deb7e412ec510 5,8,55-56,97-98,146-149
+  s_fed1b8b814d0ca::t_5529428de56bd0 145
+src/client/README.md
+  s_fed1b8b814d0ca::t_171691f12143d4 79,96
+tests/delegation-v2.host.ts
+  s_fed1b8b814d0ca::t_267ea0510466c6 37
+src/component/README.md
+  s_fed1b8b814d0ca::t_5deb7e412ec510 129-130
+  s_fed1b8b814d0ca::t_20b6d28f564961 128,170-171,174-175
+src/client/coordinate/coordinator.ts
+  s_fed1b8b814d0ca::t_5deb7e412ec510 7-8
+  s_fed1b8b814d0ca::t_cfd374ec7a6eb8 20,62,87
+  s_fed1b8b814d0ca::t_75ccdfeffd638b 88
+src/client/coordinate/parent-note.ts
+  s_fed1b8b814d0ca::t_cfd374ec7a6eb8 1-62,64
+  s_fed1b8b814d0ca::t_34a340fc0fe679 63
+  s_fed1b8b814d0ca::t_0b7636e2908d09 65-72
+docs/site/content/docs/tools/index.mdx
+  s_fed1b8b814d0ca::t_171691f12143d4 11-13
+tests/message-parent.test.ts
+  s_fed1b8b814d0ca::t_62322b9bf39b17 1-6,22-24,30-34,38-44,46-54,61-68,73-78,90-91,93-97,113,121,123-128,201-206,215-234,243-247,252,263-269
+  s_fed1b8b814d0ca::t_7fcd281049cab2 25,37,45,60,83,86,89,98,103,108,112,114,120,135,140,143,146,166,171,176,182,186,191,208,211,214,236,239,242,251,253,258,262,286,289,292,301,305,308,313,318,336,341,344,347,355,359,364,368,378,382,388,401,404,413,417,434,437,440,447,453,457,461,468,470,483,487,489,502-505,507-509,513,520,531,539
+  s_fed1b8b814d0ca::t_5a37ba0cdc5835 92,122,418-421,524-528,532-538,540-545,548
+  s_fed1b8b814d0ca::t_d2b498ba49b197 270-271,394-398,405-409,546-547,549
+  s_fed1b8b814d0ca::t_ad35d0d50198fa 7-21,26-29,35-36,55-59,69-72,79-82,84-85,87-88,99-102,104-107,109-111,115-119,129-134,136-139,141-142,144-145,147-165,167-170,172-175,177-181,183-185,187-190,192-200,207,209-210,212-213,235,237-238,240-241,248-250,254-257,259-261,272-285,287-288,290-291,293-300,302-304,306-307,309-312,314-317,319-335,337-340,342-343,345-346,348-354,356-358,360-363,365-367,369-377,379-381,383-387,389-393,399-400,402-403,410-412,414-416,422-433,435-436,438-439,441-446,448-452,454-456,458-460,462-467,469,471-482,484-486,488,490-501,506,510-512,514-519,521-523,529-530
+  s_fed1b8b814d0ca::t_33db18f579fb07 550
+docs/site/content/docs/concepts/limits.mdx
+  s_fed1b8b814d0ca::t_171691f12143d4 21,32-33
+src/component/turns/claim.ts
+  s_fed1b8b814d0ca::t_97717fca262ae2 151-154
+  s_fed1b8b814d0ca::t_be62ef668ab973 149,195,221-226
+  s_fed1b8b814d0ca::t_ad842fd48b6747 150,227
+docs/site/content/docs/tools/message-parent.mdx
+  s_fed1b8b814d0ca::t_171691f12143d4 1-48
+  s_fed1b8b814d0ca::t_8aa360caf90e65 49-50
+docs/site/content/docs/tools/meta.json
+  s_fed1b8b814d0ca::t_171691f12143d4 3
+src/client/tool-names.ts
+  s_fed1b8b814d0ca::t_c44494ccdf2a61 7,12,19
+src/client/index.ts
+  s_fed1b8b814d0ca::t_34a340fc0fe679 13
+src/component/subagents/runs.ts
+  s_fed1b8b814d0ca::t_c44494ccdf2a61 121
+docs/site/content/docs/concepts/delegation.mdx
+  s_fed1b8b814d0ca::t_171691f12143d4 13-16,21,50-69,72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7aa771e1d97878e3da046a09b9a97be00dd52a68",
+  "prompts": {},
+  "sessions": {
+    "s_fed1b8b814d0ca": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17828-6caa-78f2-8a5e-1e483933da1c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
