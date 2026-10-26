@@ -18,7 +18,7 @@ export type { Facts, TelemetryOptions, TurnTelemetry } from "./types.js";
  * Action-scoped, one-shot buffer. Create a fresh instance for each turn, attach its
  * integration to streamText, consume the stream, then await flush in finally.
  *
- * AI SDK 7's callback seam is ai/src/modules/telemetry/telemetry.ts:136-360;
+ * AI SDK 7's callback seam is ai/src/telemetry/telemetry.ts:136-360;
  * telemetry-options.ts:24-76 contains integrations and has no tracer option.
  * The observer-only failure guard follows the verified prior art in
  * agents/src/runtime/tracing.ts:133-215, without its durable outbox/SDK layer.
