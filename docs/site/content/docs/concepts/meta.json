@@ -6,6 +6,8 @@
     "runtime",
     "background-text",
     "delegation",
+    "react-hooks",
+    "main-builder-reviewer",
     "message-parent",
     "receipts",
     "hooks",

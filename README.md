@@ -16,6 +16,14 @@ Telemetry is a client library; tools expose host factories and installable regis
 sources. Each module README maps its files. Package subpaths stay `agevex/<name>`,
 with `/convex.config`, `/test` and `/_generated/component.js` for components.
 
+## React hooks
+
+`agevex/react` provides headless hooks over your app’s authorized public refs,
+using its existing ConvexProvider/auth. Messages use explicit pagination and a
+500-message window; decisions wait for server receipts. See
+[React hooks](docs/site/content/docs/concepts/react-hooks.mdx) and the
+[Main → Builder → Reviewer guide](docs/site/content/docs/concepts/main-builder-reviewer.mdx).
+
 ## Development commands
 
 Use Bun for all commands. `bun run check` checks formatting, lint, library/test
