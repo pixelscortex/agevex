@@ -84,7 +84,7 @@
     }
   },
   "scripts": {
-    "build": "tsc --project tsconfig.json",
+    "build": "rm -rf dist && tsc --project tsconfig.json",
     "release:git": "sh scripts/release-git.sh",
     "check:deploy": "sh scripts/check-deploy.sh",
     "typecheck": "tsc --noEmit --project tsconfig.json",
