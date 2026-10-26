@@ -5,6 +5,8 @@
 // runtime executes. Re-exported from `index.ts`; every runtime module imports its
 // contracts from here. Validator-derived types come from the component schema.
 
+import type { ThreadTextOptions, TextTaskArgs } from "./text/options.js";
+import type { ContextHandler } from "@convex-dev/agent";
 import type { UsageSlot, BudgetSlot, TelemetrySlot, SandboxSlot, ExtractSlot } from "./slots.js";
 import type {
   GenericActionCtx,
@@ -91,6 +93,10 @@ export type AuthorizationScope =
   | { operation: "sandbox"; agent: string; threadId: string; subject: string; runId: string }
   | {
       operation:
+        | "title"
+        | "rename"
+        | "summary"
+        | "summarize"
         | "note"
         | "send"
         | "respond"
@@ -133,6 +139,8 @@ export type AuthorizationScope =
  * field in it is read back from persisted state.
  */
 export type ExecutionScope = {
+  /** Background text uses the same persisted-principal policy without a user connection. */
+  purpose?: "title" | "summary";
   subject: string;
   agent: string;
   assignmentId: string;
@@ -275,6 +283,7 @@ export type CoordinateResult =
 // are invariant (notably stop conditions). No native result is widened publicly.
 export type ManagedAgent = {
   name: string;
+  textModel?: Extract<LanguageModel, string | LanguageModelV4>;
   run?: RunSettings;
   sandbox?: boolean;
   hooks?: AgentHooks;
@@ -297,6 +306,7 @@ export type ManagedAgent = {
     options: {
       saveStreamDeltas: { chunking: "word"; throttleMs: number };
       storageOptions: { saveMessages: "promptAndOutput" };
+      contextHandler?: ContextHandler;
     },
   ): Promise<{
     consumeStream(options?: { onError: (error: unknown) => void }): PromiseLike<void>;
@@ -307,7 +317,10 @@ export type ManagedAgent = {
     ctx: GenericActionCtx<GenericDataModel>,
     target: { threadId: string },
     args: ManagedGenerationArgs,
-    options: { storageOptions: { saveMessages: "promptAndOutput" } },
+    options: {
+      storageOptions: { saveMessages: "promptAndOutput" };
+      contextHandler?: ContextHandler;
+    },
   ): Promise<{ finishReason: string; savedMessages?: MessageDoc[] }>;
 };
 
@@ -328,7 +341,7 @@ export type ManagedGenerationArgs = {
 
 import type { Limits } from "../component/limits.js";
 
-export type Registration = {
+export type Registration = ThreadTextOptions & {
   /** Absent: ignore usage, allow budgets, export nothing, omit sandbox tools,
    * and pass attachments as native Agent file parts. */
   usage?: UsageSlot;
@@ -355,6 +368,7 @@ export type Registration = {
    */
   agents: readonly ManagedAgent[];
   refs: {
+    textTask?: () => FunctionReference<"action", "internal", TextTaskArgs, null>;
     runTurn: () => FunctionReference<"action", "internal", TurnArgs, null>;
     /**
      * Required only when collaboration is configured. Supplied so the managed

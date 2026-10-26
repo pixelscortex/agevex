@@ -72,7 +72,7 @@ export const runtime = registerAgent(components.agevex, {
   ...registration,
   agents: [main],
 });
-export const { runTurn, coordinate } = runtime.internalFunctions();
+export const { runTurn, coordinate, textTask } = runtime.internalFunctions();
 export const {
   open,
   send,

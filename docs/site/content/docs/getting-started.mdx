@@ -68,6 +68,7 @@ export const registration: Registration = {
   refs: {
     runTurn: () => internal.agents.runTurn,
     coordinate: () => internal.agents.coordinate,
+    textTask: () => internal.agents.textTask,
   },
   authorize: async (ctx, scope) => {
     const subject =
@@ -89,7 +90,7 @@ import { components } from "./_generated/api.js";
 import { registration } from "./agentConfig.js";
 
 export const runtime = registerAgent(components.agevex, registration);
-export const { runTurn, coordinate } = runtime.internalFunctions();
+export const { runTurn, coordinate, textTask } = runtime.internalFunctions();
 export const {
   open,
   send,
@@ -100,6 +101,10 @@ export const {
   streams,
   activity,
   runTree,
+  title,
+  rename,
+  summary,
+  summarize,
   delegations,
 } = runtime.authorizedEndpoints();
 ```

@@ -11,7 +11,7 @@ agent index, and `open` looks roots up in `config.agents`.
 
 1. **Register.** `registerAgent` (`runtime.ts`) validates the agent graph, slots
    and models once (`registration/`) and returns the endpoints, `runTurn`,
-   `coordinate` and the host helpers.
+   `coordinate`, `textTask` and the host helpers.
 2. **Accept.** `open` / `send` (`endpoints/requests.ts`) authorize the subject,
    dedupe the request key, save the native prompt and call `turns.send.accept`,
    which snapshots validated Agent.run settings for the root and all children.
@@ -36,6 +36,20 @@ agent index, and `open` looks roots up in `config.agents`.
 
 Collaboration tools and side reviews call the `coordinate` mutation
 (`coordinate/coordinator.ts`), which runs each op in one transaction.
+
+## Background text
+
+`text/options.ts` validates default-on title policy and opt-in summary/cadence/
+compaction settings. Hosts export `textTask` and supply `refs.textTask`, or opt
+out with `title: false` while leaving summary off. `endpoints/text.ts` authorizes
+root title/rename/summary/summarize operations. `text/task.ts` rechecks execution
+policy (`purpose: title | summary`) and budget, reads exact bounded native ids,
+and invokes a receipt-backed task without tools or repairs. Usage records the
+triggering run, purpose and exact provider response id; evidence failures mark
+reporting partial and cannot retry the model. `text/compact.ts` installs native
+context selection only for a contiguous, plain-text covered prefix, preserving
+the current prompt and a bounded exact suffix. Missing refs and non-text
+exchanges fall back to native selection.
 
 ## File map
 

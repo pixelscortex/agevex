@@ -425,6 +425,7 @@ const overrideModel = (id: string) => {
 
 export function fixtureRuntime(limits?: Registration["limits"]) {
   return registerAgent(components.agevex, {
+    title: false,
     limits,
     agents: [main],
     models: overrideModel,

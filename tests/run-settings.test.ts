@@ -363,6 +363,7 @@ it.each<RunSettings>([
 
   expect(() =>
     registerAgent(components.agevex, {
+      title: false,
       agents: [agent],
       refs: { runTurn: () => internal.agents.runTurn },
       authorize: async () => ({ subject: "alice" }),
@@ -533,6 +534,7 @@ it("oversized whole settings snapshots fail at registration before acceptance", 
 
   expect(() =>
     registerAgent(components.agevex, {
+      title: false,
       agents,
       refs: { runTurn: () => internal.agents.runTurn },
       authorize: async () => ({ subject: "alice" }),

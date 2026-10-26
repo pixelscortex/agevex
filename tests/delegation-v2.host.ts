@@ -81,6 +81,7 @@ export const failBeforeClaim = internalActionGeneric({
 });
 export function registration(limits?: Registration["limits"], preclaimFailure = false) {
   return registerAgent(components.agevex, {
+    title: false,
     agents: [main],
     limits,
     refs: {

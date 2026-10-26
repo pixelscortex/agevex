@@ -14,6 +14,7 @@ import { convexToJson, getConvexSize, type Value } from "convex/values";
 import type { FunctionReturnType, GenericActionCtx, GenericDataModel } from "convex/server";
 import type { z } from "zod";
 import type { ComponentApi } from "../component/_generated/component.js";
+import { TEXT_LIMITS } from "../component/text/values.js";
 import { HOST_LIMITS, LIMITS } from "../component/limits.js";
 import { fingerprint, opaqueKey } from "./keys.js";
 import { assertFact } from "../component/facts.js";
@@ -36,6 +37,9 @@ export type TaskOptions = {
   model?: TaskModel;
   leaseMs?: number;
   signal?: AbortSignal;
+  /** Bounded overrides for small background calls and their exact-message input. */
+  maxOutputTokens?: number;
+  maxPromptLength?: number;
 };
 export type TaskOutcome<Output> =
   | { status: "done"; value: Output }
@@ -199,11 +203,23 @@ async function prepareTask<Input, Output>(
 
   if (!model) throw new Error("TASK_MODEL_REQUIRED");
 
+  const maxPromptLength = options.maxPromptLength ?? LIMITS.taskPromptLength;
+  const maxOutputTokens = options.maxOutputTokens ?? LIMITS.outputTokens;
+
+  if (
+    !Number.isSafeInteger(maxPromptLength) ||
+    maxPromptLength < 1 ||
+    maxPromptLength > TEXT_LIMITS.taskPromptCharacters ||
+    !Number.isSafeInteger(maxOutputTokens) ||
+    maxOutputTokens < 1 ||
+    maxOutputTokens > LIMITS.outputTokens
+  )
+    throw new Error("INVALID_TASK_LIMITS");
+
   const parsed = await task.input.parseAsync(input);
   const prompt = task.prompt(parsed);
 
-  if (!prompt.trim() || prompt.length > LIMITS.taskPromptLength)
-    throw new Error("INVALID_TASK_PROMPT");
+  if (!prompt.trim() || prompt.length > maxPromptLength) throw new Error("INVALID_TASK_PROMPT");
 
   const signal = "ctx" in context ? context.signal : options.signal;
 
@@ -320,23 +336,34 @@ async function generateOnce<Input, Output>(
   attempt: number,
   repairText: string | undefined,
 ): Promise<TaskOutcome<Output>> {
-  const generated = await generateText({
-    model: call.model,
-    output: Output.object({ schema: call.task.output }),
-    prompt:
-      repairText === undefined
-        ? call.prompt
-        : `${call.prompt}\n\nYour previous response did not match the output schema. Return valid JSON matching the schema.\nPrevious response:\n${repairText}`,
-    maxRetries: LIMITS.modelRetries,
-    maxOutputTokens: LIMITS.outputTokens,
-    abortSignal: call.signal,
-  });
+  const generated = await abortTask(
+    generateText({
+      model: call.model,
+      output: Output.object({ schema: call.task.output }),
+      prompt:
+        repairText === undefined
+          ? call.prompt
+          : `${call.prompt}\n\nYour previous response did not match the output schema. Return valid JSON matching the schema.\nPrevious response:\n${repairText}`,
+      maxRetries: LIMITS.modelRetries,
+      maxOutputTokens: call.options.maxOutputTokens ?? LIMITS.outputTokens,
+      abortSignal: call.signal,
+    }),
+    call.signal,
+  );
 
   // Output validation can throw. Read it before recording so an invalid
   // answer is charged only by the repair/error path below.
   const value = generated.output;
 
-  await recordTaskUsage(call, receipt, attempt, generated.usage, generated.providerMetadata);
+  await recordTaskUsage(
+    call,
+    receipt,
+    attempt,
+    generated.usage,
+    generated.providerMetadata,
+    generated.response.id,
+  );
+
   // Convex validates the serializable result and its byte bound before
   // persistence. A huge response never becomes a >1 MiB receipt document.
   convexToJson(value as Value);
@@ -355,6 +382,7 @@ async function recordTaskUsage<Input, Output>(
   attempt: number,
   usage: unknown,
   providerMetadata: unknown,
+  requestId?: string,
 ) {
   const { model, attribution, binding, options, ctx } = call;
 
@@ -367,8 +395,25 @@ async function recordTaskUsage<Input, Output>(
         key: await opaqueKey("task-usage", receipt.scope, receipt.key, attempt),
         usage,
         providerMetadata,
+        requestId,
       });
   } catch {
     /* Recording evidence must never trigger another paid call. */
   }
+}
+
+/** Bound waiting even when a provider ignores AbortSignal. The receipt records
+ * the uncertain paid attempt once; a late answer cannot commit or buy a retry. */
+function abortTask<T>(work: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return work;
+
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(new Error("TASK_ABORTED"));
+
+    signal.addEventListener("abort", abort, { once: true });
+
+    if (signal.aborted) abort();
+
+    void work.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+  });
 }

@@ -176,9 +176,10 @@ async function recordNativeSave(
   // metadata in the SAME transaction as the native placeholder creation.
   await recordMessages(ctx, row, messages);
 
-  const modelStep = args.trackUsage
-    ? messages.find((message) => message.usage && message.status === "success")
-    : undefined;
+  const modelStep =
+    args.trackUsage || row.textConfig?.summary
+      ? messages.find((message) => message.usage && message.status === "success")
+      : undefined;
 
   if (modelStep)
     await ctx.db.patch("assignments", row._id, {

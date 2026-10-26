@@ -1057,6 +1057,7 @@ it.each(["x".repeat(129), "😀".repeat(100)])(
   (name) => {
     expect(() =>
       registerAgent(components.agevex, {
+        title: false,
         agents: [Object.create(main, { name: { value: name } }) as typeof main],
         refs: { runTurn: () => api.agents.runTurn },
         authorize: async () => ({ subject: "alice" }),

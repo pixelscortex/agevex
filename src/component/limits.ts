@@ -96,7 +96,10 @@ export const HOST_LIMITS = {
  * allow <=32 KiB: the original <=8 KiB (16 approval/deferred-call keys),
  * <=4 KiB exact message references, <=6 KiB side-review boundaries, two
  * prompt ids and scalar counters. The original 32 KiB
- * envelope remains conservative after removing the <=10 KiB control-id replay
+ * envelope includes root text metadata: <=9 KiB summary/boundary and
+ * <=4 KiB job/config refs. Together 8+4+6+9+4=31 KiB leaves 1 KiB
+ * headroom under 32 KiB. This replaces the removed control-id replay list.
+ * The old envelope was conservative after removing the <=10 KiB control-id replay
  * list. Notes have their own bounded queue N; each raw row stays <=17 KiB
  * and is read only by separate per-assignment cleanup transactions (<864 KiB including ownership).
  * Saved control rows retain <=1 KiB of exact-id origin metadata and are excluded

@@ -25,6 +25,10 @@ export type EndpointContext = {
 
 /** The operations `ownedThread` authorizes; each is the host policy's `operation`. */
 export type ThreadOperation =
+  | "title"
+  | "rename"
+  | "summary"
+  | "summarize"
   | "send"
   | "respond"
   | "answer"

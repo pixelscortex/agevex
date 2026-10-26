@@ -4,6 +4,7 @@
   "pages": [
     "architecture",
     "runtime",
+    "background-text",
     "delegation",
     "receipts",
     "hooks",
