@@ -20,7 +20,7 @@ import { firstReady } from "./inbox.js";
 import { disarmRecovery } from "./recovery.js";
 import { disarmSlice } from "./boundaries.js";
 import { saveProposal } from "./decision-proposals.js";
-import type { AskUserMetadata } from "../../shared/tool-markers.js";
+import type { PreparedAskUser } from "../../shared/tool-markers.js";
 
 type PauseRequest = NonNullable<Doc<"assignments">["approvals"]>["requests"][number];
 
@@ -125,7 +125,7 @@ export async function collectPause(
   ctx: MutationCtx,
   messages: MessageDoc[],
   deferredTools: Set<string>,
-  askTools: Record<string, AskUserMetadata> = {},
+  askTools: Record<string, PreparedAskUser> = {},
 ) {
   const pause: Pause = { requests: [], count: 0 };
 
@@ -139,7 +139,7 @@ async function addApprovalRequests(
   ctx: MutationCtx,
   pause: Pause,
   messages: MessageDoc[],
-  askTools: Record<string, AskUserMetadata>,
+  askTools: Record<string, PreparedAskUser>,
 ) {
   for (const message of messages) {
     const content = assistantParts(message);
@@ -185,7 +185,7 @@ async function addDeferredCalls(
   pause: Pause,
   messages: MessageDoc[],
   deferredTools: Set<string>,
-  askTools: Record<string, AskUserMetadata>,
+  askTools: Record<string, PreparedAskUser>,
 ) {
   for (const message of messages) {
     const content = assistantParts(message);

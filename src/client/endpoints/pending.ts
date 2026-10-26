@@ -45,13 +45,14 @@ export function pendingApprovalsEndpoint(ep: EndpointContext) {
             editable: false,
           };
 
-        // An ask's question is projected once: keep it in `question` and drop the
-        // identical copy in `input`, so a long question plus a form schema fits.
+        // Preserve custom validated inputs in full. For the default question-only
+        // form, project the question once so a long question and schema still fit.
         const question = form && typeof input?.question === "string" ? input.question : undefined;
+        const questionOnly = question !== undefined && Object.keys(input!).length === 1;
 
         const item = {
           ...call,
-          ...(question !== undefined ? { input: null } : {}),
+          ...(questionOnly ? { input: null } : {}),
           editable:
             call.kind === "approval" &&
             !call.providerExecuted &&

@@ -928,11 +928,17 @@ clearly unless all three `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` and
 smoke test uses synthetic model events and one ingestion POST, with no paid
 model requests.
 
-`createAskUserTool({ answerSchema? })` accepts an app-supplied JSON Schema form.
-Questions remain model-supplied strings (≤2000 characters); schemas are stored in
-the compact proposal, outside model-visible input. The factory's marker is recognized
-under any tool registration key. Use `answer({ threadId, toolCallId, value })` for either a
-plain string or structured JSON. Invalid values leave the question pending.
+`createAskUserTool({ inputSchema?, answerSchema? })` accepts a Zod type or closed
+JSON Schema for model input (≤16 KiB). The default stays strict `{ question }`
+(≤2000 characters). `answerSchema` accepts a static JSON Schema or a synchronous
+`(validatedInput) => JsonSchema` callback, computed on the host during the turn.
+Each compact proposal stores validated input and its own schema (≤8 KiB, depth 8,
+32 fields), outside model-visible input. `pendingApprovals` exposes custom `input`,
+optional string `question`, and the stored `schema`; question-only inputs keep a
+single `question` copy. Oversized projections remain bounded stubs. Invalid input
+or derived schemas become tool errors without pausing. The factory's marker works
+under any registration key. Use `answer({ threadId, toolCallId, value })` for a
+plain string or JSON validated against the stored schema; invalid answers stay pending.
 `Agent.askUser` defaults to root-only: children receive `ROOT_ONLY` without a
 human pause and should use `agevex_ask_parent`. Explicit true/false applies to
 either persisted role, including an Agent shared between root and child graphs.

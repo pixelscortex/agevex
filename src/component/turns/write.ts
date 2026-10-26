@@ -42,7 +42,21 @@ export const writeArgs = {
   nativeStream: v.optional(v.string()),
   trackUsage: v.optional(v.boolean()),
   deferredTools: v.optional(v.array(v.string())),
-  askUserTools: v.optional(v.record(v.string(), v.object({ answerSchema: v.optional(v.any()) }))),
+  askUserTools: v.optional(
+    v.record(
+      v.string(),
+      v.object({
+        calls: v.array(
+          v.object({
+            toolCallId: v.string(),
+            input: v.optional(v.any()),
+            answerSchema: v.optional(v.any()),
+            error: v.optional(v.string()),
+          }),
+        ),
+      }),
+    ),
+  ),
   nativeMessages: v.optional(
     v.object({
       getMessages: v.string(),

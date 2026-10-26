@@ -2,8 +2,13 @@
 import type { MessageDoc } from "@convex-dev/agent";
 import type { Doc } from "../_generated/dataModel.js";
 import type { MutationCtx } from "../_generated/server.js";
-import { DECISION_LIMITS, decisionBytes, assertFormSchema } from "../../shared/decisions.js";
-import type { AskUserMetadata } from "../../shared/tool-markers.js";
+import {
+  DECISION_LIMITS,
+  decisionBytes,
+  assertFormSchema,
+  assertJson,
+} from "../../shared/decisions.js";
+import type { PreparedAskUser } from "../../shared/tool-markers.js";
 
 type NativeSave = { messages: { message: MessageDoc["message"] }[] };
 type SavedMessage = NativeSave["messages"][number];
@@ -16,11 +21,8 @@ export async function prepareDecisions(
   ctx: MutationCtx,
   row: Doc<"assignments">,
   args: NativeSave,
-  tools: Record<string, AskUserMetadata> = {},
+  tools: Record<string, PreparedAskUser> = {},
 ) {
-  for (const metadata of Object.values(tools))
-    if (metadata.answerSchema) assertFormSchema(metadata.answerSchema);
-
   const run = row.runId ? await ctx.db.get("runs", row.runId) : null;
 
   const allowed =
@@ -43,22 +45,34 @@ export async function prepareDecisions(
         continue;
       }
 
-      const input = part.input as Record<string, unknown>;
+      const checked = tools[part.toolName].calls.find(
+        (call) => call.toolCallId === part.toolCallId,
+      );
 
-      if (
-        !input ||
-        typeof input.question !== "string" ||
-        !input.question.trim() ||
-        input.question.length > DECISION_LIMITS.questionChars ||
-        Object.keys(input).some((key) => key !== "question")
-      ) {
-        denyAsk(args, saved, part.toolCallId, part.toolName, "INVALID_QUESTION");
-        continue;
-      }
+      const error = checked?.error ?? checkPreparedAsk(checked);
 
-      // Form metadata is copied into the compact proposal, not native model input.
+      if (error) denyAsk(args, saved, part.toolCallId, part.toolName, error);
     }
   }
+}
+
+/** The component cannot execute host schemas/callbacks. Fail closed when the
+ * host omitted validation, and independently enforce the storage dialect/bounds.
+ */
+function checkPreparedAsk(call?: PreparedAskUser["calls"][number]) {
+  try {
+    assertJson(call?.input);
+  } catch {
+    return "INVALID_QUESTION";
+  }
+
+  try {
+    if (call?.answerSchema !== undefined) assertFormSchema(call.answerSchema);
+  } catch {
+    return "INVALID_FORM_SCHEMA";
+  }
+
+  return undefined;
 }
 
 /** Normal tool result, with no approval request left to expose to a human.
@@ -105,6 +119,14 @@ function denyAsk(
  * a paid model step with an untyped generation failure.
  */
 export function oversizedDecisionInput(messages: NativeSave["messages"], deferred: Set<string>) {
+  const resulted = new Set(
+    messages.flatMap(({ message }) =>
+      message?.role === "tool"
+        ? message.content.flatMap((part) => (part.type === "tool-result" ? [part.toolCallId] : []))
+        : [],
+    ),
+  );
+
   return messages.some(({ message }) => {
     if (message?.role !== "assistant" || !Array.isArray(message.content)) return false;
 
@@ -117,6 +139,7 @@ export function oversizedDecisionInput(messages: NativeSave["messages"], deferre
     return message.content.some(
       (part) =>
         part.type === "tool-call" &&
+        !resulted.has(part.toolCallId) &&
         (approvals.has(part.toolCallId) || deferred.has(part.toolName)) &&
         decisionBytes(part.input) > DECISION_LIMITS.valueBytes,
     );
