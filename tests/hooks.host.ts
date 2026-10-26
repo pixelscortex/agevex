@@ -28,6 +28,7 @@ import { components } from "./fixture/api.js";
 
 type Args = Parameters<ReturnType<typeof mockModel>["doStream"]>[0];
 export const fixture = {
+  generationIds: false,
   run: {} as Record<string, RunSettings>,
   modes: [] as string[],
   slots: {} as Pick<Registration, "usage" | "budget" | "telemetry" | "sandbox" | "extract">,
@@ -77,8 +78,39 @@ function model(name: string) {
     return scriptedModel([(await fixture.steps[name]?.(n, args)) ?? text(`${name} answer ${n}`)]);
   };
 
-  model.doStream = async (args) => (await respond(args, "stream")).doStream(args);
-  model.doGenerate = async (args) => (await respond(args, "generate")).doGenerate(args);
+  model.doStream = async (args) => {
+    const source = await respond(args, "stream");
+    const id = `generation:${name}:${fixture.calls.filter((call) => call.agent === name).length}`;
+    const result = await source.doStream(args);
+
+    if (!fixture.generationIds) return result;
+
+    return {
+      ...result,
+      stream: result.stream.pipeThrough(
+        new TransformStream({
+          start(controller) {
+            controller.enqueue({ type: "response-metadata", id });
+          },
+        }),
+      ),
+    };
+  };
+
+  model.doGenerate = async (args) => {
+    const source = await respond(args, "generate");
+    const result = await source.doGenerate(args);
+
+    return fixture.generationIds
+      ? {
+          ...result,
+          response: {
+            ...result.response,
+            id: `generation:${name}:${fixture.calls.filter((call) => call.agent === name).length}`,
+          },
+        }
+      : result;
+  };
 
   return model;
 }
@@ -158,6 +190,7 @@ Object.defineProperty(main, "sandbox", { get: () => fixture.sandbox });
 Object.defineProperty(main, "hooks", { get: () => fixture.hooks });
 Object.defineProperty(main, "sideAgents", { get: () => fixture.sides });
 export function reset() {
+  fixture.generationIds = false;
   fixture.run = {};
   fixture.modes = [];
   fixture.slots = {};

@@ -1,6 +1,7 @@
 // @vitest-environment edge-runtime
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { convexTest } from "convex-test";
+import { makeFunctionReference, type FunctionReference } from "convex/server";
 import agent from "@convex-dev/agent/test";
 import agevex from "../../src/test.js";
 import meterComponent from "../../src/modules/meter/test.js";
@@ -11,6 +12,7 @@ import schema from "../fixture/schema.js";
 import { components } from "../fixture/api.js";
 import { fixture, reset, exports, api, call, text } from "../hooks.host.js";
 import { requireReceipt } from "../receipt.js";
+import { tokenEstimate } from "../../src/modules/meter/client/index.js";
 
 const modules = import.meta.glob(["../fixture/**/*.ts", "../fixture/**/*.js"]);
 
@@ -18,7 +20,11 @@ function setup(options: Partial<MeterOptions> = {}, policy?: MeterOptions["budge
   const t = convexTest({
     schema,
     transactionLimits: true,
-    modules: { ...modules, "../fixture/agents.ts": async () => exports() },
+    modules: {
+      ...modules,
+      "../fixture/agents.ts": async () => exports(),
+      "../fixture/meterHost.ts": async () => meter.internalFunctions(),
+    },
   });
 
   agent.register(t);
@@ -26,6 +32,12 @@ function setup(options: Partial<MeterOptions> = {}, policy?: MeterOptions["budge
   const component = meterComponent.register(t);
 
   const meter = defineMeter(component, {
+    workers: {
+      lookup: makeFunctionReference("meterHost:meterLookup") as unknown as FunctionReference<
+        "action",
+        "internal"
+      >,
+    },
     providers: {
       openrouter: inline(),
       fal: { profiles: { image: { unit: "image", usd: 0.25 } } },
@@ -326,7 +338,7 @@ it("core's hashed lifecycle keys replay the meter's original operation outcomes"
 
   await t.action(async (ctx) => {
     const replay = scopedMeter(
-      meter.usageSlot().scope(ctx, facts()),
+      meter.usageSlot().scope(ctx, { ...facts(), purpose: "tool" }),
       fixture.toolContext!.toolCallId,
     );
 
@@ -360,4 +372,219 @@ it("core's hashed lifecycle keys replay the meter's original operation outcomes"
       totalNanos: 700_000_000,
     },
   );
+});
+
+it("spend appears before root completion with saved-step tokens and exclusive tool attribution", async () => {
+  let release!: () => void;
+
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  fixture.steps.Main = async (n) =>
+    n === 0 ? call("managed", {}) : (await blocked, text("finished"));
+
+  fixture.toolWork = async (tc) => {
+    await tc.meter.record("openrouter", {
+      providerMetadata: { openrouter: { usage: { cost: 0.25 } } },
+    });
+
+    return "recorded";
+  };
+
+  const { t, meter } = setup({
+    providers: {
+      openrouter: inline(),
+      "mock-provider": {
+        estimate: tokenEstimate({ inputUsdPerMillion: 10, outputUsdPerMillion: 20 }),
+      },
+    },
+  });
+
+  const receipt = await open(t);
+
+  await expect
+    .poll(async () => {
+      await t.action(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+
+      return fixture.calls.length;
+    })
+    .toBe(2);
+
+  try {
+    const runId = (await status(t, receipt.threadId)).runId!;
+
+    expect((await status(t, receipt.threadId)).turnStatus).toBe("running");
+
+    expect(
+      (await t.run((ctx) => meter.usageView(ctx, { subject: "alice", runId, nodeIds: [null] })))
+        .total,
+    ).toMatchObject({
+      inputTokens: 3,
+      outputTokens: 10,
+      estimatedUsd: 0.00023,
+      settledUsd: 0.25,
+      reporting: "available",
+    });
+  } finally {
+    release();
+  }
+
+  await drain(t);
+  expect((await status(t, receipt.threadId)).errorCode).toBeNull();
+});
+
+it.each(["stream", "generate"] as const)(
+  "%s preserves exact generation identity and reconciles saved steps after completion",
+  async (mode) => {
+    fixture.run.Main = { mode };
+    fixture.generationIds = true;
+
+    const lookup = vi.fn(async (_ctx: unknown, requestId: string) => {
+      expect(requestId).toBe("generation:Main:1");
+
+      return { usd: 0.01 };
+    });
+
+    const { t, meter, component } = setup({
+      providers: { "mock-provider": { estimate: () => ({ usd: 0.1 }), lookup } },
+    });
+
+    const receipt = await open(t);
+
+    await drain(t);
+    expect(fixture.calls).toHaveLength(1);
+    expect((await status(t, receipt.threadId)).errorCode).toBeNull();
+
+    const saved = await t.query(components.agent.messages.listMessagesByThreadId, {
+      threadId: receipt.threadId,
+      order: "asc",
+      paginationOpts: { cursor: null, numItems: 10, maximumBytesRead: 65_536 },
+    });
+
+    const step = saved.page.find((message) => message.usage)!;
+    const key = await opaqueKey("model", receipt.threadId, step._id, step.stepOrder);
+
+    expect(await t.query(component.charges.get, { key })).toMatchObject({
+      providerRequestId: "generation:Main:1",
+      status: "settled",
+      source: "lookup",
+      nanos: 10_000_000,
+      attribution: { purpose: "agent" },
+    });
+
+    const runId = (await status(t, receipt.threadId)).runId!;
+
+    await t.run((ctx) => meter.reconcile(ctx, { subject: "alice", runId }));
+    await drain(t);
+    expect(lookup).toHaveBeenCalledTimes(1);
+    expect(fixture.calls).toHaveLength(1);
+  },
+);
+
+it("a budget reached by the first tool stops the next tool effect and next model slice", async () => {
+  fixture.steps.Main = () => [...call("managed", {}), ...call("echo", { text: "must not run" })];
+
+  fixture.toolWork = async (tc) => {
+    await tc.meter.record("openrouter", {
+      providerMetadata: { openrouter: { usage: { cost: 0.25 } } },
+    });
+
+    return "paid once";
+  };
+
+  const { t, meter } = setup({ budgets: () => ({ maxUsd: 0.2 }) });
+  const receipt = await open(t);
+
+  await drain(t);
+  expect((await status(t, receipt.threadId)).errorCode).toBe("BUDGET_EXCEEDED");
+  expect(fixture.calls).toHaveLength(1);
+  expect(fixture.effects).toEqual([]);
+
+  expect(
+    await t.run((ctx) => meter.subjectCost(ctx, { subject: "alice", runId: facts().runId })),
+  ).toMatchObject({ totalNanos: 350_000_000 });
+});
+
+it("observation failures preserve paid tool success and leave sticky partial reporting", async () => {
+  twoSteps();
+  let effects = 0;
+
+  fixture.toolWork = async (tc) => {
+    effects++;
+    const charge = await tc.meter.record("openrouter", {});
+
+    await charge.settle({ usd: 0.1 });
+
+    return "paid success";
+  };
+
+  const { t, meter } = setup();
+
+  fixture.slots.budget = undefined;
+
+  fixture.slots.usage = {
+    scope: () => {
+      throw new Error("meter unavailable");
+    },
+  };
+
+  const receipt = await open(t);
+
+  await drain(t);
+  expect(effects).toBe(1);
+  expect((await status(t, receipt.threadId)).errorCode).toBeNull();
+  const runId = (await status(t, receipt.threadId)).runId!;
+  const partial = await t.query(components.agevex.turns.slices.usageReporting, { runId });
+
+  expect(partial).toBe(true);
+
+  expect(
+    (
+      await t.run((ctx) =>
+        meter.usageView(ctx, { subject: "alice", runId, nodeIds: [null], partial }),
+      )
+    ).total.reporting,
+  ).toBe("partial");
+});
+
+it("cancellation retains model usage saved before the execution fence closes", async () => {
+  let entered = false;
+  let release!: () => void;
+
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  fixture.hooks.afterTurn = async () => {
+    entered = true;
+    await gate;
+  };
+
+  const { t, meter } = setup();
+  const receipt = await open(t);
+
+  await expect
+    .poll(async () => {
+      await t.action(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+
+      return entered;
+    })
+    .toBe(true);
+
+  const runId = (await status(t, receipt.threadId)).runId!;
+
+  await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
+  release();
+  await drain(t);
+  expect(fixture.calls).toHaveLength(1);
+
+  expect(
+    (await t.run((ctx) => meter.usageView(ctx, { subject: "alice", runId, nodeIds: [null] })))
+      .total,
+  ).toMatchObject({ inputTokens: 3, outputTokens: 10, settledUsd: 0.1 });
 });

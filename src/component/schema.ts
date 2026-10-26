@@ -343,6 +343,8 @@ export default defineSchema({
   // A run outlives an individual turn: results and subsequent delegations spend
   // the same launch/hop budget. Results are ready independently of siblings.
   runs: defineTable({
+    // Sticky observation failure, read by usageReporting and later tree projections.
+    usagePartial: v.optional(v.boolean()),
     // Read by claim/watchdog and betweenSlices. Children inherit this same run id.
     settings: v.optional(settingsSnapshot),
     // Run snapshot shared by every root/descendant/result turn. A beforeTurn

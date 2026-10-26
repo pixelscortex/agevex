@@ -30,6 +30,9 @@ agent index, and `open` looks roots up in `config.agents`.
    `afterTurn`, launches side reviews and admits continuations.
 8. **Finish.** `turn/finish.ts` calls `turns.slices.finish`; a child turn first settles its
    run (`coordinate/settle.ts`) and delivers the result (`coordinate/delivery.ts`).
+9. **Reconcile.** Every slice exit calls the optional usage adapter's bounded
+   sweep. It reads saved provider ids and corrects existing charges; generation
+   is never repeated. Observation failures leave a sticky partial run marker.
 
 Collaboration tools and side reviews call the `coordinate` mutation
 (`coordinate/coordinator.ts`), which runs each op in one transaction.
@@ -68,6 +71,8 @@ Collaboration tools and side reviews call the `coordinate` mutation
 | `turn/context.ts`             | `Turn`, `Generation`, `TurnOutcome` and the fence predicates.                 |
 | `turn/claim.ts`               | Load the execution and claim the turn.                                        |
 | `turn/admission.ts`           | `authorizeExecution` and the budget check.                                    |
+| `turn/usage.ts`               | Fail-open evidence and bounded reconciliation on slice exit.                  |
+| `turn/provider-evidence.ts`   | Preserve exact provider response ids in native saved metadata.                |
 | `turn/fence.ts`               | Cancellation deadline, poll and the fenced action context.                    |
 | `turn/generation.ts`          | One generation: phases, native model step, failure mapping.                   |
 | `turn/hook-runner.ts`         | Validated hook calls and hook notes.                                          |

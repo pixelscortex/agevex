@@ -193,8 +193,17 @@ function fencedContext(
           await fencedWriteArgs(rt, turn, ref, payload),
         );
 
-        if (rt.config.usage && functionKey(ref) === addMessagesKey)
-          await recordStepUsage(rt, turn, rt.config.usage, saved);
+        if (functionKey(ref) === addMessagesKey) {
+          // The native transaction committed this evidence even if cancellation
+          // follows before the model result reaches the host action.
+          const messages = (saved as { messages?: { usage?: unknown; status: string }[] } | null)
+            ?.messages;
+
+          if (messages?.some((message) => message.usage && message.status === "success"))
+            turn.usageSaved = true;
+
+          if (rt.config.usage) await recordStepUsage(rt, turn, rt.config.usage, saved);
+        }
 
         return saved;
       } catch (error) {

@@ -33,9 +33,9 @@ export function billable(row: Doc<"charges">) {
     (final(row) || (row.status === "unknown" && row.source !== "estimate"))
   );
 }
-/** Lookup stops once evidence is authoritative or its estimate has become unknown. */
+/** Missing inline evidence can be recovered by lookup too; expiry never restarts itself. */
 export function resolved(row: Doc<"charges">) {
-  return row.source !== "estimate" || row.status === "unknown";
+  return row.reconciliation === "complete" || row.reconciliation === "exhausted";
 }
 /** Settled and acknowledged by every sink (vacuously true without sinks).
  * `corrected` is not terminal: a settlement or lookup may still replace it. */
@@ -78,6 +78,7 @@ export async function outcome(ctx: Pick<QueryCtx, "db">, row: Doc<"charges">): P
 
   return {
     ...result,
+    reconciliation: result.reconciliation ?? "unavailable",
     sinkState: row.sinkState.map((sink) => {
       const delivery = pending.find((entry) => entry.sink === sink.name);
 

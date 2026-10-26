@@ -11,6 +11,7 @@ import { hashLabel } from "./helpers.js";
 import { bind } from "./scope.js";
 import { check } from "./reads.js";
 import type { MeterOptions } from "./types.js";
+import { reconcile } from "./maintenance.js";
 
 /**
  * Core passes the Agent's stored `message.provider`, the AI SDK provider id
@@ -55,6 +56,8 @@ export function usageSlot(
   const resolve = resolver(meter, slot.providers);
 
   return {
+    reconcile: (ctx, args) => reconcile(meter, ctx, args),
+    view: (ctx, args) => ctx.runQuery(meter.component.reads.usage, args),
     // A model id over the label limit would fail validation and, since core
     // swallows meter errors, drop the charge. Store `sha256:<hex>` instead
     // (71 bytes); the full id is never stored.

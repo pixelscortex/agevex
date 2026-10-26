@@ -77,6 +77,12 @@ See [architecture](/docs/concepts/architecture) for ownership and current paths.
 Managed calls accept per-agent policy without changing shared native Agent options:
 
 ```ts
+import { Agent } from "agevex";
+import { createOpenAI } from "@ai-sdk/openai";
+import { components } from "./_generated/api.js";
+
+const native = components.agent;
+const model = createOpenAI().chat("gpt-4.1-mini");
 const reviewer = new Agent(native, {
   name: "Reviewer",
   languageModel: model,
@@ -122,6 +128,15 @@ apply only to newly accepted requests. The array fits 15 KiB, reserving 1 KiB fo
 model overrides, counters and native row metadata within the 16 KiB run envelope.
 The existing `limits.slicesPerTurn` supplies the default when `run.stepsPerTurn`
 is omitted; an explicit host slice override also caps the Workflow turn.
+
+## Usage and budget boundaries
+
+Optional usage is recorded after every saved model step and app observation.
+The budget slot checks observed run totals before the next model or local tool
+boundary. Provider-cost lookups correct the same meter charges after work;
+they never replay generation. Budget denial stops with `BUDGET_EXCEEDED`, with
+in-flight overshoot accepted. See [slots](/docs/concepts/slots) and
+[meter](/docs/modules/meter) for coverage and reconciliation.
 
 ## Shared lane capacity
 

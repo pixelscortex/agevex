@@ -8,6 +8,7 @@ import { requireBreakdown } from "../shared/breakdowns.js";
 import { LIMITS, integer, text } from "../shared/limits.js";
 import { authorize, type MeterContext } from "./configuration.js";
 import type { ReadCtx } from "./types.js";
+import type { UsageViewArgs } from "../../../client/slots.js";
 
 /** Check a budget snapshot after authorization; trusted core calls validate labels only. */
 export async function check(
@@ -47,6 +48,11 @@ export function costReads(meter: MeterContext) {
   const { component, breakdowns, limits } = meter;
 
   return {
+    usageView: async (ctx: ReadCtx, args: UsageViewArgs) => {
+      await authorize(meter, ctx, { subject: args.subject, runId: args.runId });
+
+      return await ctx.runQuery(component.reads.usage, args);
+    },
     threadCost: async (
       ctx: ReadCtx,
       args: { threadId: string; cursors?: Partial<Record<"agent" | "model" | "provider", string>> },

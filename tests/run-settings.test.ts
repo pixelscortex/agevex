@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { noopMeter } from "../src/client/slots.js";
 // Section 9's public guarantees, driven through real Workflow and native Agent
 // with deterministic fake providers. No provider credentials or network calls.
 import { beforeEach, afterEach, it, expect, vi } from "vite-plus/test";
@@ -612,5 +613,113 @@ it("a run without settings uses defaults through all slices", async () => {
     fixture.calls.every((c) => c.args.maxOutputTokens === RUN_LIMITS.maxOutputTokens.default),
   ).toBe(true);
 
+  expect(await activity(t, receipt.threadId)).toMatchObject({ errorCode: null });
+});
+
+it.each(["stream", "generate"] as const)(
+  "aborted paid steps report partial usage when native evidence is dropped (%s)",
+  async (mode) => {
+    for (const reason of ["tool timeout", "tool limit", "model timeout", "cancel"]) {
+      reset();
+      fixture.builderSides = [];
+      const t = setup();
+      let release!: () => void;
+
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+
+      fixture.slots.usage = { scope: () => noopMeter };
+      fixture.run.Main = { mode, modelTimeoutMs: 1_000, toolTimeoutMs: 1_000 };
+
+      fixture.steps.Main = async () => {
+        if (reason === "tool timeout") return call("managed", {});
+
+        if (reason === "tool limit")
+          return Array.from({ length: 17 }, () => call("managed", {})).flat();
+
+        await held;
+
+        return text("late answer");
+      };
+
+      fixture.toolWork = async () => {
+        await held;
+
+        return "late tool";
+      };
+
+      const receipt = await open(t);
+
+      await expect
+        .poll(async () => {
+          await vi.advanceTimersByTimeAsync(100);
+
+          return fixture.calls.length;
+        })
+        .toBe(1);
+
+      const row = await t.query(rawAssignment, { assignmentId: receipt.assignmentId });
+      const runId = row!.runId!;
+
+      if (reason === "cancel")
+        await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
+
+      await drain(t);
+      expect(await t.query(components.agevex.turns.slices.usageReporting, { runId })).toBe(true);
+      expect(fixture.calls).toHaveLength(1);
+      release();
+      await t.finishInProgressScheduledFunctions();
+    }
+  },
+);
+
+it("reconciliation scheduling failure preserves complete recorded usage", async () => {
+  const t = setup();
+
+  fixture.slots.usage = {
+    scope: () => noopMeter,
+    reconcile: async () => {
+      throw new Error("scheduler unavailable");
+    },
+  };
+
+  const receipt = await open(t);
+
+  await drain(t);
+  const row = await t.query(rawAssignment, { assignmentId: receipt.assignmentId });
+
+  expect(await t.query(components.agevex.turns.slices.usageReporting, { runId: row!.runId! })).toBe(
+    false,
+  );
+
+  expect(await activity(t, receipt.threadId)).toMatchObject({ errorCode: null });
+});
+
+it("hooks record hook purpose and each tool checks its budget once", async () => {
+  const t = setup();
+  const purposes: (string | undefined)[] = [];
+  const check = vi.fn(async () => ({ allowed: true }));
+
+  fixture.slots.usage = {
+    scope: (_ctx, facts) => {
+      purposes.push(facts.purpose);
+
+      return noopMeter;
+    },
+  };
+
+  fixture.slots.budget = { check };
+
+  fixture.hooks.beforeTool = async (hc) => {
+    await hc.meter.record("test", {});
+  };
+
+  fixture.steps.Main = (n) => (n === 0 ? call("managed", {}) : text("done"));
+  const receipt = await open(t);
+
+  await drain(t);
+  expect(purposes).toContain("hook");
+  expect(check).toHaveBeenCalledTimes(3);
   expect(await activity(t, receipt.threadId)).toMatchObject({ errorCode: null });
 });

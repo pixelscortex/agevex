@@ -24,6 +24,11 @@ function validateCreation(args: CreateArgs) {
 
   if (args.profile) text(args.profile, "PROFILE");
 
+  if (args.requestId !== undefined) text(args.requestId, "REQUEST_ID");
+
+  if (args.tokens)
+    for (const count of Object.values(args.tokens)) integer(count, LIMITS.maxTokens, "TOKENS");
+
   if (args.quantity !== undefined) integer(args.quantity, LIMITS.maxQuantity, "QUANTITY");
 
   if (args.credits !== undefined) integer(args.credits, LIMITS.maxQuantity, "CREDITS");
@@ -92,6 +97,14 @@ function newCharge(
     nanos: args.nanos,
     credits: args.credits,
     reason: full ? "THREAD_CAPACITY" : args.reason,
+    tokens: args.tokens,
+    providerRequestId: args.requestId,
+    reconciliation:
+      args.source !== "estimate" && args.nanos !== undefined
+        ? "complete"
+        : args.requestId
+          ? "pending"
+          : "unavailable",
     // No event or lifecycle operation exists until its first admission.
     sinkState: args.sinks.map((name) => ({ name, revision: 0 })),
     terminal: false,
@@ -109,6 +122,9 @@ export async function createCharge(ctx: MutationCtx, args: CreateArgs): Promise<
   const existing = await find(ctx, args.key);
 
   if (existing) {
+    if (args.requestId !== undefined && existing.providerRequestId !== args.requestId)
+      throw new Error("REQUEST_ID_CONFLICT");
+
     await replayCreation(ctx, existing, args);
 
     return null;

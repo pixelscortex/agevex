@@ -47,6 +47,17 @@ maximum 4 / 4 (8 total slots). All registrations sharing a mount must agree;
 sleeping workflows use no slot. See
 [the runtime contract](docs/site/content/docs/concepts/runtime.mdx).
 
+## Usage and budgets
+
+Optional `agevex/meter` records each saved model step and app-reported tool cost
+while a run works. `openRouterProvider` reconciles exact generation ids on those
+same charges; `Provider.lookup` supports other billing adapters. Configure
+`Provider.estimate` or `tokenEstimate` for costs unavailable inline. Its bounded
+`usageView` reads exclusive node and run totals from existing aggregates.
+`budgetSlot` stops the next model/tool boundary on observed spend; in-flight work
+may overshoot. No credit reservations or resumable pause are added. See
+[meter wiring](src/modules/meter/README.md).
+
 ## Optional sandboxes
 
 `agevex/sandbox` binds a provider sandbox to trusted thread, run or subject

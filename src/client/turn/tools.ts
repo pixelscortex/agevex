@@ -17,6 +17,7 @@ import { installCollaborationTools } from "./collaboration-tools.js";
 import { boundToolDeadlines } from "./deadlines.js";
 import type { Generation } from "./context.js";
 import { slotToolBags } from "./slots.js";
+import { assertBudget } from "./admission.js";
 
 /** Build the complete tool set for one generation. */
 export async function buildTurnTools(rt: RuntimeContext, gen: Generation): Promise<ToolSet> {
@@ -53,12 +54,12 @@ export async function buildTurnTools(rt: RuntimeContext, gen: Generation): Promi
   for (const [name, declared] of Object.entries(tools)) {
     if (!declared.execute) continue; // Deferred/provider-owned effects execute outside this action.
 
-    tools[name] = withToolHooks(gen, name, declared);
+    tools[name] = withToolHooks(rt, gen, name, declared);
   }
 
   installCollaborationTools(rt, gen, tools, eligible);
 
-  return boundToolDeadlines(gen, tools);
+  return boundToolDeadlines(gen, tools, () => assertBudget(rt, gen));
 }
 
 /**
@@ -87,7 +88,7 @@ function mergeSlotTools(...bags: ToolSet[]): ToolSet {
  * input; `afterTool` may rewrite the output, including every value a streaming
  * tool yields. The tool receives an opaque per-call key and a per-call meter.
  */
-function withToolHooks(gen: Generation, name: string, declared: Tool): Tool {
+function withToolHooks(rt: RuntimeContext, gen: Generation, name: string, declared: Tool): Tool {
   const { turn, hc, hook, backend, fence } = gen;
   const { managed, facts } = turn;
   const execute = declared.execute!;
@@ -103,6 +104,7 @@ function withToolHooks(gen: Generation, name: string, declared: Tool): Tool {
 
       if (before?.block) return { status: "denied", code: "HOOK_BLOCKED", reason: before.block };
 
+      // A host hook may itself report spend. Recheck before the actual effect.
       const actual = before && "input" in before ? before.input : input;
       const callKey = await opaqueKey("tool-call", facts.runId, facts.threadId, options.toolCallId);
 

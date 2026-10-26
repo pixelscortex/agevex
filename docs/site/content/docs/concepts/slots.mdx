@@ -38,12 +38,25 @@ keys hash the tool-call identity and an ordinal; operation keys hash the
 charge, the method and an ordinal. Opaque keys are full SHA-256 hex, 64 ASCII
 bytes. Model usage is recorded once per saved step; failures never replay it.
 
+Usage facts also carry a trusted `purpose` and optional delegation `nodeId`.
+The optional `usage.reconcile(ctx, { subject, runId })` runs on slice exit and
+only schedules billing-evidence reads. Meter replaces the original charge's
+estimated cost when provider evidence arrives. Its optional reactive
+`view(ctx, { subject, runId, nodeIds, partial? })` returns exclusive node totals
+and complete run totals for at most 59 known nodes, without transcript reads.
+See [meter](/docs/modules/meter) for pricing, OpenRouter lookups and coverage.
+Core's sticky run observation-failure marker composes with that view's partial
+coverage; an omitted view means disabled reporting, not fabricated zero cost.
+
 ## Budget
 
-`check(ctx, { subject, runId })` runs before each slice. A denial ends the
-turn with `BUDGET_EXCEEDED` in activity and posts a passive note from
+`check(ctx, { subject, runId })` runs before model slices and local tool effects.
+A denial ends the turn with `BUDGET_EXCEEDED` in activity. Slice admission posts a passive note from
 `budget`, under the same `notesPending` cap as every other note. If that cap
 is full the notice is omitted, but the typed denial still stops the turn.
+The cap counts observed estimates and known spend, with no reservations.
+Already-started work and delayed reconciliations can overshoot. There is no
+resumable budget pause; the app may authorize a fresh run.
 
 ## Telemetry
 

@@ -174,6 +174,7 @@ it.each(["managed", "metered_once"])(
     });
 
     expect(usage.scopes).toContainEqual({
+      purpose: "tool",
       subject: "alice",
       rootThreadId: receipt.threadId,
       threadId: receipt.threadId,
@@ -272,7 +273,7 @@ it.each([0, HOST_LIMITS.notesPending.max])(
   "budget denial retains its typed error and pending notes with %s notes already admitted",
   async (pending) => {
     const denial = gate();
-    let checks = 0;
+    let refusing = false;
     let checkedRun = "";
 
     fixture.slots.budget = {
@@ -281,7 +282,9 @@ it.each([0, HOST_LIMITS.notesPending.max])(
         expect(args.runId).toBeTruthy();
         checkedRun = args.runId;
 
-        if (checks++ === 0) return { allowed: true };
+        if (fixture.calls.length === 0) return { allowed: true };
+
+        refusing = true;
 
         await denial.promise;
 
@@ -293,7 +296,7 @@ it.each([0, HOST_LIMITS.notesPending.max])(
     const t = setup({ notesPending: HOST_LIMITS.notesPending.max });
     const receipt = await open(t);
 
-    await waitFor(t, () => checks === 2);
+    await waitFor(t, () => refusing);
 
     for (let n = 0; n < pending; n++)
       await owner(t).mutation(api.agents.note, {
@@ -305,7 +308,6 @@ it.each([0, HOST_LIMITS.notesPending.max])(
     denial.release();
     await drain(t);
     expect(fixture.calls).toHaveLength(1);
-    expect(checks).toBe(2);
 
     // Activity names the exact stopped run the budget check saw, so a host can
     // key its recovery (cancel + fresh send) to that run.

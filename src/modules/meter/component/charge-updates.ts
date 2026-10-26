@@ -23,6 +23,9 @@ export async function change(
   // Only amount/state transitions advance the outcome revision. Attachment and
   // sink acknowledgements do not change the amount represented by that revision.
   patch = { ...patch, revision: row.revision + 1 };
+
+  if (patch.source === "lookup" || patch.source === "settlement") patch.reconciliation = "complete";
+
   const next = { ...row, ...patch };
 
   await ctx.db.patch("charges", row._id, patch);
@@ -68,15 +71,8 @@ export async function updateCharge(ctx: MutationCtx, args: UpdateArgs): Promise<
     return await save(await stale(ctx, row, args.operation, row.revision));
 
   if (args.operation === "correct") {
-    if (
-      row.status === "unknown" ||
-      (row.lookupUntil !== undefined && Date.now() >= row.lookupUntil)
-    ) {
-      const expired =
-        row.status === "unknown" ? row : await change(ctx, row, { status: "unknown" }, args.jobs);
-
-      return await save(await stale(ctx, expired, args.operation, row.revision));
-    }
+    if (row.status === "unknown")
+      return await save(await stale(ctx, row, args.operation, row.revision));
 
     if (row.nanos === args.nanos && row.quantity === args.quantity && row.status === "corrected")
       return await save(row);
@@ -90,7 +86,12 @@ export async function updateCharge(ctx: MutationCtx, args: UpdateArgs): Promise<
         nanos: args.nanos,
         quantity: args.quantity ?? row.quantity,
         credits: args.credits ?? row.credits,
-        status: over ? "unknown" : args.operation === "correct" ? "corrected" : "settled",
+        status:
+          over || row.reason === "THREAD_CAPACITY"
+            ? "unknown"
+            : args.operation === "correct"
+              ? "corrected"
+              : "settled",
         source: args.operation === "correct" ? "estimate" : "settlement",
         // THREAD_CAPACITY routes projections and must never change.
         ...(over && row.reason !== "THREAD_CAPACITY" ? { reason: "OVER_CAP" as const } : {}),
