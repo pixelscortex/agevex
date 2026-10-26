@@ -81,6 +81,7 @@
   },
   "scripts": {
     "build": "tsc --project tsconfig.json",
+    "release:git": "sh scripts/release-git.sh",
     "typecheck": "tsc --noEmit --project tsconfig.json",
     "typecheck:tests": "tsc --noEmit --project tests/tsconfig.json",
     "codegen": "convex codegen --component-dir ./src/component",
