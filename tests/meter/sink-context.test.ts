@@ -1,6 +1,12 @@
 /** Fake host sinks exercise context, frozen classifications and replay through real workers. */
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
-import { makeFunctionReference, type FunctionReference } from "convex/server";
+import {
+  componentsGeneric,
+  internalMutationGeneric,
+  makeFunctionReference,
+  type FunctionReference,
+} from "convex/server";
+import { v, type Value } from "convex/values";
 import { convexTest } from "convex-test";
 import {
   defineMeter,
@@ -9,7 +15,7 @@ import {
   type Sink,
   type SinkEvent,
 } from "../../src/modules/meter/client/index.js";
-import { register } from "../../src/modules/meter/test.js";
+import meterTest, { register } from "../../src/modules/meter/test.js";
 import receiptSchema from "./fixture/receipt-schema.js";
 import { setup, attribution } from "./setup.js";
 
@@ -293,4 +299,118 @@ it("opted-in corrections advance status at the same amount and retain signed rep
     ["corrected", "estimate", 0, 500_000_000, 2],
     ["corrected", "estimate", -250_000_000, 250_000_000, 3],
   ]);
+});
+
+it("classification-only revisions reach only sinks that opted into estimates", async () => {
+  const live: SinkEvent[] = [];
+  const defaults: SinkEvent[] = [];
+
+  const { t, meter } = setup({
+    limits: { maxThreadCharges: 1 },
+    sinks: [
+      { name: "live", estimates: true, deliver: async (batch) => void live.push(...batch) },
+      { name: "default", deliver: async (batch) => void defaults.push(...batch) },
+    ],
+  });
+
+  const cost = { openrouter: { usage: { cost: 0.1 } } };
+
+  // Recording is idempotent by key, so a later transaction rebinds the handle.
+  const record = (key: string, settle = false) =>
+    t.run(async (ctx) => {
+      const charge = await meter
+        .scope(ctx, attribution)
+        .record("openrouter", { key, providerMetadata: cost });
+
+      if (settle) await charge.settle({ usd: 0.1, key: "same-amount" });
+    });
+
+  await record("first");
+  // The full thread makes this a known, billed amount that is `unknown`.
+  await record("overflow");
+  await drain(t);
+  await record("overflow", true);
+  await drain(t);
+
+  const overflowEvents = (events: SinkEvent[]) => events.filter((e) => e.key === "overflow");
+
+  expect(overflowEvents(live).map((e) => [e.status, e.source, e.nanos])).toEqual([
+    ["unknown", "inline", 100_000_000],
+    ["unknown", "settlement", 0],
+  ]);
+
+  expect(overflowEvents(defaults).map((e) => [e.status, e.source, e.nanos])).toEqual([
+    ["unknown", "inline", 100_000_000],
+  ]);
+});
+
+it("pending events and charges stored before classification existed are claimed and delivered", async () => {
+  const events: SinkEvent[] = [];
+
+  const { t, meter, component } = setup({
+    sinks: [{ deliver: async (batch) => void events.push(...batch) }],
+  });
+
+  const strip = ({ status: _status, source: _source, ...rest }: Record<string, Value>) => rest;
+
+  t.registerComponent("meter", meterTest.schema, {
+    ...meterTest.modules,
+    "./component/fixture.ts": async () => ({
+      // Rewrite a fresh charge and its outbox row into the pre-upgrade shape.
+      downgrade: internalMutationGeneric({
+        args: { key: v.string() },
+        returns: v.null(),
+        handler: async (ctx, { key }) => {
+          const charge = await ctx.db
+            .query("charges")
+            .withIndex("by_key", (q) => q.eq("key", key))
+            .unique();
+
+          const sinkState = (charge!.sinkState as Record<string, Value>[]).map(
+            ({ estimates: _estimates, pending, ...rest }) =>
+              pending ? { ...rest, pending: strip(pending as Record<string, Value>) } : rest,
+          );
+
+          await ctx.db.patch(charge!._id, { sinkState });
+
+          const rows = await ctx.db
+            .query("deliveries")
+            .withIndex("by_key", (q) => q.eq("key", key))
+            .collect();
+
+          for (const row of rows)
+            await ctx.db.patch(row._id, { event: strip(row.event as Record<string, Value>) });
+
+          return null;
+        },
+      }),
+    }),
+  });
+
+  await t.run(async (ctx) => {
+    await meter.scope(ctx, attribution).record("openrouter", {
+      key: "legacy",
+      providerMetadata: { openrouter: { usage: { cost: 0.1 } } },
+    });
+  });
+
+  await t.mutation(
+    componentsGeneric().meter.fixture.downgrade as unknown as FunctionReference<"mutation">,
+    { key: "legacy" },
+  );
+
+  await drain(t);
+
+  expect(events).toHaveLength(1);
+
+  expect(events[0]).toMatchObject({
+    externalId: "legacy",
+    nanos: 100_000_000,
+    status: "settled",
+    source: "settlement",
+  });
+
+  expect((await t.query(component.charges.get, { key: "legacy" }))?.sinkState[0]).toMatchObject({
+    deliveredNanos: 100_000_000,
+  });
 });

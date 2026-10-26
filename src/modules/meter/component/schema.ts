@@ -59,8 +59,10 @@ export const event = v.object({
   revision: v.number(),
   nanos: v.number(),
   totalNanos: v.number(),
-  status,
-  source,
+  // Optional because outbox rows and pending events written before
+  // classification was recorded lack them; claims fill them in (delivery.ts).
+  status: v.optional(status),
+  source: v.optional(source),
 });
 /** Why a charge was created `unknown`. Set once at creation, kept after a later settlement. */
 export const reason = v.union(
@@ -76,7 +78,8 @@ export const reason = v.union(
 const sinkFields = {
   name: v.string(),
   // Registration is frozen per charge, just like projection membership.
-  estimates: v.boolean(),
+  // Optional: charges created before opt-ins existed read as not opted in.
+  estimates: v.optional(v.boolean()),
   deliveredNanos: v.optional(v.number()),
   deliveredStatus: v.optional(status),
   deliveredSource: v.optional(source),

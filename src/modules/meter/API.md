@@ -31,9 +31,11 @@ sinks require the delivery worker. Custom sinks accept `{ deliver(batch, ctx) }`
 optionally `name` and `estimates: true`; keep unnamed sinks in stable array order
 across deployments. `ctx` is the delivery worker's host `ActionCtx`, including
 `runMutation` for the host's own internal mutations. Existing one-argument
-callbacks remain valid. Built-in sinks accept the same optional name and
-estimate opt-in. Estimate delivery defaults to false and is frozen per charge
-at creation; enabling it later does not backfill existing charges.
+callbacks remain valid. `webhookSink` accepts the same optional name and
+estimate opt-in; `polarSink` accepts only the name, because Polar bills every
+ingested event and must never see an estimate. Estimate delivery defaults to
+false and is frozen per charge at creation; enabling it later does not backfill
+existing charges.
 
 `polarSink({ accessToken })` takes a string or a getter
 (`() => string | Promise<string>`). A getter is called at each delivery, never at
@@ -284,7 +286,20 @@ Status is `"estimate" | "settled" | "corrected" | "unknown"`; source is
 `"estimate" | "inline" | "settlement" | "lookup"`. Corrections keep source
 `"estimate"` and use status `"corrected"`, matching the charge vocabulary.
 Both classification fields are immutable snapshots taken at enqueue time;
-delivery reads only the outbox, never the mutable charge.
+delivery reads only the outbox, never the mutable charge. Events queued before
+classification was recorded were never estimates, so they are delivered as
+`"settled"` / `"settlement"`.
+
+A same-amount classification change (for example estimate to settled) sends a
+`nanos: 0` revision only to sinks with `estimates: true`; other sinks, including
+Polar, never receive `$0` events.
+
+An over-cap correction or settlement after a delivered estimate turns the charge
+`unknown` (`OVER_CAP`). Unknown estimates are not deliverable, so no revision is
+sent until a settlement or lookup result arrives; the sink keeps the estimate
+until then. Hosts that fan one batch of work into several charges should do the
+write in one idempotent host mutation per batch, keyed by `externalId`, so a
+replayed delivery or a partially delivered batch cannot double-count.
 
 One delivery job drains up to 100 due events of one sink into one `deliver`
 call, i.e. one Polar ingest request; new events wait one second so bursts

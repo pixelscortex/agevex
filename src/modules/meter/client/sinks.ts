@@ -4,7 +4,7 @@
  * Adapters enforce response and request bounds and surface retry hints; the
  * component outbox owns durable attempt state and recipients deduplicate ids.
  */
-import type { ActionCtx, Sink, SinkEvent } from "./types.js";
+import type { Sink, SinkEvent } from "./types.js";
 import { LIMITS, integer, text } from "../shared/limits.js";
 import { resolveCredential, type Credential } from "./credential.js";
 
@@ -131,9 +131,8 @@ export function polarSink(options: {
   accessToken: Credential;
   server?: "production" | "sandbox";
   name?: string;
-  estimates?: boolean;
   fetch?: typeof fetch;
-}) {
+}): Sink {
   text(options.meter, "POLAR_METER");
 
   // A literal is checked now; a getter is checked on the value it returns.
@@ -145,8 +144,9 @@ export function polarSink(options: {
 
   return {
     name: options.name ?? "polar",
-    estimates: options.estimates,
-    deliver: async (batch: SinkEvent[], _ctx?: ActionCtx) => {
+    // Never opts into estimates: Polar bills what it ingests, so only final
+    // amounts may reach it (an estimate would be charged before correction).
+    deliver: async (batch) => {
       const accessToken = await resolveCredential(options.accessToken, "POLAR_TOKEN_REQUIRED");
 
       for (const entries of batches(batch)) {
@@ -189,7 +189,7 @@ export function polarSink(options: {
           throw new SinkDeliveryError();
       }
     },
-  } satisfies Sink;
+  };
 }
 
 /** Build a webhook adapter for delivery workers; the recipient must deduplicate external ids. */
@@ -199,7 +199,7 @@ export function webhookSink(options: {
   estimates?: boolean;
   headers?: Record<string, string>;
   fetch?: typeof fetch;
-}) {
+}): Sink {
   const url = new URL(options.url);
 
   if (!["https:", "http:"].includes(url.protocol)) throw new Error("INVALID_WEBHOOK_URL");
@@ -207,7 +207,7 @@ export function webhookSink(options: {
   return {
     name: options.name ?? "webhook",
     estimates: options.estimates,
-    deliver: async (batch: SinkEvent[], _ctx?: ActionCtx) => {
+    deliver: async (batch) => {
       for (const entries of batches(batch)) {
         const response = await (options.fetch ?? fetch)(options.url, {
           method: "POST",
@@ -220,5 +220,5 @@ export function webhookSink(options: {
         await response.body?.cancel();
       }
     },
-  } satisfies Sink;
+  };
 }

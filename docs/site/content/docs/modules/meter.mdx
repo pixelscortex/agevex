@@ -226,18 +226,22 @@ mutations. Existing one-argument callbacks still work.
 
 Set `estimates: true` on an individual sink to deliver initial known estimates
 as usage arrives. The option is frozen per charge at creation, without backfill;
-default sinks still wait for correction or authoritative cost. `polarSink` and
-`webhookSink` accept the same option.
+default sinks still wait for correction or authoritative cost. `webhookSink`
+accepts the same option; `polarSink` does not, because Polar bills every ingested
+event and only ever receives final amounts.
 
 Each event freezes `status` (`estimate`, `settled`, `corrected`, `unknown`) and
 `source` (`estimate`, `inline`, `settlement`, `lookup`) when enqueued. Corrections
 use source `estimate`. An estimate-to-settled transition at the same amount emits
-a new monotonic revision with `nanos: 0`. `totalNanos` remains the absolute cost;
-group by charge `key` to replace totals using newer revisions. The first event's
+a new monotonic revision with `nanos: 0`, sent only to sinks with
+`estimates: true`. `totalNanos` remains the absolute cost; group by charge `key`
+to replace totals using newer revisions. The first event's
 `externalId` is its charge key; later revisions use `key:delta:revision`.
 Retries preserve the same externalId/revision, including its frozen
-classification. Pending events remain unchanged until acknowledged, then a new
-revision catches up to the latest charge state.
+classification. An over-cap correction after a delivered estimate makes the
+charge `unknown` and sends no revision until settlement. Write each batch in one
+idempotent host mutation keyed by `externalId`. Pending events remain unchanged
+until acknowledged, then a new revision catches up to the latest charge state.
 
 Explicit `retrySinks` resets failed delivery;
 unknown paid work is never retried. See the

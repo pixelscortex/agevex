@@ -18,7 +18,15 @@ import { enqueueDrain, backoff, validateJobs, type Jobs } from "./jobs.js";
 import { prepareSinks } from "./outbox.js";
 
 type Delivery = Doc<"deliveries">;
-type DeliveryEvent = Delivery["event"] & Pick<Delivery, "key" | "attribution" | "provider">;
+
+type DeliveryEvent = Required<Delivery["event"]> &
+  Pick<Delivery, "key" | "attribution" | "provider">;
+
+/**
+ * Events queued before classification was recorded were never estimates (only
+ * known, non-estimate costs were billable then), so they read as settled.
+ */
+const LEGACY = { status: "settled", source: "settlement" } as const;
 
 /** Due, unclaimed, non-failed events of one sink, oldest due first. */
 function dueRows(ctx: Pick<QueryCtx, "db">, sink: string) {
@@ -59,6 +67,8 @@ export async function claimDeliveryBatch(
 
   return rows.map((row) => ({
     ...row.event,
+    status: row.event.status ?? LEGACY.status,
+    source: row.event.source ?? LEGACY.source,
     key: row.key,
     attribution: row.attribution,
     provider: row.provider,
@@ -112,7 +122,9 @@ async function acknowledge(ctx: MutationCtx, row: Delivery, config: Jobs) {
 
   if (!charge || !sink?.pending || sink.pending.externalId !== row.event.externalId) return;
 
-  const { totalNanos, status, source } = sink.pending;
+  const { totalNanos } = sink.pending;
+  const status = sink.pending.status ?? LEGACY.status;
+  const source = sink.pending.source ?? LEGACY.source;
 
   const sinkState = charge.sinkState.map((entry) =>
     entry.name === row.sink

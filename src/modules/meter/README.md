@@ -41,9 +41,10 @@ profiles, sinks, breakdown opt-ins, retention and the full guarantees.
 Custom sinks use `{ name?, estimates?: true, deliver(batch, ctx) }`. `ctx` is the
 delivery worker's host action context, so delivery can call host internal
 mutations. Existing one-argument callbacks remain valid. Set `estimates: true`
-per sink (also supported by `polarSink` and `webhookSink`) to receive initial
-known estimates; the default keeps waiting for correction or authoritative cost.
-The opt-in is frozen when each charge is created, without backfill.
+per sink (supported by `webhookSink`, never by `polarSink`, which bills what it
+ingests and so only receives final amounts) to receive initial known estimates;
+the default keeps waiting for correction or authoritative cost. The opt-in is
+frozen when each charge is created, without backfill.
 
 Events freeze `status` and `source` alongside amount at enqueue time. A
 same-amount classification change sends a new revision with `nanos: 0` and the

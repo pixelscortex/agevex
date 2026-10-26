@@ -6,8 +6,12 @@ import {
   SinkDeliveryError,
   openRouterCost,
   LIMITS,
+  type Sink,
   type SinkEvent,
 } from "../../src/modules/meter/client/index.js";
+
+/** Built-in adapters are network-only: they never touch the host context. */
+const ctx = {} as Parameters<Sink["deliver"]>[1];
 
 function event(index: number): SinkEvent {
   return {
@@ -71,7 +75,10 @@ it("Polar serializes signed integer nanos as exact decimal cents within twelve p
     },
   });
 
-  await sink.deliver(amounts.map((nanos, index) => ({ ...event(index), nanos })));
+  await sink.deliver(
+    amounts.map((nanos, index) => ({ ...event(index), nanos })),
+    ctx,
+  );
 });
 
 it("one delivery job drains up to 100 pending charges into a single Polar ingest request and accepts duplicate acknowledgements", async () => {
@@ -145,7 +152,7 @@ it("Polar honors Retry-After and refuses incomplete or oversized acknowledgement
     fetch: async () => new Response(null, { status: 429, headers: { "Retry-After": "12" } }),
   });
 
-  await expect(limited.deliver([event(0)])).rejects.toMatchObject({ retryAfterMs: 12_000 });
+  await expect(limited.deliver([event(0)], ctx)).rejects.toMatchObject({ retryAfterMs: 12_000 });
 
   for (const body of [JSON.stringify({ inserted: 0 }), "x".repeat(LIMITS.maxResponseBytes + 1)]) {
     const sink = polarSink({
@@ -154,7 +161,7 @@ it("Polar honors Retry-After and refuses incomplete or oversized acknowledgement
       fetch: async () => new Response(body),
     });
 
-    await expect(sink.deliver([event(0)])).rejects.toBeInstanceOf(SinkDeliveryError);
+    await expect(sink.deliver([event(0)], ctx)).rejects.toBeInstanceOf(SinkDeliveryError);
   }
 });
 
@@ -180,12 +187,12 @@ it("webhook delivery bounds batches and retains signed correction deltas and sta
     revision: 2,
   };
 
-  await sink.deliver([event(0), correction]);
+  await sink.deliver([event(0), correction], ctx);
   expect(bodies[0].map((e) => e.nanos)).toEqual([100_000_000, -50_000_000]);
 });
 
 it.each([false, true])(
-  "built-in sinks deliver initial estimates only with opt-in %s",
+  "webhook sinks deliver initial estimates only with opt-in %s while polar bills only final amounts",
   async (estimates) => {
     vi.useFakeTimers();
 
@@ -196,7 +203,9 @@ it.each([false, true])(
       const { t, meter } = setup({
         sinks: [
           polarSink({
-            estimates,
+            // Polar bills what it ingests: it must never see an estimate, even
+            // if a JS caller forces the option the type no longer accepts.
+            ...({ estimates } as object),
             meter: "usage",
             accessToken: "test-token",
             fetch: async (_url, init) => {
@@ -236,7 +245,7 @@ it.each([false, true])(
 
       await estimate();
       await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100), 1000);
-      expect(costs).toEqual(estimates ? [250_000_000] : []);
+      expect(costs).toEqual([]);
       expect(events.map((entry) => entry.status)).toEqual(estimates ? ["estimate"] : []);
 
       await t.run(async (ctx) => {
@@ -250,7 +259,8 @@ it.each([false, true])(
       });
 
       await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100), 1000);
-      expect(costs).toEqual(estimates ? [250_000_000, 0] : [250_000_000]);
+      // Only the final amount, and no $0 classification revision.
+      expect(costs).toEqual([250_000_000]);
 
       expect(events.map((entry) => entry.status)).toEqual(
         estimates ? ["estimate", "settled"] : ["settled"],
@@ -286,7 +296,7 @@ it("Polar resolves a lazy access token at delivery, not at construction, and sen
   });
 
   expect(getToken).not.toHaveBeenCalled();
-  await sink.deliver([event(0)]);
+  await sink.deliver([event(0)], ctx);
   expect(getToken).toHaveBeenCalledTimes(1);
   expect(headers[0]).toMatchObject({ Authorization: "Bearer lazy-token" });
 
@@ -300,7 +310,7 @@ it("Polar resolves a lazy access token at delivery, not at construction, and sen
 
         return Response.json({ inserted: 1, duplicates: 0 });
       },
-    }).deliver([event(0)]);
+    }).deliver([event(0)], ctx);
   }
 });
 
@@ -308,7 +318,7 @@ it("Polar refuses an empty lazy token at delivery with POLAR_TOKEN_REQUIRED and 
   const request = vi.fn(async () => Response.json({ inserted: 1, duplicates: 0 }));
   const sink = polarSink({ meter: "usage", accessToken: () => "", fetch: request });
 
-  await expect(sink.deliver([event(0)])).rejects.toThrow("POLAR_TOKEN_REQUIRED");
+  await expect(sink.deliver([event(0)], ctx)).rejects.toThrow("POLAR_TOKEN_REQUIRED");
   expect(request).not.toHaveBeenCalled();
   expect(() => polarSink({ meter: "usage", accessToken: "" })).toThrow("POLAR_TOKEN_REQUIRED");
 });
