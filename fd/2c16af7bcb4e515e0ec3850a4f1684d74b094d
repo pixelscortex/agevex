@@ -1,0 +1,153 @@
+dist/client/coordinate/coordinator.js
+  s_b0352e9d43cf4d::t_9d290e6ace2647 7-8,17,48,69-70
+dist/client/coordinate/interaction.d.ts
+  s_b0352e9d43cf4d::t_a162f656cb3b08 23
+dist/client/coordinate/interaction.js
+  s_b0352e9d43cf4d::t_3ccc4db2d52c5a 24-26
+dist/client/coordinate/parent-note.d.ts
+  s_b0352e9d43cf4d::t_866647889a0d83 1-14
+dist/client/coordinate/parent-note.js
+  s_b0352e9d43cf4d::t_3e01816fc42382 1-58
+dist/client/index.d.ts
+  s_b0352e9d43cf4d::t_a6e733014df96d 3
+dist/client/index.js
+  s_b0352e9d43cf4d::t_6022fcd968c6e0 7
+dist/client/runtime.d.ts
+  s_b0352e9d43cf4d::t_2c890d5c4f368a 7
+dist/client/runtime.js
+  s_b0352e9d43cf4d::t_1a3c0ab5dd3f8d 18
+dist/client/tool-names.d.ts
+  s_b0352e9d43cf4d::t_45ee0ff1147060 4
+dist/client/tool-names.js
+  s_b0352e9d43cf4d::t_5822c59d047cc8 7,11,17
+dist/client/turn/collaboration-tools.js
+  s_b0352e9d43cf4d::t_7cd70bd79a24c2 4,13,29-45,87
+dist/client/types.d.ts
+  s_b0352e9d43cf4d::t_40edb883b53891 208,217-219,242-247,262,269-271
+dist/component/_generated/api.d.ts
+  s_b0352e9d43cf4d::t_c4de87b23152d7 25,54
+dist/component/_generated/component.d.ts
+  s_b0352e9d43cf4d::t_34de13f7dc9ecb 23,53
+dist/component/hooks/routing.d.ts
+  s_b0352e9d43cf4d::t_70a9383103070e 25-27,29
+dist/component/hooks/routing.js
+  s_b0352e9d43cf4d::t_99625d7c0a4b3b 29-31,33,41-44
+dist/component/limits.d.ts
+  s_b0352e9d43cf4d::t_3b3339f6dfbf52 38-41,82-87,93,100-101,104-109,112-113,115-117,119,121,141,180-182,229,246,256,260-264
+dist/component/limits.js
+  s_b0352e9d43cf4d::t_49dc47b2d8720c 35,39,56-61,67,74-75,78-83,86-87,89-91,93,95,115,154-156,226,237-243
+dist/component/run-settings.js
+  s_b0352e9d43cf4d::t_6458e59b4bd8cf 18-22
+dist/component/schema.d.ts
+  s_b0352e9d43cf4d::t_38cde52163a497 6,340,546,563,573,674,923,952,971-972,1008,1014
+dist/component/schema.js
+  s_b0352e9d43cf4d::t_4c323be89a4aec 27,343-346,387-394
+dist/component/subagents/deliver.js
+  s_b0352e9d43cf4d::t_cd48ef04bad615 66,111-112
+dist/component/subagents/groups.d.ts
+  s_b0352e9d43cf4d::t_b7584d0969b5a6 21-23
+dist/component/subagents/groups.js
+  s_b0352e9d43cf4d::t_49499bd6f4c0a3 19-21,124
+dist/component/subagents/headroom.d.ts
+  s_b0352e9d43cf4d::t_691b3d2cb5ee83 1-31
+dist/component/subagents/headroom.js
+  s_b0352e9d43cf4d::t_5a1f3f30c4bdfd 1-61
+dist/component/subagents/launch.d.ts
+  s_b0352e9d43cf4d::t_928ccf9b515c8b 9-10,38,55,58,70-72,157-159
+dist/component/subagents/launch.js
+  s_b0352e9d43cf4d::t_768a7eb578a740 9-10,26,70-76,136-137,141
+dist/component/subagents/messages.d.ts
+  s_b0352e9d43cf4d::t_5ebc30487eecf5 6,12,15,19-20,22,24,161,320,353,382,522,681,734,739,753-799,830,833
+dist/component/subagents/messages.js
+  s_b0352e9d43cf4d::t_8b2acc7d56c67d 5,7-8,19-21,25,29,33-34,36,41-42,52,54,58-68,73,77,79-84,103-105,108,124-125,132,167-180,218
+dist/component/subagents/parent-notes.d.ts
+  s_b0352e9d43cf4d::t_608e48cd9f66db 1-53
+dist/component/subagents/parent-notes.js
+  s_b0352e9d43cf4d::t_18bdebb780c453 1-100
+dist/component/subagents/runs.d.ts
+  s_b0352e9d43cf4d::t_0799264df297e7 24,53,101,130
+dist/component/subagents/runs.js
+  s_b0352e9d43cf4d::t_2f1f551e7213b5 73
+dist/component/turns/assignments.d.ts
+  s_b0352e9d43cf4d::t_20deaa0704b8aa 152
+dist/component/turns/cancel.js
+  s_b0352e9d43cf4d::t_8248a7efe74a17 6-8,30,62-66,70-71,74,80-85,102-106
+dist/component/turns/claim.d.ts
+  s_b0352e9d43cf4d::t_77528ec0869ca2 48,53,84,89,95,100,111-112,117
+dist/component/turns/claim.js
+  s_b0352e9d43cf4d::t_672e33be901402 5,45-47,103-108,113-115,129,138,157-164,265
+dist/component/turns/inbox.d.ts
+  s_b0352e9d43cf4d::t_441137df812abe 35-36
+dist/component/turns/inbox.js
+  s_b0352e9d43cf4d::t_318b0f2e55f0a0 9-10
+dist/component/turns/pause.js
+  s_b0352e9d43cf4d::t_94a6457a884179 149-151
+dist/component/turns/send.d.ts
+  s_b0352e9d43cf4d::t_b96c6b2af824e7 44,61,71,242
+dist/component/turns/slices.d.ts
+  s_b0352e9d43cf4d::t_bb59b5929db532 47,52
+dist/component/turns/wake.js
+  s_b0352e9d43cf4d::t_974f0539496792 60
+dist/test.d.ts
+  s_b0352e9d43cf4d::t_cdaad439ae9ece 141,347,364,374,475,724,753,772-773,809,815
+dist/testing/bridge.d.ts
+  s_b0352e9d43cf4d::t_6f9607ec088985 73-74
+dist/testing/bridge.js
+  s_b0352e9d43cf4d::t_c3e3c9459037de 103-104
+src/component/README.md
+  s_b0352e9d43cf4d::t_d476e2ac5825d7 43-65,152-154,194-195,198-199
+src/component/_generated/api.ts
+  s_b0352e9d43cf4d::t_63b3f74c5fd0ac 27,63
+src/component/_generated/component.ts
+  s_b0352e9d43cf4d::t_1b0ef9ba05fad8 24,66
+src/component/hooks/routing.ts
+  s_b0352e9d43cf4d::t_1df56f04551512 32-34,36,49-51
+src/component/limits.ts
+  s_b0352e9d43cf4d::t_39b8193f440abe 37,41,59-64,70,77-78,81-86,89-90,92-94,96,98,118,157-159,230,243-250
+src/component/run-settings.ts
+  s_b0352e9d43cf4d::t_4a72d867c07093 19-24
+src/component/schema.ts
+  s_b0352e9d43cf4d::t_d331207437941c 68-73,464-467,510-517
+src/component/subagents/deliver.ts
+  s_b0352e9d43cf4d::t_5df3a54eb3ac2a 94,164
+src/component/subagents/groups.ts
+  s_b0352e9d43cf4d::t_f995c0186a7977 46-48,187
+src/component/subagents/headroom.ts
+  s_b0352e9d43cf4d::t_f83a5a210ebc88 1-89
+src/component/subagents/launch.ts
+  s_b0352e9d43cf4d::t_a9f7c56a4499d8 9-10,27,90-97,180-181,185
+src/component/subagents/messages.ts
+  s_b0352e9d43cf4d::t_6b56181801b100 5,7-8,20-22,27,34,47-50,53,57-58,60-64,71-72,86,88,93-107,114,121-128,154-159,164,192,194,202,244-261,325
+src/component/subagents/parent-notes.ts
+  s_b0352e9d43cf4d::t_77cc30007f6202 1-126
+src/component/subagents/runs.ts
+  s_b0352e9d43cf4d::t_24fb32952116b8 121
+src/component/turns/cancel.ts
+  s_b0352e9d43cf4d::t_1510e8857a1232 21-23,58,106-110,117-118,122,129-134,153-157
+src/component/turns/claim.ts
+  s_b0352e9d43cf4d::t_e6f9289420a514 26,70-72,154-159,166-168,187,199,225-231,385
+src/component/turns/inbox.ts
+  s_b0352e9d43cf4d::t_9036b45f27bb32 27-28
+src/component/turns/pause.ts
+  s_b0352e9d43cf4d::t_3fd7726e50ad0b 257-259
+src/component/turns/wake.ts
+  s_b0352e9d43cf4d::t_0ebb88197fc137 92
+src/testing/bridge.ts
+  s_b0352e9d43cf4d::t_d47d7b94b687ef 137-138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fd2c16af7bcb4e515e0ec3850a4f1684d74b094d",
+  "prompts": {},
+  "sessions": {
+    "s_b0352e9d43cf4d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17904-9d33-7df2-a283-c81c5282d198",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
