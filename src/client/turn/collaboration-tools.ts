@@ -1,0 +1,131 @@
+// The managed collaboration tools the SDK installs on eligible turns.
+//
+// `agevex_delegate` and `agevex_message_child` exist on turns of agents that have
+// child edges; `agevex_ask_parent` on turns of delegated children. Each tool is a
+// thin call to the coordinator mutation (`coordinate/`) under the turn's fence,
+// carrying the turn's capability (assignment + turn token + native tool call id).
+// They record `delegated` / `asked` on the generation, which decides how the turn
+// ends (`turn/completion.ts`).
+
+import { tool, type ToolSet } from "ai";
+import { z } from "zod";
+import { LIMITS } from "../../component/limits.js";
+import { coordinateRef, type RuntimeContext } from "../registration/context.js";
+import {
+  ASK_PARENT_TOOL_NAME,
+  DELEGATE_TOOL_NAME,
+  MESSAGE_CHILD_TOOL_NAME,
+} from "../tool-names.js";
+import type { Generation } from "./context.js";
+
+/** What the model (or a `beforeDelegate` rewrite) may pass to `agevex_delegate`. */
+const delegateInput = z.object({
+  agent: z.string(),
+  task: z.string(),
+  group: z.string().max(LIMITS.groupLength).optional(),
+  wait: z.enum(["each", "all"]).optional(),
+});
+
+/** Install the collaboration tools this turn is eligible for into `tools`. */
+export function installCollaborationTools(
+  rt: RuntimeContext,
+  gen: Generation,
+  tools: ToolSet,
+  eligible: boolean,
+) {
+  if (eligible) tools[DELEGATE_TOOL_NAME] = delegateTool(rt, gen);
+
+  if (eligible) tools[MESSAGE_CHILD_TOOL_NAME] = messageChildTool(rt, gen);
+
+  if (gen.turn.child) tools[ASK_PARENT_TOOL_NAME] = askParentTool(rt, gen);
+}
+
+/**
+ * `agevex_delegate`: launch one child run. `beforeDelegate` may block it (a
+ * `HOOK_BLOCKED` denial) or rewrite its input, which is re-validated.
+ */
+function delegateTool(rt: RuntimeContext, gen: Generation) {
+  const { turn, hc, hook, fence, state } = gen;
+  const { args, managed } = turn;
+
+  return tool({
+    description:
+      "Delegate one bounded task to a registered child agent. Its result arrives later. A result continuation may delegate again within the same run budget.",
+    inputSchema: delegateInput,
+    execute: async (input, options) => {
+      const before = await hook(
+        managed.hooks?.beforeDelegate
+          ? () =>
+              managed.hooks!.beforeDelegate!(hc, {
+                agent: input.agent,
+                task: input.task,
+              })
+          : undefined,
+      );
+
+      if (before?.block) return { status: "denied", code: "HOOK_BLOCKED", reason: before.block };
+
+      const rewritten =
+        before && "input" in before ? await delegateInput.parseAsync(before.input) : input;
+
+      const launch = await fence.ctx.runMutation(coordinateRef(rt), {
+        op: "launch",
+        assignmentId: args.assignmentId,
+        turnToken: args.turnToken,
+        toolCallId: options.toolCallId,
+        agent: rewritten.agent,
+        task: rewritten.task,
+        group: rewritten.group,
+        wait: rewritten.wait,
+      });
+
+      if (launch?.status === "queued") state.delegated = true;
+
+      return launch;
+    },
+  });
+}
+
+/** `agevex_message_child`: a bounded follow-up or answer to a running child. */
+function messageChildTool(rt: RuntimeContext, gen: Generation) {
+  const { args } = gen.turn;
+
+  return tool({
+    description:
+      "Send a bounded follow-up or answer to a child run in this root. Finished runs refuse messages.",
+    inputSchema: z.object({
+      runId: z.string(),
+      text: z.string().max(rt.limits.taskLength),
+    }),
+    execute: (input) =>
+      gen.fence.ctx.runMutation(coordinateRef(rt), {
+        op: "message",
+        assignmentId: args.assignmentId,
+        turnToken: args.turnToken,
+        ...input,
+      }),
+  });
+}
+
+/** `agevex_ask_parent`: a child's one open question; the child pauses until answered. */
+function askParentTool(rt: RuntimeContext, gen: Generation) {
+  const { args } = gen.turn;
+
+  return tool({
+    description:
+      "Ask your parent one question and pause until it answers with message_child. Only one question may be open.",
+    inputSchema: z.object({ question: z.string().max(rt.limits.taskLength) }),
+    execute: async (input) => {
+      const response = await gen.fence.ctx.runMutation(coordinateRef(rt), {
+        op: "ask",
+        assignmentId: args.assignmentId,
+        turnToken: args.turnToken,
+        ...input,
+      });
+
+      if (response?.status === "accepted") gen.state.asked = true;
+
+      return response;
+    },
+  });
+}

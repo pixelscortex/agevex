@@ -1,0 +1,213 @@
+/**
+ * Registered send endpoints of one assignment (one managed thread): `accept`
+ * admits a host send, `lookupReceipt` replays its request receipt,
+ * `admission` is the preflight refusal check, and `assignment` / `activity`
+ * are the thread's scope and public status.
+ *
+ * Acceptance runs in the same transaction as the host's native prompt save:
+ * it creates the root assignment on the thread's first send, opens a new run
+ * budget, queues the prompt as a ready inbox row, records a `done` request
+ * receipt under `request:<subject>` and wakes the thread (turns/wake.ts). A
+ * repeated request key returns its original receipt as `duplicate`; a
+ * different payload under the same key is a KEY_CONFLICT. Touches
+ * `assignments`, `runs`, `inbox` and `receipts`.
+ */
+import { type ObjectType } from "convex/values";
+import { type MutationCtx, type QueryCtx } from "../_generated/server.js";
+export declare const acceptArgs: {
+    subject: import("convex/values").VString<string, "required">;
+    agent: import("convex/values").VString<string, "required">;
+    threadId: import("convex/values").VString<string, "required">;
+    requestKey: import("convex/values").VString<string, "required">;
+    fingerprint: import("convex/values").VString<string, "required">;
+    promptMessageId: import("convex/values").VString<string, "required">;
+    savedMessage: import("convex/values").VObject<{
+        order: number;
+        bytes: number;
+        id: string;
+        stepOrder: number;
+    } | undefined, {
+        id: import("convex/values").VString<string, "required">;
+        order: import("convex/values").VFloat64<number, "required">;
+        stepOrder: import("convex/values").VFloat64<number, "required">;
+        bytes: import("convex/values").VFloat64<number, "required">;
+    }, "optional", "order" | "bytes" | "id" | "stepOrder">;
+    trackContext: import("convex/values").VBoolean<boolean | undefined, "optional">;
+    runTurn: import("convex/values").VString<string, "required">;
+    limits: import("convex/values").VObject<{
+        attachmentBytes: number;
+        continuesPerRun: number;
+        sideRunsPerRun: number;
+        notesPending: number;
+        maxDepth: number;
+        messagesPerChild: number;
+        rootLane: number;
+        childLane: number;
+        runLaunches: number;
+        runHops: number;
+        activeChildrenPerRoot: number;
+        taskLength: number;
+        queueLength: number;
+        slicesPerTurn: number;
+        leaseMs: number;
+    }, {
+        attachmentBytes: import("convex/values").VFloat64<number, "required">;
+        continuesPerRun: import("convex/values").VFloat64<number, "required">;
+        sideRunsPerRun: import("convex/values").VFloat64<number, "required">;
+        notesPending: import("convex/values").VFloat64<number, "required">;
+        maxDepth: import("convex/values").VFloat64<number, "required">;
+        messagesPerChild: import("convex/values").VFloat64<number, "required">;
+        rootLane: import("convex/values").VFloat64<number, "required">;
+        childLane: import("convex/values").VFloat64<number, "required">;
+        runLaunches: import("convex/values").VFloat64<number, "required">;
+        runHops: import("convex/values").VFloat64<number, "required">;
+        activeChildrenPerRoot: import("convex/values").VFloat64<number, "required">;
+        taskLength: import("convex/values").VFloat64<number, "required">;
+        queueLength: import("convex/values").VFloat64<number, "required">;
+        slicesPerTurn: import("convex/values").VFloat64<number, "required">;
+        leaseMs: import("convex/values").VFloat64<number, "required">;
+    }, "required", "attachmentBytes" | "continuesPerRun" | "sideRunsPerRun" | "notesPending" | "maxDepth" | "messagesPerChild" | "rootLane" | "childLane" | "runLaunches" | "runHops" | "activeChildrenPerRoot" | "taskLength" | "queueLength" | "slicesPerTurn" | "leaseMs">;
+    models: import("convex/values").VRecord<Record<string, string> | undefined, import("convex/values").VString<string, "required">, import("convex/values").VString<string, "required">, "optional", string>;
+};
+/** The typed duplicate/conflict receipt for an already accepted request, or
+ * null for a new one. Shares the `request:<subject>` ledger scope. */
+export declare function requestReceipt(ctx: Pick<QueryCtx, "db">, subject: string, requestKey: string, fingerprint: string): Promise<{
+    status: "rejected";
+    code: "KEY_CONFLICT";
+} | {
+    receiptId: import("convex/values").GenericId<"receipts">;
+    status: "duplicate";
+    assignmentId: string;
+    threadId: string;
+    position: number;
+    code?: undefined;
+} | null>;
+/** Admit one host send; see the file header. Throws (rolling back the native
+ * save) for a foreign thread, recovery_required or a full ready queue. */
+export declare function acceptSend(ctx: MutationCtx, args: ObjectType<typeof acceptArgs>): Promise<{
+    status: "rejected";
+    code: "KEY_CONFLICT";
+} | {
+    receiptId: import("convex/values").GenericId<"receipts">;
+    status: "duplicate";
+    assignmentId: string;
+    threadId: string;
+    position: number;
+    code?: undefined;
+} | {
+    assignmentId: import("convex/values").GenericId<"assignments">;
+    threadId: string;
+    receiptId: import("convex/values").GenericId<"receipts">;
+    status: "accepted";
+    position: number;
+}>;
+/** Replay lookup for a host send, before any native save is attempted. */
+export declare const lookupReceipt: import("convex/server").RegisteredQuery<"public", {
+    subject: string;
+    fingerprint: string;
+    requestKey: string;
+}, Promise<{
+    status: "rejected";
+    code: "KEY_CONFLICT";
+} | {
+    receiptId: import("convex/values").GenericId<"receipts">;
+    status: "duplicate";
+    assignmentId: string;
+    threadId: string;
+    position: number;
+    code?: undefined;
+} | null>>;
+/** Preflight shares the host mutation's snapshot with its later native save.
+ * Expected refusal must happen before that save: returning a receipt after a
+ * write would commit an orphan prompt rather than rolling the transaction back.
+ */
+export declare const admission: import("convex/server").RegisteredQuery<"public", {
+    threadId: string;
+    subject: string;
+}, Promise<{
+    status: "rejected";
+    code: "CANCELLED" | "RECOVERY_REQUIRED";
+} | {
+    status: "rejected";
+    code: "QUEUE_FULL";
+} | null>>;
+/** The thread's assignment scope and whether it is a public root. */
+export declare const assignment: import("convex/server").RegisteredQuery<"public", {
+    threadId: string;
+}, Promise<{
+    assignmentId: import("convex/values").GenericId<"assignments">;
+    threadId: string;
+    subject: string;
+    agent: string;
+    root: boolean;
+} | null>>;
+/** Admit one host send with its native prompt save; see `acceptSend`. */
+export declare const accept: import("convex/server").RegisteredMutation<"public", {
+    models?: Record<string, string> | undefined;
+    savedMessage?: {
+        order: number;
+        bytes: number;
+        id: string;
+        stepOrder: number;
+    } | undefined;
+    trackContext?: boolean | undefined;
+    agent: string;
+    threadId: string;
+    subject: string;
+    limits: {
+        attachmentBytes: number;
+        continuesPerRun: number;
+        sideRunsPerRun: number;
+        notesPending: number;
+        maxDepth: number;
+        messagesPerChild: number;
+        rootLane: number;
+        childLane: number;
+        runLaunches: number;
+        runHops: number;
+        activeChildrenPerRoot: number;
+        taskLength: number;
+        queueLength: number;
+        slicesPerTurn: number;
+        leaseMs: number;
+    };
+    runTurn: string;
+    promptMessageId: string;
+    fingerprint: string;
+    requestKey: string;
+}, Promise<{
+    status: "rejected";
+    code: "KEY_CONFLICT";
+} | {
+    receiptId: import("convex/values").GenericId<"receipts">;
+    status: "duplicate";
+    assignmentId: string;
+    threadId: string;
+    position: number;
+    code?: undefined;
+} | {
+    assignmentId: import("convex/values").GenericId<"assignments">;
+    threadId: string;
+    receiptId: import("convex/values").GenericId<"receipts">;
+    status: "accepted";
+    position: number;
+}>>;
+/** The thread's public status for its owner. */
+export declare const activity: import("convex/server").RegisteredQuery<"public", {
+    threadId: string;
+    subject: string;
+}, Promise<{
+    assignmentId: import("convex/values").GenericId<"assignments">;
+    threadId: string;
+    agent: string;
+    assignmentStatus: "open";
+    turnStatus: "idle" | "running" | "queued" | "recovery_required";
+    queuedMessages: number;
+    errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
+    runId: import("convex/values").GenericId<"runs"> | undefined;
+    subagents: {
+        active: number;
+        history: number;
+        total: number;
+    };
+}>>;

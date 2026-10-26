@@ -1,0 +1,141 @@
+{
+  "name": "agevex",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A Workflow-backed Convex component and host client for managed agents.",
+  "keywords": [
+    "agent",
+    "component",
+    "convex",
+    "delegation"
+  ],
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pixelscortex/agevex.git"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "type": "module",
+  "types": "./dist/client/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/client/index.d.ts",
+      "default": "./dist/client/index.js"
+    },
+    "./convex.config": {
+      "types": "./dist/component/convex.config.d.ts",
+      "default": "./dist/component/convex.config.js"
+    },
+    "./_generated/component.js": {
+      "types": "./dist/component/_generated/component.d.ts"
+    },
+    "./test": "./src/test.ts",
+    "./meter": {
+      "types": "./dist/modules/meter/client/index.d.ts",
+      "default": "./dist/modules/meter/client/index.js"
+    },
+    "./meter/convex.config": {
+      "types": "./dist/modules/meter/component/convex.config.d.ts",
+      "default": "./dist/modules/meter/component/convex.config.js"
+    },
+    "./meter/_generated/component.js": {
+      "types": "./dist/modules/meter/component/_generated/component.d.ts"
+    },
+    "./meter/test": "./src/modules/meter/test.ts",
+    "./extract": {
+      "types": "./dist/modules/extract/client/index.d.ts",
+      "default": "./dist/modules/extract/client/index.js"
+    },
+    "./extract/convex.config": {
+      "types": "./dist/modules/extract/component/convex.config.d.ts",
+      "default": "./dist/modules/extract/component/convex.config.js"
+    },
+    "./extract/_generated/component.js": {
+      "types": "./dist/modules/extract/component/_generated/component.d.ts"
+    },
+    "./sandbox": {
+      "types": "./dist/modules/sandbox/client/index.d.ts",
+      "default": "./dist/modules/sandbox/client/index.js"
+    },
+    "./sandbox/convex.config": {
+      "types": "./dist/modules/sandbox/component/convex.config.d.ts",
+      "default": "./dist/modules/sandbox/component/convex.config.js"
+    },
+    "./sandbox/test": "./src/modules/sandbox/test.ts",
+    "./sandbox/_generated/component.js": {
+      "types": "./dist/modules/sandbox/component/_generated/component.d.ts"
+    },
+    "./telemetry": {
+      "types": "./dist/modules/telemetry/client/index.d.ts",
+      "default": "./dist/modules/telemetry/client/index.js"
+    },
+    "./extract/test": "./src/modules/extract/test.ts",
+    "./tools": {
+      "types": "./dist/modules/tools/client/index.d.ts",
+      "default": "./dist/modules/tools/client/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "release:git": "sh scripts/release-git.sh",
+    "typecheck": "tsc --noEmit --project tsconfig.json",
+    "typecheck:tests": "tsc --noEmit --project tests/tsconfig.json",
+    "codegen": "convex codegen --component-dir ./src/component",
+    "fmt": "oxfmt -c oxfmt.config.ts .",
+    "fmt:check": "oxfmt -c oxfmt.config.ts . --check",
+    "lint": "vp lint -c .oxlintrc.json . --deny-warnings",
+    "lint:convex:check": "bun run scripts/check-convex-lint.ts",
+    "check": "bun run fmt:check && bun run lint && bun run typecheck && bun run typecheck:tests && bun run lint:convex:check && bun run --cwd docs/site check",
+    "test": "vp test --run",
+    "test:live": "vp test --run --config vite.live.config.ts && bun run test:meter:live && bun run test:live:extract && vp test --run --config tests/sandbox/vite.live.config.ts && bun run test:live:telemetry",
+    "test:meter:live": "vp test --run --config tests/meter/live.config.ts",
+    "test:live:extract": "vp test --run --config tests/extract/vite.live.config.ts",
+    "test:tools": "vp test --run tests/tools",
+    "registry:build": "bun run --cwd docs/site registry:build",
+    "test:live:telemetry": "vp test --run --config tests/telemetry/vite.live.config.ts --reporter verbose"
+  },
+  "dependencies": {
+    "@convex-dev/aggregate": "^0.3.4",
+    "@convex-dev/rag": "0.7.8",
+    "@convex-dev/workflow": "0.4.10",
+    "@convex-dev/workpool": "0.4.14",
+    "@daytona/convex": "2.1.0",
+    "@noble/hashes": "2.4.0"
+  },
+  "devDependencies": {
+    "@ai-sdk/openai": "4.0.102",
+    "@ai-sdk/provider": "4.0.34",
+    "@ai-sdk/provider-utils": "5.0.68",
+    "@convex-dev/agent": "0.7.7",
+    "@convex-dev/eslint-plugin": "5.0.0",
+    "@edge-runtime/vm": "5.0.0",
+    "@openrouter/ai-sdk-provider": "^3.1.0",
+    "@stylistic/eslint-plugin": "5.10.0",
+    "@types/node": "26.6.5",
+    "ai": "7.0.153",
+    "convex": "1.47.0",
+    "convex-helpers": "0.1.128",
+    "convex-test": "0.0.61",
+    "oxfmt": "^0.74.0",
+    "typescript": "5.9.3",
+    "vite-plus": "1.2.0",
+    "zod": "4.6.7"
+  },
+  "peerDependencies": {
+    "@ai-sdk/provider": "^4.0.34",
+    "@ai-sdk/provider-utils": "^5.0.68",
+    "@convex-dev/agent": "^0.7.7",
+    "ai": "^7.0.153",
+    "convex": "^1.47.0",
+    "convex-helpers": "^0.1.128"
+  },
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0",
+    "vitest": "5.0.4"
+  },
+  "packageManager": "bun@1.4.3"
+}
