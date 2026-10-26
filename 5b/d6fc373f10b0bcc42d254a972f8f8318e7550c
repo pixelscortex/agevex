@@ -1,0 +1,40 @@
+tests/message-parent-reservations.test.ts
+  s_9c4f32822ad3ad::t_90061782ff8ab8 1-155,158-160
+  s_9c4f32822ad3ad::t_756150937c6bbb 156-157,161-281
+src/component/subagents/headroom.ts
+  s_9c4f32822ad3ad::t_75db47f4db301d 1-66
+src/client/coordinate/interaction.ts
+  s_9c4f32822ad3ad::t_1acc311ee9247b 41-43
+src/component/subagents/deliver.ts
+  s_9c4f32822ad3ad::t_ea80b2c4c8732a 29,95,172-173
+src/component/subagents/groups.ts
+  s_9c4f32822ad3ad::t_6195c6f548a8bb 18,77-78,191-195
+src/component/subagents/launch.ts
+  s_9c4f32822ad3ad::t_d8d67cbecadb17 26,89-94,177-178,182
+src/component/subagents/messages.ts
+  s_9c4f32822ad3ad::t_13853ab801c16b 7,22,53,121,123-125
+src/component/subagents/parent-notes.ts
+  s_9c4f32822ad3ad::t_e03517d0d69a9a 43
+src/component/turns/pause.ts
+  s_9c4f32822ad3ad::t_d59c2c9c6d8a98 259-260
+tests/delegation-v2.test.ts
+  s_9c4f32822ad3ad::t_492117e6bd1398 1158-1160,1192,1749-1750,1759-1769,1771,2806,2808-2809
+tests/message-parent.test.ts
+  s_9c4f32822ad3ad::t_3be6db17001994 624-645
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5bd6fc373f10b0bcc42d254a972f8f8318e7550c",
+  "prompts": {},
+  "sessions": {
+    "s_9c4f32822ad3ad": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a178bc-87b7-7411-989a-3223a791356a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
