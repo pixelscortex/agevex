@@ -1,0 +1,101 @@
+src/client/turn/deadlines.ts
+  s_8d96f16789d5a8::t_82121389b93e6d 1-120
+  s_8d96f16789d5a8::t_11ba01aeed7559 121-131
+src/component/run-settings.ts
+  s_8d96f16789d5a8::t_ffca67c90922f4 1-79
+  s_8d96f16789d5a8::t_d3f312c97e0428 80-101
+README.md
+  s_8d96f16789d5a8::t_fa1d16a5133093 27-44
+docs/site/content/docs/concepts/limits.mdx
+  s_8d96f16789d5a8::t_2e158b1275d847 4,8-11,81-84
+docs/site/content/docs/concepts/runtime.mdx
+  s_8d96f16789d5a8::t_506ec19dafd9ae 27-28,74-130
+src/client/README.md
+  s_8d96f16789d5a8::t_347286db36bc37 16-17,26-28
+src/client/agent.ts
+  s_8d96f16789d5a8::t_adb8db939046c3 12,31-39,67,83
+src/client/endpoints/access.ts
+  s_8d96f16789d5a8::t_37d712f38e536f 12,21,49,66
+src/client/endpoints/index.ts
+  s_8d96f16789d5a8::t_a03d09217f7c9a 12,28-33
+src/client/endpoints/requests.ts
+  s_8d96f16789d5a8::t_6af4cf9a0fd1c2 106
+src/client/index.ts
+  s_8d96f16789d5a8::t_86c1c9c8c8fced 7
+src/client/once.ts
+  s_8d96f16789d5a8::t_958d09c35a5b20 122-125,134-135
+src/client/registration/context.ts
+  s_8d96f16789d5a8::t_cd9396a4bfd778 14-18,35,54-66,80
+src/client/runtime.ts
+  s_8d96f16789d5a8::t_672f5def05edf1 63
+src/client/turn/fence.ts
+  s_8d96f16789d5a8::t_4ad2d9eb9bf6d6 16,31-34,60-77,110-111,113-114,252-275
+src/client/turn/generation.ts
+  s_8d96f16789d5a8::t_27c5f654540769 5,14,50,117,123,126-164,166-167,172-178,181-189
+src/client/turn/tools.ts
+  s_8d96f16789d5a8::t_74e73870bab2c9 17,61
+src/client/types.ts
+  s_8d96f16789d5a8::t_3b3956240aed93 19,278,296,306-326,343-349
+src/component/hooks/routing.ts
+  s_8d96f16789d5a8::t_2ef7211b821144 32
+src/component/hooks/state.ts
+  s_8d96f16789d5a8::t_4e48a2f3094f6e 15,42-44
+src/component/limits.ts
+  s_8d96f16789d5a8::t_347fd1a7753044 63-67,82-83,85-89,91,103-105
+src/component/models.ts
+  s_8d96f16789d5a8::t_7aa4fae109df9b 12-13
+src/component/schema.ts
+  s_8d96f16789d5a8::t_f770c3aefcc3d3 15,236-237,345-346
+src/component/turns/boundaries.ts
+  s_8d96f16789d5a8::t_6d9c7fd32de5a1 14-15,96-107
+src/component/turns/cancel.ts
+  s_8d96f16789d5a8::t_7ed8ae7e3736a4 23,51-59,100-104,113,118,124,128
+src/component/turns/claim.ts
+  s_8d96f16789d5a8::t_dc5411d36158e6 20-25,52,111-115,127,162,164,271,275,284
+src/component/turns/runs.ts
+  s_8d96f16789d5a8::t_2514c96febe8ab 11-12,17-24,36-52
+src/component/turns/send.ts
+  s_8d96f16789d5a8::t_a751f4254a9c31 22,40,74-75,105-109,215-230
+src/component/workflows/lanes.ts
+  s_8d96f16789d5a8::t_912a58a39bbbda 22,116
+src/test.ts
+  s_8d96f16789d5a8::t_a89dc394d64dca 38-46
+src/testing/bridge.ts
+  s_8d96f16789d5a8::t_1608fab2e7c1b1 17,122-149
+tests/bounded-reads.test.ts
+  s_8d96f16789d5a8::t_e54e1e858c91ae 772,783
+tests/deferred-answers.test.ts
+  s_8d96f16789d5a8::t_00df4cc8e186bd 266,280,284-286
+tests/delegation.test.ts
+  s_8d96f16789d5a8::t_ef477ce4db0cd6 7,830,838,1158
+tests/hooks.host.ts
+  s_8d96f16789d5a8::t_9c77d8f5ff9fd5 12,31-32,40,71,75,77,80-82,147-155,161-162,170
+tests/host.ts
+  s_8d96f16789d5a8::t_67e66d0b6ef9e2 25,49,402-403
+tests/managed-turn.test.ts
+  s_8d96f16789d5a8::t_d2d618defb3bba 2,194
+tests/review-regressions.test.ts
+  s_8d96f16789d5a8::t_bac600140f66a0 2,822-837,840-841,1271-1274,1611
+tests/run-settings.test.ts
+  s_8d96f16789d5a8::t_584e63f6c4a645 1-551
+tests/setup.ts
+  s_8d96f16789d5a8::t_b8ae7c28629b74 156
+tests/watchdog-backlog.test.ts
+  s_8d96f16789d5a8::t_e94a5368905e41 2,17-18,33,95
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6dac32c4d72e24609220dd1314ba0ee67840f28e",
+  "prompts": {},
+  "sessions": {
+    "s_8d96f16789d5a8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a177a6-800e-7e80-b7a1-a0f8a837f0e3",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
