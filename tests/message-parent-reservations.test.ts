@@ -28,6 +28,36 @@ const deliveries = async (t: ReturnType<typeof setup>, threadId: string) =>
     })
   ).page;
 
+/** Twelve notes leave exactly one answer and five results in the shared hop budget. */
+async function sendReservationNotes(t: ReturnType<typeof setup>, threadId: string) {
+  for (let round = 0; round < 4; round++) {
+    for (const child of [1, 2, 3])
+      expect(
+        await send(t, await sender(t, threadId, child), `note ${child}/${round}`),
+      ).toMatchObject({
+        status: "accepted",
+      });
+
+    await t.action(async () => {
+      await vi.advanceTimersByTimeAsync(LIMITS.parentNoteIntervalMs);
+    });
+  }
+}
+
+/** Check every owed result and the exact shared ceiling after the answer resumes. */
+async function expectReservedResults(
+  t: ReturnType<typeof setup>,
+  receipt: Awaited<ReturnType<typeof open>>,
+) {
+  expect(await tree(t, receipt.threadId)).toHaveLength(5);
+
+  expect(
+    (await transcript(t, receipt.threadId)).page.filter((row) => row.origin === "result"),
+  ).toHaveLength(5);
+
+  expect(await hops(t, receipt.assignmentId)).toBe(HOST_LIMITS.runHops.default);
+}
+
 beforeEach(() => vi.useFakeTimers());
 
 afterEach(() => {
@@ -145,16 +175,7 @@ it.each(["before", "after"] as const)(
 
     if (when === "before") await ask();
 
-    for (let round = 0; round < 4; round++) {
-      for (const child of [1, 2, 3])
-        expect(
-          await send(t, await sender(t, receipt.threadId, child), `note ${child}/${round}`),
-        ).toMatchObject({ status: "accepted" });
-
-      await t.action(async () => {
-        await vi.advanceTimersByTimeAsync(LIMITS.parentNoteIntervalMs);
-      });
-    }
+    await sendReservationNotes(t, receipt.threadId);
 
     if (when === "after") await ask();
 
@@ -191,13 +212,7 @@ it.each(["before", "after"] as const)(
       (await deliveries(t, receipt.threadId)).every((run) => run.deliveryStatus === "accepted"),
     ).toBe(true);
 
-    expect(await tree(t, receipt.threadId)).toHaveLength(5);
-
-    expect(
-      (await transcript(t, receipt.threadId)).page.filter((row) => row.origin === "result"),
-    ).toHaveLength(5);
-
-    expect(await hops(t, receipt.assignmentId)).toBe(HOST_LIMITS.runHops.default);
+    await expectReservedResults(t, receipt);
   },
 );
 

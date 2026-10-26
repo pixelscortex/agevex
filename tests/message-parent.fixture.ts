@@ -5,7 +5,7 @@ import { convexTest } from "convex-test";
 import native from "@convex-dev/agent/test";
 import { tool, type ToolSet } from "ai";
 import { z } from "zod";
-import { expect, vi } from "vite-plus/test";
+import { vi } from "vite-plus/test";
 import agevex from "../src/test.js";
 import { Agent, registerAgent, type Registration, type SlotFacts } from "../src/client/index.js";
 import schema from "./fixture/schema.js";
@@ -13,6 +13,7 @@ import { components, rawAssignment } from "./fixture/api.js";
 import { coordinateReference, runTurnReference } from "./host.js";
 import { main, reviewer, reset, v2, v2api as api } from "./delegation-v2.host.js";
 import { requireReceipt } from "./receipt.js";
+import { advanceUntil } from "./clock.js";
 
 const modules = import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]);
 
@@ -132,18 +133,8 @@ export const transcript = (t: Test, threadId: string) =>
     paginationOpts: { cursor: null, numItems: 100 },
   });
 
-/** Advance only a small clock slice, allowing in-flight fake models to remain held. */
-export async function waitFor(t: Test, check: () => boolean | Promise<boolean>) {
-  await expect
-    .poll(async () => {
-      await t.action(async () => {
-        await vi.advanceTimersByTimeAsync(100);
-      });
-
-      return check();
-    })
-    .toBe(true);
-}
+/** Keep model gates held while driving scheduler callbacks in their backend context. */
+export const waitFor = advanceUntil;
 
 /** A model gate proves parent progress independently of child completion. */
 export function gate() {
