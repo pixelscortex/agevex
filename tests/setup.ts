@@ -153,6 +153,7 @@ export function setup(
   limits?: Registration["limits"],
   transactionLimits: NonNullable<Parameters<typeof convexTest>[0]>["transactionLimits"] = false,
 ) {
+  state.run = undefined;
   state.deferred = false;
   state.deferredCount = 1;
   state.deferredQuestion = "Which option?";

@@ -9,6 +9,7 @@ import {
   type CoordinateArgs,
   type CoordinateResult,
   type ToolContext,
+  type RunSettings,
 } from "../src/client/index.js";
 import { mockModel, createTool, type ContextHandler } from "@convex-dev/agent";
 import {
@@ -27,6 +28,8 @@ import { components } from "./fixture/api.js";
 
 type Args = Parameters<ReturnType<typeof mockModel>["doStream"]>[0];
 export const fixture = {
+  run: {} as Record<string, RunSettings>,
+  modes: [] as string[],
   slots: {} as Pick<Registration, "usage" | "budget" | "telemetry" | "sandbox" | "extract">,
   sandbox: false,
   supportsUrls: true,
@@ -34,6 +37,7 @@ export const fixture = {
   toolWork: undefined as undefined | ((tc: ToolContext) => Promise<unknown>),
   hooks: {} as AgentHooks,
   builderHooks: {} as AgentHooks,
+  builderSides: undefined as readonly SideAgent[] | undefined,
   sides: [] as SideAgent[],
   calls: [] as { agent: string; args: Args }[],
   effects: [] as string[],
@@ -64,15 +68,17 @@ function model(name: string) {
       fixture.supportsUrls ? { "*": [/^https:\/\/some-deployment\.convex\.cloud\//] } : {},
   });
 
-  model.doStream = async (args) => {
+  const respond = async (args: Args, mode: "stream" | "generate") => {
     const n = fixture.calls.filter((call) => call.agent === name).length;
 
     fixture.calls.push({ agent: name, args });
+    fixture.modes.push(mode);
 
-    return scriptedModel([
-      (await fixture.steps[name]?.(n, args)) ?? text(`${name} answer ${n}`),
-    ]).doStream(args);
+    return scriptedModel([(await fixture.steps[name]?.(n, args)) ?? text(`${name} answer ${n}`)]);
   };
+
+  model.doStream = async (args) => (await respond(args, "stream")).doStream(args);
+  model.doGenerate = async (args) => (await respond(args, "generate")).doGenerate(args);
 
   return model;
 }
@@ -138,11 +144,22 @@ export const main = new Agent(components.agent, {
     }),
   },
 });
+Object.defineProperty(main, "run", { get: () => fixture.run.Main });
+Object.defineProperty(builder, "run", { get: () => fixture.run.Builder });
+Object.defineProperty(critic, "run", { get: () => fixture.run.Critic });
+const originalBuilderSides = builder.sideAgents;
+
+Object.defineProperty(builder, "sideAgents", {
+  get: () => fixture.builderSides ?? originalBuilderSides,
+});
+
 Object.defineProperty(builder, "hooks", { get: () => fixture.builderHooks });
 Object.defineProperty(main, "sandbox", { get: () => fixture.sandbox });
 Object.defineProperty(main, "hooks", { get: () => fixture.hooks });
 Object.defineProperty(main, "sideAgents", { get: () => fixture.sides });
 export function reset() {
+  fixture.run = {};
+  fixture.modes = [];
   fixture.slots = {};
   fixture.sandbox = false;
   fixture.supportsUrls = true;
@@ -150,6 +167,7 @@ export function reset() {
   fixture.toolWork = undefined;
   fixture.hooks = {};
   fixture.builderHooks = {};
+  fixture.builderSides = undefined;
   fixture.sides = [];
   fixture.calls = [];
   fixture.effects = [];

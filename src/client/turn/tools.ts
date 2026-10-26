@@ -14,6 +14,7 @@ import type { RuntimeContext } from "../registration/context.js";
 import { scopedMeter } from "../slots.js";
 import { RESERVED_TOOL_NAMES } from "../tool-names.js";
 import { installCollaborationTools } from "./collaboration-tools.js";
+import { boundToolDeadlines } from "./deadlines.js";
 import type { Generation } from "./context.js";
 import { slotToolBags } from "./slots.js";
 
@@ -57,7 +58,7 @@ export async function buildTurnTools(rt: RuntimeContext, gen: Generation): Promi
 
   installCollaborationTools(rt, gen, tools, eligible);
 
-  return tools;
+  return boundToolDeadlines(gen, tools);
 }
 
 /**

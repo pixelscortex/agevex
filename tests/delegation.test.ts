@@ -4,6 +4,7 @@ import { requireReceipt } from "./receipt.js";
 // Every case runs against the real registered coordinator, the real component
 // mutations and the native Agent transcripts, with mock models only. Nothing
 // here contacts a provider, reads a key or reaches the network.
+import { sliceWatchdogMs, resolveRunSettings } from "../src/component/run-settings.js";
 import { it, expect, vi, afterEach, beforeEach } from "vite-plus/test";
 import { createThread, listMessages, saveMessage } from "@convex-dev/agent";
 import { createFunctionHandle } from "convex/server";
@@ -826,7 +827,7 @@ it("escalates a stalled child run once and makes one bounded notification attemp
   });
 
   // Detection only: nothing changes before the window armed by `claim` ends.
-  await vi.advanceTimersByTimeAsync(LIMITS.executionWatchdogMs - 1_000);
+  await vi.advanceTimersByTimeAsync(sliceWatchdogMs(resolveRunSettings()) - 1_000);
 
   expect((await runs(t, receipt.threadId)).page[0]).toMatchObject({
     status: "running",
@@ -834,6 +835,7 @@ it("escalates a stalled child run once and makes one bounded notification attemp
   });
 
   await vi.advanceTimersByTimeAsync(2_000);
+  await t.finishInProgressScheduledFunctions();
 
   // Crossing the watchdog records the terminal failure and moves the counters
   // exactly once; it never takes the turn over or replays a generation.
@@ -1153,7 +1155,7 @@ it("delivers a committed child result even when child finalization fails", async
   // The fault is never claimed twice: the escalated child run stays terminal
   // with one accepted notification, and its armed watchdog — which ignores a
   // recovery-required turn — cannot re-record or re-deliver anything.
-  await vi.advanceTimersByTimeAsync(LIMITS.executionWatchdogMs + 1_000);
+  await vi.advanceTimersByTimeAsync(sliceWatchdogMs(resolveRunSettings()) + 1_000);
   await drain(t);
 
   expect((await runs(t, receipt.threadId)).page[0].events.map((e) => e.phase)).toEqual([

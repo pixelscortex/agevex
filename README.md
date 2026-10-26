@@ -24,6 +24,24 @@ types, the Convex lint gate and docs types. `bun run fmt` applies Oxfmt;
 `bun run test` runs the offline suite with two workers and no build.
 `bun run test:live` uses the opt-in provider keys in the main checkout.
 
+## Run policy
+
+Set `run` on each `new Agent(native, options)`:
+`{ mode: "generate", maxOutputTokens: 2048, modelTimeoutMs: 45_000, toolTimeoutMs: 15_000, stepsPerTurn: 6 }`.
+Defaults are streaming, 4,096 tokens, separate 90-second model/tool deadlines,
+and 16 steps (one model call per action). Bounds are 1–32,768 tokens,
+1,000–300,000 ms per deadline and 1–64 steps. The combined watchdog budget
+`modelTimeoutMs + 16 * toolTimeoutMs + 30_000` must fit 30 minutes.
+Native generate saves messages, usage, tools and approvals without deltas.
+At most 16 tools execute serially per slice; timeouts fence late managed writes
+and never retry unknown effects. Settings are fixed at request acceptance and
+shared by children; registration changes affect new runs.
+
+Existing registration `limits.rootLane / childLane` default to 2 / 4,
+maximum 4 / 4 (8 total slots). All registrations sharing a mount must agree;
+sleeping workflows use no slot. See
+[the runtime contract](docs/site/content/docs/concepts/runtime.mdx).
+
 ## Optional sandboxes
 
 `agevex/sandbox` binds a provider sandbox to trusted thread, run or subject

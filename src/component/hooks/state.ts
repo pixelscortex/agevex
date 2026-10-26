@@ -12,6 +12,7 @@
 import { type MutationCtx, mutation } from "../_generated/server.js";
 import type { Id } from "../_generated/dataModel.js";
 import { LIMITS } from "../limits.js";
+import { newRun } from "../turns/runs.js";
 import { validModelOverrides } from "../models.js";
 import { v } from "convex/values";
 
@@ -38,6 +39,9 @@ export async function recordHookState(
 
     if (!run || !validModelOverrides(models)) throw new Error("INVALID_MODELS");
 
+    // A routing choice can enlarge the model map after acceptance. Reuse the
+    // row builder's envelope check before changing this run's bounded metadata.
+    newRun(models, run.settings);
     await ctx.db.patch("runs", run._id, { models });
   }
 

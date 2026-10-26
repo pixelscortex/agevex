@@ -16,6 +16,7 @@ import type {
 import type { Infer } from "convex/values";
 import type { AgentComponent, MessageDoc } from "@convex-dev/agent";
 import type { LanguageModelV4 } from "@ai-sdk/provider";
+import type { RunSettings } from "../component/run-settings.js";
 import type { LanguageModel, ToolSet } from "ai";
 import type { ToolContext } from "./once.js";
 import type { activity, receipt, runErrorCode } from "../component/schema.js";
@@ -274,6 +275,7 @@ export type CoordinateResult =
 // are invariant (notably stop conditions). No native result is widened publicly.
 export type ManagedAgent = {
   name: string;
+  run?: RunSettings;
   sandbox?: boolean;
   hooks?: AgentHooks;
   sideAgents?: readonly SideAgent[];
@@ -291,18 +293,7 @@ export type ManagedAgent = {
   streamText(
     ctx: GenericActionCtx<GenericDataModel>,
     target: { threadId: string },
-    args: {
-      promptMessageId: string;
-      model?: Extract<LanguageModel, string | LanguageModelV4>;
-      /** Only present when the managed delegation tool is merged in. */
-      tools?: ToolSet;
-      maxOutputTokens: number;
-      maxRetries: number;
-      stopWhen: () => boolean;
-      abortSignal: AbortSignal;
-      experimental_download?: import("ai").Experimental_DownloadFunction;
-      telemetry?: { integrations: import("ai").Telemetry[] };
-    },
+    args: ManagedGenerationArgs,
     options: {
       saveStreamDeltas: { chunking: "word"; throttleMs: number };
       storageOptions: { saveMessages: "promptAndOutput" };
@@ -310,9 +301,29 @@ export type ManagedAgent = {
   ): Promise<{
     consumeStream(options?: { onError: (error: unknown) => void }): PromiseLike<void>;
     finishReason: PromiseLike<string>;
-    /** Native saves that completed before the stream resolved. */
     savedMessages?: MessageDoc[];
   }>;
+  generateText(
+    ctx: GenericActionCtx<GenericDataModel>,
+    target: { threadId: string },
+    args: ManagedGenerationArgs,
+    options: { storageOptions: { saveMessages: "promptAndOutput" } },
+  ): Promise<{ finishReason: string; savedMessages?: MessageDoc[] }>;
+};
+
+/** Per-call native overrides; each managed action pays for one model step. */
+export type ManagedGenerationArgs = {
+  promptMessageId: string;
+  model?: Extract<LanguageModel, string | LanguageModelV4>;
+  tools?: ToolSet;
+  maxOutputTokens: number;
+  maxRetries: number;
+  stopWhen: () => boolean;
+  abortSignal: AbortSignal;
+  toolCallConcurrency: number;
+  prepareStep: (options: { model: LanguageModel }) => { model: LanguageModelV4 };
+  experimental_download?: import("ai").Experimental_DownloadFunction;
+  telemetry?: { integrations: import("ai").Telemetry[] };
 };
 
 import type { Limits } from "../component/limits.js";
@@ -329,7 +340,13 @@ export type Registration = {
   modelAllowlist?: readonly string[];
   /** Resolver is called only in actions, after validating the stored id against the allowlist. */
   models?: (id: string) => Extract<LanguageModel, string | LanguageModelV4>;
-  /** Positive host bounds merged over LIMITS and validated at registration. */
+  /**
+   * Positive host bounds merged over LIMITS and validated at registration.
+   * rootLane/childLane default to 2/4 (max 4/4, eight total slots); every
+   * registration on one mount must agree. Sleeping workflows use no slot.
+   * slicesPerTurn supplies the default Agent.run.stepsPerTurn and an explicit
+   * override also caps the Workflow turn. Per-agent policy creates no pools.
+   */
   limits?: Partial<Limits>;
   /**
    * The agents exposed as delegation **roots**. A child is resolved through a

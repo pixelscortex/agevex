@@ -19,6 +19,7 @@ import { modelOverrides, validModelOverrides } from "../models.js";
 import { messageRef, recordRefs } from "../hooks/refs.js";
 import { armPurge, findReceipt, newDoneReceipt } from "../receipts/records.js";
 import { assignmentByThread, newRootAssignment } from "./assignments.js";
+import { settingsSnapshot, resolveRunSettings } from "../run-settings.js";
 import { newRun } from "./runs.js";
 import { wake } from "./wake.js";
 import { activity as vActivity, receipt as vReceipt, scope } from "../schema.js";
@@ -36,6 +37,7 @@ export const acceptArgs = {
   runTurn: v.string(),
   limits: limitsValidator,
   models: v.optional(modelOverrides),
+  settings: v.optional(settingsSnapshot),
 };
 
 /** The typed duplicate/conflict receipt for an already accepted request, or
@@ -69,6 +71,8 @@ export async function acceptSend(ctx: MutationCtx, args: ObjectType<typeof accep
 
   if (duplicate) return duplicate;
 
+  await assertLaneConfiguration(ctx, args.limits);
+
   let row = await assignmentByThread(ctx, args.threadId);
 
   if (!row) {
@@ -98,7 +102,11 @@ export async function acceptSend(ctx: MutationCtx, args: ObjectType<typeof accep
   // successive accepted messages would both report position zero.
   const position = row.queuedMessages + (row.inboxId ? 1 : 0);
   const models = args.models ?? row.models;
-  const runId = await ctx.db.insert("runs", newRun(models));
+
+  const runId = await ctx.db.insert(
+    "runs",
+    newRun(models, args.settings ?? { [args.agent]: resolveRunSettings() }),
+  );
 
   await ctx.db.insert("inbox", {
     assignmentId: row._id,
@@ -204,3 +212,19 @@ export const activity = query({
     return activityView(row);
   },
 });
+
+/** A component mount owns one pool pair, even across independent registrations.
+ * One indexed assignment read (<=32 KiB) pins capacity without a new table.
+ * Refusal rolls back the native prompt save in the accepting transaction. */
+async function assertLaneConfiguration(
+  ctx: MutationCtx,
+  limits: ObjectType<typeof limitsValidator.fields>,
+) {
+  const first = await ctx.db.query("assignments").withIndex("by_thread").first();
+
+  if (
+    first &&
+    (first.limits.rootLane !== limits.rootLane || first.limits.childLane !== limits.childLane)
+  )
+    throw new Error("LANE_CONFIGURATION_CONFLICT");
+}

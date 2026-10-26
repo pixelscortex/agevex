@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { sliceWatchdogMs, resolveRunSettings } from "../src/component/run-settings.js";
 import { opaqueKey } from "../src/client/keys.js";
 import { requireReceipt } from "./receipt.js";
 import { it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
@@ -818,7 +819,25 @@ it.each(["routing", "approval"])(
         componentsGeneric().agevex.agevexTest.queuedWork as unknown as FunctionReference<"query">,
       );
 
+    // Every queued/current root budget carries a full 64-agent settings map,
+    // alongside the max model map. Atomic cancel must still fit its old 8 MiB
+    // test budget; repeated child references must not reread each large run.
+    const settings = Object.fromEntries(
+      Array.from({ length: 64 }, (_, index) => [
+        String(index).padEnd(128, "x"),
+        resolveRunSettings(),
+      ]),
+    );
+
+    await t.mutation(
+      componentsGeneric().agevex.agevexTest
+        .fillRunSettings as unknown as FunctionReference<"mutation">,
+      { settings },
+    );
+
     const before = await queuedWork();
+
+    expect(before.runs.every((run: unknown) => getConvexSize(run as never) <= 16 << 10)).toBe(true);
 
     expect(before.inbox).toHaveLength(
       HOST_LIMITS.queueLength.max +
@@ -1249,6 +1268,10 @@ it.each([
 it("two healthy slices complete when their combined duration exceeds the slice watchdog", async () => {
   const t = setup();
 
+  // Each model takes 70s <90s, but together they exceed the derived 136s
+  // watchdog. A turn-wide deadline would incorrectly abort the second slice.
+  state.run = { toolTimeoutMs: 1_000 };
+
   state.tools = true;
   state.delayMs = 70_000;
   const receipt = await open(t);
@@ -1585,7 +1608,7 @@ it("completed slices ignore stale watchdogs, refuse replayed or overlapping slic
     messageId: claimed.promptMessageId,
   });
 
-  await tick(t, LIMITS.executionWatchdogMs + 1_000);
+  await tick(t, sliceWatchdogMs(resolveRunSettings()) + 1_000);
 
   expect(await activity(t, receipt.threadId)).toMatchObject({
     turnStatus: "running",
