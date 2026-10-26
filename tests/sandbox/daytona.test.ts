@@ -1,6 +1,17 @@
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import { rm, readFile, unlink, mkdtemp, writeFile, access, mkdir } from "node:fs/promises";
+import {
+  rm,
+  readFile,
+  unlink,
+  mkdtemp,
+  writeFile,
+  access,
+  mkdir,
+  stat,
+  chmod,
+  utimes,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it, vi } from "vite-plus/test";
@@ -73,6 +84,101 @@ it(
       await provider.discardWrite(ctx, "local", tempPath);
       await expect(access(tempPath)).rejects.toThrow();
       expect(replies.every((size) => size < 64)).toBe(true);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+  EXPORT_TEST_TIMEOUT_MS,
+);
+
+it(
+  "each Daytona window costs an upload plus one script that also removes the window",
+  async () => {
+    const { provider, ctx, actions } = harness();
+    const directory = await mkdtemp(join(tmpdir(), "agevex-window-"));
+    const tempPath = join(directory, ".stage");
+
+    try {
+      await provider.writeWindow(ctx, "local", tempPath, 0, new Uint8Array([1, 2, 3]));
+      expect(actions.mock.calls.map(([ref]) => ref)).toEqual(["writeBytes", "run"]);
+      expect(new Uint8Array(await readFile(tempPath))).toEqual(new Uint8Array([1, 2, 3]));
+      await expect(access(tempPath + ".window")).rejects.toThrow();
+
+      // A refused window is cleaned up on the failure path as well.
+      await expect(
+        provider.writeWindow(ctx, "local", tempPath, 9, new Uint8Array([4])),
+      ).rejects.toMatchObject({ code: "SANDBOX_WRITE_OFFSET_MISMATCH" });
+
+      await expect(access(tempPath + ".window")).rejects.toThrow();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+  EXPORT_TEST_TIMEOUT_MS,
+);
+
+it(
+  "a committed file keeps an existing target's permission bits and a new file follows the umask",
+  async () => {
+    const { provider, ctx } = harness();
+    const directory = await mkdtemp(join(tmpdir(), "agevex-mode-"));
+    const content = new Uint8Array([5, 6, 7]);
+
+    const expected = {
+      bytes: content.length,
+      sha256: Buffer.from(await crypto.subtle.digest("SHA-256", content)).toString("hex"),
+    };
+
+    try {
+      // A plain file is created 0666 & ~umask: the mode a new stage should have.
+      await writeFile(join(directory, "probe"), "");
+      const defaultMode = (await stat(join(directory, "probe"))).mode & 0o777;
+
+      const existing = join(directory, "existing.sh");
+
+      await writeFile(existing, "old");
+      await chmod(existing, 0o751);
+      await provider.writeWindow(ctx, "local", join(directory, ".stage-a"), 0, content);
+      await provider.commitWrite(ctx, "local", join(directory, ".stage-a"), existing, expected);
+      expect((await stat(existing)).mode & 0o777).toBe(0o751);
+
+      const created = join(directory, "created.bin");
+
+      await provider.writeWindow(ctx, "local", join(directory, ".stage-b"), 0, content);
+      await provider.commitWrite(ctx, "local", join(directory, ".stage-b"), created, expected);
+      expect((await stat(created)).mode & 0o777).toBe(defaultMode);
+      expect(new Uint8Array(await readFile(created))).toEqual(content);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+  EXPORT_TEST_TIMEOUT_MS,
+);
+
+it(
+  "reclaim removes only this path's stale stages and windows, never fresh or unrelated files",
+  async () => {
+    const { provider, ctx } = harness();
+    const directory = await mkdtemp(join(tmpdir(), "agevex-reclaim-"));
+    const prefix = ".agevex-write-abc-";
+    const old = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const stale = [`${prefix}dead.tmp`, `${prefix}dead.tmp.window`];
+    const kept = [`${prefix}live.tmp`, ".agevex-write-other-dead.tmp", `${prefix}dead.keep`];
+
+    try {
+      for (const name of [...stale, ...kept]) await writeFile(join(directory, name), "x");
+
+      for (const name of [...stale, ".agevex-write-other-dead.tmp", `${prefix}dead.keep`])
+        await utimes(join(directory, name), old, old);
+
+      await provider.reclaimWrites(ctx, "local", `${directory}/`, prefix, 60 * 60 * 1000);
+
+      for (const name of stale) await expect(access(join(directory, name))).rejects.toThrow();
+
+      for (const name of kept) await expect(access(join(directory, name))).resolves.toBeUndefined();
+
+      // A missing directory has nothing to reclaim.
+      await provider.reclaimWrites(ctx, "local", `${directory}/missing/`, prefix, 1);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

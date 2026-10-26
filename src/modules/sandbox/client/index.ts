@@ -34,7 +34,7 @@ import { readFile, list } from "./files.js";
 import { tools, slot } from "./tools.js";
 import { internalFunctions } from "./watchdog.js";
 import { exportSandbox } from "./export.js";
-import { bindWriteBytes } from "./write.js";
+import { bindWriteBytes, exportWriteError } from "./write.js";
 
 /**
  * Connect a finished background job to agevex: pass the result as
@@ -122,7 +122,14 @@ export function sandboxNodeWrite(options: SandboxOptions) {
       maxBytes: v.optional(v.number()),
     },
     returns: v.object({ bytes: v.number(), sha256: v.string() }),
-    handler: (ctx, args) => sandbox.writeBytes(ctx, args),
+    handler: async (ctx, args) => {
+      try {
+        return await sandbox.writeBytes(ctx, args);
+      } catch (error) {
+        // Plain errors lose their class across ctx.runAction; ConvexError data survives.
+        throw exportWriteError(error);
+      }
+    },
   });
 }
 

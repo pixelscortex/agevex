@@ -69,7 +69,7 @@ it(
 );
 
 it(
-  "interrupted replacement preserves the original and reclaims a killed transfer's stage on retry",
+  "interrupted replacement preserves the original and keeps a fresh abandoned stage until it is stale",
   async () => {
     const s = setup();
 
@@ -77,13 +77,10 @@ it(
     const content = fixtureBytes(LIMITS.exportChunkBytes + 1);
     const original = s.fake.provider.writeWindow;
     const discard = s.fake.provider.discardWrite;
-    let discards = 0;
 
-    s.fake.provider.discardWrite = async (...args) => {
-      // Model process death during cleanup: leave the stage for the next call.
-      if (++discards > 1) throw new Error("PROCESS_DIED");
-
-      return discard(...args);
+    s.fake.provider.discardWrite = async () => {
+      // Model process death during cleanup: leave the stage for a later call.
+      throw new Error("PROCESS_DIED");
     };
 
     s.fake.provider.writeWindow = async (...args) => {
@@ -96,18 +93,99 @@ it(
       "TRANSFER_INTERRUPTED",
     );
 
-    const files = s.fake.sandboxes.get("fake-sandbox-1")!.files;
+    const machine = s.fake.sandboxes.get("fake-sandbox-1")!;
+    const files = machine.files;
 
     expect(files.get("/replace")).toEqual(new Uint8Array([9]));
     expect(files.size).toBe(2);
     s.fake.provider.discardWrite = discard;
     s.fake.provider.writeWindow = original;
+
+    // The stranded stage may belong to a live writer, so a fresh one survives.
     await write(s, { path: "/replace", source: { bytes: content.buffer } });
-    expect(files.size).toBe(1);
+    expect(files.size).toBe(2);
+    expect(files.get("/replace")).toEqual(content);
+
+    // Once it is older than the staleness threshold, the next write reclaims it.
+    for (const path of machine.touched.keys()) machine.touched.set(path, 0);
+
+    await write(s, { path: "/replace", source: { bytes: content.buffer } });
+    expect([...files.keys()]).toEqual(["/replace"]);
     expect(files.get("/replace")).toEqual(content);
   },
   EXPORT_TEST_TIMEOUT_MS,
 );
+
+it(
+  "overlapping writes to one path never disturb each other's stage and the target is exactly one source",
+  async () => {
+    const s = setup();
+    const first = fixtureBytes(2 * LIMITS.exportChunkBytes + 5);
+    const second = first.map((byte) => 255 - byte).subarray(0, LIMITS.exportChunkBytes + 9);
+    const original = s.fake.provider.writeWindow;
+    let release!: () => void;
+    let parked!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const reached = new Promise<void>((resolve) => (parked = resolve));
+    let firstStage: string | undefined;
+
+    await write(s, { path: "/race", source: { bytes: new Uint8Array([7]).buffer } });
+
+    s.fake.provider.writeWindow = async (ctx, id, path, offset, bytes) => {
+      await original(ctx, id, path, offset, bytes);
+
+      // Park the first writer after its first window, while its stage is live.
+      if (firstStage === undefined) {
+        firstStage = path;
+        parked();
+        await gate;
+      }
+    };
+
+    const slow = write(s, { path: "/race", source: { bytes: first.buffer } });
+
+    await reached;
+
+    expect(await write(s, { path: "/race", source: { bytes: second.slice().buffer } })).toEqual(
+      expected(second),
+    );
+
+    const files = s.fake.sandboxes.get("fake-sandbox-1")!.files;
+
+    expect(files.get("/race")).toEqual(second);
+    expect(files.has(firstStage!)).toBe(true);
+    release();
+    expect(await slow).toEqual(expected(first));
+
+    // Last committed writer wins, byte for byte, and no stage is left behind.
+    expect(files.get("/race")).toEqual(first);
+    expect([...files.keys()]).toEqual(["/race"]);
+  },
+  EXPORT_TEST_TIMEOUT_MS,
+);
+
+it("typed write failures are observed as definite, other failures stay unknown", async () => {
+  const s = setup();
+  const original = s.fake.provider.writeWindow;
+  const input = { path: "/usage", source: { bytes: new Uint8Array([1]).buffer } };
+
+  s.fake.provider.writeWindow = async () => {
+    throw new SandboxWriteError("SANDBOX_WRITE_OFFSET_MISMATCH");
+  };
+
+  await expect(write(s, input)).rejects.toThrow("SANDBOX_WRITE_OFFSET_MISMATCH");
+
+  s.fake.provider.writeWindow = async () => {
+    throw new Error("TRANSFER_INTERRUPTED");
+  };
+
+  await expect(write(s, input)).rejects.toThrow("TRANSFER_INTERRUPTED");
+  s.fake.provider.writeWindow = original;
+
+  expect(
+    state.usage.filter((event) => event.operation === "write").map((event) => event.outcome),
+  ).toEqual(["observed", "unknown"]);
+});
 
 it("duplicate windows at the same offset are no-ops, including duplicates before later windows", async () => {
   const { provider, ctx, files, id } = await prepared();
@@ -288,6 +366,27 @@ it(
     await expect(write(s, { path: "/node-over", source: { storageId: tooLarge } })).rejects.toThrow(
       "SANDBOX_WRITE_TOO_LARGE",
     );
+  },
+  EXPORT_TEST_TIMEOUT_MS,
+);
+
+it(
+  "typed write errors keep their code when a large write runs in the Node action",
+  async () => {
+    const s = setup();
+
+    state.nodeWrite = true;
+    const content = new Uint8Array(LIMITS.exportBytes + 1);
+    const storageId = await s.t.run((ctx) => ctx.storage.store(new Blob([content])));
+
+    s.fake.provider.writeWindow = async () => {
+      throw new SandboxWriteError("SANDBOX_WRITE_OFFSET_MISMATCH");
+    };
+
+    await expect(write(s, { path: "/node-typed", source: { storageId } })).rejects.toMatchObject({
+      name: "SandboxWriteError",
+      code: "SANDBOX_WRITE_OFFSET_MISMATCH",
+    });
   },
   EXPORT_TEST_TIMEOUT_MS,
 );

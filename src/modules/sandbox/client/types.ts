@@ -101,6 +101,17 @@ export interface SandboxProvider {
   ): Promise<void>;
   /** Remove an abandoned staging file; an absent file is already discarded. */
   discardWrite(ctx: SandboxContext, sandboxId: string, tempPath: string): Promise<void>;
+  /**
+   * Remove stages and transport windows in `directory` whose names start with `prefix`
+   * and whose last write is older than `olderThanMs`. Fresh files belong to a live attempt.
+   */
+  reclaimWrites(
+    ctx: SandboxContext,
+    sandboxId: string,
+    directory: string,
+    prefix: string,
+    olderThanMs: number,
+  ): Promise<void>;
   download(
     ctx: SandboxContext,
     sandboxId: string,

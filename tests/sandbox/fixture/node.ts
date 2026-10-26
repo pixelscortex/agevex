@@ -3,7 +3,7 @@
 import { sandboxNodeExport, sandboxNodeWrite } from "../../../src/modules/sandbox/client/index.js";
 import { config } from "./host.js";
 import { internalActionGeneric } from "convex/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import type {
   SandboxContext,
   SandboxNodeWriteArgs,
@@ -26,10 +26,18 @@ export function nodeWrite() {
       source: v.object({ storageId: v.id("_storage") }),
       maxBytes: v.optional(v.number()),
     },
-    handler: (ctx, args) => {
+    handler: async (ctx, args) => {
       installStorageMetadata(ctx);
 
-      return action._handler(ctx, args);
+      try {
+        return await action._handler(ctx, args);
+      } catch (error) {
+        // convex-test passes thrown objects through. Production Convex keeps only
+        // ConvexError data across runAction and reduces any other error to a message.
+        if (error instanceof ConvexError) throw error;
+
+        throw new Error(error instanceof Error ? error.message : String(error));
+      }
     },
   });
 }

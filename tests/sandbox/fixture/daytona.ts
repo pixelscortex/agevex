@@ -112,6 +112,7 @@ export const lifecycle = internalActionGeneric({
         };
       }
       case "writeRoundTrip":
+      case "writeTiming":
       case "export": {
         if (args.op === "export")
           await provider.exec(
@@ -163,6 +164,22 @@ export const lifecycle = internalActionGeneric({
           });
 
           return { written, exported: await sandbox.export(ctx, { threadId: "live", path }) };
+        }
+
+        if (args.op === "writeTiming") {
+          // The 8 MiB default maximum: 16 windows of 512 KiB.
+          const bytes = Uint8Array.from({ length: 8 * 1024 * 1024 }, (_, i) => i % 251);
+          const started = Date.now();
+
+          const written = await sandbox.writeBytes(ctx, {
+            subject: "live",
+            threadId: "live",
+            runId: "live",
+            path: "/tmp/agevex-write-8mib.bin",
+            source: { bytes },
+          });
+
+          return { written, elapsedMs: Date.now() - started };
         }
 
         return sandbox.export(ctx, { threadId: "live", path: "/tmp/agevex-large.bin" });

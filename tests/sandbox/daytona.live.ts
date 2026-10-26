@@ -20,6 +20,7 @@ it.skipIf(!process.env.DAYTONA_API_KEY)(
     agentTest.register(t);
     sandboxTest.register(t);
     let sandboxId: string | undefined;
+    let writeTimingMs = 0;
     const started = Date.now();
 
     try {
@@ -126,6 +127,14 @@ it.skipIf(!process.env.DAYTONA_API_KEY)(
 
       expect(storedBytes).toEqual(writtenBytes);
 
+      const timing = (await t.action(api.daytona.lifecycle, {
+        op: "writeTiming",
+        sandboxId,
+      })) as { written: { bytes: number }; elapsedMs: number };
+
+      expect(timing.written.bytes).toBe(8 * 1024 * 1024);
+      writeTimingMs = timing.elapsedMs;
+
       await t.action(api.daytona.lifecycle, { op: "stop", sandboxId });
     } finally {
       // Deletion is never conditional on any assertion or previous lifecycle
@@ -149,8 +158,9 @@ it.skipIf(!process.env.DAYTONA_API_KEY)(
         unmarkedGroupPreserved: true,
         exportBytes: 3 * 1024 * 1024 + 17,
         writeRoundTripBytes: 3 * 512 * 1024 + 17,
+        write8MiBMs: writeTimingMs,
       }),
     );
   },
-  180_000,
+  300_000,
 );

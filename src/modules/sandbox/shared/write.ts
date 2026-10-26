@@ -1,10 +1,18 @@
 /** Stable binary-write errors and source-side bounds shared by real and fake providers. */
 import { HARD_LIMITS, LIMITS, bounded, integer } from "./limits.js";
 
-export type SandboxWriteErrorCode =
-  | "SANDBOX_WRITE_TOO_LARGE"
-  | "SANDBOX_WRITE_OFFSET_MISMATCH"
-  | "SANDBOX_WRITE_INCOMPLETE";
+const WRITE_ERROR_CODES = [
+  "SANDBOX_WRITE_TOO_LARGE",
+  "SANDBOX_WRITE_OFFSET_MISMATCH",
+  "SANDBOX_WRITE_INCOMPLETE",
+] as const;
+
+export type SandboxWriteErrorCode = (typeof WRITE_ERROR_CODES)[number];
+
+/** Narrow untrusted error data (for example from another action) to a stable code. */
+export function isWriteErrorCode(value: unknown): value is SandboxWriteErrorCode {
+  return WRITE_ERROR_CODES.includes(value as SandboxWriteErrorCode);
+}
 
 /** Preserve a machine-readable code for direct host/provider callers. */
 export class SandboxWriteError extends Error {

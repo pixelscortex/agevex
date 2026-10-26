@@ -15,6 +15,8 @@ import {
 type FakeMachine = {
   state: "creating" | "ready" | "stopped" | "archived" | "error" | "deleted";
   files: Map<string, Uint8Array>;
+  /** Last write time (ms) of staged files, so tests can age an abandoned stage. */
+  touched: Map<string, number>;
 };
 type ExecResult = { exitCode: number; stdout: string; stderr: string; timedOut?: boolean };
 type FakeOptions = {
@@ -74,11 +76,11 @@ export function fakeSandboxProvider(opts: FakeOptions = {}) {
 /** Mirror staged offset checks and atomic replacement without exposing partial targets. */
 function fakeBinaryWrites(
   runtime: FakeContext,
-): Pick<SandboxProvider, "writeWindow" | "commitWrite" | "discardWrite"> {
+): Pick<SandboxProvider, "writeWindow" | "commitWrite" | "discardWrite" | "reclaimWrites"> {
   return {
     async writeWindow(_ctx, id, path, offset, content) {
       validateWriteWindow(path, offset, content);
-      const files = ready(runtime, id).files;
+      const { files, touched } = ready(runtime, id);
       const existing = files.get(path) ?? new Uint8Array();
 
       if (existing.length !== offset) {
@@ -96,10 +98,11 @@ function fakeBinaryWrites(
       next.set(existing);
       next.set(content, offset);
       files.set(path, next);
+      touched.set(path, Date.now());
     },
     async commitWrite(_ctx, id, tempPath, path, expected) {
       validateWriteCommit(tempPath, path, expected.bytes, expected.sha256);
-      const files = ready(runtime, id).files;
+      const { files, touched } = ready(runtime, id);
       const staged = files.get(tempPath);
 
       if (
@@ -111,9 +114,31 @@ function fakeBinaryWrites(
 
       files.set(path, staged);
       files.delete(tempPath);
+      touched.delete(tempPath);
     },
     async discardWrite(_ctx, id, path) {
-      ready(runtime, id).files.delete(path);
+      const { files, touched } = ready(runtime, id);
+
+      files.delete(path);
+      touched.delete(path);
+    },
+    async reclaimWrites(_ctx, id, directory, prefix, olderThanMs) {
+      const { files, touched } = ready(runtime, id);
+
+      for (const path of files.keys()) {
+        const name = path.slice(directory.length);
+
+        if (
+          path.startsWith(directory) &&
+          !name.includes("/") &&
+          name.startsWith(prefix) &&
+          name.endsWith(".tmp") &&
+          Date.now() - (touched.get(path) ?? 0) > olderThanMs
+        ) {
+          files.delete(path);
+          touched.delete(path);
+        }
+      }
     },
   };
 }
@@ -158,7 +183,7 @@ function fakeLifecycle(
       await opts.create?.();
       const sandboxId = `fake-sandbox-${++runtime.nextSandbox}`;
 
-      sandboxes.set(sandboxId, { state: "creating", files: new Map() });
+      sandboxes.set(sandboxId, { state: "creating", files: new Map(), touched: new Map() });
 
       return { sandboxId };
     },

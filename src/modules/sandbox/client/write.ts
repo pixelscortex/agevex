@@ -2,10 +2,11 @@
  * Bounded binary writes from host bytes or native Convex storage.
  * Only windows cross provider boundaries; target files appear after verified atomic commit.
  */
+import { ConvexError } from "convex/values";
 import { sha256 } from "@noble/hashes/sha2.js";
-import { bytesToHex } from "@noble/hashes/utils.js";
+import { bytesToHex, randomBytes } from "@noble/hashes/utils.js";
 import { LIMITS, bounded, integer } from "../shared/limits.js";
-import { SandboxWriteError } from "../shared/write.js";
+import { SandboxWriteError, isWriteErrorCode } from "../shared/write.js";
 import {
   authorize,
   facts,
@@ -19,6 +20,7 @@ import type {
   SandboxCall,
   SandboxContext,
   SandboxFacts,
+  SandboxNodeWriteArgs,
   SandboxWriteArgs,
   SandboxWriteBytes,
   SandboxWriteResult,
@@ -89,14 +91,12 @@ async function writeBytes(
     if (!("storageId" in source) || !runtime.options.nodeWrite)
       throw new SandboxWriteError("SANDBOX_WRITE_TOO_LARGE");
 
-    return within(runtime, tc.ctx, () =>
-      tc.ctx.runAction(runtime.options.nodeWrite!, {
-        ...facts(tc),
-        path: input.path,
-        source,
-        ...(input.maxBytes === undefined ? {} : { maxBytes }),
-      }),
-    );
+    return delegateWrite(runtime, tc, {
+      ...facts(tc),
+      path: input.path,
+      source,
+      ...(input.maxBytes === undefined ? {} : { maxBytes }),
+    });
   }
 
   // Snapshot caller-owned bytes so mutation while awaiting provider calls cannot
@@ -126,7 +126,70 @@ async function writeBytes(
   return expected;
 }
 
-/** Restart deterministically; a killed action's one stage is reclaimed on the next write to this path. */
+/** Large storage writes run in the host's Node action; its typed errors are restored here. */
+async function delegateWrite(
+  runtime: RuntimeContext,
+  tc: SandboxCall,
+  args: SandboxNodeWriteArgs,
+): Promise<SandboxWriteResult> {
+  try {
+    return await within(runtime, tc.ctx, () => tc.ctx.runAction(runtime.options.nodeWrite!, args));
+  } catch (error) {
+    // Convex serializes only ConvexError data across runAction; a plain Error
+    // would arrive as an untyped message.
+    const code =
+      error instanceof ConvexError ? (error.data as { code?: unknown })?.code : undefined;
+
+    throw isWriteErrorCode(code) ? new SandboxWriteError(code) : error;
+  }
+}
+
+/** Carry a typed write error out of the Node action so the caller can restore its code. */
+export function exportWriteError(error: unknown) {
+  return error instanceof SandboxWriteError ? new ConvexError({ code: error.code }) : error;
+}
+
+/**
+ * Give this attempt a private stage beside the target. The path hash lets any
+ * attempt find only this path's abandoned stages; the random id keeps live
+ * writers from touching each other's files.
+ */
+function stageNames(path: string) {
+  const directory = path.slice(0, path.lastIndexOf("/") + 1);
+  const prefix = `.agevex-write-${bytesToHex(sha256(new TextEncoder().encode(path)))}-`;
+  const tempPath = `${directory}${prefix}${bytesToHex(randomBytes(8))}.tmp`;
+
+  bounded(tempPath, LIMITS.pathChars, "PATH");
+  bounded(`${tempPath}.window`, LIMITS.pathChars, "PATH");
+
+  return { directory, prefix, tempPath };
+}
+
+/** Best effort: a missed sweep only leaves a stale sibling for the next write to this path. */
+async function reclaimStale(
+  runtime: RuntimeContext,
+  tc: SandboxCall,
+  sandboxId: string,
+  names: { directory: string; prefix: string },
+) {
+  try {
+    await within(runtime, tc.ctx, () =>
+      runtime.provider.reclaimWrites(
+        tc.ctx,
+        sandboxId,
+        names.directory,
+        names.prefix,
+        LIMITS.writeStaleMs,
+      ),
+    );
+  } catch {
+    /* Cleanup of other attempts' leftovers never decides this write's outcome. */
+  }
+
+  tc.signal.throwIfAborted();
+}
+
+/** Stage under a fresh name, reclaim only stale leftovers, then commit atomically (last commit wins). */
 async function stageWrite(
   runtime: RuntimeContext,
   tc: SandboxCall,
@@ -136,13 +199,12 @@ async function stageWrite(
   expected: SandboxWriteResult,
 ) {
   const { provider } = runtime;
-  const parent = path.slice(0, path.lastIndexOf("/") + 1);
-  const key = bytesToHex(sha256(new TextEncoder().encode(path)));
-  const tempPath = bounded(`${parent}.agevex-write-${key}.tmp`, LIMITS.pathChars, "PATH");
+  const names = stageNames(path);
+  const { tempPath } = names;
+
+  await reclaimStale(runtime, tc, sandboxId, names);
 
   try {
-    await within(runtime, tc.ctx, () => provider.discardWrite(tc.ctx, sandboxId, tempPath));
-
     // The empty window creates a stage for zero-length files as well.
     for (let offset = 0; offset < blob.size || offset === 0; offset += LIMITS.exportChunkBytes) {
       tc.signal.throwIfAborted();
@@ -164,14 +226,23 @@ async function stageWrite(
 
     await observe(runtime, tc.ctx, sandboxId, "write", "observed", tc);
   } catch (error) {
-    // A lost response may follow a completed rename. Replaying the same source
-    // remains safe; never remove the target during error cleanup.
-    await observe(runtime, tc.ctx, sandboxId, "write", "unknown", tc);
+    // A typed write error is raised before any rename, so the outcome is known
+    // (the target is unchanged). Anything else may follow a completed rename
+    // whose response was lost: replaying the same source is safe, but the
+    // effect is unknown, and error cleanup never removes the target.
+    await observe(
+      runtime,
+      tc.ctx,
+      sandboxId,
+      "write",
+      error instanceof SandboxWriteError ? "observed" : "unknown",
+      tc,
+    );
 
     try {
       await within(runtime, tc.ctx, () => provider.discardWrite(tc.ctx, sandboxId, tempPath));
     } catch {
-      /* Reclaimed by the next attempt after a killed/deadline-limited action. */
+      /* Reclaimed once stale by a later write after a killed/deadline-limited action. */
     }
 
     throw error;
