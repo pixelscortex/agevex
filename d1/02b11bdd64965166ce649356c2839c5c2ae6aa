@@ -1,0 +1,272 @@
+src/client/text/options.ts
+  s_318434292f117b::t_8dc2bba2268a12 19-20,58
+src/component/turns/send.ts
+  s_318434292f117b::t_9e6ebda0f57e0e 260
+  s_318434292f117b::t_c79f2279a10fd8 135-141
+  s_318434292f117b::t_f49bba967df424 15,103,154-173
+src/component/text/requests.ts
+  s_318434292f117b::t_f746006b33bcd2 32
+  s_318434292f117b::t_fa2ac64caa2d00 1-2,10-11,30
+src/client/endpoints/requests.ts
+  s_318434292f117b::t_dde166ca51c401 169
+tests/save-bounds.fixture.ts
+  s_318434292f117b::t_b2f890bead28b6 99-100,136,138,181
+src/component/subagents/deliver.ts
+  s_318434292f117b::t_d605d189b9be31 132
+  s_318434292f117b::t_d735f817bb8cc6 3,9-11,22,88,98,106
+src/client/text/task.ts
+  s_318434292f117b::t_f746006b33bcd2 1-2,4-12,16,18,22-30,36,38,43,56-57,98-99,106-114,116-119,122-125,129-130,134,136-194,196-205,207-208,215-223,225,227,229-234,238-242,249-250,252-254,256,259,270-284,289,292-294,296
+docs/site/content/docs/concepts/delegation.mdx
+  s_318434292f117b::t_ca68367c09764b 106,109
+  s_318434292f117b::t_2c2c250e684eb1 4,13,18-19,43,52,74,80-81,115-116,131,134,146
+src/client/registration/graph.ts
+  s_318434292f117b::t_9e6ebda0f57e0e 3,5,14
+tests/hooks.test.ts
+  s_318434292f117b::t_71ebdfd8864e5f 973-1000,1002-1054,1056-1058,1060-1069
+  s_318434292f117b::t_a9ba06c104d063 8,588
+  s_318434292f117b::t_324adeb6ef7194 1059
+  s_318434292f117b::t_dde166ca51c401 9,1055
+  s_318434292f117b::t_d6dda586757f85 763-764,767-771,1001
+src/component/subagents/tree.ts
+  s_318434292f117b::t_a19c424214af90 3-5
+  s_318434292f117b::t_d735f817bb8cc6 2,8,51,67
+tests/run-tree.test.ts
+  s_318434292f117b::t_ca68367c09764b 281
+  s_318434292f117b::t_c8e623b0f6c4b2 372
+src/component/subagents/runs.ts
+  s_318434292f117b::t_d735f817bb8cc6 5,7,13,77,80
+  s_318434292f117b::t_ca68367c09764b 127
+docs/site/content/docs/concepts/background-text.mdx
+  s_318434292f117b::t_fc9c86330330f7 3,10,12-15,19-22,24-28,31-40,46-48,52-57,59-63,65-70
+  s_318434292f117b::t_549cd0ffb928c2 42-44
+tests/live/runtime.live.ts
+  s_318434292f117b::t_324adeb6ef7194 21,64,85,118
+src/component/turns/assignments.ts
+  s_318434292f117b::t_1ef269a4982134 19
+src/client/coordinate/interaction.ts
+  s_318434292f117b::t_a19c424214af90 41
+  s_318434292f117b::t_324adeb6ef7194 12,128,166
+  s_318434292f117b::t_a66952ab76a23f 40
+src/client/coordinate/delivery.ts
+  s_318434292f117b::t_324adeb6ef7194 10,128,153,200
+  s_318434292f117b::t_e8ec7083780880 7
+tests/message-parent.test.ts
+  s_318434292f117b::t_961a7b7af23683 33,37,81,361-364,366-367,369,371-372,374-375,377-378,380,382-384,386,388-390,392-395,397-399,401-405,407-409,411-413,415,417-419,421-424
+src/client/registration/context.ts
+  s_318434292f117b::t_9e6ebda0f57e0e 70,74
+src/component/run_settings.ts
+  s_318434292f117b::t_98f723424de0d4 18
+docs/site/content/docs/concepts/message-parent.mdx
+  s_318434292f117b::t_2c2c250e684eb1 24
+  s_318434292f117b::t_9f0fad0c266070 8
+src/client/turn/collaboration-tools.ts
+  s_318434292f117b::t_fa2ac64caa2d00 41
+  s_318434292f117b::t_4157cca7ca6fc0 25
+src/component/turns/runs.ts
+  s_318434292f117b::t_9e6ebda0f57e0e 5-6,20,35
+src/react/index.ts
+  s_318434292f117b::t_eaa11a1c233b6f 158,169-173
+src/component/turns/claim.ts
+  s_318434292f117b::t_dde166ca51c401 130
+  s_318434292f117b::t_c79f2279a10fd8 8,27,114-115,117,121,131,143-144,156-158,177,191-195,210,244,261,299-300
+src/component/subagents/messages.ts
+  s_318434292f117b::t_a66952ab76a23f 289
+  s_318434292f117b::t_84995f30ad3b82 168
+src/component/turns/views.ts
+  s_318434292f117b::t_9e6ebda0f57e0e 68-69,89
+src/client/coordinate/parent-note.ts
+  s_318434292f117b::t_324adeb6ef7194 8,60
+src/client/turn/context.ts
+  s_318434292f117b::t_961a7b7af23683 34
+src/client/endpoints/text.ts
+  s_318434292f117b::t_8dc2bba2268a12 1-2,10,14,19,24-25,28,33,39,41-42,45,47,52,56,59,61,66
+  s_318434292f117b::t_f746006b33bcd2 43-44
+tests/run-tree.seed.ts
+  s_318434292f117b::t_ed7dfe553e5e28 150,260,268
+  s_318434292f117b::t_ca68367c09764b 9
+tests/react/hooks.test.ts
+  s_318434292f117b::t_eaa11a1c233b6f 82,269,279,291
+tests/message-parent.fixture.ts
+  s_318434292f117b::t_324adeb6ef7194 14,31,95
+  s_318434292f117b::t_dde166ca51c401 85
+src/client/turn/completion.ts
+  s_318434292f117b::t_437d9c8244aa22 6,10,54,104-105,111
+  s_318434292f117b::t_c79f2279a10fd8 106-110
+src/component/hooks/notes.ts
+  s_318434292f117b::t_437d9c8244aa22 2,38-39,54,79
+  s_318434292f117b::t_b7cb7ef7e7cc9c 72
+  s_318434292f117b::t_1ef269a4982134 252-253
+  s_318434292f117b::t_c79f2279a10fd8 56-59
+tests/message-parent-queue.test.ts
+  s_318434292f117b::t_ed7dfe553e5e28 256,305-306
+src/component/subagents/parent_notes.ts
+  s_318434292f117b::t_a19c424214af90 37,39-40
+  s_318434292f117b::t_a66952ab76a23f 42
+src/component/text/state.ts
+  s_318434292f117b::t_2c34d201c5cd2f 1-2,6,9,11,13-14,16-18,28-30,32,37,40-41,60,63,68,70,72,74,80-81,83,92,97-98,103,105,107,115-118,126,131,140,151-153,162,164,166-169,185,189,191,193,195,201-202,204
+  s_318434292f117b::t_f746006b33bcd2 75-78,133-136,141-143,171-174,177-178,180-181,186-188,196-200
+  s_318434292f117b::t_7ef32b82aa0cca 8,19-26,109-113
+  s_318434292f117b::t_00c47ee0b6de2e 10,137-138,145,183
+  s_318434292f117b::t_43e94d1dc011a3 79,114,139,170
+src/client/turn/generation.ts
+  s_318434292f117b::t_dde166ca51c401 10
+  s_318434292f117b::t_9e6ebda0f57e0e 29
+docs/site/content/docs/concepts/react-hooks.mdx
+  s_318434292f117b::t_f988316530f5e6 104
+README.md
+  s_318434292f117b::t_fa2ac64caa2d00 348,536,538,542,551
+  s_318434292f117b::t_fc9c86330330f7 297-300,303-306
+  s_318434292f117b::t_98f723424de0d4 355,623-624
+  s_318434292f117b::t_89c12c87d7b1be 366,370-372,386-390,407,409
+tests/claim-bounds.fixture.ts
+  s_318434292f117b::t_b2f890bead28b6 1-2,54,89-95
+tests/save-bounds.test.ts
+  s_318434292f117b::t_b2f890bead28b6 248-254
+  s_318434292f117b::t_c22ae9a7ad385b 247
+tests/live/convex/agents.ts
+  s_318434292f117b::t_324adeb6ef7194 338
+src/client/endpoints/access.ts
+  s_318434292f117b::t_abc88a28b12102 23
+src/client/turn/routing.ts
+  s_318434292f117b::t_437d9c8244aa22 1-3,6,8,10,13-14,16,20,24,35
+src/component/schema.ts
+  s_318434292f117b::t_b2f890bead28b6 321,329
+  s_318434292f117b::t_897700008f5fe6 19,193,237,242,308,310,319,345-346,465-466
+src/client/coordinate/launch.ts
+  s_318434292f117b::t_324adeb6ef7194 7,10,40,60,125,144
+  s_318434292f117b::t_c19922f8d3c029 1-2
+src/component/subagents/views.ts
+  s_318434292f117b::t_d735f817bb8cc6 52
+src/client/turn/hook-runner.ts
+  s_318434292f117b::t_c79f2279a10fd8 55,67
+  s_318434292f117b::t_9e6ebda0f57e0e 15,22,35,52-53
+src/client/types.ts
+  s_318434292f117b::t_9e6ebda0f57e0e 46,263
+  s_318434292f117b::t_c79f2279a10fd8 35
+  s_318434292f117b::t_1ef269a4982134 34,36
+src/component/subagents/headroom.ts
+  s_318434292f117b::t_d735f817bb8cc6 14-15,26-27,30,40-44,65
+src/component/subagents/settle.ts
+  s_318434292f117b::t_fa2ac64caa2d00 34,48
+  s_318434292f117b::t_d605d189b9be31 6-7,52
+  s_318434292f117b::t_a19c424214af90 114-116
+  s_318434292f117b::t_d735f817bb8cc6 11,38,43-45,91,93,110,117
+src/component/facts.ts
+  s_318434292f117b::t_324adeb6ef7194 27-28
+tests/text.test.ts
+  s_318434292f117b::t_549cd0ffb928c2 598,600-604,608-622,627,629-637,639-642,646-659
+  s_318434292f117b::t_eaa11a1c233b6f 7,125,132,147,332-333,364,394,396-399,405-408,410-417,419-422,426,429-432,434-436,438-440,442-443,445-450,452-453,455-456,460-463,465,467-471,474-475,477,480,486,488-489,491-493,495-499,502,504,509,511-515,517-522,527-528,534-536,539-540,546-550,552-558,560-561,563-564,566,579,583-584,587-588,590-595
+  s_318434292f117b::t_bbdd25ef3eb4e7 466,562,589
+src/component/text/worker.ts
+  s_318434292f117b::t_f746006b33bcd2 42-43
+  s_318434292f117b::t_2c34d201c5cd2f 1-2,9,13,23-24,33,37-41,44
+  s_318434292f117b::t_00c47ee0b6de2e 10,34-35
+  s_318434292f117b::t_86efa00d289254 36
+src/client/README.md
+  s_318434292f117b::t_1ef269a4982134 68
+  s_318434292f117b::t_fc9c86330330f7 83,87-88,90
+  s_318434292f117b::t_9ae1c0635028bc 32,39,48,69-70,72,78,95-139
+src/component/subagents/launch.ts
+  s_318434292f117b::t_d735f817bb8cc6 18,84,87,89,91,93-96,127
+  s_318434292f117b::t_576d8d22951802 5-7
+src/component/README.md
+  s_318434292f117b::t_b2f890bead28b6 83-88
+  s_318434292f117b::t_d8c05b45b90576 3-82,89-117
+src/client/turn/run-turn.ts
+  s_318434292f117b::t_9e6ebda0f57e0e 61
+docs/site/content/docs/concepts/limits.mdx
+  s_318434292f117b::t_f988316530f5e6 44,79
+src/component/run_tree_values.ts
+  s_318434292f117b::t_ca68367c09764b 6
+src/component/turns/boundaries.ts
+  s_318434292f117b::t_437d9c8244aa22 10,19,31,55,57
+tests/delegation-v2.test.ts
+  s_318434292f117b::t_2c2c250e684eb1 847,854,873,901,1296,1351-1355,1604,1608,1610-1632,1999,2014,2058,2107,2116
+src/component/text/jobs.ts
+  s_318434292f117b::t_fa2ac64caa2d00 1-2,8,10-15,17,19-20,26-27,29,31-32,34,36,54-60,67,73,76,89
+  s_318434292f117b::t_f746006b33bcd2 61-66,83-86
+  s_318434292f117b::t_00c47ee0b6de2e 7,38-39,41,43-51,81,90-99,101
+src/component/text/values.ts
+  s_318434292f117b::t_fa2ac64caa2d00 1-2,11,30
+src/client/agent.ts
+  s_318434292f117b::t_9e6ebda0f57e0e 5,13
+docs/site/content/docs/concepts/runtime.mdx
+  s_318434292f117b::t_f988316530f5e6 82-84
+  s_318434292f117b::t_e4f8e0c889a11e 172
+src/client/turn/claim.ts
+  s_318434292f117b::t_9e6ebda0f57e0e 43
+src/component/hooks/origins.ts
+  s_318434292f117b::t_dde166ca51c401 5-6
+  s_318434292f117b::t_a9ba06c104d063 15,40,43,61
+  s_318434292f117b::t_1ef269a4982134 18
+src/client/coordinate/coordinator.ts
+  s_318434292f117b::t_a66952ab76a23f 6,41
+src/component/turns/finish.ts
+  s_318434292f117b::t_437d9c8244aa22 11,28
+docs/site/content/docs/concepts/architecture.mdx
+  s_318434292f117b::t_85d386fae4f7d0 46
+docs/site/content/docs/concepts/hooks.mdx
+  s_318434292f117b::t_cb5c7a943dad89 4,10-12,40-43,48,50,52-56,71
+docs/site/content/docs/concepts/idempotency.mdx
+  s_318434292f117b::t_a08e2ab8b7311d 50
+docs/site/content/docs/concepts/slots.mdx
+  s_318434292f117b::t_0976b6a2344535 22
+src/client/endpoints/reads.ts
+  s_318434292f117b::t_3ec3af80829132 37,43
+src/client/once.ts
+  s_318434292f117b::t_50ad652801561a 29
+src/component/limits.ts
+  s_318434292f117b::t_c9cd11a7e158de 56-76,78-96,116,125,160-161,215
+src/component/models.ts
+  s_318434292f117b::t_aeca2d4444e6e0 3-4
+src/component/turns/approvals.ts
+  s_318434292f117b::t_aa3f095def9cf3 47,166
+src/component/turns/cancel.ts
+  s_318434292f117b::t_f22177b1bc0f46 22,64-66,106
+src/component/turns/decision_reads.ts
+  s_318434292f117b::t_d6af5d5f0194d7 92-94,123-124
+src/component/turns/message_ids.ts
+  s_318434292f117b::t_5ca3e5d5464e0e 13
+src/component/turns/pause.ts
+  s_318434292f117b::t_61336f96a513bf 259
+src/component/turns/run_lifecycle.ts
+  s_318434292f117b::t_eb57c8e2e0786e 17-18,40
+src/component/turns/tools.ts
+  s_318434292f117b::t_3019f588489ac7 50
+src/component/turns/wake.ts
+  s_318434292f117b::t_9564e5b82d2df9 4-5,62
+src/component/turns/write.ts
+  s_318434292f117b::t_b82498d5b4b984 164
+src/testing/bridge.ts
+  s_318434292f117b::t_7c43d6e3c97aeb 35-36
+tests/claim-bounds.test.ts
+  s_318434292f117b::t_6e900d8dec1353 2,19
+tests/decisions-bounds.fixture.ts
+  s_318434292f117b::t_fa75f60af19153 91,94,127
+tests/message-ids.test.ts
+  s_318434292f117b::t_29efbac28ae968 4,9,321,345-346,352
+tests/message-parent-bounds.fixture.ts
+  s_318434292f117b::t_f6f065a02b7355 4,10,20,26,37,43,63,100,149
+tests/message-parent-cancel.test.ts
+  s_318434292f117b::t_19700caffd0fa6 99,120-121
+tests/message-parent-reservations.test.ts
+  s_318434292f117b::t_225e9f8096acde 219-222,224-225,227-228,230-231,233-234,236-237,239-240,242,244-245,247-248,250-253,255-256,258,260-268,270-272,274,276-279,281-285,287-289,291-293
+tests/review-regressions.test.ts
+  s_318434292f117b::t_4c1a95015fe04f 615
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d102b11bdd64965166ce649356c2839c5c2ae6aa",
+  "prompts": {},
+  "sessions": {
+    "s_318434292f117b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17a98-e001-7e93-8b88-2619ff767220",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
