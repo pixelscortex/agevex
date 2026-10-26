@@ -6,7 +6,7 @@
  * finishing child needs to verify its result: `subagents.settle.settlementContext`)
  * and `terminalContext` (what the coordinator needs to deliver a finished
  * run: `subagents.deliver.deliveryContext`). Public views: `delegationPage` (the
- * root's paginated history) and `requestTree` (the current request's tree).
+ * root's paginated history). The root-inclusive request tree lives in tree.ts.
  * Only small coordination fields cross the query boundary: no transcript
  * bodies, and capabilities only to the turn or coordinator that owns them.
  */
@@ -149,31 +149,6 @@ export async function delegationPage(ctx, root, paginationOpts) {
         continueCursor: page.length ? String(page[page.length - 1].sequence) : "",
     };
 }
-/** The current root request's tree. Only small coordination fields cross the
- * query boundary; no transcript bodies or execution capabilities are exposed.
- * <=58 model/side launch rows *4 KiB + <=32 KiB root metadata <288 KiB,
- * <64 document reads.
- *
- * A run budget belongs to exactly one root: accept creates it for that root's
- * request, and every descendant inherits it (attach copies the parent run id;
- * every inbox row a descendant can claim carries it), while reserve writes
- * parentRunId = actor.runId with rootAssignmentId = the actor's root. So the
- * parentRunId prefix of by_group is exactly the old (root, run) range. Its size
- * is launches + sideRuns of that budget: only reserve increments either, by
- * one per insert, after refusing at runLaunches / sideRunsPerRun (row.limits,
- * copied from this root and never patched). The take therefore returns every
- * row, and sorting by sequence restores reservation order.
- */
-export async function requestTree(ctx, root) {
-    if (!root.runId)
-        return [];
-    const rows = await ctx.db
-        .query("subagentRuns")
-        .withIndex("by_group", (q) => q.eq("parentRunId", root.runId))
-        .take(root.limits.runLaunches + root.limits.sideRunsPerRun);
-    rows.sort((a, b) => a.sequence - b.sequence);
-    return rows.map(treeNode);
-}
 /** One run in the public delegation history (`schema.subagentRun`). */
 function delegationView(run) {
     return {
@@ -195,22 +170,5 @@ function delegationView(run) {
             agent: run.agent,
             ...event,
         })),
-    };
-}
-/** One node of the current request's delegation tree. */
-function treeNode(run) {
-    return {
-        runId: run.runId,
-        side: run.side ?? false,
-        parentAssignmentId: run.actorAssignmentId,
-        childAssignmentId: run.childAssignmentId ?? null,
-        agent: run.agent,
-        status: run.status,
-        depth: run.depth,
-        group: run.group ?? null,
-        childThreadId: run.childThreadId ?? null,
-        createdAt: run.createdAt,
-        startedAt: run.startedAt ?? null,
-        finishedAt: runTimes(run).finishedAt,
     };
 }

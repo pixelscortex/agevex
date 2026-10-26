@@ -2,9 +2,10 @@ import { getConvexSize } from "convex/values";
 import { assertSettingsSnapshot, RUN_LIMITS } from "../run-settings.js";
 /** The fresh budget for one accepted send. `models` is the thread's model
  * policy at acceptance, snapshotted so later sends cannot change a live run. */
-export function newRun(models, settings = []) {
+export function newRun(models, settings = [], metadata = {}) {
     assertSettingsSnapshot(settings);
     const row = {
+        ...metadata,
         settings,
         models,
         // 64-bit agent-index masks: who started in this run / who owns routing.
@@ -18,7 +19,8 @@ export function newRun(models, settings = []) {
         cancelled: false,
         usagePartial: false,
     };
-    // The 1 KiB reservation includes the native id/time envelope added on insert.
+    // Reserve 1 KiB for native id/time, lifecycle fields and bounded counter/mask
+    // growth. Both JSON UTF-8 and Convex bytes must stay <=16 KiB after updates.
     if (Math.max(getConvexSize(row), new TextEncoder().encode(JSON.stringify(row, (_key, value) => typeof value === "bigint" ? value.toString() : value)).byteLength) +
         RUN_LIMITS.nativeEnvelopeBytes >
         RUN_LIMITS.metadataBytes)

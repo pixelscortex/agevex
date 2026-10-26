@@ -26,11 +26,11 @@ export function assertAgentIndex(agentIndex) {
  * Ownership lives on that assignment so watchdog/cancel can settle it without
  * scanning siblings or trusting a failed action to run cleanup. <=3 metadata
  * reads (get run, read run for patch, read assignment for patch) and <=2 writes:
- * (16+16+32)=64 KiB read per owner. Cancel passes clearOwner=false, folding
- * that assignment update into its state patch: 32 KiB read /16 KiB written
- * per owner, included in limits.ts's budget. No native content is accessed.
+ * (16+16+34)=66 KiB read per owner. Cancel folds routing masks into its
+ * existing per-run guard/patch and clears ownership with its assignment patch;
+ * it never calls this helper. No native content is accessed.
  */
-export async function settleRouting(ctx, row, clearOwner = true) {
+export async function settleRouting(ctx, row) {
     if (row.routingAgentIndex === undefined || !row.runId)
         return;
     const run = await ctx.db.get("runs", row.runId);
@@ -38,10 +38,7 @@ export async function settleRouting(ctx, row, clearOwner = true) {
         await ctx.db.patch("runs", run._id, {
             routingAgents: BigInt.asIntN(LIMITS.agents, run.routingAgents & ~(1n << BigInt(row.routingAgentIndex))),
         });
-    // Cancel clears ownership with its combined state patch, avoiding another
-    // <=32 KiB assignment read/write per owner in the all-maxima transaction.
-    if (clearOwner)
-        await ctx.db.patch("assignments", row._id, { routingAgentIndex: undefined });
+    await ctx.db.patch("assignments", row._id, { routingAgentIndex: undefined });
 }
 /** Whether another turn of this agent still owns the run's routing decision,
  * and the run's current model for the agent. Null for cancelled work. */

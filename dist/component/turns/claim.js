@@ -1,15 +1,16 @@
 import { v } from "convex/values";
-import { api, internal } from "../_generated/api.js";
+import { internal } from "../_generated/api.js";
 import { scope, turnOrigin as vTurnOrigin } from "../schema.js";
-import { runSettings, resolveRunSettings, sliceWatchdogMs, } from "../run-settings.js";
+import { runSettings, resolveRunSettings, sliceWatchdogMs, turnStepLimit, } from "../run-settings.js";
 import { LIMITS, readyRowLimit } from "../limits.js";
 import { claimNotes, noteHandles } from "../hooks/notes.js";
 import { firstReady } from "./inbox.js";
 import { appendEvent, runById } from "../subagents/runs.js";
+import { releaseReadyCohort } from "../subagents/groups.js";
 import { assertAgentIndex } from "../hooks/routing.js";
 import { disarmRecovery } from "./recovery.js";
 import { disarmSlice } from "./boundaries.js";
-import { failChild, markRecoveryRequired } from "./finish.js";
+import { failChild, finishTurn, markRecoveryRequired } from "./finish.js";
 import { awaitingApprovalResults } from "./pause.js";
 import { isAsking } from "./wake.js";
 export const claimArgs = {
@@ -24,6 +25,7 @@ export const claimArgs = {
 export const vClaim = v.object({
     ...scope.fields,
     promptMessageId: v.string(),
+    requestMessageId: v.string(),
     runId: v.string(),
     modelId: v.optional(v.string()),
     settings: runSettings,
@@ -65,13 +67,24 @@ export async function claimSlice(ctx, args) {
         // disarmed it, and only a fresh slice id may claim the next one.
         !(row.turnStatus === "running" && !row.watchdogId && sliceId && row.lastSlice !== sliceId))
         return null;
+    const resume = first && row.inboxId === row.turnReport?.resumeInboxId;
     const noteAnchor = first && row.inboxId ? await consumeHead(ctx, row) : row.promptMessageId;
-    await flushNotes(ctx, row, first, noteAnchor, args.notes);
     const budget = row.runId ? await ctx.db.get("runs", row.runId) : null;
     const settings = budget?.settings?.find((entry) => entry.agent === row.agent)?.settings ?? resolveRunSettings();
-    if (!first && (row.modelSteps ?? 0) >= settings.stepsPerTurn)
-        return null;
-    await markRunning(ctx, row, first, args, settings);
+    const maxMessages = turnStepLimit(settings, row.limits.slicesPerTurn);
+    // Approval resumes mint a new execution token, not a new step allowance.
+    // Decide BEFORE flushNotes: an exhausted turn must not save notes or a
+    // staged afterTurn continuation natively and then end with SLICE_LIMIT.
+    if ((!first || resume) && (row.modelSteps ?? 0) >= maxMessages)
+        return finishExhausted(ctx, row, turnToken, !first && !!row.hookContinue);
+    await flushNotes(ctx, row, first, noteAnchor, args.notes);
+    if ((first && !resume) || row.hookContinue)
+        row.turnReport = {
+            promptMessageId: row.promptMessageId,
+            messageIds: [],
+            maxMessages,
+        };
+    await markRunning(ctx, row, first && !resume, args, settings);
     const modelId = budget?.models?.[row.agent];
     const isRunStart = await markRunStart(ctx, row, budget, args);
     const claim = {
@@ -80,6 +93,7 @@ export async function claimSlice(ctx, args) {
         subject: row.subject,
         agent: row.agent,
         promptMessageId: row.promptMessageId,
+        requestMessageId: row.turnReport.promptMessageId,
         runId: row.runId,
         modelId,
         settings,
@@ -91,6 +105,26 @@ export async function claimSlice(ctx, args) {
         subagent: null,
     };
     return row.childRunId ? claimChild(ctx, row, first, claim) : claim;
+}
+/** End a turn whose step allowance is spent with SLICE_LIMIT, before any
+ * native write. A later slice can reach this after an approval resume spent
+ * the last step: the host Workflow allows `slicesPerTurn` slices per
+ * execution, but the resume keeps the turn's `modelSteps`. If afterTurn staged
+ * a continuation (`staged`), delete its unsaved inbox row and clear
+ * `hookContinue` in the same patch, as cancel and deferChildFailure do;
+ * otherwise the turn would end with a dangling continuation pointer. A
+ * resume's own head was already consumed by consumeHead, so only the pointer
+ * is cleared. Posted notes stay pending for the next turn's claim. */
+async function finishExhausted(ctx, row, turnToken, staged) {
+    if (staged && row.inboxId)
+        await ctx.db.delete("inbox", row.inboxId);
+    await ctx.db.patch("assignments", row._id, {
+        turnStatus: "running",
+        inboxId: undefined,
+        hookContinue: false,
+    });
+    await finishTurn(ctx, { assignmentId: row._id, turnToken, errorCode: "SLICE_LIMIT" });
+    return null;
 }
 /** Delete the reserved head and, for result/note/parent work, merge the
  * consecutive ready rows of the same run. Returns the note anchor: the native
@@ -115,9 +149,15 @@ async function consumeHead(ctx, row) {
  * hide a consumed answer on the very next turn. Never cross another run/user turn.
  * <=100 backlog + reserved answer +50 joins + reserved head =152 rows.
  * The by_join "ready" range is scoped to this budget: <=50 members TOTAL
- * across its cohorts. <=100 run metadata reads (1,600 KiB), <=152
- * inbox deletes/assignment patches and fixed per-iteration probes stay
- * <10 MiB, <2,000 reads/<600 writes even at all host maxima.
+ * across its cohorts. Reuse loaded parent/root rows, accumulate queue/sequence
+ * counters in memory and publish ONE assignment patch after the atomic drain.
+ * No per-iteration assignment reads or patch reads remain, even with a full
+ * previous report. Conservative metadata (KiB): <=100 run reads *16=1,600,
+ * <=50 cohort members *3*4=600 (candidate/member/patch), <=152 ready rows
+ * *2*1=304 (probe/delete), and <=16 fixed assignment reads/patches *34=544:
+ * <=3,048 KiB <3 MiB. Together with notes' <10 MiB native/metadata allowance
+ * (hooks/notes.ts), the COMBINED claim stays <13 MiB read, <4 MiB written,
+ * <2,000 reads/<600 writes/<1,000 queries at all host maxima.
  * @convex-dev/agent/src/component/messages.ts:298-322 anchors native
  * context at the prompt's recorded order, rather than our inbox order.
  * Moves `row.promptMessageId` to the newest merged message and returns the
@@ -127,11 +167,11 @@ async function mergeConsecutive(ctx, row, head, noteAnchor) {
     let newest = head.join?.newestSequence ?? head.sequence;
     let earliest = head.join?.earliestSequence ?? newest;
     const bound = readyRowLimit(row.limits) - 1;
+    const root = row.rootAssignmentId ? await ctx.db.get("assignments", row.rootAssignmentId) : row;
+    if (!root)
+        throw new Error("ROOT_UNAVAILABLE");
     for (let count = 0; count < bound; count++) {
-        await ctx.runMutation(api.subagents.deliver.releaseGroups, {
-            assignmentId: row._id,
-            parentRunId: head.runId,
-        });
+        await releaseReadyCohort(ctx, { assignmentId: row._id, parentRunId: head.runId }, { parent: row, root });
         const item = await firstReady(ctx, row._id);
         if (!item || item.runId !== head.runId || item.kind === "user")
             break;
@@ -146,12 +186,16 @@ async function mergeConsecutive(ctx, row, head, noteAnchor) {
             newest = order;
             row.promptMessageId = item.messageId;
         }
-        const current = (await ctx.db.get("assignments", row._id));
-        await ctx.db.patch("assignments", row._id, {
-            queuedMessages: current.queuedMessages - 1,
-        });
+        row.queuedMessages -= 1;
     }
-    await ctx.db.patch("assignments", row._id, { promptMessageId: row.promptMessageId });
+    // Publish counters once after the atomic drain. Group release updates this
+    // same loaded row, so neither consumption nor release needs a per-item
+    // assignment reread/patch (including Convex's implicit patch reads).
+    await ctx.db.patch("assignments", row._id, {
+        promptMessageId: row.promptMessageId,
+        queuedMessages: row.queuedMessages,
+        nextSequence: row.nextSequence,
+    });
     return noteAnchor;
 }
 /** Progress notes retain only exact-id origin metadata after consumption, like
@@ -194,6 +238,7 @@ async function flushNotes(ctx, row, first, noteAnchor, notes) {
 async function markRunning(ctx, row, first, args, settings) {
     await ctx.db.patch("assignments", row._id, {
         turnStatus: "running",
+        turnReport: row.turnReport,
         modelSteps: first ? 1 : (row.modelSteps ?? 0) + 1,
         hookContinue: false,
         lastSlice: args.sliceId,
@@ -216,6 +261,12 @@ async function markRunStart(ctx, row, budget, { agentIndex, routeModel }) {
         assertAgentIndex(agentIndex);
     const bit = 1n << BigInt(agentIndex ?? 0);
     const isRunStart = !!budget && (budget.startedAgents & bit) === 0n;
+    if (budget && !row.childRunId)
+        await ctx.db.patch("runs", budget._id, {
+            startedAt: budget.startedAt ?? Date.now(),
+            turnEndedAt: undefined,
+            errorCode: null,
+        });
     if (budget && isRunStart)
         await ctx.db.patch("runs", budget._id, {
             startedAgents: BigInt.asIntN(LIMITS.agents, budget.startedAgents | bit),

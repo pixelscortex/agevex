@@ -11,6 +11,7 @@
 import { createThread } from "@convex-dev/agent";
 import { createFunctionHandle } from "convex/server";
 import { LIMITS } from "../../component/limits.js";
+import { taskPreview } from "../../component/run-tree-values.js";
 import { savedMessageRef, saveTrackedMessage } from "../native-saves.js";
 import { fingerprint } from "../once.js";
 import { observe } from "../registration/context.js";
@@ -191,6 +192,7 @@ async function startChildThread(rt, ctx, child, owned, runId, childTask) {
         runId,
         childThreadId: threadId,
         promptMessageId: messageId,
+        task: taskPreview(childTask),
         trackContext: !!child.sideAgents?.length,
         savedMessage: savedMessageRef(messageId, message),
     });

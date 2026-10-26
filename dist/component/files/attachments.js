@@ -22,7 +22,7 @@ export function assertFileIdentity(value) {
 }
 /** The native component handle namespaces every file id. */
 export function assertNativeHandle(value) {
-    if (!value || value.length > LIMITS.functionHandleLength)
+    if (!value || new TextEncoder().encode(value).byteLength > LIMITS.functionHandleBytes)
         throw new Error("INVALID_NATIVE_HANDLE");
 }
 /** The subject's upload grant for one native file, or null. */

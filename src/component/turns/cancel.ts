@@ -19,8 +19,7 @@ import { appendEvent } from "../subagents/runs.js";
 import { childLane, rootLane } from "../workflows/lanes.js";
 import { readyRows } from "./inbox.js";
 import { cancelIfPending } from "./recovery.js";
-import { settleRouting } from "../hooks/routing.js";
-import { readyRowLimit } from "../limits.js";
+import { LIMITS, readyRowLimit } from "../limits.js";
 import { RUN_LIMITS } from "../run-settings.js";
 import { v } from "convex/values";
 
@@ -50,14 +49,38 @@ export async function cancelRoot(
   ];
 
   const runIds = new Set<Id<"runs">>();
+  const routingMasks = new Map<Id<"runs">, bigint>();
 
-  for (const row of affected) await cancelAssignment(ctx, row, runIds);
+  for (const row of affected) {
+    if (row.runId && row.routingAgentIndex !== undefined)
+      routingMasks.set(
+        row.runId,
+        (routingMasks.get(row.runId) ?? 0n) | (1n << BigInt(row.routingAgentIndex)),
+      );
+
+    await cancelAssignment(ctx, row, runIds);
+  }
 
   if (runIds.size > RUN_LIMITS.cancelBudgets) throw new Error("CANCEL_RUN_BUDGET");
 
-  // <=168 distinct runs *16 KiB <2.63 MiB, even with full settings maps.
+  // <=168 distinct runs *2*16 KiB <5.25 MiB for terminal guard + live patch.
   // Deduplicate across assignments: every child belongs to one root budget.
-  for (const runId of runIds) await ctx.db.patch("runs", runId, { cancelled: true });
+  for (const runId of runIds) {
+    const run = await ctx.db.get("runs", runId);
+
+    // A root may already be done while a side review is live, or on an idle
+    // thread. Cancellation fences live work; recorded outcomes are immutable.
+    // Both this read and the patch read are included in limits.ts's budget.
+    const mask = routingMasks.get(runId);
+
+    if (run && (run.finishedAt === undefined || mask !== undefined))
+      await ctx.db.patch("runs", runId, {
+        ...(run.finishedAt === undefined ? { cancelled: true, finishedAt: Date.now() } : {}),
+        ...(mask !== undefined
+          ? { routingAgents: BigInt.asIntN(LIMITS.agents, run.routingAgents & ~mask) }
+          : {}),
+      });
+  }
 
   for (const run of children) {
     await ctx.db.patch("subagentRuns", run._id, {
@@ -103,8 +126,6 @@ async function cancelAssignment(
   row: Doc<"assignments">,
   runIds: Set<Id<"runs">>,
 ) {
-  await settleRouting(ctx, row, false);
-
   if (row.watchdogId) await cancelIfPending(ctx, row.watchdogId);
 
   if (row.recoveryJobId) await cancelIfPending(ctx, row.recoveryJobId);
@@ -119,7 +140,7 @@ async function cancelAssignment(
 
   // A staged hook continuation is addressed directly, never included in a
   // backlog scan. <=16 assignments * (64 KiB text +1 KiB metadata) read
-  // for deletion adds <=1,040 KiB to the 14,520 KiB base budget: <16 MiB.
+  // for deletion adds <=1,040 KiB to the 14,780 KiB base: <=15,820 KiB.
   if (row.hookContinue && row.inboxId) await ctx.db.delete("inbox", row.inboxId);
 
   await scheduleCleanup(ctx, row, approvalCleanup);
@@ -146,6 +167,7 @@ async function cancelAssignment(
 function cancelledState(row: Doc<"assignments">, approvalCleanup: boolean) {
   return {
     cancelled: true,
+    activeTools: undefined,
     cancellationEpoch: row.cancellationEpoch + 1,
     turnStatus: "idle" as const,
     errorCode: null,

@@ -98,8 +98,8 @@ export declare const forget: import("convex/server").RegisteredMutation<"public"
 export declare const start: import("convex/server").RegisteredMutation<"public", {
     key: string;
     claim: string;
-    indexId: import("convex/values").GenericId<"indexes">;
     add: string;
+    indexId: import("convex/values").GenericId<"indexes">;
     namespaceId: string;
     contentHash: string;
 }, Promise<string>>;

@@ -17,10 +17,15 @@ import type { Doc } from "../_generated/dataModel.js";
 export function newRun(
   models: Doc<"runs">["models"],
   settings: Doc<"runs">["settings"] = [],
+  metadata: Pick<
+    Doc<"runs">,
+    "rootAssignmentId" | "rootCancellationEpoch" | "taskMessageId" | "taskPreview"
+  > = {},
 ): WithoutSystemFields<Doc<"runs">> {
   assertSettingsSnapshot(settings);
 
   const row = {
+    ...metadata,
     settings,
     models,
     // 64-bit agent-index masks: who started in this run / who owns routing.
@@ -35,7 +40,8 @@ export function newRun(
     usagePartial: false,
   };
 
-  // The 1 KiB reservation includes the native id/time envelope added on insert.
+  // Reserve 1 KiB for native id/time, lifecycle fields and bounded counter/mask
+  // growth. Both JSON UTF-8 and Convex bytes must stay <=16 KiB after updates.
   if (
     Math.max(
       getConvexSize(row),

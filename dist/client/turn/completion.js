@@ -35,13 +35,13 @@ export async function completeGeneration(rt, gen, result, reason) {
         !state.delegated &&
         (await continueAfterToolCalls(rt, turn, result)))
         return null;
-    const completedTurn = await fence.ctx.runMutation(rt.component.hooks.state.hookState, {
+    const completed = await fence.ctx.runMutation(rt.component.hooks.state.hookState, {
         assignmentId: turn.claimed.assignmentId,
         executionId: args.turnToken,
         complete: true,
     });
-    const after = await runAfterTurn(gen, completedTurn, result);
-    await launchSideReviews(rt, gen, completedTurn);
+    const after = await runAfterTurn(gen, completed.turn, completed.messageIds, result);
+    await launchSideReviews(rt, gen, completed.turn);
     if (await continueFromHook(rt, gen, after))
         return null;
     return { errorCode: null, ...childResult(turn, result) };
@@ -66,14 +66,18 @@ async function continueAfterToolCalls(rt, turn, result) {
     });
     return true;
 }
-/** Run `afterTurn` with the completed turn number and the step's saved text. */
-function runAfterTurn(gen, completedTurn, result) {
+/** Report all committed assistant ids in this reporting turn. Text retains its
+ * existing final-slice semantics: successful assistant text joined by newlines.
+ * Earlier tool narration can be read by exact id without enlarging assignment
+ * rows with response content. Approval pauses emit no event until completion.
+ */
+function runAfterTurn(gen, completedTurn, messageIds, result) {
     const { managed } = gen.turn;
     const savedText = savedAssistantMessages(result)
         .map((message) => message.text ?? "")
         .join("\n");
     return gen.hook(managed.hooks?.afterTurn
-        ? () => managed.hooks.afterTurn(gen.hc, { turn: completedTurn, text: savedText })
+        ? () => managed.hooks.afterTurn(gen.hc, { turn: completedTurn, text: savedText, messageIds })
         : undefined);
 }
 /**

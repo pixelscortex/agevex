@@ -1,4 +1,6 @@
 import { LIMITS } from "../limits.js";
+import { getConvexSize } from "convex/values";
+import { TREE_LIMITS } from "../run-tree-values.js";
 /** The run with this public run id (unique `by_run` index), or null. */
 export async function runById(ctx, runId) {
     return ctx.db
@@ -63,7 +65,7 @@ export function groupMembers(ctx, cohort, limit) {
  * slice's sealGroups later closes. */
 export function newSubagentRun(fields) {
     const { request, actor, root, now } = fields;
-    return {
+    const row = {
         runId: fields.runId,
         side: request.side || undefined,
         // The root epoch this delegation belongs to; cancel bumps it to fence.
@@ -94,4 +96,16 @@ export function newSubagentRun(fields) {
         createdAt: now,
         events: [{ phase: "queued", at: now, errorCode: null }],
     };
+    assertRunMetadata(row);
+    return row;
+}
+/** Leave 1 KiB for native id/time, future result/question refs, four events,
+ * timestamps, note counters and the deferred last-turn outcome. Check again
+ * at task attachment so preview growth cannot break the 4 KiB read budget.
+ */
+export function assertRunMetadata(row) {
+    if (Math.max(getConvexSize(row), new TextEncoder().encode(JSON.stringify(row)).byteLength) +
+        TREE_LIMITS.childGrowthBytes >
+        TREE_LIMITS.childBytes)
+        throw new Error("RUN_METADATA_TOO_LARGE");
 }

@@ -14,12 +14,16 @@ import type { Doc } from "../_generated/dataModel.js";
 import type { Limits } from "../limits.js";
 type AssignmentRow = WithoutSystemFields<Doc<"assignments">>;
 /** The assignment owning a native thread, via the unique `by_thread` index.
- * One indexed point read (<=32 KiB); used by every thread-addressed endpoint. */
+ * One indexed point read (<=34 KiB); used by every thread-addressed endpoint. */
 export declare function assignmentByThread(ctx: Pick<QueryCtx, "db">, threadId: string): Promise<{
     _id: import("convex/values").GenericId<"assignments">;
     _creationTime: number;
     workflowId?: string | undefined;
     runId?: import("convex/values").GenericId<"runs"> | undefined;
+    activeTools?: {
+        name: string;
+        key: string;
+    }[] | undefined;
     textConfig?: {
         everyTurns?: number | undefined;
         worker: string;
@@ -119,6 +123,12 @@ export declare function assignmentByThread(ctx: Pick<QueryCtx, "db">, threadId: 
     rootAssignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
     turnToken?: string | undefined;
     promptMessageId?: string | undefined;
+    turnReport?: {
+        resumeInboxId?: import("convex/values").GenericId<"inbox"> | undefined;
+        promptMessageId: string;
+        messageIds: string[];
+        maxMessages: number;
+    } | undefined;
     turnOrigin?: "user" | "subagent_result" | undefined;
     inboxId?: import("convex/values").GenericId<"inbox"> | undefined;
     approvalBlocked?: boolean | undefined;

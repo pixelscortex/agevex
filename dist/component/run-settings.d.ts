@@ -26,7 +26,7 @@ export declare const RUN_LIMITS: {
     readonly sliceDeadlineMs: 300000;
     readonly watchdogMarginMs: 30000;
     readonly metadataBytes: number;
-    readonly nativeEnvelopeBytes: 256;
+    readonly nativeEnvelopeBytes: number;
     readonly cancelBudgets: number;
     readonly settingsBytes: number;
 };
@@ -95,6 +95,13 @@ export declare function resolveRunSettings(input?: RunSettings): ResolvedRunSett
 /** Bound a slice even when many slow tools are allowed. Phase deadlines still
  * apply independently; the five-minute cap prevents a default 26-minute wait. */
 export declare function sliceDeadlineMs(settings: ResolvedRunSettings): number;
+/** Match Workflow v1's effective ceiling: its default argument uses the hard
+ * step maximum, allowing an explicit Agent.run.stepsPerTurn above the host's
+ * default. Registration inherits the host default only when run policy omits
+ * stepsPerTurn. A non-default host slice cap is passed explicitly to Workflow.
+ * Approval resumes start another workflow, so claim must retain this ceiling.
+ */
+export declare function turnStepLimit(settings: ResolvedRunSettings, slicesPerTurn: number): number;
 /** The server waits beyond the client fence so timeout finalization can commit. */
 export declare function sliceWatchdogMs(settings: ResolvedRunSettings): number;
 /** Bound both Convex and JSON bytes, including multi-byte names and escaping. */

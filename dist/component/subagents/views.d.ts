@@ -101,32 +101,3 @@ export declare function delegationPage(ctx: QueryCtx, root: Doc<"assignments">, 
     isDone: boolean;
     continueCursor: string;
 }>;
-/** The current root request's tree. Only small coordination fields cross the
- * query boundary; no transcript bodies or execution capabilities are exposed.
- * <=58 model/side launch rows *4 KiB + <=32 KiB root metadata <288 KiB,
- * <64 document reads.
- *
- * A run budget belongs to exactly one root: accept creates it for that root's
- * request, and every descendant inherits it (attach copies the parent run id;
- * every inbox row a descendant can claim carries it), while reserve writes
- * parentRunId = actor.runId with rootAssignmentId = the actor's root. So the
- * parentRunId prefix of by_group is exactly the old (root, run) range. Its size
- * is launches + sideRuns of that budget: only reserve increments either, by
- * one per insert, after refusing at runLaunches / sideRunsPerRun (row.limits,
- * copied from this root and never patched). The take therefore returns every
- * row, and sorting by sequence restores reservation order.
- */
-export declare function requestTree(ctx: QueryCtx, root: Doc<"assignments">): Promise<{
-    runId: string;
-    side: boolean;
-    parentAssignmentId: import("convex/values").GenericId<"assignments">;
-    childAssignmentId: import("convex/values").GenericId<"assignments"> | null;
-    agent: string;
-    status: "failed" | "running" | "completed" | "queued" | "asking";
-    depth: number;
-    group: string | null;
-    childThreadId: string | null;
-    createdAt: number;
-    startedAt: number | null;
-    finishedAt: number | null;
-}[]>;

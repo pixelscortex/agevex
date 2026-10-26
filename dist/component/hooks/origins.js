@@ -11,7 +11,7 @@ import { query } from "../_generated/server.js";
 import { LIMITS } from "../limits.js";
 import { v } from "convex/values";
 /** Page-local indexed lookups: <=100 controls *1 KiB +100 results *4 KiB
- * +32 KiB ownership =532 KiB, <=201 documents and <=201 index queries.
+ * +34 KiB ownership =534 KiB, <=201 documents and <=201 index queries.
  * Control rows with a native id never retain bodies; no history prefix is read.
  * Only rows belonging to this subject's assignment are reported.
  */

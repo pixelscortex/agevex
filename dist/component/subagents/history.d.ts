@@ -37,19 +37,45 @@ export declare const delegations: import("convex/server").RegisteredQuery<"publi
 }>>;
 /** The current root request's delegation tree; see subagents/views.ts. */
 export declare const runTree: import("convex/server").RegisteredQuery<"public", {
+    rootRunId?: string | undefined;
     subject: string;
     threadId: string;
 }, Promise<{
-    runId: string;
-    side: boolean;
-    parentAssignmentId: import("convex/values").GenericId<"assignments">;
-    childAssignmentId: import("convex/values").GenericId<"assignments"> | null;
-    agent: string;
-    status: "failed" | "running" | "completed" | "queued" | "asking";
-    depth: number;
-    group: string | null;
-    childThreadId: string | null;
-    createdAt: number;
-    startedAt: number | null;
-    finishedAt: number | null;
-}[]>>;
+    usage: {
+        unknown: number;
+        inputTokens: number | null;
+        outputTokens: number | null;
+        estimatedUsd: number;
+        settledUsd: number;
+        reporting: "partial" | "available";
+    } | null;
+    rootRunId: string;
+    nodes: {
+        error?: string | undefined;
+        reason?: "cancelled" | "ask" | "children" | "approval" | "budget" | "recovery" | undefined;
+        id: string;
+        startedAt: number | null;
+        status: "failed" | "running" | "queued" | "done" | "asleep";
+        agent: string;
+        finishedAt: number | null;
+        createdAt: number;
+        messages: {
+            taskId?: string | undefined;
+            resultId?: string | undefined;
+            parentResultId?: string | undefined;
+            questionId?: string | undefined;
+            threadId: string;
+        };
+        usage: {
+            unknown: number;
+            inputTokens: number | null;
+            outputTokens: number | null;
+            estimatedUsd: number;
+            settledUsd: number;
+            reporting: "partial" | "available";
+        } | null;
+        parentId: string | null;
+        task: string;
+        currentTool: string | null;
+    }[];
+} | null>>;

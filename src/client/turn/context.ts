@@ -38,6 +38,8 @@ export type Turn = {
   rawCtx: RunnerCtx;
   /** Native model usage committed before any later timeout/cancel. */
   usageSaved?: boolean;
+  /** In-flight progress edges and idempotent cleanup owned by this action slice. */
+  toolProgress: { pending: Set<Promise<void>>; clear: Set<() => void>; closed: boolean };
   args: TurnArgs;
   queued: NonNullable<Execution>;
   managed: ManagedAgent;

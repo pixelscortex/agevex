@@ -24,8 +24,10 @@ import { newRun } from "./runs.js";
 import { textConfig } from "../text/values.js";
 import { queueText } from "../text/jobs.js";
 import { wake } from "./wake.js";
+import { taskPreview } from "../run-tree-values.js";
 import { activity as vActivity, receipt as vReceipt, scope } from "../schema.js";
 import { activityView, assignmentScope } from "./views.js";
+import { assertFunctionHandle, assertName } from "../facts.js";
 export const acceptArgs = {
     subject: v.string(),
     agent: v.string(),
@@ -33,6 +35,7 @@ export const acceptArgs = {
     requestKey: v.string(),
     fingerprint: v.string(),
     promptMessageId: v.string(),
+    task: v.optional(v.string()),
     savedMessage: v.optional(messageRef),
     trackContext: v.optional(v.boolean()),
     runTurn: v.string(),
@@ -57,8 +60,7 @@ export async function requestReceipt(ctx, subject, requestKey, fingerprint) {
 /** Admit one host send; see the file header. Throws (rolling back the native
  * save) for a foreign thread, recovery_required or a full ready queue. */
 export async function acceptSend(ctx, args) {
-    if (args.models && !validModelOverrides(args.models))
-        throw new Error("INVALID_MODELS");
+    assertAdmissible(args);
     const duplicate = await requestReceipt(ctx, args.subject, args.requestKey, args.fingerprint);
     if (duplicate)
         return duplicate;
@@ -84,7 +86,12 @@ export async function acceptSend(ctx, args) {
     // successive accepted messages would both report position zero.
     const position = row.queuedMessages + (row.inboxId ? 1 : 0);
     const models = args.models ?? row.models;
-    const runId = await ctx.db.insert("runs", newRun(models, args.settings ?? [{ agent: args.agent, settings: resolveRunSettings() }]));
+    const runId = await ctx.db.insert("runs", newRun(models, args.settings ?? [{ agent: args.agent, settings: resolveRunSettings() }], {
+        rootAssignmentId: row._id,
+        rootCancellationEpoch: row.cancellationEpoch,
+        taskMessageId: args.promptMessageId,
+        taskPreview: taskPreview(args.task ?? ""),
+    }));
     await ctx.db.insert("inbox", {
         assignmentId: row._id,
         messageId: args.promptMessageId,
@@ -179,6 +186,21 @@ export const activity = query({
         return activityView(row);
     },
 });
+/** Validate the send before any write: the model map, then every host string
+ * it can store on the assignment (the subject, the agent name and the four
+ * function handles: runTurn plus textConfig's three). Both `open` and `send`
+ * admit through here, and a child inherits its root's subject and runTurn, so
+ * these are the only writers. A throw rolls back the host's native prompt save. */
+function assertAdmissible(args) {
+    if (args.models && !validModelOverrides(args.models))
+        throw new Error("INVALID_MODELS");
+    assertName(args.subject, "subject");
+    assertName(args.agent, "agent");
+    assertFunctionHandle(args.runTurn, "runTurn");
+    if (args.textConfig)
+        for (const field of ["worker", "updateThread", "getThread"])
+            assertFunctionHandle(args.textConfig[field], `textConfig.${field}`);
+}
 /** Configure the bounded exact-message ring before recording the accepted prompt. */
 async function configureText(ctx, initial, args) {
     let row = initial;

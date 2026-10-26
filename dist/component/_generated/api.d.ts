@@ -30,6 +30,7 @@ import type * as turns_cancel from "../turns/cancel.js";
 import type * as turns_failures from "../turns/failures.js";
 import type * as turns_loop from "../turns/loop.js";
 import type * as turns_send from "../turns/send.js";
+import type * as turns_tools from "../turns/tools.js";
 import type * as turns_slices from "../turns/slices.js";
 import type * as workflows_lanes from "../workflows/lanes.js";
 import type * as workflows_worker from "../workflows/worker.js";
@@ -60,6 +61,7 @@ declare const fullApi: ApiFromModules<{
     "turns/loop": typeof turns_loop;
     "turns/send": typeof turns_send;
     "turns/slices": typeof turns_slices;
+    "turns/tools": typeof turns_tools;
     "workflows/lanes": typeof workflows_lanes;
     "workflows/worker": typeof workflows_worker;
 }>;

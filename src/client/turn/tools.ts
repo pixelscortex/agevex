@@ -19,6 +19,7 @@ import { boundToolDeadlines } from "./deadlines.js";
 import type { Generation } from "./context.js";
 import { slotToolBags } from "./slots.js";
 import { assertBudget } from "./admission.js";
+import { startToolProgress } from "./tool-progress.js";
 import { askUserMarker } from "../../shared/tool-markers.js";
 
 /** Build the complete tool set for one generation. */
@@ -68,6 +69,9 @@ export async function buildTurnTools(rt: RuntimeContext, gen: Generation): Promi
         };
 
   installCollaborationTools(rt, gen, tools, eligible);
+
+  for (const [name, tool] of Object.entries(tools))
+    if (tool.execute) tools[name] = withToolProgress(rt, gen, name, tool);
 
   return boundToolDeadlines(gen, tools, () => assertBudget(rt, gen));
 }
@@ -188,3 +192,46 @@ type ApprovedInput = {
   effectiveHash: string;
   edited: boolean;
 };
+
+/** Native Agent preserves our execute receiver (vercel/client/createTool.ts:378).
+ * Mark all local calls, including collaboration, without exposing their inputs.
+ * A stream stays active through consumption, cancellation or its final yield.
+ */
+export function withToolProgress(
+  rt: RuntimeContext,
+  gen: Generation,
+  name: string,
+  tool: Tool,
+): Tool {
+  return {
+    ...tool,
+    execute: async function (input, options) {
+      const clear = startToolProgress(rt, gen.turn, name, options.toolCallId);
+
+      let streaming = false;
+
+      try {
+        const output = await tool.execute!.call(this, input, options);
+
+        if (output && typeof output === "object" && Symbol.asyncIterator in output) {
+          streaming = true;
+
+          return progressStream(output as AsyncIterable<unknown>, clear);
+        }
+
+        return output;
+      } finally {
+        if (!streaming) clear();
+      }
+    },
+  } as Tool;
+}
+
+/** Async-generator finally handles both normal exhaustion and consumer return. */
+async function* progressStream(output: AsyncIterable<unknown>, clear: () => void) {
+  try {
+    yield* output;
+  } finally {
+    clear();
+  }
+}

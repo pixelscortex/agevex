@@ -38,6 +38,7 @@ export declare const vClaim: import("convex/values").VObject<{
     promptMessageId: string;
     turnOrigin: "user" | "subagent_result";
     assignmentId: string;
+    requestMessageId: string;
     isTurnStart: boolean;
     isRunStart: boolean;
     subagent: {
@@ -54,6 +55,7 @@ export declare const vClaim: import("convex/values").VObject<{
     } | null;
 }, {
     promptMessageId: import("convex/values").VString<string, "required">;
+    requestMessageId: import("convex/values").VString<string, "required">;
     runId: import("convex/values").VString<string, "required">;
     modelId: import("convex/values").VString<string | undefined, "optional">;
     settings: import("convex/values").VObject<{
@@ -114,7 +116,7 @@ export declare const vClaim: import("convex/values").VObject<{
     threadId: import("convex/values").VString<string, "required">;
     subject: import("convex/values").VString<string, "required">;
     agent: import("convex/values").VString<string, "required">;
-}, "required", "agent" | "settings" | "settings.askUser" | "settings.mode" | "settings.maxOutputTokens" | "settings.modelTimeoutMs" | "settings.toolTimeoutMs" | "settings.stepsPerTurn" | "runId" | "turn" | "subject" | "threadId" | "cancellationEpoch" | "promptMessageId" | "turnOrigin" | "assignmentId" | "modelId" | "isTurnStart" | "isRunStart" | "subagent" | "subagent.agent" | "subagent.runId" | "subagent.subject" | "subagent.rootAssignmentId" | "subagent.side" | "subagent.childThreadId" | "subagent.actorAgent" | "subagent.deliveryToken" | "subagent.rootThreadId" | "subagent.rootAgent">;
+}, "required", "agent" | "settings" | "settings.askUser" | "settings.mode" | "settings.maxOutputTokens" | "settings.modelTimeoutMs" | "settings.toolTimeoutMs" | "settings.stepsPerTurn" | "runId" | "turn" | "subject" | "threadId" | "cancellationEpoch" | "promptMessageId" | "turnOrigin" | "assignmentId" | "modelId" | "requestMessageId" | "isTurnStart" | "isRunStart" | "subagent" | "subagent.agent" | "subagent.runId" | "subagent.subject" | "subagent.rootAssignmentId" | "subagent.side" | "subagent.childThreadId" | "subagent.actorAgent" | "subagent.deliveryToken" | "subagent.rootThreadId" | "subagent.rootAgent">;
 type ClaimArgs = {
     assignmentId: Id<"assignments">;
     turnToken: string;

@@ -1,5 +1,6 @@
 import { groupMembers, isSettled } from "./runs.js";
 import { settleIdleParent } from "./settle.js";
+import { closeRootRun } from "../turns/run-lifecycle.js";
 /** Readiness belongs to one sealed cohort, never a prefix of historical runs.
  * One representative is sufficient for indexed discovery; release marks every
  * member together. Membership is immutable after continueTurn/finish seals it.
@@ -21,7 +22,7 @@ export async function markGroupReady(ctx, members, root) {
  * their already committed results. Returns true when the
  * cohort was joined (with or without a published inbox row).
  */
-export async function releaseGroup(ctx, parent, root, members) {
+export async function releaseGroup(ctx, parent, root, members, persistCounters = true) {
     if (!members.length ||
         members.some((member) => !member.join ||
             member.join === "open" ||
@@ -41,10 +42,13 @@ export async function releaseGroup(ctx, parent, root, members) {
     if (!accepted.length)
         return true;
     await ctx.db.insert("inbox", joinedRelease(parent, accepted, members[0].parentRunId));
-    await ctx.db.patch("assignments", parent._id, {
-        queuedMessages: parent.queuedMessages + 1,
-        nextSequence: parent.nextSequence + 1,
-    });
+    parent.queuedMessages += 1;
+    parent.nextSequence += 1;
+    if (persistCounters)
+        await ctx.db.patch("assignments", parent._id, {
+            queuedMessages: parent.queuedMessages,
+            nextSequence: parent.nextSequence,
+        });
     return true;
 }
 /** The one ready inbox row a released cohort publishes. It generates from the
@@ -119,13 +123,12 @@ export async function sealGroups(ctx, parent) {
  * cohorts are serviced by the next claim/finish without a scheduled sweep.
  * `parentRunId` restricts the search to one run (claim's same-run merge).
  * Returns true when a cohort was released. */
-export async function releaseReadyCohort(ctx, args) {
-    const parent = await ctx.db.get("assignments", args.assignmentId);
+export async function releaseReadyCohort(ctx, args, claiming) {
+    const parent = claiming?.parent ?? (await ctx.db.get("assignments", args.assignmentId));
     if (!parent || parent.cancelled)
         return false;
-    const root = parent.rootAssignmentId
-        ? await ctx.db.get("assignments", parent.rootAssignmentId)
-        : parent;
+    const root = claiming?.root ??
+        (parent.rootAssignmentId ? await ctx.db.get("assignments", parent.rootAssignmentId) : parent);
     if (!root || root.cancelled)
         return false;
     const candidate = await ctx.db
@@ -145,8 +148,14 @@ export async function releaseReadyCohort(ctx, args) {
         actorAssignmentId: parent._id,
         group: candidate.group ?? "",
     }, root.limits.activeChildrenPerRoot);
-    const released = await releaseGroup(ctx, parent, root, members);
-    if (released)
+    const released = await releaseGroup(ctx, parent, root, members, !claiming);
+    // Claim owns these loaded rows and is about to mark the parent running.
+    // Neither its run nor an ancestor fenced by it can settle during this drain.
+    // Reuse the updated counters instead of rereading two full assignments per
+    // cohort; ordinary wake/delivery calls still perform the settlement checks.
+    if (released && !claiming)
         await settleIdleParent(ctx, (await ctx.db.get("assignments", parent._id)));
+    if (released && !claiming)
+        await closeRootRun(ctx, root, candidate.parentRunId);
     return released;
 }

@@ -28,6 +28,7 @@ import type * as turns_approvals from "../turns/approvals.js";
 import type * as turns_cancel from "../turns/cancel.js";
 import type * as turns_failures from "../turns/failures.js";
 import type * as turns_send from "../turns/send.js";
+import type * as turns_tools from "../turns/tools.js";
 import type * as turns_slices from "../turns/slices.js";
 
 type Wire<T> = T extends GenericId<string>
@@ -71,6 +72,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
     "turns/failures": typeof turns_failures;
     "turns/send": typeof turns_send;
     "turns/slices": typeof turns_slices;
+"turns/tools": typeof turns_tools;
   }>,
   Name
 >;

@@ -23,7 +23,7 @@ export function assertFileIdentity(value: string) {
 
 /** The native component handle namespaces every file id. */
 export function assertNativeHandle(value: string) {
-  if (!value || value.length > LIMITS.functionHandleLength)
+  if (!value || new TextEncoder().encode(value).byteLength > LIMITS.functionHandleBytes)
     throw new Error("INVALID_NATIVE_HANDLE");
 }
 

@@ -76,5 +76,15 @@ export async function claimTurn(
     ...(child ? { nodeId: child.runId } : {}),
   };
 
-  return { rawCtx: ctx, args, queued, managed, claimed, child, turnKey, facts };
+  return {
+    rawCtx: ctx,
+    args,
+    queued,
+    managed,
+    claimed,
+    child,
+    turnKey,
+    facts,
+    toolProgress: { pending: new Set(), clear: new Set(), closed: false },
+  };
 }

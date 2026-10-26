@@ -10,7 +10,9 @@ import { v } from "convex/values";
 import { query } from "../_generated/server.js";
 import { subagentRun, vPaginationResult } from "../schema.js";
 import { assignmentByThread } from "../turns/assignments.js";
-import { delegationPage, requestTree } from "./views.js";
+import { delegationPage } from "./views.js";
+import { requestTree } from "./tree.js";
+import { runTree as treeValue } from "../run-tree-values.js";
 /** The root thread's delegation history, newest first. */
 export const delegations = query({
     args: { threadId: v.string(), subject: v.string(), paginationOpts: paginationOptsValidator },
@@ -24,11 +26,12 @@ export const delegations = query({
 });
 /** The current root request's delegation tree; see subagents/views.ts. */
 export const runTree = query({
-    args: { threadId: v.string(), subject: v.string() },
+    args: { threadId: v.string(), subject: v.string(), rootRunId: v.optional(v.string()) },
+    returns: treeValue,
     handler: async (ctx, args) => {
         const root = await assignmentByThread(ctx, args.threadId);
         if (!root || root.subject !== args.subject || root.childRunId)
             throw new Error("FORBIDDEN");
-        return requestTree(ctx, root);
+        return requestTree(ctx, root, args.rootRunId);
     },
 });

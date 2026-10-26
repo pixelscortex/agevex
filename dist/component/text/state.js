@@ -19,7 +19,7 @@ function liveJob(row, args) {
     return job;
 }
 /** Native Agent threads.ts:35-41 reads one exact thread, at most 1 MiB. This
- * remains below the 16 MiB transaction budget with the <=32 KiB assignment. */
+ * remains below the 16 MiB transaction budget with the <=34 KiB assignment. */
 async function hasNativeTitle(ctx, row) {
     const thread = await ctx.runQuery(row.textConfig.getThread, { threadId: row.threadId });
     return thread?.title !== undefined;

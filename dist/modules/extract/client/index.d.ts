@@ -24,9 +24,9 @@ export declare function defineExtract(component: ComponentApi, options: ExtractO
     }>;
     get: (ctx: ActionCtx, args: import("./context.js").FileArgs | import("./context.js").ArtifactArgs) => Promise<{
         usage?: {
-            credits?: number | undefined;
             inputTokens?: number | undefined;
             outputTokens?: number | undefined;
+            credits?: number | undefined;
         } | undefined;
         failure?: {
             code: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED";
@@ -51,9 +51,9 @@ export declare function defineExtract(component: ComponentApi, options: ExtractO
         url: string;
     }) => Promise<{
         usage?: {
-            credits?: number | undefined;
             inputTokens?: number | undefined;
             outputTokens?: number | undefined;
+            credits?: number | undefined;
         } | undefined;
         fileId: string;
     }>;

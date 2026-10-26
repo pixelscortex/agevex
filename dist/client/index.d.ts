@@ -1,4 +1,5 @@
 export type { RunSettings, ResolvedRunSettings } from "../component/run-settings.js";
+export type { RunNode, RunTree } from "../component/run-tree-values.js";
 export { Agent } from "./agent.js";
 export { DELEGATE_TOOL_NAME, MESSAGE_CHILD_TOOL_NAME, ASK_PARENT_TOOL_NAME, MESSAGE_PARENT_TOOL_NAME, registerAgent, } from "./runtime.js";
 export type { HookContext, HookResult, AgentHooks, SideAgent, Activity, Receipt, Registration, AuthorizationScope, ExecutionScope, CoordinateArgs, CoordinateResult, DelegationResult, DelegationDenialCode, TurnArgs, TurnOrigin, ManagedAgent, AgentEvent, ObserveAgentEvent, } from "./types.js";

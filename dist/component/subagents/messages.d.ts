@@ -29,6 +29,10 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         _creationTime: number;
         workflowId?: string | undefined;
         runId?: import("convex/values").GenericId<"runs"> | undefined;
+        activeTools?: {
+            name: string;
+            key: string;
+        }[] | undefined;
         textConfig?: {
             everyTurns?: number | undefined;
             worker: string;
@@ -128,6 +132,12 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         rootAssignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
         turnToken?: string | undefined;
         promptMessageId?: string | undefined;
+        turnReport?: {
+            resumeInboxId?: import("convex/values").GenericId<"inbox"> | undefined;
+            promptMessageId: string;
+            messageIds: string[];
+            maxMessages: number;
+        } | undefined;
         turnOrigin?: "user" | "subagent_result" | undefined;
         inboxId?: import("convex/values").GenericId<"inbox"> | undefined;
         approvalBlocked?: boolean | undefined;
@@ -188,6 +198,10 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         _creationTime: number;
         workflowId?: string | undefined;
         runId?: import("convex/values").GenericId<"runs"> | undefined;
+        activeTools?: {
+            name: string;
+            key: string;
+        }[] | undefined;
         textConfig?: {
             everyTurns?: number | undefined;
             worker: string;
@@ -287,6 +301,12 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         rootAssignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
         turnToken?: string | undefined;
         promptMessageId?: string | undefined;
+        turnReport?: {
+            resumeInboxId?: import("convex/values").GenericId<"inbox"> | undefined;
+            promptMessageId: string;
+            messageIds: string[];
+            maxMessages: number;
+        } | undefined;
         turnOrigin?: "user" | "subagent_result" | undefined;
         inboxId?: import("convex/values").GenericId<"inbox"> | undefined;
         approvalBlocked?: boolean | undefined;
@@ -347,6 +367,9 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         _creationTime: number;
         join?: "open" | "sealed" | "ready" | "joined" | undefined;
         startedAt?: number | undefined;
+        taskMessageId?: string | undefined;
+        taskPreview?: string | undefined;
+        resultMessageId?: string | undefined;
         side?: boolean | undefined;
         group?: string | undefined;
         questionMessageId?: string | undefined;
@@ -358,7 +381,6 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
             messageId?: string | undefined;
             errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
         } | undefined;
-        resultMessageId?: string | undefined;
         resultSequence?: number | undefined;
         events: {
             errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
@@ -371,8 +393,8 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         runId: string;
         errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
         rootAssignmentId: import("convex/values").GenericId<"assignments">;
-        deliveryStatus: "failed" | "pending" | "accepted" | "blocked";
         rootCancellationEpoch: number;
+        deliveryStatus: "failed" | "pending" | "accepted" | "blocked";
         parentRunId: import("convex/values").GenericId<"runs">;
         dedupKey: string;
         payloadFingerprint: string;
@@ -390,6 +412,10 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         _creationTime: number;
         workflowId?: string | undefined;
         runId?: import("convex/values").GenericId<"runs"> | undefined;
+        activeTools?: {
+            name: string;
+            key: string;
+        }[] | undefined;
         textConfig?: {
             everyTurns?: number | undefined;
             worker: string;
@@ -489,6 +515,12 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         rootAssignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
         turnToken?: string | undefined;
         promptMessageId?: string | undefined;
+        turnReport?: {
+            resumeInboxId?: import("convex/values").GenericId<"inbox"> | undefined;
+            promptMessageId: string;
+            messageIds: string[];
+            maxMessages: number;
+        } | undefined;
         turnOrigin?: "user" | "subagent_result" | undefined;
         inboxId?: import("convex/values").GenericId<"inbox"> | undefined;
         approvalBlocked?: boolean | undefined;
@@ -549,6 +581,10 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         _creationTime: number;
         workflowId?: string | undefined;
         runId?: import("convex/values").GenericId<"runs"> | undefined;
+        activeTools?: {
+            name: string;
+            key: string;
+        }[] | undefined;
         textConfig?: {
             everyTurns?: number | undefined;
             worker: string;
@@ -648,6 +684,12 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         rootAssignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
         turnToken?: string | undefined;
         promptMessageId?: string | undefined;
+        turnReport?: {
+            resumeInboxId?: import("convex/values").GenericId<"inbox"> | undefined;
+            promptMessageId: string;
+            messageIds: string[];
+            maxMessages: number;
+        } | undefined;
         turnOrigin?: "user" | "subagent_result" | undefined;
         inboxId?: import("convex/values").GenericId<"inbox"> | undefined;
         approvalBlocked?: boolean | undefined;
@@ -706,6 +748,7 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
     budget: {
         _id: import("convex/values").GenericId<"runs">;
         _creationTime: number;
+        startedAt?: number | undefined;
         settings?: {
             agent: string;
             settings: {
@@ -717,7 +760,15 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
                 stepsPerTurn: number;
             };
         }[] | undefined;
+        errorCode?: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null | undefined;
         models?: Record<string, string> | undefined;
+        rootAssignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
+        rootCancellationEpoch?: number | undefined;
+        taskMessageId?: string | undefined;
+        taskPreview?: string | undefined;
+        turnEndedAt?: number | undefined;
+        finishedAt?: number | undefined;
+        resultMessageId?: string | undefined;
         usagePartial?: boolean | undefined;
         cancelled: boolean;
         startedAgents: bigint;

@@ -104,6 +104,7 @@ function startGeneration(rt, turn) {
     const hc = {
         ctx: fence.ctx,
         ...facts,
+        promptMessageId: claimed.requestMessageId,
         signal: fence.controller.signal,
         meter: scopedMeter(meterBackend(rt.config, turn.rawCtx, { ...facts, purpose: "hook" }, () => markUsagePartial(rt, turn)), `${sliceKey(turn)}:hook`),
     };

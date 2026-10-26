@@ -14,17 +14,19 @@
  */
 import type { MessageDoc } from "@convex-dev/agent";
 import type { FunctionHandle } from "convex/server";
-import { ConvexError, v, type ObjectType } from "convex/values";
+import { ConvexError, getConvexSize, v, type ObjectType } from "convex/values";
 import { internal } from "../_generated/api.js";
 import type { MutationCtx } from "../_generated/server.js";
 import type { Doc } from "../_generated/dataModel.js";
 import { LIMITS } from "../limits.js";
+import { assertFunctionHandle } from "../facts.js";
+import { appendTurnMessages } from "./message-ids.js";
 import { prepareDecisions, oversizedDecisionInput } from "./decision-save.js";
 import { recordMessages } from "../hooks/refs.js";
 import { runById } from "../subagents/runs.js";
 import { disarmRecovery } from "./recovery.js";
 import { disarmSlice } from "./boundaries.js";
-import { deferChildFailure, failChild } from "./finish.js";
+import { deferChildFailure, failChild, markRecoveryRequired } from "./finish.js";
 import {
   collectPause,
   countPauseRequests,
@@ -71,6 +73,8 @@ type WriteArgs = ObjectType<typeof writeArgs>;
  * coordination facts. Returns the native mutation's result, or null (or a
  * typed CANCELLED error with `rejectStale`) when the caller lost the turn. */
 export async function fencedWrite(ctx: MutationCtx, args: WriteArgs): Promise<unknown> {
+  assertWriteHandles(args);
+
   const loaded = await ctx.db.get("assignments", args.assignmentId);
   const row = await liveWriter(ctx, loaded, args);
 
@@ -83,6 +87,16 @@ export async function fencedWrite(ctx: MutationCtx, args: WriteArgs): Promise<un
     [...deferredTools].some((name) => !name || name.length > LIMITS.requestKeyLength)
   )
     throw new Error("INVALID_DEFERRED_TOOLS");
+
+  if (args.nativeMessages || args.nativeStream) {
+    // Progress is best effort. Clear it in this transaction BEFORE any save
+    // metadata grows, even if the action's asynchronous marker clear is late.
+    // A paid result must never compete with tool names for assignment space.
+    if (row.activeTools) {
+      await ctx.db.patch("assignments", row._id, { activeTools: undefined });
+      row.activeTools = undefined;
+    }
+  }
 
   if (args.nativeMessages) await prepareDecisions(ctx, row, args.args, args.askUserTools);
 
@@ -108,15 +122,48 @@ export async function fencedWrite(ctx: MutationCtx, args: WriteArgs): Promise<un
 
   if (args.nativeStream) await trackStream(ctx, row, args, result as string);
 
+  if (args.nativeMessages || args.nativeStream) {
+    const saved = (await ctx.db.get("assignments", row._id))!;
+
+    // Pure invariant, unreachable given the writer bounds: every growth during
+    // a save is reserved (report, refs, usage step, pending generation, a full
+    // approval pause), and every fixed host string is bounded where it enters
+    // (names and handles: send.ts, assertWriteHandles, launch.ts, refs.ts).
+    // tests/save-bounds.test.ts builds the largest row production can write
+    // and proves it fits. If it ever fired, the throw rolls back the paid
+    // native row WITH its id rather than committing a row nothing references.
+    if (getConvexSize(saved) > LIMITS.assignmentBytes)
+      throw new Error("ASSIGNMENT_METADATA_TOO_LARGE");
+  }
+
   return result;
+}
+
+/** Bound every handle this write can store, before the native mutation runs:
+ * `handle` becomes `approvals.addMessages`, `nativeMessages` becomes
+ * `pendingGeneration`/`approvals.getMessages`, and `nativeStream` becomes
+ * `pendingGeneration.stream.abort`. Throwing here commits nothing, so no
+ * native row can exist without its recorded id. The client creates these
+ * handles from the native component's own functions; real ones are ~60-100
+ * bytes (limits.ts `functionHandleBytes`), so this guards the stored row
+ * against a hand-rolled caller rather than failing a real turn. */
+function assertWriteHandles(args: WriteArgs) {
+  assertFunctionHandle(args.handle, "handle");
+
+  if (args.nativeStream !== undefined) assertFunctionHandle(args.nativeStream, "nativeStream");
+
+  if (args.nativeMessages) {
+    assertFunctionHandle(args.nativeMessages.getMessages, "nativeMessages.getMessages");
+    assertFunctionHandle(args.nativeMessages.finalizeMessage, "nativeMessages.finalizeMessage");
+  }
 }
 
 /** The row if the caller still owns a running turn at its token and epoch,
  * else null. A child can settle immediately before cancel, while its source
  * action still owns the turn token. It no longer occupies an active slot, so
  * cancel need not visit its assignment. The root epoch still fences every
- * late native/tool write: two <=32 KiB assignment reads plus one <=4 KiB
- * child-run reference (<72 KiB), no traversal. */
+ * late native/tool write: two <=34 KiB assignment reads plus one <=4 KiB
+ * child-run reference (<=72 KiB), no traversal. */
 async function liveWriter(ctx: MutationCtx, row: Doc<"assignments"> | null, args: WriteArgs) {
   const root = row?.rootAssignmentId ? await ctx.db.get("assignments", row.rootAssignmentId) : null;
   const run = row?.childRunId ? await runById(ctx, row.childRunId) : null;
@@ -175,10 +222,9 @@ async function rejectApprovalOverflow(ctx: MutationCtx, row: Doc<"assignments">)
   if (await deferChildFailure(ctx, row, "APPROVAL_LIMIT")) return null;
 
   await failChild(ctx, row, "APPROVAL_LIMIT");
+  await markRecoveryRequired(ctx, row, "APPROVAL_LIMIT");
 
   await ctx.db.patch("assignments", row._id, {
-    turnStatus: "recovery_required",
-    errorCode: "APPROVAL_LIMIT",
     turnToken: undefined,
   });
 
@@ -217,7 +263,7 @@ async function recordNativeSave(
   // even without a tool-result. Pending placeholders are not responses.
   if (row.approvals) await retireConsumedApprovals(ctx, row, messages);
 
-  if (row.childRunId) await recordChildResult(ctx, row, messages);
+  await recordResult(ctx, row, messages);
 
   await trackPendingGeneration(ctx, row, args, messages);
 
@@ -230,15 +276,10 @@ async function recordNativeSave(
     });
 }
 
-/** Point the child's run at the last successful, non-empty assistant message
- * of this save: the candidate result that settle later verifies. */
-async function recordChildResult(
-  ctx: MutationCtx,
-  row: Doc<"assignments">,
-  messages: MessageDoc[],
-) {
-  const run = await runById(ctx, row.childRunId!);
-
+/** Capture the exact last successful non-empty assistant message with its native
+ * save. Root history must never reuse a modelStep from a previous user request;
+ * the child's candidate is still verified by settlement before delivery. */
+async function recordResult(ctx: MutationCtx, row: Doc<"assignments">, messages: MessageDoc[]) {
   const finals = messages.filter(
     (message) =>
       message.message?.role === "assistant" && message.status === "success" && message.text?.trim(),
@@ -246,8 +287,17 @@ async function recordChildResult(
 
   const final = finals[finals.length - 1];
 
-  if (run && final)
-    await ctx.db.patch("subagentRuns", run._id, { childResultMessageId: final._id });
+  if (!final) return;
+
+  if (!row.childRunId) {
+    if (row.runId) await ctx.db.patch("runs", row.runId, { resultMessageId: final._id });
+
+    return;
+  }
+
+  const run = await runById(ctx, row.childRunId);
+
+  if (run) await ctx.db.patch("subagentRuns", run._id, { childResultMessageId: final._id });
 }
 
 /** Track the one pending (streaming) placeholder this save created, so cancel
@@ -258,12 +308,14 @@ async function trackPendingGeneration(
   args: WriteArgs,
   messages: MessageDoc[],
 ) {
+  const turnReport = appendTurnMessages(row, messages);
   const pending = messages.filter((message) => message.status === "pending");
 
   if (pending.length > 1) throw new Error("MULTIPLE_PENDING_GENERATIONS");
 
   if (pending.length)
     await ctx.db.patch("assignments", row._id, {
+      turnReport,
       pendingGeneration: {
         messageId: pending[0]._id,
         executionId: args.executionId,
@@ -271,8 +323,13 @@ async function trackPendingGeneration(
         ...args.nativeMessages!,
       },
     });
-  else if (row.pendingGeneration?.messageId === args.args?.pendingMessageId)
-    await ctx.db.patch("assignments", row._id, { pendingGeneration: undefined });
+  else
+    await ctx.db.patch("assignments", row._id, {
+      turnReport,
+      ...(row.pendingGeneration?.messageId === args.args?.pendingMessageId
+        ? { pendingGeneration: undefined }
+        : {}),
+    });
 }
 
 /** Attach the native stream id to this execution's tracked placeholder, so

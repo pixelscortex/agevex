@@ -77,6 +77,10 @@
     "./tools": {
       "types": "./dist/modules/tools/client/index.d.ts",
       "default": "./dist/modules/tools/client/index.js"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "default": "./dist/react/index.js"
     }
   },
   "scripts": {
@@ -115,12 +119,16 @@
     "@edge-runtime/vm": "5.0.0",
     "@openrouter/ai-sdk-provider": "^3.1.0",
     "@stylistic/eslint-plugin": "5.10.0",
+    "@testing-library/react": "^16.3.3",
     "@types/node": "26.6.5",
+    "@types/react": "^19.3.0",
     "ai": "7.0.153",
     "convex": "1.47.0",
     "convex-helpers": "0.1.128",
     "convex-test": "0.0.61",
+    "happy-dom": "^21.0.4",
     "oxfmt": "^0.74.0",
+    "react": "^19.3.1",
     "typescript": "5.9.3",
     "vite-plus": "1.2.0",
     "zod": "4.6.7"
@@ -131,7 +139,13 @@
     "@convex-dev/agent": "^0.7.7",
     "ai": "^7.0.153",
     "convex": "^1.47.0",
-    "convex-helpers": "^0.1.128"
+    "convex-helpers": "^0.1.128",
+    "react": "^18.3.1 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
   },
   "overrides": {
     "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0",

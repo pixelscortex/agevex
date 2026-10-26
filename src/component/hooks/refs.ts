@@ -15,6 +15,7 @@ import type { MessageDoc } from "@convex-dev/agent";
 import type { MutationCtx, QueryCtx } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
 import { LIMITS } from "../limits.js";
+import { assertName } from "../facts.js";
 
 /** One recorded native message: id, native order/stepOrder and stored size. */
 export const messageRef = v.object({
@@ -145,6 +146,9 @@ export async function markReviewed(
   ctx: MutationCtx,
   args: { assignmentId: Id<"assignments">; executionId: string; agent: string; boundary: number },
 ) {
+  // Up to LIMITS.sideAgents names live in `reviewed`; bound each one.
+  assertName(args.agent, "agent");
+
   const row = await ctx.db.get("assignments", args.assignmentId);
 
   if (!row || row.cancelled || row.turnToken !== args.executionId) throw new Error("STALE_TURN");

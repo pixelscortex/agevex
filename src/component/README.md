@@ -59,7 +59,7 @@ An assignment has at most `queueLength + runLaunches + 2` ready rows, including
 one answer and the reserved head or approval continuation. At all hard maxima,
 cancel covers `16 × 152 = 2,432` ready rows and 384 passive notes. It deduplicates
 at most `100 + 50 + 3 + 15 = 168` request budgets. Combining assignment state
-updates keeps the conservative read/write bounds at 15,560/11,356 KiB, below
+updates keeps the conservative read/write bounds at 15,832/11,620 KiB, below
 16 MiB; native bodies are never read by cancel. Claim consumes at most 152 rows
 including its head. The complete arithmetic is in `limits.ts`.
 
@@ -83,13 +83,13 @@ No tables are added. Root `assignments` carry:
 - Existing `contextMessages`: at most 24 exact identities, captured with saves.
   Summaries and side reviews read successful user/assistant message references.
 
-A worker reads one <=32 KiB assignment plus one <=16 KiB run. Title claim/commit
+A worker reads one <=34 KiB assignment plus one <=16 KiB run. Title claim/commit
 also read one exact native thread <=1 MiB to preserve app titles atomically. Exact native
 message reads total <=2 MiB, at most 24 ids; serialized messages total <=48 KiB,
 plus <=8 KiB prior summary. Both full native sizes and encoded input are checked.
 The ring stays <4 KiB, summary <9 KiB, both jobs/config <4 KiB; the existing
 8 KiB coordination/pause +6 KiB review boundaries gives 8+4+6+9+4=31 KiB,
-reserving 1 KiB under the 32 KiB assignment envelope. Hard-limit
+plus 3 KiB for turn reporting under the 34 KiB assignment envelope. Hard-limit
 fixtures enforce Convex transaction budgets with a full ring of large native
 messages. No transcript discovery, copied request bodies, new indexes or billing
 ledger are introduced. The existing receipts ledger records scheduling replay
@@ -135,7 +135,11 @@ the definition, the schema and helpers used across folders and by the client.
 | `subagents/history.ts`    | Registered: `delegations`, `runTree`.                                                               |
 | `subagents/runs.ts`       | `subagentRuns` lookups, event ring, cohort read, row builder.                                       |
 | `subagents/groups.ts`     | Wait-"all" cohorts: seal, ready, release.                                                           |
-| `subagents/views.ts`      | Trusted contexts, delegation history page, request tree.                                            |
+| `subagents/views.ts`      | Trusted contexts and delegation history page.                                                       |
+| `subagents/tree.ts`       | Root-inclusive reactive tree, projected status and message links.                                   |
+| `run-tree-values.ts`      | Tree/usage validators and hard byte/count ceilings.                                                 |
+| `turns/run-lifecycle.ts`  | Request-scoped ready/delivery/group fences and root closure snapshots.                              |
+| `turns/tools.ts`          | Fenced start/end markers for bounded concurrent local tools.                                        |
 | `hooks/notes.ts`          | Registered: `addNote`, `beforeTurnNote`, `cancelNotes`; claim-time note saving.                     |
 | `hooks/state.ts`          | Registered: `hookState`, `continueAdmission`.                                                       |
 | `hooks/routing.ts`        | Registered: `routing`, `completeRouting`; beforeTurn model-routing ownership.                       |
@@ -154,6 +158,36 @@ live-fenced progress admission and atomic native note/receipt publication.
 
 ## Tables
 
+`runTree` now returns `{ rootRunId, usage, nodes } | null`, a breaking change
+from its descendant array. It includes the root and derives asleep/done status
+without changing stored turn/delegation enums. Explicit history ids must belong
+to the authorized root. The host composes the optional query-safe usage slot;
+core imports no meter module. `delegations` keeps its existing history contract.
+
+Root task references/previews and lifecycle times live on `runs`; exact child
+task links/previews live on `subagentRuns`, captured with native saves. The
+`by_root` index includes implicit creation ordering; `by_run_ready` and the
+request suffix on `by_parent_delivery` prevent later sends from fencing old
+requests. Only ordinary descendants/deliveries/groups fence successful closure.
+Assignments carry at most 16 active tool markers, checked against the complete
+34 KiB row envelope; every slice disarm and cancellation clears them. Native
+saves clear markers atomically before report/ref/usage/approval metadata grows,
+then assert the complete saved assignment stays within the envelope. Query
+projection also suppresses tools on terminal nodes. No new tables are added.
+Marker start/clear writes are best effort and never awaited by tool execution
+or stream cleanup. Clear follows start; failed writes are not retried, keeping
+contention to one assignment read/patch per edge. Disarmed-slice/turn fences
+reject late starts. Cancellation preserves terminal run outcomes and timestamps.
+Run admission checks both UTF-8 JSON and Convex bytes, reserving 1 KiB for native
+metadata, lifecycle timestamps/result/error and bounded counter/mask growth
+under the 16 KiB run envelope.
+
+At hard maxima the core tree reads at most 2373 KiB: 59 assignment rows ×34 KiB,
+58 child rows ×4 KiB, three ownership reads ×34 KiB, two root metadata reads
+×16 KiB and one 1 KiB ready probe. Meter adds at most 5160 KiB through batched
+full-namespace aggregates: combined 7533 KiB <8 MiB. The host enforces the
+128 KiB output cap. Maximum-envelope fixtures enforce transaction limits.
+
 | Table          | Written by                                                                                                                                                                                                                                                                                              | Notes                                           |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
 | `assignments`  | `turns/*` (most fields), `subagents/launch.ts` (child rows), `hooks/*` (refs, reviews, notes counters, continuation), `cancellation*` (pause/cleanup)                                                                                                                                                   | One managed thread.                             |
@@ -170,6 +204,12 @@ What each table and field holds:
   side-review boundaries and note/turn counters.
   `promptMessageId` is the turn's prompt: read by `beforeTurn` (including a
   continuation's own prompt) and the anchor of native generation context.
+  `turnReport.promptMessageId` is the reporting request returned to tools;
+  `messageIds` accumulates successful assistant ids in native save order and is
+  read by completion's `hookState`; `maxMessages` enforces the resolved run/Workflow
+  step cap; `resumeInboxId` tells claim to retain the report and step count at
+  approval resume. Claim resets it for new work and staged hook prompts.
+  <=64*(37+2)=2,496 bytes of ids plus prompt/cap/resume metadata fit a 3 KiB reservation.
   Posted notes wait for the next turn claim with no decided approvals awaiting
   committed results; ordinary tool slices never drain them. `beforeTurn` hook
   notes are saved before the first generation.

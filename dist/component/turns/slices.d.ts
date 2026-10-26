@@ -37,6 +37,7 @@ export declare const claim: import("convex/server").RegisteredMutation<"public",
     promptMessageId: string;
     turnOrigin: "user" | "subagent_result";
     assignmentId: string;
+    requestMessageId: string;
     isTurnStart: boolean;
     isRunStart: boolean;
     subagent: {

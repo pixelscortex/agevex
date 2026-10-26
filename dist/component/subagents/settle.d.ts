@@ -10,8 +10,8 @@ export declare function hasPendingChildren(ctx: QueryCtx | MutationCtx, parent: 
  * inbox work. Fence that short settlement/delivery interval and unreleased
  * groups as well as live descendants; otherwise a result could reach a terminal
  * parent. Five indexed existence probes (<=3 KiB inbox + 4*4 KiB runs)
- * + one <=32 KiB root
- * read stay below 52 KiB; no history is read.
+ * + one <=34 KiB root
+ * read total <=53 KiB; no history is read.
  */
 export declare function settlementBlocked(ctx: QueryCtx | MutationCtx, parent: Doc<"assignments">): Promise<boolean>;
 /** Move a live run to its terminal status if its child is not fenced, release
@@ -29,8 +29,8 @@ export declare function scheduleNotify(ctx: MutationCtx, run: Doc<"subagentRuns"
  * only the host-verified outcome recorded by settle; a native save alone is
  * not proof that the last turn reported a valid result. The same notification
  * path propagates the terminal outcome to the next ancestor without paid work.
- * Depth <=2 bounds propagation to at most 2 * (6*32 KiB assignment reads +
- * 2*4 KiB run reads + 19 KiB indexed fence probes) <512 KiB metadata,
+ * Depth <=2 bounds propagation to at most 2 * (6*34 KiB assignment reads +
+ * 2*4 KiB run reads + 19 KiB indexed fence probes) <=462 KiB metadata,
  * including patch reads and the watched thread's context references. No native
  * bodies are read here; side settlement never enters this ancestor path.
  * Returns true when the child's run is (now) terminal.

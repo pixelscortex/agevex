@@ -13,14 +13,16 @@ export const RUN_LIMITS = {
     sliceDeadlineMs: 300_000,
     watchdogMarginMs: 30_000,
     metadataBytes: 16 << 10,
-    // Native id/time envelope plus growth of bounded counters and JSON masks.
-    nativeEnvelopeBytes: 256,
+    // 256 bytes native id/time + <=256 lifecycle (ids, times, error) + <=512
+    // counter/mask growth and JSON escaping. Reserve before accepting a run.
+    nativeEnvelopeBytes: 1 << 10,
     // Root messages/results + reserved head/answer/current + one budget per child.
     cancelBudgets: HOST_LIMITS.queueLength.max +
         HOST_LIMITS.runLaunches.max +
         HOST_LIMITS.activeChildrenPerRoot.max +
         3,
-    // Reserve 1 KiB for ids, model overrides, counters and the native envelope.
+    // Snapshot cap; the combined initial row must also fit metadataBytes minus
+    // nativeEnvelopeBytes, so settings and model choices share the remaining room.
     settingsBytes: 15 << 10,
 };
 /** Policy returned by claim and consumed by generation and its watchdog. */
@@ -77,6 +79,15 @@ export function sliceDeadlineMs(settings) {
     return Math.min(RUN_LIMITS.sliceDeadlineMs, settings.modelTimeoutMs +
         RUN_LIMITS.toolsPerSlice * settings.toolTimeoutMs +
         RUN_LIMITS.persistenceMs);
+}
+/** Match Workflow v1's effective ceiling: its default argument uses the hard
+ * step maximum, allowing an explicit Agent.run.stepsPerTurn above the host's
+ * default. Registration inherits the host default only when run policy omits
+ * stepsPerTurn. A non-default host slice cap is passed explicitly to Workflow.
+ * Approval resumes start another workflow, so claim must retain this ceiling.
+ */
+export function turnStepLimit(settings, slicesPerTurn) {
+    return Math.min(settings.stepsPerTurn, slicesPerTurn === LIMITS.slicesPerTurn ? RUN_LIMITS.stepsPerTurn.max : slicesPerTurn);
 }
 /** The server waits beyond the client fence so timeout finalization can commit. */
 export function sliceWatchdogMs(settings) {

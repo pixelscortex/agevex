@@ -21,6 +21,7 @@ export declare const acceptArgs: {
     requestKey: import("convex/values").VString<string, "required">;
     fingerprint: import("convex/values").VString<string, "required">;
     promptMessageId: import("convex/values").VString<string, "required">;
+    task: import("convex/values").VString<string | undefined, "optional">;
     savedMessage: import("convex/values").VObject<{
         order: number;
         bytes: number;
@@ -224,6 +225,7 @@ export declare const accept: import("convex/server").RegisteredMutation<"public"
         getThread: string;
     } | undefined;
     models?: Record<string, string> | undefined;
+    task?: string | undefined;
     savedMessage?: {
         order: number;
         bytes: number;

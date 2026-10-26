@@ -30,7 +30,7 @@ export async function disarmSlice(ctx: MutationCtx, row: Doc<"assignments">) {
   // fence without attempting to cancel that in-progress detector itself.
   if (row.watchdogId) await cancelIfPending(ctx, row.watchdogId);
 
-  await ctx.db.patch("assignments", row._id, { watchdogId: undefined });
+  await ctx.db.patch("assignments", row._id, { watchdogId: undefined, activeTools: undefined });
 }
 
 /** The host action finished one slice and will run another: close the slice

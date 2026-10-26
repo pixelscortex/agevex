@@ -3,6 +3,7 @@ import { laneManager, startLoop } from "../workflows/lanes.js";
 import { firstReady } from "./inbox.js";
 import { runById } from "../subagents/runs.js";
 import { settleIdleParent } from "../subagents/settle.js";
+import { closeRootRun } from "./run-lifecycle.js";
 import { armRecovery, cancelIfPending, disarmRecovery, needsRecovery, nextRecoveryDelay, } from "./recovery.js";
 /** Whether this child currently has an open question to its parent. An asking
  * child is paused (not stuck): nothing may claim or ring it until the answer
@@ -31,6 +32,7 @@ export async function wake(ctx, row, ring = true) {
         return;
     }
     row = await drainEmptyCohorts(ctx, row);
+    await closeRootRun(ctx, row);
     // Re-evaluate R3 after every blocker-clearing wake, including failed delivery
     // and empty group release. Idle children cannot wait for nonexistent work.
     // answer/respond retain their inbox anchor until claim consumes it. That

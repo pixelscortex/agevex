@@ -16,6 +16,43 @@ import {
 import { v } from "convex/values";
 import { assertSettingsSnapshot, settingsSnapshot, RUN_LIMITS } from "../component/run-settings.js";
 import { LIMITS } from "../component/limits.js";
+import { internalQuery } from "../component/_generated/server.js";
+import { assignmentByThread } from "../component/turns/assignments.js";
+import { runTimes } from "../component/subagents/runs.js";
+
+/** Existing delegation protocol tests inspect stored states (asking/completed),
+ * distinct from the new public asleep/done projection. Never shipped in core.
+ */
+export const delegationState = internalQuery({
+  args: { threadId: v.string() },
+  handler: async (ctx, { threadId }) => {
+    const root = await assignmentByThread(ctx, threadId);
+
+    if (!root?.runId) return [];
+
+    const rows = await ctx.db
+      .query("subagentRuns")
+      .withIndex("by_group", (q) => q.eq("parentRunId", root.runId!))
+      .take(root.limits.runLaunches + root.limits.sideRunsPerRun);
+
+    return rows
+      .sort((a, b) => a.sequence - b.sequence)
+      .map((run) => ({
+        runId: run.runId,
+        side: run.side ?? false,
+        parentAssignmentId: run.actorAssignmentId,
+        childAssignmentId: run.childAssignmentId ?? null,
+        agent: run.agent,
+        status: run.status,
+        depth: run.depth,
+        group: run.group ?? null,
+        childThreadId: run.childThreadId ?? null,
+        createdAt: run.createdAt,
+        startedAt: run.startedAt ?? null,
+        finishedAt: runTimes(run).finishedAt,
+      }));
+  },
+});
 
 const args = { lane: v.string(), module: v.string(), name: v.string(), args: v.any() };
 
@@ -99,7 +136,17 @@ export const fillHookMetadata = internalMutationGeneric({
   args: { assignmentId: v.id("assignments") },
   returns: v.null(),
   handler: async (ctx, { assignmentId }) => {
+    const row = await ctx.db.get("assignments", assignmentId);
+
     await ctx.db.patch("assignments", assignmentId, {
+      turnReport: {
+        promptMessageId: "p".repeat(LIMITS.messageIdBytes),
+        messageIds: Array.from({ length: RUN_LIMITS.stepsPerTurn.max - 1 }, (_, i) =>
+          String(i).padStart(LIMITS.messageIdBytes, "m"),
+        ),
+        maxMessages: RUN_LIMITS.stepsPerTurn.max,
+        resumeInboxId: row?.inboxId,
+      },
       contextMessages: Array.from({ length: LIMITS.contextMessages }, (_, order) => ({
         id: crypto.randomUUID(),
         order,

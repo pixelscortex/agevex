@@ -18,6 +18,9 @@ export declare function runById(ctx: QueryCtx | MutationCtx, runId: string): Pro
     _creationTime: number;
     join?: "open" | "sealed" | "ready" | "joined" | undefined;
     startedAt?: number | undefined;
+    taskMessageId?: string | undefined;
+    taskPreview?: string | undefined;
+    resultMessageId?: string | undefined;
     side?: boolean | undefined;
     group?: string | undefined;
     questionMessageId?: string | undefined;
@@ -29,7 +32,6 @@ export declare function runById(ctx: QueryCtx | MutationCtx, runId: string): Pro
         messageId?: string | undefined;
         errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
     } | undefined;
-    resultMessageId?: string | undefined;
     resultSequence?: number | undefined;
     events: {
         errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
@@ -42,8 +44,8 @@ export declare function runById(ctx: QueryCtx | MutationCtx, runId: string): Pro
     runId: string;
     errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
     rootAssignmentId: import("convex/values").GenericId<"assignments">;
-    deliveryStatus: "failed" | "pending" | "accepted" | "blocked";
     rootCancellationEpoch: number;
+    deliveryStatus: "failed" | "pending" | "accepted" | "blocked";
     parentRunId: import("convex/values").GenericId<"runs">;
     dedupKey: string;
     payloadFingerprint: string;
@@ -95,6 +97,9 @@ export declare function groupMembers(ctx: QueryCtx | MutationCtx, cohort: {
     _creationTime: number;
     join?: "open" | "sealed" | "ready" | "joined" | undefined;
     startedAt?: number | undefined;
+    taskMessageId?: string | undefined;
+    taskPreview?: string | undefined;
+    resultMessageId?: string | undefined;
     side?: boolean | undefined;
     group?: string | undefined;
     questionMessageId?: string | undefined;
@@ -106,7 +111,6 @@ export declare function groupMembers(ctx: QueryCtx | MutationCtx, cohort: {
         messageId?: string | undefined;
         errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
     } | undefined;
-    resultMessageId?: string | undefined;
     resultSequence?: number | undefined;
     events: {
         errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
@@ -119,8 +123,8 @@ export declare function groupMembers(ctx: QueryCtx | MutationCtx, cohort: {
     runId: string;
     errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
     rootAssignmentId: import("convex/values").GenericId<"assignments">;
-    deliveryStatus: "failed" | "pending" | "accepted" | "blocked";
     rootCancellationEpoch: number;
+    deliveryStatus: "failed" | "pending" | "accepted" | "blocked";
     parentRunId: import("convex/values").GenericId<"runs">;
     dedupKey: string;
     payloadFingerprint: string;
@@ -156,4 +160,9 @@ export declare function newSubagentRun(fields: {
     sequence: number;
     now: number;
 }): WithoutSystemFields<SubagentRun>;
+/** Leave 1 KiB for native id/time, future result/question refs, four events,
+ * timestamps, note counters and the deferred last-turn outcome. Check again
+ * at task attachment so preview growth cannot break the 4 KiB read budget.
+ */
+export declare function assertRunMetadata(row: WithoutSystemFields<SubagentRun>): void;
 export {};

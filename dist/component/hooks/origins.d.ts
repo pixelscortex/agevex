@@ -15,7 +15,7 @@ type Origin = {
     runId?: string;
 };
 /** Page-local indexed lookups: <=100 controls *1 KiB +100 results *4 KiB
- * +32 KiB ownership =532 KiB, <=201 documents and <=201 index queries.
+ * +34 KiB ownership =534 KiB, <=201 documents and <=201 index queries.
  * Control rows with a native id never retain bodies; no history prefix is read.
  * Only rows belonging to this subject's assignment are reported.
  */
@@ -27,7 +27,7 @@ export declare function messageOrigins(ctx: QueryCtx, args: {
 /** Label note, continuation and result messages on one reader page. */
 export declare const origins: import("convex/server").RegisteredQuery<"public", {
     subject: string;
-    assignmentId: import("convex/values").GenericId<"assignments">;
     messageIds: string[];
+    assignmentId: import("convex/values").GenericId<"assignments">;
 }, Promise<Record<string, Origin>>>;
 export {};

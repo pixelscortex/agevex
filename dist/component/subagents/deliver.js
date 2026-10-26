@@ -14,6 +14,7 @@
 import { mutation, query, internalAction, internalMutation, } from "../_generated/server.js";
 import { groupMembers, isSettled, runById, appendEvent } from "./runs.js";
 import { wake } from "../turns/wake.js";
+import { closeRootRun } from "../turns/run-lifecycle.js";
 import { markGroupReady, releaseReadyCohort } from "./groups.js";
 import { v } from "convex/values";
 import { internal } from "../_generated/api.js";
@@ -66,6 +67,7 @@ export async function applyDelivery(ctx, args) {
         await enqueueResult(ctx, run, parent, args.parentMessageId);
     else
         await wake(ctx, parent);
+    await closeRootRun(ctx, root, run.parentRunId);
     return null;
 }
 /** An accepted delivery needs a live root/parent in the run's epoch and, for

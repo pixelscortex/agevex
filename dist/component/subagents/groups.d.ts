@@ -23,7 +23,7 @@ export declare function markGroupReady(ctx: MutationCtx, members: Doc<"subagentR
  * their already committed results. Returns true when the
  * cohort was joined (with or without a published inbox row).
  */
-export declare function releaseGroup(ctx: MutationCtx, parent: Doc<"assignments">, root: Doc<"assignments">, members: Doc<"subagentRuns">[]): Promise<boolean>;
+export declare function releaseGroup(ctx: MutationCtx, parent: Doc<"assignments">, root: Doc<"assignments">, members: Doc<"subagentRuns">[], persistCounters?: boolean): Promise<boolean>;
 /** A fast child may settle between two tool calls in the same model slice.
  * Seal only at that slice's existing completion mutation, never at settlement.
  * There is only one running slice per assignment; all unsealed members of its
@@ -52,4 +52,7 @@ export declare function sealGroups(ctx: MutationCtx, parent: Doc<"assignments">)
 export declare function releaseReadyCohort(ctx: MutationCtx, args: {
     assignmentId: Id<"assignments">;
     parentRunId?: Id<"runs">;
+}, claiming?: {
+    parent: Doc<"assignments">;
+    root: Doc<"assignments">;
 }): Promise<boolean>;

@@ -12,6 +12,7 @@ import { createFunctionHandle, mutationGeneric, } from "convex/server";
 import { v } from "convex/values";
 import { assertFact } from "../../component/facts.js";
 import { LIMITS } from "../../component/limits.js";
+import { taskPreview } from "../../component/run-tree-values.js";
 import { modelOverrides, validModelOverrides } from "../../component/models.js";
 import { receipt } from "../../component/schema.js";
 import { savedMessageRef } from "../native-saves.js";
@@ -102,6 +103,7 @@ async function acceptRequest(ep, ctx, request) {
         requestKey: request.requestKey,
         fingerprint: request.fingerprint,
         promptMessageId: messageId,
+        task: taskPreview(message.text ?? ""),
         trackContext: !!request.native.sideAgents?.length || ep.config.title !== false || !!ep.config.summary,
         textConfig: await persistedTextConfig(ep.config, request.native),
         savedMessage: savedMessageRef(messageId, message),

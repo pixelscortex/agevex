@@ -109,6 +109,7 @@ export declare const attachArgs: {
     runId: import("convex/values").VString<string, "required">;
     childThreadId: import("convex/values").VString<string, "required">;
     promptMessageId: import("convex/values").VString<string, "required">;
+    task: import("convex/values").VString<string | undefined, "optional">;
     savedMessage: import("convex/values").VObject<{
         order: number;
         bytes: number;
@@ -195,6 +196,7 @@ export declare const reserve: import("convex/server").RegisteredMutation<"public
 /** Create the child assignment for a reserved run's native thread and queue
  * its task; see `attachChild`. */
 export declare const attach: import("convex/server").RegisteredMutation<"public", {
+    task?: string | undefined;
     savedMessage?: {
         order: number;
         bytes: number;

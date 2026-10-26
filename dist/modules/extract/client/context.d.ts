@@ -83,9 +83,9 @@ export declare function resolveRuntime(component: ComponentApi, options: Extract
                     preview: string;
                 } | undefined;
                 usage?: {
-                    credits?: number | undefined;
                     inputTokens?: number | undefined;
                     outputTokens?: number | undefined;
+                    credits?: number | undefined;
                 } | undefined;
                 failure?: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED" | undefined;
                 payloadStorageId?: string | undefined;
@@ -115,9 +115,9 @@ export declare function resolveRuntime(component: ComponentApi, options: Extract
                     preview: string;
                 } | undefined;
                 usage?: {
-                    credits?: number | undefined;
                     inputTokens?: number | undefined;
                     outputTokens?: number | undefined;
+                    credits?: number | undefined;
                 } | undefined;
                 failure?: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED" | undefined;
                 payloadStorageId?: string | undefined;
@@ -146,9 +146,9 @@ export declare function resolveRuntime(component: ComponentApi, options: Extract
                 } | undefined;
                 unknown?: boolean | undefined;
                 usage?: {
-                    credits?: number | undefined;
                     inputTokens?: number | undefined;
                     outputTokens?: number | undefined;
+                    credits?: number | undefined;
                 } | undefined;
                 failure?: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED" | undefined;
                 payloadStorageId?: string | undefined;
@@ -228,8 +228,8 @@ export declare function resolveRuntime(component: ComponentApi, options: Extract
             start: FunctionReference<"mutation", "internal", {
                 key: string;
                 claim: string;
-                indexId: string;
                 add: string;
+                indexId: string;
                 namespaceId: string;
                 contentHash: string;
             }, string, string | undefined>;

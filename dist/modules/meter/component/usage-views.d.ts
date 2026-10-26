@@ -97,11 +97,14 @@ export declare const usageProjection: import("convex/values").VObject<{
             unknown: import("convex/values").VFloat64<number, "required">;
             reporting: import("convex/values").VUnion<"partial" | "available", [import("convex/values").VLiteral<"available", "required">, import("convex/values").VLiteral<"partial", "required">], "required", never>;
         }, "required", "unknown" | "inputTokens" | "outputTokens" | "estimatedUsd" | "settledUsd" | "reporting">;
-    }, "required", "usage" | "nodeId" | "usage.inputTokens" | "usage.outputTokens" | "usage.unknown" | "usage.estimatedUsd" | "usage.settledUsd" | "usage.reporting">, "required">;
+    }, "required", "usage" | "usage.unknown" | "usage.inputTokens" | "usage.outputTokens" | "usage.estimatedUsd" | "usage.settledUsd" | "usage.reporting" | "nodeId">, "required">;
 }, "required", "total" | "nodes" | "total.unknown" | "total.inputTokens" | "total.outputTokens" | "total.estimatedUsd" | "total.settledUsd" | "total.reporting">;
 /** Complete namespaces read <=7 docs per aggregate operation (lazy root and
- * <=5 children plus metadata). 60*(4 cost + 4 token) <=3360 docs / <7 MiB
- * at <=2 KiB/node; <4096 queries. Output <=60*512 bytes <32 KiB.
+ * <=5 children plus metadata). 60*6*7 <=2520 docs /5040 KiB at <=2 KiB/node;
+ * pending-operation probes add <=60 docs /120 KiB. Combined with core's
+ * 2373 KiB tree metadata: <=7533 KiB <8 MiB. Output <=60*512 bytes <32 KiB.
+ * Aggregate's supported btree.aggregateBetweenBatch returns count AND sum
+ * (aggregate src/component/btree.ts:1279), avoiding duplicate count/sum reads.
  */
 export declare function readUsage(ctx: QueryCtx, args: Infer<ReturnType<typeof v.object<typeof usageViewArgs>>>): Promise<{
     total: {

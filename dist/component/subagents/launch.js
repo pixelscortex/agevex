@@ -17,8 +17,10 @@ import { v } from "convex/values";
 import { mutation, query } from "../_generated/server.js";
 import { denialCode } from "../schema.js";
 import { LIMITS } from "../limits.js";
+import { assertFunctionHandle, assertName } from "../facts.js";
+import { taskPreview } from "../run-tree-values.js";
 import { approvalKey } from "../approvals.js";
-import { groupMembers, newSubagentRun, runById } from "./runs.js";
+import { assertRunMetadata, groupMembers, newSubagentRun, runById } from "./runs.js";
 import { messageRef, recordRefs } from "../hooks/refs.js";
 import { newChildAssignment } from "../turns/assignments.js";
 import { wake } from "../turns/wake.js";
@@ -46,6 +48,10 @@ const denied = (code) => ({ kind: "denied", code });
  * parent run, so a shared child definition cannot bypass the configured bound.
  */
 export async function reserveRun(ctx, args) {
+    // The agent name becomes the child assignment's `agent`; the handle is
+    // stored on the run row. Bound both before any read or write.
+    assertName(args.agent, "agent");
+    assertFunctionHandle(args.coordinateHandle, "coordinateHandle");
     const scope = await reservationScope(ctx, args);
     if (scope.kind === "denied")
         return scope;
@@ -143,7 +149,7 @@ function budgetSpent(budget, row, side) {
 /** A named group is a closed cohort, capped INCLUDING settled members. Refuse
  * mixing wait modes, joining a sealed cohort, or exceeding the cohort cap. */
 async function cohortRefusal(ctx, budgetId, row, root, group, wait) {
-    // <=15 small rows (<=4 KiB each) + two <=32 KiB assignments and fixed
+    // <=15 small rows (<=4 KiB each) + two <=34 KiB assignments and fixed
     // admission metadata <160 KiB; no native
     // result bodies are read. Index scope excludes every other parent/run.
     const members = await groupMembers(ctx, { parentRunId: budgetId, actorAssignmentId: row._id, group }, wait === "all" ? root.limits.activeChildrenPerRoot : 1);
@@ -161,6 +167,7 @@ export const attachArgs = {
     runId: v.string(),
     childThreadId: v.string(),
     promptMessageId: v.string(),
+    task: v.optional(v.string()),
     savedMessage: v.optional(messageRef),
     trackContext: v.optional(v.boolean()),
 };
@@ -193,10 +200,14 @@ export async function attachChild(ctx, args) {
         kind: "user",
         runId: run.parentRunId,
     });
-    await ctx.db.patch("subagentRuns", run._id, {
+    const attached = {
+        taskMessageId: args.promptMessageId,
+        taskPreview: taskPreview(args.task ?? ""),
         childAssignmentId: childId,
         childThreadId: args.childThreadId,
-    });
+    };
+    assertRunMetadata({ ...run, ...attached });
+    await ctx.db.patch("subagentRuns", run._id, attached);
     if (args.savedMessage)
         await recordRefs(ctx, (await ctx.db.get("assignments", childId)), [args.savedMessage]);
     await wake(ctx, (await ctx.db.get("assignments", childId)));

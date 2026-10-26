@@ -39,6 +39,47 @@ agent index, and `open` looks roots up in `config.agents`.
 Collaboration tools and side reviews call the `coordinate` mutation
 (`coordinate/coordinator.ts`), which runs each op in one transaction.
 
+## Reactive run tree
+
+`runTree({ threadId, rootRunId? })` authorizes the owned root thread and returns
+`{ rootRunId, usage, nodes } | null`. This breaks the previous descendant-array
+contract: consume `.nodes`, including the root. Explicit ids select history
+only within that thread. One query tracks projected queued/running/asleep/done/
+failed statuses, bounded task previews, timestamps, current local tool and exact
+message links. Finished nodes never show tools. Transcript bodies stay native.
+
+`usage.view` runs in the host query, after authorization; without it all usage
+is null. Meter supplies exclusive per-node totals and the request total, keeping
+estimates and settled cost distinct. `delegations` retains paginated stored-state
+history. `turn/tools.ts` records bounded progress around local tools and streams;
+slice/turn/cancellation fences clear it even if the action does not return.
+
+`afterTurn(hc, { turn, text, messageIds })` reports every successful native
+assistant save in the reporting turn, in save order, across tool slices and
+approval pauses/resumes. Assistant tool calls count; separate native tool-result
+rows, pending/failed placeholders and fenced-out saves do not. A pause emits no
+hook until the turn completes. `text` retains its existing meaning: successful
+assistant text from the **completing slice**, joined with newlines. Read earlier
+narration by exact id. No transcript listing or text matching is involved.
+
+The assignment accumulates ids in the native save transaction. One assistant
+row per step bounds the list by run `stepsPerTurn` and any non-default host
+`slicesPerTurn` cap (matching Workflow v1): at most 64 ids × (37 ASCII bytes + 2 Convex string bytes) = 2,496 bytes.
+Prompt/cap/resume metadata brings the reservation to 3 KiB within the 34 KiB
+assignment envelope. New user/queued/child work and a staged `afterTurn`
+continuation start fresh lists; approval resumes retain the list and step count.
+So approving a call requested on the turn's last allowed step ends the turn with
+`SLICE_LIMIT` (`recovery_required`) before the approved tool runs, and a staged
+`afterTurn` continuation past the limit is dropped unsaved. Give `stepsPerTurn`
+(and any host `slicesPerTurn`) headroom when tools need approval.
+
+`ToolContext.promptMessageId?: string` comes from the trusted component claim,
+never tool input. It identifies the user request or child's task that started
+this reporting turn and stays fixed across tool continuations and approval
+resumes, including side reviews. An `afterTurn` continuation uses its staged
+prompt. The native generation anchor can advance independently to an approval
+response. Contexts without a managed prompt may omit the id; hooks inherit it.
+
 ## Background text
 
 `text/options.ts` validates default-on title policy and opt-in summary/cadence

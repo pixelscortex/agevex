@@ -16,9 +16,9 @@ declare const _default: {
                 preview: string;
             } | undefined;
             usage?: {
-                credits?: number | undefined;
                 inputTokens?: number | undefined;
                 outputTokens?: number | undefined;
+                credits?: number | undefined;
             } | undefined;
             failure?: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED" | undefined;
             payloadStorageId?: string | undefined;
@@ -52,20 +52,20 @@ declare const _default: {
             payloadStorageId: import("convex/values").VString<string | undefined, "optional">;
             failure: import("convex/values").VUnion<"INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED" | undefined, [import("convex/values").VLiteral<"UNSUPPORTED_TYPE", "required">, import("convex/values").VLiteral<"UNREADABLE", "required">, import("convex/values").VLiteral<"EMPTY", "required">, import("convex/values").VLiteral<"INVALID_OUTPUT", "required">, import("convex/values").VLiteral<"TOO_LARGE", "required">, import("convex/values").VLiteral<"PROVIDER_UNAVAILABLE", "required">, import("convex/values").VLiteral<"OBJECT_UNAVAILABLE", "required">, import("convex/values").VLiteral<"CHECKSUM_FAILED", "required">], "optional", never>;
             usage: import("convex/values").VObject<{
-                credits?: number | undefined;
                 inputTokens?: number | undefined;
                 outputTokens?: number | undefined;
+                credits?: number | undefined;
             } | undefined, {
                 inputTokens: import("convex/values").VFloat64<number | undefined, "optional">;
                 outputTokens: import("convex/values").VFloat64<number | undefined, "optional">;
                 credits: import("convex/values").VFloat64<number | undefined, "optional">;
-            }, "optional", "credits" | "inputTokens" | "outputTokens">;
+            }, "optional", "inputTokens" | "outputTokens" | "credits">;
             callbacks: import("convex/values").VArray<string[] | undefined, import("convex/values").VString<string, "required">, "optional">;
             fileId: import("convex/values").VString<string, "required">;
             backend: import("convex/values").VString<string, "required">;
             version: import("convex/values").VString<string, "required">;
             optionsHash: import("convex/values").VString<string, "required">;
-        }, "required", "status" | "summary" | "version" | "claim" | "leaseUntil" | "fileId" | "usage" | "failure" | "backend" | "attempt" | "payloadStorageId" | "callbacks" | "optionsHash" | "summary.kind" | "summary.textBytes" | "summary.pages" | "summary.preview" | "summary.language" | "usage.credits" | "usage.inputTokens" | "usage.outputTokens">, {
+        }, "required", "status" | "summary" | "version" | "claim" | "leaseUntil" | "fileId" | "usage" | "usage.inputTokens" | "usage.outputTokens" | "failure" | "backend" | "attempt" | "payloadStorageId" | "callbacks" | "optionsHash" | "summary.kind" | "summary.textBytes" | "summary.pages" | "summary.preview" | "summary.language" | "usage.credits">, {
             by_identity: ["fileId", "backend", "version", "optionsHash", "_creationTime"];
             by_file: ["fileId", "_creationTime"];
         }, {}, {}>;

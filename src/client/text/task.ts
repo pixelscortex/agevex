@@ -188,7 +188,7 @@ async function executeTextTask(
   }
 }
 
-/** <=24 refs * their recorded full native sizes <=2 MiB, plus a <=32 KiB
+/** <=24 refs * their recorded full native sizes <=2 MiB, plus a <=34 KiB
  * assignment and <=16 KiB run. Serialized model input <=48 KiB +8 KiB summary.
  * Drop whole oldest documents on byte overflow. These summaries are display
  * metadata and never replace native messages or modify model context. */

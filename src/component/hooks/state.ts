@@ -18,7 +18,8 @@ import { v } from "convex/values";
 
 /** Record a beforeTurn model choice (validated against the override bounds)
  * and/or count a completed turn. Returns the completed-turn count after this
- * call; throws STALE_TURN for a turn that lost its token. */
+ * call together with all recorded assistant ids; throws STALE_TURN for a
+ * turn that lost its token. */
 export async function recordHookState(
   ctx: MutationCtx,
   args: {
@@ -41,14 +42,23 @@ export async function recordHookState(
 
     // A routing choice can enlarge the model map after acceptance. Reuse the
     // row builder's envelope check before changing this run's bounded metadata.
-    newRun(models, run.settings);
+    newRun(models, run.settings, {
+      rootAssignmentId: run.rootAssignmentId,
+      rootCancellationEpoch: run.rootCancellationEpoch,
+      taskMessageId: run.taskMessageId,
+      taskPreview: run.taskPreview,
+    });
+
     await ctx.db.patch("runs", run._id, { models });
   }
 
   if (args.complete)
     await ctx.db.patch("assignments", row._id, { completedTurns: row.completedTurns + 1 });
 
-  return row.completedTurns + (args.complete ? 1 : 0);
+  return {
+    turn: row.completedTurns + (args.complete ? 1 : 0),
+    messageIds: row.turnReport?.messageIds ?? [],
+  };
 }
 
 /** Stage an afterTurn continuation prompt for this turn's next slice. Returns
@@ -107,6 +117,7 @@ export const hookState = mutation({
     model: v.optional(v.string()),
     complete: v.optional(v.boolean()),
   },
+  returns: v.object({ turn: v.number(), messageIds: v.array(v.string()) }),
   handler: (ctx, args) => recordHookState(ctx, args),
 });
 

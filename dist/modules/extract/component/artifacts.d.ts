@@ -59,9 +59,9 @@ export declare const get: import("convex/server").RegisteredQuery<"public", {
         preview: string;
     } | undefined;
     usage?: {
-        credits?: number | undefined;
         inputTokens?: number | undefined;
         outputTokens?: number | undefined;
+        credits?: number | undefined;
     } | undefined;
     failure?: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED" | undefined;
     payloadStorageId?: string | undefined;
@@ -92,9 +92,9 @@ export declare const lookup: import("convex/server").RegisteredQuery<"public", {
         preview: string;
     } | undefined;
     usage?: {
-        credits?: number | undefined;
         inputTokens?: number | undefined;
         outputTokens?: number | undefined;
+        credits?: number | undefined;
     } | undefined;
     failure?: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED" | undefined;
     payloadStorageId?: string | undefined;
@@ -130,9 +130,9 @@ export declare const complete: import("convex/server").RegisteredMutation<"publi
     } | undefined;
     unknown?: boolean | undefined;
     usage?: {
-        credits?: number | undefined;
         inputTokens?: number | undefined;
         outputTokens?: number | undefined;
+        credits?: number | undefined;
     } | undefined;
     failure?: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED" | undefined;
     payloadStorageId?: string | undefined;

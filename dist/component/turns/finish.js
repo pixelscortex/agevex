@@ -18,6 +18,7 @@ import { disarmRecovery } from "./recovery.js";
 import { disarmSlice } from "./boundaries.js";
 import { completeTextTurn } from "../text/jobs.js";
 import { wake } from "./wake.js";
+import { endRootTurn } from "./run-lifecycle.js";
 /** End the running turn `turnToken`: success idles the thread and wakes
  * queued work; a failure code is deferred behind the settlement fence
  * (children) or parks the thread in recovery_required. Either way the slice
@@ -35,6 +36,7 @@ export async function finishTurn(ctx, args) {
         await markRecoveryRequired(ctx, row, args.errorCode);
     }
     else {
+        await endRootTurn(ctx, row, null);
         await ctx.db.patch("assignments", row._id, {
             turnStatus: "idle",
             turnToken: undefined,
@@ -70,7 +72,9 @@ export async function detectStall(ctx, args) {
 /** Park the assignment for operator recovery with a typed error code. No
  * turn runs again until the host recovers it; wake ignores such rows. */
 export async function markRecoveryRequired(ctx, row, code) {
+    await endRootTurn(ctx, row, code);
     await ctx.db.patch("assignments", row._id, {
+        activeTools: undefined,
         turnStatus: "recovery_required",
         errorCode: code,
     });

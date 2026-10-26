@@ -13,13 +13,17 @@ import { type MutationCtx } from "../_generated/server.js";
 import type { Id } from "../_generated/dataModel.js";
 /** Record a beforeTurn model choice (validated against the override bounds)
  * and/or count a completed turn. Returns the completed-turn count after this
- * call; throws STALE_TURN for a turn that lost its token. */
+ * call together with all recorded assistant ids; throws STALE_TURN for a
+ * turn that lost its token. */
 export declare function recordHookState(ctx: MutationCtx, args: {
     assignmentId: Id<"assignments">;
     executionId: string;
     model?: string;
     complete?: boolean;
-}): Promise<number>;
+}): Promise<{
+    turn: number;
+    messageIds: string[];
+}>;
 /** Stage an afterTurn continuation prompt for this turn's next slice. Returns
  * the staged inbox row id, or null (no continuation) for a stale turn, a
  * cancelled run or an exhausted allowance. */
@@ -34,7 +38,10 @@ export declare const hookState: import("convex/server").RegisteredMutation<"publ
     complete?: boolean | undefined;
     executionId: string;
     assignmentId: import("convex/values").GenericId<"assignments">;
-}, Promise<number>>;
+}, Promise<{
+    turn: number;
+    messageIds: string[];
+}>>;
 /** Stage an afterTurn hook's continuation prompt for the next slice. */
 export declare const continueAdmission: import("convex/server").RegisteredMutation<"public", {
     executionId: string;

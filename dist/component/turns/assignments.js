@@ -1,5 +1,5 @@
 /** The assignment owning a native thread, via the unique `by_thread` index.
- * One indexed point read (<=32 KiB); used by every thread-addressed endpoint. */
+ * One indexed point read (<=34 KiB); used by every thread-addressed endpoint. */
 export function assignmentByThread(ctx, threadId) {
     return ctx.db
         .query("assignments")

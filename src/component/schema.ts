@@ -188,6 +188,9 @@ export default defineSchema({
   // Execution identity and epoch fence every managed write. The native thread
   // owns messages; this row holds only references and coordination facts.
   assignments: defineTable({
+    // Last-started active local calls, in start order. Tool wrappers remove only
+    // their own marker; disarm/cancel clear the whole bounded slice inventory.
+    activeTools: v.optional(v.array(v.object({ key: v.string(), name: v.string() }))),
     // Background worker dispatch and cadence; root-only, read by text/jobs.
     textConfig: v.optional(textConfig),
     // Native thread owns the title body. Version/source fence generated commits.
@@ -273,6 +276,16 @@ export default defineSchema({
     // Claim returns it; the host reads it for beforeTurn and anchors native
     // generation context on it.
     promptMessageId: v.optional(v.string()),
+    // Reporting identity survives approval anchors; claim resets it for new
+    // work/afterTurn prompts, write appends saves, completion reads exact ids.
+    turnReport: v.optional(
+      v.object({
+        promptMessageId: v.string(),
+        messageIds: v.array(v.string()),
+        maxMessages: v.number(),
+        resumeInboxId: v.optional(v.id("inbox")),
+      }),
+    ),
     // Set by wake with the reserved head; read by claim and write.
     turnOrigin: v.optional(turnOrigin),
     inboxId: v.optional(v.id("inbox")),
@@ -364,10 +377,24 @@ export default defineSchema({
     ),
   })
     .index("by_message", ["messageId"])
+    .index("by_run_ready", ["assignmentId", "runId", "passive"])
     .index("by_assignment_ready", ["assignmentId", "passive", "noteEpoch", "sequence"]),
   // A run outlives an individual turn: results and subsequent delegations spend
   // the same launch/hop budget. Results are ready independently of siblings.
   runs: defineTable({
+    // Accepted requests record exact native task links and a UTF-8 preview.
+    // Synthetic budgets (validation/tests) need no root. Tree reads only owned roots.
+    rootAssignmentId: v.optional(v.id("assignments")),
+    // History can observe cancellation even for a terminal-but-undelivered
+    // old request no longer present in the root's current run/ready inbox.
+    rootCancellationEpoch: v.optional(v.number()),
+    taskMessageId: v.optional(v.string()),
+    taskPreview: v.optional(v.string()),
+    startedAt: v.optional(v.number()),
+    turnEndedAt: v.optional(v.number()),
+    finishedAt: v.optional(v.number()),
+    errorCode: v.optional(errorCode),
+    resultMessageId: v.optional(v.string()),
     // Sticky observation failure, read by usageReporting and later tree projections.
     usagePartial: v.optional(v.boolean()),
     // Read by claim/watchdog and betweenSlices. Children inherit this same run id.
@@ -388,7 +415,7 @@ export default defineSchema({
     launches: v.number(),
     hops: v.number(),
     cancelled: v.boolean(),
-  }),
+  }).index("by_root", ["rootAssignmentId"]),
   // Durable facts have separate lifecycles. Effect receipts expire; proposals
   // retire with their pause refs, and attachment attestations track native files.
   // The union avoids dummy lease/result fields on ownership records and adds
@@ -435,6 +462,9 @@ export default defineSchema({
     .index("by_file", ["native", "fileId", "subject", "threadId"])
     .index("by_message", ["native", "messageId"]),
   subagentRuns: defineTable({
+    // Captured atomically with the initial native task; tree never reads bodies.
+    taskMessageId: v.optional(v.string()),
+    taskPreview: v.optional(v.string()),
     side: v.optional(v.boolean()),
     runId: v.string(),
     rootCancellationEpoch: v.number(),
@@ -514,6 +544,7 @@ export default defineSchema({
       "side",
       "deliveryStatus",
       "rootCancellationEpoch",
+      "parentRunId",
     ])
     // Every reader pins actor, epoch and one join state: settlementBlocked
     // (open/sealed/ready), releaseGroups (ready [+ run]), sealGroups (open + run).

@@ -12,6 +12,7 @@
  */
 import { getConvexSize, v } from "convex/values";
 import { LIMITS } from "../limits.js";
+import { assertName } from "../facts.js";
 /** One recorded native message: id, native order/stepOrder and stored size. */
 export const messageRef = v.object({
     id: v.string(),
@@ -96,6 +97,8 @@ export async function reviewWindow(ctx, args) {
 /** Record that a side reviewer consumed the ring up to `boundary` at this
  * turn, replacing its previous entry (at most `LIMITS.sideAgents` reviewers). */
 export async function markReviewed(ctx, args) {
+    // Up to LIMITS.sideAgents names live in `reviewed`; bound each one.
+    assertName(args.agent, "agent");
     const row = await ctx.db.get("assignments", args.assignmentId);
     if (!row || row.cancelled || row.turnToken !== args.executionId)
         throw new Error("STALE_TURN");

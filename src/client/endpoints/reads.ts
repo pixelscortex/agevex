@@ -23,9 +23,11 @@ import {
   type PaginationOptions,
   type PaginationResult,
 } from "convex/server";
-import { ConvexError, v, type Validator } from "convex/values";
+import { ConvexError, getConvexSize, v, type Validator } from "convex/values";
 import { LIMITS } from "../../component/limits.js";
+import { assertFact } from "../../component/facts.js";
 import { activity, subagentRun, vPaginationResult } from "../../component/schema.js";
+import { runTree, TREE_LIMITS } from "../../component/run-tree-values.js";
 import type { ManagedAgent } from "../types.js";
 import { ownedThread, type EndpointContext } from "./access.js";
 
@@ -205,14 +207,47 @@ export function activityEndpoint(ep: EndpointContext) {
 /** Return the current request's full delegation tree after root ownership authorization. */
 export function runTreeEndpoint(ep: EndpointContext) {
   return queryGeneric({
-    args: { threadId: v.string() },
+    args: { threadId: v.string(), rootRunId: v.optional(v.string()) },
+    returns: runTree,
     handler: async (ctx, args) => {
       const row = await ownedThread(ep, ctx, args.threadId, "activity");
 
-      return ctx.runQuery(ep.component.subagents.history.runTree, {
-        threadId: args.threadId,
+      if (args.rootRunId !== undefined) assertFact(args.rootRunId, "rootRunId", "FORBIDDEN");
+
+      const tree = await ctx.runQuery(ep.component.subagents.history.runTree, {
+        ...args,
         subject: row.subject,
       });
+
+      if (!tree) return null;
+
+      if (ep.config.usage?.view) {
+        const partial = await ctx.runQuery(ep.component.turns.slices.usageReporting, {
+          runId: tree.rootRunId,
+        });
+
+        const usage = await ep.config.usage.view(ctx, {
+          subject: row.subject,
+          runId: tree.rootRunId,
+          partial,
+          nodeIds: tree.nodes.map((node) => (node.parentId === null ? null : node.id)),
+        });
+
+        const nodes = new Map(usage.nodes.map((node) => [node.nodeId, node.usage]));
+
+        tree.usage = usage.total;
+
+        for (const node of tree.nodes)
+          node.usage = nodes.get(node.parentId === null ? null : node.id) ?? null;
+      }
+
+      if (
+        Math.max(getConvexSize(tree), new TextEncoder().encode(JSON.stringify(tree)).byteLength) >
+        TREE_LIMITS.outputBytes
+      )
+        throw new Error("RUN_TREE_TOO_LARGE");
+
+      return tree;
     },
   });
 }

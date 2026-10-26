@@ -54,21 +54,47 @@ export declare function activityEndpoint(ep: EndpointContext): import("convex/se
 }>>;
 /** Return the current request's full delegation tree after root ownership authorization. */
 export declare function runTreeEndpoint(ep: EndpointContext): import("convex/server").RegisteredQuery<"public", {
+    rootRunId?: string | undefined;
     threadId: string;
 }, Promise<{
-    runId: string;
-    side: boolean;
-    parentAssignmentId: string;
-    childAssignmentId: string | null;
-    agent: string;
-    status: "failed" | "running" | "completed" | "queued" | "asking";
-    depth: number;
-    group: string | null;
-    childThreadId: string | null;
-    createdAt: number;
-    startedAt: number | null;
-    finishedAt: number | null;
-}[]>>;
+    usage: {
+        unknown: number;
+        inputTokens: number | null;
+        outputTokens: number | null;
+        estimatedUsd: number;
+        settledUsd: number;
+        reporting: "partial" | "available";
+    } | null;
+    rootRunId: string;
+    nodes: {
+        error?: string | undefined;
+        reason?: "cancelled" | "ask" | "children" | "approval" | "budget" | "recovery" | undefined;
+        id: string;
+        startedAt: number | null;
+        status: "failed" | "running" | "queued" | "done" | "asleep";
+        agent: string;
+        finishedAt: number | null;
+        createdAt: number;
+        messages: {
+            taskId?: string | undefined;
+            resultId?: string | undefined;
+            parentResultId?: string | undefined;
+            questionId?: string | undefined;
+            threadId: string;
+        };
+        usage: {
+            unknown: number;
+            inputTokens: number | null;
+            outputTokens: number | null;
+            estimatedUsd: number;
+            settledUsd: number;
+            reporting: "partial" | "available";
+        } | null;
+        parentId: string | null;
+        task: string;
+        currentTool: string | null;
+    }[];
+} | null>>;
 /**
  * Newest-first page of one root's delegated child runs.
  *

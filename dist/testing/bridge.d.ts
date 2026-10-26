@@ -1,3 +1,22 @@
+/** Existing delegation protocol tests inspect stored states (asking/completed),
+ * distinct from the new public asleep/done projection. Never shipped in core.
+ */
+export declare const delegationState: import("convex/server").RegisteredQuery<"internal", {
+    threadId: string;
+}, Promise<{
+    runId: string;
+    side: boolean;
+    parentAssignmentId: import("convex/values").GenericId<"assignments">;
+    childAssignmentId: import("convex/values").GenericId<"assignments"> | null;
+    agent: string;
+    status: "failed" | "running" | "completed" | "queued" | "asking";
+    depth: number;
+    group: string | null;
+    childThreadId: string | null;
+    createdAt: number;
+    startedAt: number | null;
+    finishedAt: number | null;
+}[]>>;
 /** Forward one query to `components[lane][module][name]` of this component. */
 export declare const read: import("convex/server").RegisteredQuery<"internal", {
     name: string;

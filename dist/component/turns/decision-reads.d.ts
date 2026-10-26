@@ -75,8 +75,9 @@ export declare const detail: import("convex/server").RegisteredQuery<"public", {
     tool: string;
     input: any;
 } | null>>;
-/** Root plus bounded live children: <=59*32 KiB assignment metadata +
- * 256*32 KiB compact proposals + <=58*4 KiB child refs <10.1 MiB.
+/** Root plus bounded live children: <=59*34 KiB assignment metadata +
+ * 256*32 KiB compact proposals + <=58*4 KiB child refs +16 KiB run
+ * =10,446 KiB <10.3 MiB <16 MiB. Only <=16 assignments may be paused.
  * Native messages (up to 1 MiB of reasoning each) are never read here.
  * The host projects each item to <=16 KiB, giving <=4 MiB final output.
  */
