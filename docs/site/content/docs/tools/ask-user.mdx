@@ -1,6 +1,6 @@
 ---
 title: Ask the user
-description: Pause for a bounded question and resume with the user's free-text answer.
+description: Pause for a bounded question and resume with the user's validated string or JSON answer.
 status: Available
 ---
 
@@ -27,8 +27,8 @@ records the call as pending and the turn waits. `ASK_USER_LIMITS` cap one
 nonblank, trimmed question at 2000 characters; blank, oversized or extra fields
 (including ownership) become an ordinary tool error and never pause the thread.
 
-Show the pending question from the thread's `messages` (the tool call's
-`input.question`), then answer through core:
+Subscribe to `pendingApprovals({ threadId })` for the owned root and its children;
+render each ask's `question` and optional `schema`, then answer through core:
 
 ```ts title="client/answerQuestion.ts"
 import type { ConvexClient } from "convex/browser";
@@ -38,17 +38,48 @@ export async function answerQuestion(client: ConvexClient, threadId: string, too
   return client.mutation(api.agents.answer, {
     threadId,
     toolCallId,
-    text: "Use the green option",
+    value: "Use the green option",
   });
 }
 ```
 
-Core authorizes the thread owner, saves `text` as the native tool result and
-resumes once every pending call on the thread is answered. The model sees the
-text verbatim. The text is nonempty and at most 16,000 UTF-16 units. Repeating
-the same answer replays the original result; different text is a typed
+Core authorizes the thread owner, validates `value`, saves a native JSON tool result,
+and resumes once every pending call on the thread is answered. Without a schema,
+value is a nonblank string. Answers are at most 16 KiB encoded JSON/Convex bytes. Repeating
+the same answer replays the original result; different values are a typed
 `KEY_CONFLICT`; foreign, unrecorded or cancelled calls are rejected. Deferred
 calls share core's 16-call pause bound with approvals.
 
 No item table or host schema snippet is needed, and the item adds no model
 calls, paid effects or retries. The host's UI and authorization stay host-owned.
+
+## Structured answers and agent policy
+
+The schema is app-supplied; the model supplies only the question:
+
+```ts
+const ask_user = createAskUserTool({
+  answerSchema: {
+    type: "object",
+    required: ["color"],
+    additionalProperties: false,
+    properties: { color: { type: "string", enum: ["green", "red"] } },
+  },
+});
+// answer({ threadId, toolCallId, value: { color: "green" } })
+```
+
+Supported schema keywords: `type` (object, array, string, number, integer,
+boolean, null), `properties`, `required`, `additionalProperties` (boolean),
+`items`, `enum`, `minimum`/`maximum`, `minLength`/`maxLength`,
+`minItems`/`maxItems`, `title`, and `description`. Unknown keywords and remote
+references are refused. Schemas are at most 8 KiB, depth 8, and 32 object fields.
+Malformed answers leave the decision pending; there is no string coercion.
+
+By default only root assignments may use `ask_user`. Children receive a normal
+`ROOT_ONLY` tool result and continue without showing a human prompt. They can use
+`agevex_ask_parent` instead. Set `Agent.askUser: true` to permit a child, or false
+to deny either role. The run snapshots this policy; sharing an Agent object as
+both root and child does not change either assignment's default.
+
+Breaking change: replace `answer.text` with `answer.value` in host clients.

@@ -7,6 +7,8 @@
 
 import { createFunctionHandle, mutationGeneric } from "convex/server";
 import { v } from "convex/values";
+import { decisionValidator } from "../../shared/decisions.js";
+import { effectiveInput } from "./decisions.js";
 import { ownedThread, type EndpointContext } from "./access.js";
 
 /** `respond`: approve or deny one recorded approval request. Idempotent (`replayed`). */
@@ -15,8 +17,7 @@ export function respondEndpoint(ep: EndpointContext) {
     args: {
       threadId: v.string(),
       approvalId: v.string(),
-      approved: v.boolean(),
-      reason: v.optional(v.string()),
+      decision: decisionValidator,
     },
     returns: v.object({ messageId: v.string(), replayed: v.boolean() }),
     handler: async (ctx, args) => {
@@ -26,8 +27,8 @@ export function respondEndpoint(ep: EndpointContext) {
         assignmentId: row.assignmentId,
         subject: row.subject,
         approvalId: args.approvalId,
-        approved: args.approved,
-        ...(args.reason !== undefined ? { reason: args.reason } : {}),
+        decision: args.decision,
+        ...(await effectiveInput(ep, ctx, row, args.approvalId, args.decision)),
         addMessages: await createFunctionHandle(row.native.component.messages.addMessages),
       });
     },
@@ -37,7 +38,7 @@ export function respondEndpoint(ep: EndpointContext) {
 /** `answer`: supply the result of one recorded deferred tool call. Idempotent (`replayed`). */
 export function answerEndpoint(ep: EndpointContext) {
   return mutationGeneric({
-    args: { threadId: v.string(), toolCallId: v.string(), text: v.string() },
+    args: { threadId: v.string(), toolCallId: v.string(), value: v.any() },
     returns: v.object({ messageId: v.string(), replayed: v.boolean() }),
     handler: async (ctx, args) => {
       const row = await ownedThread(ep, ctx, args.threadId, "answer");
@@ -46,7 +47,7 @@ export function answerEndpoint(ep: EndpointContext) {
         assignmentId: row.assignmentId,
         subject: row.subject,
         toolCallId: args.toolCallId,
-        text: args.text,
+        value: args.value,
       });
     },
   });

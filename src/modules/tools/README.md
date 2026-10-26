@@ -13,9 +13,12 @@ from `ToolContext`, never model arguments. Host-facing endpoints must authorize
 the caller before invoking internal state functions.
 
 `ask_user: createAskUserTool()` defers execution until the owner calls core
-`answer`. Register `continue_budget: createContinueBudgetTool()` on root agents
+`answer({ threadId, toolCallId, value })`. Optional `answerSchema` validates
+structured JSON; otherwise value is a nonblank string. Root-only by default;
+`Agent.askUser: true` permits children and false denies either role. Subscribe to
+`pendingApprovals` for bounded root/child questions. Register `continue_budget: createContinueBudgetTool()` on root agents
 only. In an authorized host mutation, record consent only after a fresh approved
-core `respond`; later call `resumeAfterBudgetStop` in one mutation with callbacks
+core `respond({ decision: { kind: "approve" } })`; later call `resumeAfterBudgetStop` in one mutation with callbacks
 for activity, consent consumption, budget update, cancellation and fresh send.
 A rejected/duplicate send throws so the whole transaction rolls back. Unknown
 paid outcomes are never resumed or retried automatically.

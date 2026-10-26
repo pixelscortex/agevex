@@ -60,3 +60,5 @@ export { defineTask, runTask } from "./tasks.js";
 export type { Task, TaskOptions, TaskOutcome } from "./tasks.js";
 
 export type { ThreadTextOptions, TextTaskOptions, TextTaskArgs } from "./text/options.js";
+
+export { assertFormSchema, type JsonSchema, type Decision } from "../shared/decisions.js";

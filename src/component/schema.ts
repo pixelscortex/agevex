@@ -297,6 +297,8 @@ export default defineSchema({
             // provider-executed call is consumed by the next assistant response:
             // a turn only runs once every recorded request is resolved).
             resolved: v.optional(v.literal(true)),
+            // Receipt binding exists even after its retention window; fail closed on expiry.
+            effective: v.optional(v.boolean()),
           }),
         ),
       }),

@@ -562,6 +562,37 @@ by `runLaunches` (maximum 50); the active descendant cap remains 15.
 
 ## Cancellation and approvals
 
+Human decisions use `respond({ threadId, approvalId, decision })`:
+`{ kind: "approve" }`, `{ kind: "reject", reason? }`, or
+`{ kind: "approve", edit: { input } }`. Declared local tools with an executable
+binding can be edited; provider-executed and deferred tools cannot. The host
+validates edited input with the registered tool schema in the response transaction.
+Invalid edits leave the request pending. `defineOnceTool({ approval: { editable: true }, ... })`
+also enables approval without separately setting `needsApproval`.
+
+An edited approval preserves the original native proposal. A receipt binds the
+exact tool call to effective input and original/effective hashes. The native approval
+response carries this audit annotation in its reason, and the native result is
+`{ result, approval: { toolCallId, input, originalHash, effectiveHash, edited } }`.
+Hooks and the once-tool fingerprint see the effective input; `beforeTool` may deny
+work, but rewriting approved input returns `APPROVED_INPUT_CHANGED`. Cancellation
+and current host execution authorization still apply. No paid effect is retried.
+
+`pendingApprovals({ threadId, rootRunId? })` authorizes the root and includes its
+current owned child decisions. Each item contains `id`, `toolCallId`, `threadId`,
+`agent`, `kind` (`approval` or `ask`), `tool`, `input`, `editable`,
+`providerExecuted`, and optional `question`/`schema`. The optional run selector
+must match the root's current request. Subscribe to this query to render controls.
+
+Bounds are shared: 16 calls per paused assignment, 16 paused assignments, 16 KiB
+per input/answer/complete pending source document, 16 KiB per projected item and
+4 MiB per pending query output. Native storage may repeat raw input, so the whole
+source envelope must fit. Oversized saves roll back without an actionable pause.
+Exact source IDs avoid transcript scans; oversized direct native sources return
+`PENDING_SOURCE_TOO_LARGE`. Decisions and answers retain the seven-day response
+receipt: identical retries return the first `{ messageId, replayed: true }`, and
+changed payloads return `KEY_CONFLICT`.
+
 `cancel({ threadId })` is owner-authorized and root-only. It increments the
 epoch, cancels root/child workflows and clears queued work. Running actions
 poll about once a second and abort their signal. Native and managed-tool
@@ -576,7 +607,7 @@ At the hard maximum of 15 descendants, cancel covers 16 assignments, up to
 
 Pending native tool approvals block generation and leave the inbox row
 waiting, avoiding Agent 0.7.7's automatic denial on a new generation.
-Approval responses must go through `respond({ threadId, approvalId, approved, reason? })`; a response saved directly through the Agent component is not seen by the runtime. `respond` and `answer` return `{ messageId, replayed }`: an identical retry replays the original `messageId` with `replayed: true`, so a host can record single-use effects (such as spending consent) only for the first decision.
+Approval responses must go through `respond({ threadId, approvalId, decision })`; a response saved directly through the Agent component is not seen by the runtime. `respond` and `answer` return `{ messageId, replayed }`: an identical retry replays the original `messageId` with `replayed: true`, so a host can record single-use effects (such as spending consent) only for the first decision.
 
 ## Effects that must run once
 
@@ -728,12 +759,13 @@ defaults. Maps have at most 8 entries and 512 Convex-encoded bytes (ids ≤200
 characters), keeping cancel's per-run read budget at 1 KiB.
 
 Tools declared without `execute` use Agent's native deferred results. The owner
-calls `answer({ threadId, toolCallId, text })` to save a native text tool result
+calls `answer({ threadId, toolCallId, value })` to save a native JSON tool result
 and resume when all pending calls have answers. `answer` also supports owned
 child threads and rejects unrecorded, foreign, cancelled, or already answered
-calls. Text is non-empty and ≤16,000 UTF-16 units. Mixed approvals and deferred
+calls. Without a form schema, value must be a nonblank string. Answers are ≤16 KiB
+(encoded JSON and Convex bytes). Mixed approvals and deferred
 calls share the 16-call pause bound; `respond` handles approval decisions and
-`answer` handles free text. Cancel settles only open recorded calls with native
+`answer` handles validated JSON. Cancel settles only open recorded calls with native
 execution-denied results. Payloads remain in Agent storage; coordination stores
 only hashed call ids and exact message references.
 
@@ -889,3 +921,16 @@ clearly unless all three `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` and
 `LANGFUSE_BASE_URL` entries exist in the main checkout's `.env.local`. This
 smoke test uses synthetic model events and one ingestion POST, with no paid
 model requests.
+
+`createAskUserTool({ answerSchema? })` accepts an app-supplied JSON Schema form.
+Questions remain model-supplied strings (≤2000 characters); schemas are stored with
+the exact native call. Use `answer({ threadId, toolCallId, value })` for either a
+plain string or structured JSON. Invalid values leave the question pending.
+`Agent.askUser` defaults to root-only: children receive `ROOT_ONLY` without a
+human pause and should use `agevex_ask_parent`. Explicit true/false applies to
+either persisted role, including an Agent shared between root and child graphs.
+
+Breaking changes in v2: `respond.approved` becomes `respond.decision` (a rejection
+reason lives inside the decision), and `answer.text` becomes `answer.value`.
+Update host budget-consent wrappers to check `decision.kind === "approve"` and
+`!response.replayed` before recording consent. No persisted-data adapter is needed.

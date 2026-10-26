@@ -156,7 +156,7 @@ it.each(["stream", "generate"] as const)(
       await owner(t).mutation(api.agents.respond, {
         threadId: receipt.threadId,
         approvalId: approval.approvalId,
-        approved: true,
+        decision: { kind: "approve" as const },
       });
     }
 

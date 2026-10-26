@@ -21,6 +21,11 @@ export const api = anyApi as unknown as ApiFromModules<{
 export const native = componentsGeneric().agent as unknown as NativeApi;
 export const managed = componentsGeneric().agevex as unknown as ComponentApi;
 export function setup() {
+  state.effects.length = 0;
+  state.hookInputs.length = 0;
+  state.rewrite = false;
+  child.steps = null;
+  child.askUser = undefined;
   state.calls.length = 0;
   state.steps.length = 0;
   child.calls.length = 0;
@@ -31,6 +36,11 @@ export function setup() {
     transactionLimits: true,
     modules: {
       ...import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]),
+      "./fixture/host.ts": async () => {
+        const host = await import("./fixture/host.js");
+
+        return { ...host, ...host.fixtureExports() };
+      },
       "./fixture/todoState.ts": () => import("../../src/modules/tools/registry/todo/todoState.js"),
       "./fixture/goalsState.ts": () =>
         import("../../src/modules/tools/registry/goals/goalsState.js"),

@@ -71,7 +71,7 @@ it("continue_budget pauses at its hard maximum, authorizes the responder, and re
   const response = {
     threadId: receipt.threadId,
     approvalId: await approvalId(t, receipt.assignmentId),
-    approved: true,
+    decision: { kind: "approve" as const },
   };
 
   await expect(
@@ -112,8 +112,7 @@ it("continue_budget denial resumes without an approved tool execution", async ()
   await alice.mutation(api.host.respond, {
     threadId: receipt.threadId,
     approvalId: await approvalId(t, receipt.assignmentId),
-    approved: false,
-    reason: "Stop here.",
+    decision: { kind: "reject" as const, reason: "Stop here." },
   });
 
   await drain(t);
@@ -192,7 +191,11 @@ async function stoppedForBudget(
   // "approve" is the host's approve action (core respond + consent record in one
   // transaction). "core-only" answers through core respond and records nothing.
   if (answer === "approve") await alice.mutation(api.host.approveContinue, args);
-  else await alice.mutation(api.host.respond, { ...args, approved: answer === "core-only" });
+  else
+    await alice.mutation(api.host.respond, {
+      ...args,
+      decision: { kind: answer === "core-only" ? ("approve" as const) : ("reject" as const) },
+    });
 
   await drain(t);
 
@@ -244,7 +247,7 @@ it("an approval first decided through plain core respond never becomes consent, 
   await alice.mutation(api.host.respond, {
     threadId: receipt.threadId,
     approvalId: second,
-    approved: true,
+    decision: { kind: "approve" as const },
   });
 
   await drain(t);
@@ -612,7 +615,7 @@ it("a delegated child cannot record consent through the approve action, and call
   await alice.mutation(api.host.respond, {
     threadId: childThreadId,
     approvalId: childApproval,
-    approved: true,
+    decision: { kind: "approve" as const },
   });
 
   await drain(t);
@@ -727,7 +730,7 @@ it("an approval recorded during an earlier run cannot resume a later run's stop"
   await first.alice.mutation(api.host.respond, {
     threadId: first.receipt.threadId,
     approvalId: second,
-    approved: true,
+    decision: { kind: "approve" as const },
   });
 
   await drain(t);

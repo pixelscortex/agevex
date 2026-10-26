@@ -40,6 +40,7 @@ type OnceConfig<Input, Output> = {
   input: z.ZodType<Input>;
   run: (input: Input, context: ToolContext) => Promise<Output> | Output;
   key?: (input: Input, context: ToolContext) => string;
+  approval?: { editable: true };
   repeatSafe?: boolean;
   leaseMs?: number;
 };
@@ -56,6 +57,7 @@ export function defineOnceTool<Input, Output extends Value>(
     tool({
       description: config.description ?? config.name,
       inputSchema: config.input,
+      ...(config.approval ? { needsApproval: true } : {}),
       execute: async (): Promise<Output> => {
         throw new Error("MANAGED_TOOL_CONTEXT_REQUIRED");
       },

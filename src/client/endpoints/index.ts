@@ -12,6 +12,7 @@ import type { ComponentApi } from "../../component/_generated/component.js";
 import type { RuntimeContext } from "../registration/context.js";
 import type { Registration } from "../types.js";
 import { createEndpointContext } from "./access.js";
+import { pendingApprovalsEndpoint } from "./pending.js";
 import { answerEndpoint, cancelEndpoint, respondEndpoint } from "./controls.js";
 import {
   activityEndpoint,
@@ -41,6 +42,7 @@ export function authorizedEndpoints(
     open: openEndpoint(ep),
     send: sendEndpoint(ep),
     respond: respondEndpoint(ep),
+    pendingApprovals: pendingApprovalsEndpoint(ep),
     answer: answerEndpoint(ep),
     cancel: cancelEndpoint(ep),
     messages: messagesEndpoint(ep),

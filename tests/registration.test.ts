@@ -50,16 +50,16 @@ it("registers a Main -> Researcher graph and rejects an unusable one", () => {
   );
 });
 
-it("registering the same Agent object as both a root and a child throws ROOT_AS_CHILD", () => {
+it("the same Agent object may serve both root and child assignment roles", () => {
   const parent = new Agent(components.agent, {
     name: "Parent",
     languageModel: mockModel(),
     subagents: [child],
   });
 
-  expect(() => registerAgent(components.agevex, { ...policy, agents: [parent, child] })).toThrow(
-    "ROOT_AS_CHILD",
-  );
+  expect(() =>
+    registerAgent(components.agevex, { ...policy, agents: [parent, child] }),
+  ).not.toThrow();
 });
 
 it("rejects an invalid delegation graph instead of pretending collaboration exists", () => {
@@ -144,7 +144,7 @@ it("rejects an invalid delegation graph instead of pretending collaboration exis
 
   expect(() =>
     registerAgent(components.agevex, { ...policy, agents: [parentOfHostRoot, hostRoot] }),
-  ).toThrow("ROOT_AS_CHILD");
+  ).toThrow("DUPLICATE_AGENT_NAME");
 
   // A self-referencing declaration is a cycle, not a graph.
   const looping = new Agent(components.agent, {

@@ -19,6 +19,7 @@ import { internal } from "../_generated/api.js";
 import type { MutationCtx } from "../_generated/server.js";
 import type { Doc } from "../_generated/dataModel.js";
 import { LIMITS } from "../limits.js";
+import { prepareDecisions, boundDecisionSources } from "./decision-save.js";
 import { recordMessages } from "../hooks/refs.js";
 import { runById } from "../subagents/runs.js";
 import { disarmRecovery } from "./recovery.js";
@@ -41,6 +42,8 @@ export const writeArgs = {
   nativeStream: v.optional(v.string()),
   trackUsage: v.optional(v.boolean()),
   deferredTools: v.optional(v.array(v.string())),
+  askUserSchema: v.optional(v.any()),
+  boundedDecisions: v.optional(v.boolean()),
   nativeMessages: v.optional(
     v.object({
       getMessages: v.string(),
@@ -68,6 +71,8 @@ export async function fencedWrite(ctx: MutationCtx, args: WriteArgs): Promise<un
   )
     throw new Error("INVALID_DEFERRED_TOOLS");
 
+  if (args.nativeMessages) await prepareDecisions(ctx, row, args.args, args.askUserSchema);
+
   if (
     args.nativeMessages &&
     countPauseRequests(args.args.messages, deferredTools) > LIMITS.approvalsPerPause
@@ -78,6 +83,8 @@ export async function fencedWrite(ctx: MutationCtx, args: WriteArgs): Promise<un
 
   if (args.nativeMessages) {
     const messages = (result as { messages: MessageDoc[] }).messages;
+
+    if (args.boundedDecisions) boundDecisionSources(messages, deferredTools);
 
     await recordNativeSave(ctx, row, args, messages, deferredTools);
   }

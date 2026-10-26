@@ -3203,12 +3203,12 @@ it.each(
         ? owner(t).mutation(api.agents.answer, {
             threadId: child.threadId,
             toolCallId: "r3-question",
-            text: "Use the answered revision",
+            value: "Use the answered revision",
           })
         : owner(t).mutation(api.agents.respond, {
             threadId: child.threadId,
             approvalId: "r3-approval",
-            approved: false,
+            decision: { kind: "reject" as const },
           });
 
     if (delivery === "before") await failDelivery();
@@ -3339,7 +3339,7 @@ it.each([1, HOST_LIMITS.messagesPerChild.max])(
     await owner(t).mutation(api.agents.answer, {
       threadId: child.threadId,
       toolCallId: "reserved-deferred-question",
-      text: "Use the final revision from this deferred answer",
+      value: "Use the final revision from this deferred answer",
     });
 
     v2.steps.Builder = () => text("Builder completed after the deferred answer");

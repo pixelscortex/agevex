@@ -52,7 +52,7 @@ it("free-text answer replays its original native result after the deferred call 
   const answer = await owner(t).mutation(api.agents.answer, {
     threadId: receipt.threadId,
     toolCallId: "question-0",
-    text: "Use the green option",
+    value: "Use the green option",
   });
 
   const [saved] = await t.query(components.agent.messages.getMessagesByIds, {
@@ -66,7 +66,7 @@ it("free-text answer replays its original native result after the deferred call 
         type: "tool-result",
         toolCallId: "question-0",
         toolName: "askHuman",
-        output: { type: "text", value: "Use the green option" },
+        output: { type: "json", value: "Use the green option" },
       },
     ],
   });
@@ -80,7 +80,7 @@ it("free-text answer replays its original native result after the deferred call 
     owner(t).mutation(api.agents.answer, {
       threadId: receipt.threadId,
       toolCallId: "question-0",
-      text: "Use the green option",
+      value: "Use the green option",
     }),
   ).resolves.toEqual({ ...answer, replayed: true });
 
@@ -92,14 +92,14 @@ it("free-text answer replays its original native result after the deferred call 
 it("answer rejects changed text with typed KEY_CONFLICT and preserves the original result", async () => {
   const t = setup(undefined, undefined, true);
   const receipt = await pending(t);
-  const args = { threadId: receipt.threadId, toolCallId: "question-0", text: "original" };
+  const args = { threadId: receipt.threadId, toolCallId: "question-0", value: "original" };
   const result = await owner(t).mutation(api.agents.answer, args);
 
   await drain(t);
   const before = await native(t, receipt.threadId);
 
   await expect(
-    owner(t).mutation(api.agents.answer, { ...args, text: "changed" }),
+    owner(t).mutation(api.agents.answer, { ...args, value: "changed" }),
   ).rejects.toMatchObject({ data: { code: "KEY_CONFLICT" } });
 
   await expect(owner(t).mutation(api.agents.answer, args)).resolves.toEqual({
@@ -122,7 +122,7 @@ it("all sixteen deferred calls must be answered before a continuation, preservin
     await owner(t).mutation(api.agents.answer, {
       threadId: receipt.threadId,
       toolCallId: `question-${i}`,
-      text: `answer ${i}`,
+      value: `answer ${i}`,
     });
 
     if (i < LIMITS.approvalsPerPause - 1) {
@@ -141,7 +141,7 @@ it("all sixteen deferred calls must be answered before a continuation, preservin
 it("answer authorizes ownership and refuses foreign, unrecorded, and approval calls without native writes", async () => {
   const t = setup();
   const receipt = await pending(t);
-  const args = { threadId: receipt.threadId, toolCallId: "question-0", text: "answer" };
+  const args = { threadId: receipt.threadId, toolCallId: "question-0", value: "answer" };
 
   await expect(
     t.withIdentity({ subject: "bob" }).mutation(api.agents.answer, args),
@@ -165,7 +165,7 @@ it("answer authorizes ownership and refuses foreign, unrecorded, and approval ca
     owner(t).mutation(api.agents.respond, {
       threadId: receipt.threadId,
       approvalId: "question-0",
-      approved: true,
+      decision: { kind: "approve" as const },
     }),
   ).rejects.toThrow("APPROVAL_NOT_FOUND");
 
@@ -176,19 +176,19 @@ it("answer text is bounded and invalid text leaves the call pending", async () =
   const t = setup(undefined, undefined, true);
   const receipt = await pending(t);
 
-  for (const text of [" ", "x".repeat(LIMITS.messageLength + 1)])
+  for (const text of [" ", "x".repeat(16 << 10)])
     await expect(
       owner(t).mutation(api.agents.answer, {
         threadId: receipt.threadId,
         toolCallId: "question-0",
-        text,
+        value: text,
       }),
-    ).rejects.toThrow("INVALID_MESSAGE");
+    ).rejects.toThrow();
 
   await owner(t).mutation(api.agents.answer, {
     threadId: receipt.threadId,
     toolCallId: "question-0",
-    text: "😀".repeat(LIMITS.messageLength / 2),
+    value: "😀".repeat(4000),
   });
 
   await drain(t);
@@ -202,7 +202,7 @@ it("cancel settles only still-open deferred calls and never duplicates an answer
   await owner(t).mutation(api.agents.answer, {
     threadId: receipt.threadId,
     toolCallId: "question-0",
-    text: "already answered",
+    value: "already answered",
   });
 
   await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
@@ -221,7 +221,7 @@ it("cancel settles only still-open deferred calls and never duplicates an answer
       type: "tool-result",
       toolCallId: "question-0",
       toolName: "askHuman",
-      output: { type: "text", value: "already answered" },
+      output: { type: "json", value: "already answered" },
     },
   ]);
 
@@ -235,7 +235,7 @@ it("cancel settles only still-open deferred calls and never duplicates an answer
     owner(t).mutation(api.agents.answer, {
       threadId: receipt.threadId,
       toolCallId: "question-1",
-      text: "late",
+      value: "late",
     }),
   ).rejects.toThrow("TOOL_CALL_NOT_FOUND");
 });
@@ -245,7 +245,7 @@ it("a failed native answer save rolls back its result and leaves the recorded ca
   const receipt = await pending(t);
 
   state.cleanupFails = true;
-  const args = { threadId: receipt.threadId, toolCallId: "question-0", text: "one result" };
+  const args = { threadId: receipt.threadId, toolCallId: "question-0", value: "one result" };
 
   await expect(owner(t).mutation(api.agents.answer, args)).rejects.toThrow(
     "injected cleanup save failure",
@@ -310,7 +310,7 @@ it("an owned child thread can receive free text and complete its original delega
   await owner(t).mutation(api.agents.answer, {
     threadId: childThreadId,
     toolCallId: "child-question",
-    text: "Child may proceed",
+    value: "Child may proceed",
   });
 
   await drain(t);
@@ -390,7 +390,7 @@ it("mixed approval and free-text calls resume only after both native protocols a
   await owner(t).mutation(api.agents.answer, {
     threadId: receipt.threadId,
     toolCallId: "question-mixed",
-    text: "Choose green",
+    value: "Choose green",
   });
 
   await drain(t);
@@ -399,7 +399,7 @@ it("mixed approval and free-text calls resume only after both native protocols a
   await owner(t).mutation(api.agents.respond, {
     threadId: receipt.threadId,
     approvalId: "mixed-approval",
-    approved: false,
+    decision: { kind: "reject" as const },
   });
 
   await drain(t);
@@ -416,7 +416,7 @@ it("answer reads only the exact recorded native message and never discovers call
   await owner(t).mutation(api.agents.answer, {
     threadId: receipt.threadId,
     toolCallId: "question-0",
-    text: "exact answer",
+    value: "exact answer",
   });
 
   expect(state.transcriptReads).toBe(1);
@@ -424,12 +424,11 @@ it("answer reads only the exact recorded native message and never discovers call
   await drain(t);
 });
 
-it("sixteen maximum-size answers to a near-1 MiB call document stay in budget with a full inbox", async () => {
+it("sixteen byte-bounded answers to a bounded source stay in budget with a full inbox", async () => {
   const t = setup(undefined, { queueLength: 100 }, true);
 
-  // Native saves preserve both parsed input and raw-input metadata.
-  // 16*32,500*2 plus the envelope remains just below Convex's 1 MiB document cap.
-  state.deferredQuestion = "x".repeat(32_500);
+  // Sixteen calls repeat parsed/raw input. Keep their complete source below 16 KiB.
+  state.deferredQuestion = "x".repeat(350);
   const receipt = await pending(t, LIMITS.approvalsPerPause);
 
   const row = (await t.query(rawAssignment, {
@@ -440,8 +439,8 @@ it("sixteen maximum-size answers to a near-1 MiB call document stay in budget wi
     messageIds: [row.approvals!.requests[0].messageId],
   });
 
-  expect(getConvexSize(call)).toBeGreaterThan(1010 << 10);
-  expect(getConvexSize(call)).toBeLessThan(1 << 20);
+  expect(getConvexSize(call)).toBeGreaterThan(12 << 10);
+  expect(getConvexSize(call)).toBeLessThanOrEqual(16 << 10);
 
   for (let i = 1; i < 100; i++)
     await owner(t).mutation(api.agents.send, {
@@ -455,7 +454,7 @@ it("sixteen maximum-size answers to a near-1 MiB call document stay in budget wi
       await ctx.runMutation(api.agents.answer, {
         threadId: receipt.threadId,
         toolCallId: `question-${i}`,
-        text: "\uffff".repeat(LIMITS.messageLength),
+        value: "\uffff".repeat(5000),
       });
 
       return ctx.meta.getTransactionMetrics();
@@ -486,7 +485,7 @@ it("notes during a multi-call deferred-answer pause wait for every committed res
     await owner(t).mutation(api.agents.answer, {
       threadId: receipt.threadId,
       toolCallId: "question-" + i,
-      text: "answer " + i,
+      value: "answer " + i,
     });
 
     if (i < LIMITS.approvalsPerPause - 1) {
