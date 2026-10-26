@@ -70,6 +70,10 @@ it("a full 34 KiB child drains 50 deferred groups and maximum notes with six nat
 
   expect(metrics.bytesRead.used).toBeLessThan(13 << 20);
   expect(metrics.bytesWritten.used).toBeLessThan(4 << 20);
+  // Regression tripwires well inside those documented ceilings: measured
+  // 8,351 KiB read / 1,015 KiB written, plus 25%.
+  expect(metrics.bytesRead.used).toBeLessThan(10_440 << 10);
+  expect(metrics.bytesWritten.used).toBeLessThan(1_270 << 10);
   expect(metrics.documentsRead.used).toBeLessThan(2_000);
   expect(metrics.documentsWritten.used).toBeLessThan(600);
   const claimed = (await t.query(rawAssignment, { assignmentId: childId }))!;

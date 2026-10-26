@@ -120,6 +120,10 @@ it("cancel clears 2,432 ready rows and 168 maximum-size budgets across sixteen a
 
   expect(metrics.bytesRead.used).toBeLessThanOrEqual(15_820 << 10);
   expect(metrics.bytesWritten.used).toBeLessThanOrEqual(12_206 << 10);
+  // Regression tripwires well inside the documented limits.ts ceilings:
+  // measured 10,642 KiB read / 3,032 KiB written, plus 25%.
+  expect(metrics.bytesRead.used).toBeLessThan(13_305 << 10);
+  expect(metrics.bytesWritten.used).toBeLessThan(3_790 << 10);
   expect(metrics.documentsRead.used).toBeLessThan(32_000);
   expect(metrics.documentsWritten.used).toBeLessThan(16_000);
   const after = await t.query(queuedWork, {});
