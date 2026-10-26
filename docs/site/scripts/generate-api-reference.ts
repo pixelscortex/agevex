@@ -110,11 +110,14 @@ function failure(label: string, fallback: string) {
 
   return specific[label] ?? fallback;
 }
+// One row per call signature, so every overload is documented.
 function signatureRow(label: string, type: ts.Type, node: ts.Node, error: string) {
-  const sig = type.getCallSignatures()[0];
-
-  if (!sig) return "";
-
+  return type
+    .getCallSignatures()
+    .map((sig) => signatureRowFor(label, sig, node, error))
+    .join("\n");
+}
+function signatureRowFor(label: string, sig: ts.Signature, node: ts.Node, error: string) {
   error = failure(label, error);
   const generics = sig.declaration?.typeParameters?.map((p) => clean(p.getText())).join(", ");
   const display = label + (generics ? `<${generics}>` : "");

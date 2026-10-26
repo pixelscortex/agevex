@@ -132,7 +132,50 @@ A definite `FORBIDDEN` or `SANDBOX_FORBIDDEN` policy refusal stops provider
 access; other policy errors are treated as transient until the deadline.
 `cleanup` is explicitly host-driven; mounting installs no timer.
 
-## Exports and recovery
+## Binary writes, exports and recovery
+
+`writeBytes(ctx, { subject, threadId, runId, path, source, maxBytes? })` writes
+binary files from a host action. Pass trusted scope facts and either
+`source: { storageId }` or `source: { bytes: Uint8Array }`. With an existing
+trusted tool context, call `writeBytes(tc, { path, source, maxBytes? })`.
+Host wrappers must authorize storage ownership as well as sandbox access.
+
+```ts
+const written = await sandbox.writeBytes(ctx, {
+  subject,
+  threadId,
+  runId,
+  path: "/tmp/image.png",
+  source: { storageId },
+});
+// written: { bytes: number, sha256: string }
+```
+
+The default maximum is 8 MiB, sharing `limits.exportBytes`; each provider window
+is at most 512 KiB. For up to 64 MiB, export `sandboxNodeWrite(options)` from a
+host `"use node"` file and pass its action reference as `nodeWrite`. This shares
+`limits.exportBytesNode` and delegates storage sources only. `maxBytes` can lower
+the registered bound; oversize files throw `SandboxWriteError` with
+`code: "SANDBOX_WRITE_TOO_LARGE"` before provider work.
+
+Each write stages in its own hidden sibling of the target, named
+`.agevex-write-<hash of path>-<random id>.tmp`, verifies size and SHA-256, then
+atomically renames it over the target. Overlapping writers never touch each
+other's stage; the last committed writer wins and the target is never mixed. An
+interruption preserves the previous target (or leaves no target for a new file),
+and explicit retries safely restart from zero with a fresh stage. A new file is
+created `0666` and follows the sandbox umask; an existing regular target keeps its
+permission bits (ownership is not copied). Failure cleanup discards the stage. If
+an action dies first, a later write to the same path removes that path's abandoned
+`.agevex-write-*.tmp` stages and windows once they are an hour old, scanning at
+most 4,096 directory entries and removing at most 16 files. Providers implement
+`writeWindow`, `commitWrite`, `discardWrite` and `reclaimWrites`: exact duplicate
+windows are no-ops; gaps, partial overlaps and conflicting bytes throw
+`SANDBOX_WRITE_OFFSET_MISMATCH`. Typed `SandboxWriteError` codes are also kept when
+the write runs in the Node action. Hosts need no shell or encoding workaround.
+
+The `(ctx, ...)` overload trusts the `subject`, `threadId` and `runId` it receives.
+Derive them from host-owned rows, never from model or request input.
 
 `export(ctx, { threadId, path })` authorizes an existing binding, downloads
 bounded windows, hashes the bytes and stores a native Agent file. It returns
@@ -158,12 +201,15 @@ Generated from the current exported TypeScript signatures in [the module entry](
 | `sandboxCompletion`         | `runtime: \| { sandboxComplete( ctx: GenericMutationCtx<GenericDataModel>, event: SandboxCompletion, ): unknown; } \| (() => { sandboxComplete( ctx: GenericMutationCtx<GenericDataModel>, event: SandboxCompletion, ): unknown; })` | `(ctx: GenericMutationCtx<GenericDataModel>, event: SandboxJobEvent) => Promise<void>`                                                                                                                                                                                                                                       | Callback authorization/failure rolls back settlement.                               |
 | `defineSandbox`             | `options: SandboxOptions`                                                                                                                                                                                                            | `SandboxClient`                                                                                                                                                                                                                                                                                                              | Host policy or SANDBOX\_\* argument/state errors; uncertain effects remain unknown. |
 | `sandboxNodeExport`         | `options: SandboxOptions`                                                                                                                                                                                                            | `RegisteredAction<"internal", { threadId: string; path: string; }, Promise<SandboxExportResult>>`                                                                                                                                                                                                                            | Host policy or SANDBOX\_\* argument/state errors; uncertain effects remain unknown. |
+| `sandboxNodeWrite`          | `options: SandboxOptions`                                                                                                                                                                                                            | `RegisteredAction<"internal", { maxBytes?: number \| undefined; subject: string; threadId: string; runId: string; source: { storageId: Id<"_storage">; }; path: string; }, Promise<SandboxWriteResult>>`                                                                                                                     | Host policy or SANDBOX\_\* argument/state errors; uncertain effects remain unknown. |
 | `daytona`                   | `component: ComponentApi, opts?: DaytonaSandboxOptions`                                                                                                                                                                              | `SandboxProvider`                                                                                                                                                                                                                                                                                                            | Host policy or SANDBOX\_\* argument/state errors; uncertain effects remain unknown. |
 | `sandbox.tools`             | `context?: ToolContext`                                                                                                                                                                                                              | `ReturnType<SandboxClient["tools"]>`                                                                                                                                                                                                                                                                                         | Host policy or SANDBOX\_\* argument/state errors; uncertain effects remain unknown. |
 | `sandbox.slot`              | `—`                                                                                                                                                                                                                                  | `SandboxSlot`                                                                                                                                                                                                                                                                                                                | Host policy or SANDBOX\_\* argument/state errors; uncertain effects remain unknown. |
 | `sandbox.scopeKey`          | `tc: SandboxFacts`                                                                                                                                                                                                                   | `Promise<string>`                                                                                                                                                                                                                                                                                                            | Host policy or SANDBOX\_\* argument/state errors; uncertain effects remain unknown. |
 | `sandbox.prepare`           | `tc: SandboxCall, opts?: { existingOnly?: boolean }`                                                                                                                                                                                 | `Promise<{ sandboxId: string; scopeKey: string; claim: string; }>`                                                                                                                                                                                                                                                           | Host policy or SANDBOX\_\* argument/state errors; uncertain effects remain unknown. |
 | `sandbox.readFile`          | `tc: SandboxCall, input: { path: string }`                                                                                                                                                                                           | `Promise<{ content: string; }>`                                                                                                                                                                                                                                                                                              | Host policy or SANDBOX\_\* argument/state errors; uncertain effects remain unknown. |
+| `sandbox.writeBytes`        | `tc: SandboxCall, input: SandboxWriteArgs`                                                                                                                                                                                           | `Promise<SandboxWriteResult>`                                                                                                                                                                                                                                                                                                | Host policy or SANDBOX\_\* argument/state errors; uncertain effects remain unknown. |
+| `sandbox.writeBytes`        | `ctx: SandboxContext, input: SandboxWriteArgs & SandboxFacts`                                                                                                                                                                        | `Promise<SandboxWriteResult>`                                                                                                                                                                                                                                                                                                | Host policy or SANDBOX\_\* argument/state errors; uncertain effects remain unknown. |
 | `sandbox.list`              | `tc: SandboxCall, input: { path: string }`                                                                                                                                                                                           | `Promise<{ entries: { size?: number \| undefined; name: string; isDir: boolean; }[]; }>`                                                                                                                                                                                                                                     | Host policy or SANDBOX\_\* argument/state errors; uncertain effects remain unknown. |
 | `sandbox.internalFunctions` | `—`                                                                                                                                                                                                                                  | `{ wake: RegisteredMutation<"internal", PollArgs, Promise<null>>; poll: RegisteredAction<"internal", PollActionArgs, Promise<null>>; settle: RegisteredMutation<"internal", SettleArgs, Promise<null>>; cleanup: RegisteredAction<"internal", {}, Promise<null>>; }`                                                         | Host policy or SANDBOX\_\* argument/state errors; uncertain effects remain unknown. |
 | `sandbox.job`               | `ctx: SandboxContext, input: PollArgs`                                                                                                                                                                                               | `Promise<{ code?: "SANDBOX_JOB_DEADLINE" \| undefined; logTail?: string \| undefined; exitCode?: number \| undefined; providerJobId?: string \| undefined; state: "unknown" \| "running" \| "failed" \| "done" \| "starting"; subject: string; threadId: string; runId: string; jobId: string; scopeKey: string; } \| null>` | Host policy or SANDBOX\_\* argument/state errors; uncertain effects remain unknown. |
@@ -185,6 +231,7 @@ Generated from the current exported TypeScript signatures in [the module entry](
 | Read / write text           | 160,000 characters each | Same                           |
 | Directory entries           | 100                     | 100                            |
 | Binary export               | 8 MiB                   | 8 MiB; 64 MiB with Node export |
+| Binary write                | 8 MiB                   | 8 MiB; 64 MiB with Node write  |
 | Download window             | 512 KiB                 | Fixed                          |
 | Jobs per sandbox            | 16                      | 64                             |
 | Job deadline                | 1 hour                  | 24 hours                       |

@@ -23,8 +23,11 @@ import type {
   SandboxExportArgs,
   SandboxExportResult,
   SandboxContext,
+  SandboxNodeWriteArgs,
+  SandboxWriteResult,
 } from "../../../src/modules/sandbox/client/types.js";
 import { fakeSandboxProvider } from "../../../src/testing/sandbox.js";
+import { installStorageMetadata } from "./storage.js";
 
 const components = componentsGeneric() as unknown as {
   sandbox: ComponentApi;
@@ -58,6 +61,7 @@ export const state = {
   usage: [] as SandboxUsageEvent[],
   resolver: undefined as undefined | { subject: string; threadId: string; runId: string },
   nodeExport: false,
+  nodeWrite: false,
   instance: undefined as undefined | ReturnType<typeof defineSandbox>,
 };
 
@@ -68,6 +72,18 @@ export function config(): SandboxOptions {
     scope: state.scope,
     limits: state.limits,
     agent: components.agent,
+    ...(state.nodeWrite
+      ? {
+          nodeWrite: makeFunctionReference<"action", SandboxNodeWriteArgs, SandboxWriteResult>(
+            "node:writeBytes",
+          ) as unknown as FunctionReference<
+            "action",
+            "internal",
+            SandboxNodeWriteArgs,
+            SandboxWriteResult
+          >,
+        }
+      : {}),
     ...(state.nodeExport
       ? {
           nodeExport: makeFunctionReference<"action", SandboxExportArgs, SandboxExportResult>(
@@ -181,6 +197,26 @@ export const invoke = internalActionGeneric({
         return null;
       case "export":
         return sandbox.export(ctx, { threadId: tc.threadId, path: args.input.path });
+      case "writeBytes": {
+        installStorageMetadata(ctx);
+
+        const input = {
+          ...args.input,
+          source:
+            "bytes" in args.input.source
+              ? { bytes: new Uint8Array(args.input.source.bytes) }
+              : args.input.source,
+        };
+
+        return args.input.toolContext
+          ? sandbox.writeBytes(tc, input)
+          : sandbox.writeBytes(ctx, {
+              ...input,
+              subject: tc.subject,
+              threadId: tc.threadId,
+              runId: tc.runId,
+            });
+      }
       case "forget":
         return sandbox.forget(ctx, args.input);
       case "cleanup":
