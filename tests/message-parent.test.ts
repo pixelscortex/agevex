@@ -476,7 +476,7 @@ it.each(["approval", "deferred"] as const)(
       await owner(t).mutation(api.agents.answer, {
         threadId: receipt.threadId,
         toolCallId: "human-call",
-        text: "approved human answer",
+        value: "approved human answer",
       });
     } else {
       const row = (await t.query(rawAssignment, { assignmentId: receipt.assignmentId }))!;
@@ -496,7 +496,7 @@ it.each(["approval", "deferred"] as const)(
       await owner(t).mutation(api.agents.respond, {
         threadId: receipt.threadId,
         approvalId: approval.approvalId,
-        approved: true,
+        decision: { kind: "approve" },
       });
     }
 
