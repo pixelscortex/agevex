@@ -1,0 +1,46 @@
+tests/tools/model-authored-asks.test.ts
+  s_008ccf29ac177d::t_7990de12be9c33 514-515
+  s_d863bd773ba186::t_178b7defec17c9 11,364-390,516-519
+src/component/turns/decision-save.ts
+  s_13555e3b41e1bf::t_5865967b92c3ef 54-57,140-144,146-151,169-208
+src/component/turns/write.ts
+  s_13555e3b41e1bf::t_b46bb67dad82b5 92-97
+src/shared/ask-values.ts
+  s_13555e3b41e1bf::t_7b663900e683a7 5-6,13
+src/shared/tool-markers.ts
+  s_13555e3b41e1bf::t_0ea0e66574e0ee 82,85-95
+tests/tools/decisions-v2.test.ts
+  s_d863bd773ba186::t_8b37762a2f64f7 518,538,546,548-583,737,740-742,748-749,754,760,768-797
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f59aa58d37bd3fc3732cfb74140ae0faa5637ffa",
+  "prompts": {},
+  "sessions": {
+    "s_008ccf29ac177d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a178dc-bda6-7063-8dd7-a224262dd669",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_13555e3b41e1bf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a178ec-a85f-7010-84b7-17696a613ddc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
