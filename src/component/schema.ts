@@ -59,6 +59,7 @@ export const denialCode = v.union(
   v.literal("STALE_TURN"),
   v.literal("DELEGATION_CONFLICT"),
   v.literal("RUN_BUDGET"),
+  v.literal("RESULTS_PENDING"),
   v.literal("DEPTH_LIMIT"),
   v.literal("GROUP_LIMIT"),
   v.literal("GROUP_CLOSED"),

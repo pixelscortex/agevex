@@ -235,6 +235,7 @@ export type DelegationDenialCode =
   | "STALE_TURN"
   | "DELEGATION_CONFLICT"
   | "RUN_BUDGET"
+  | "RESULTS_PENDING"
   | "DEPTH_LIMIT"
   | "GROUP_LIMIT"
   | "GROUP_CLOSED"

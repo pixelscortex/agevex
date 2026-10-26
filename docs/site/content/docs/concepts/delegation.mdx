@@ -81,7 +81,9 @@ retain their control allowance. Messages are refused until the queue drains
 below its limit. Launch admission bounds outstanding result work per assignment
 across user requests at `runLaunches`: pending deliveries, unreleased join members
 and queued result rows. A joined row replaces its members; claim frees capacity.
-Reaching this separate bound returns `RUN_BUDGET`. A root admits at most 5 active
+Reaching this separate bound returns `RESULTS_PENDING`: wait for or claim child
+results before launching more. `RUN_BUDGET` means a launch or hop budget is
+exhausted. A root admits at most 5 active
 descendants, 15 at the hard maximum. Only the recorded parent can send a child
 follow-ups or answer its questions.
 

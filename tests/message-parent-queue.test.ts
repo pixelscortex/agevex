@@ -307,7 +307,7 @@ it.each(["running", "asking"] as const)(
 );
 
 it.each(["each", "all"] as const)(
-  "wait=%s result work stays bounded across user budgets through delivery and join replacement",
+  "wait=%s fresh requests receive RESULTS_PENDING for earlier child results until capacity frees",
   async (wait) => {
     const t = setup({ queueLength: 2, runLaunches: 2 });
     const held = gate();
@@ -315,6 +315,8 @@ it.each(["each", "all"] as const)(
 
     v2.steps.Main = async (n) => {
       if (!n) return children.map(() => delegate("Reviewer", { wait }));
+
+      if (n === 1) return [delegate("Reviewer")];
 
       await held.promise;
 
@@ -331,7 +333,10 @@ it.each(["each", "all"] as const)(
 
     await waitFor(t, () => calls("Reviewer").length === 2);
     await message(t, receipt.threadId, "a fresh user budget");
-    await waitFor(t, () => calls("Main").length === 2);
+    await waitFor(t, () => calls("Main").length === 3);
+
+    expect(JSON.stringify(calls("Main")[2].args.prompt)).toContain("RESULTS_PENDING");
+
     const actor = await parent(t, receipt.assignmentId);
 
     const launch = () =>
@@ -343,22 +348,22 @@ it.each(["each", "all"] as const)(
         task: "new request cannot bypass outstanding result bound",
       });
 
-    expect(await launch()).toMatchObject({ status: "denied", code: "RUN_BUDGET" });
+    expect(await launch()).toMatchObject({ status: "denied", code: "RESULTS_PENDING" });
     children[0].release();
     await results(t, receipt.threadId, 1, 2);
-    expect(await launch()).toMatchObject({ status: "denied", code: "RUN_BUDGET" });
+    expect(await launch()).toMatchObject({ status: "denied", code: "RESULTS_PENDING" });
     children[1].release();
     await results(t, receipt.threadId, 2);
 
     // A joined row replaces both members; individual results still occupy two
     // result-work units until claim consumes them. Neither uses message slots.
     expect(await launch()).toMatchObject(
-      wait === "all" ? { status: "queued" } : { status: "denied", code: "RUN_BUDGET" },
+      wait === "all" ? { status: "queued" } : { status: "denied", code: "RESULTS_PENDING" },
     );
 
     if (wait === "all") {
       await results(t, receipt.threadId, 3);
-      expect(await launch()).toMatchObject({ status: "denied", code: "RUN_BUDGET" });
+      expect(await launch()).toMatchObject({ status: "denied", code: "RESULTS_PENDING" });
     }
 
     held.release();

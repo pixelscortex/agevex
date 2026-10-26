@@ -353,7 +353,9 @@ retain their control allowance. Messages are refused until the queue drains
 below its limit. Launch admission also caps outstanding result work per assignment
 at `runLaunches` across user requests: pending results, unreleased join members
 and queued result rows. A joined row replaces its members; claim frees this
-capacity. Reaching this separate bound returns `RUN_BUDGET`. Result turns may call
+capacity. Reaching this separate bound returns `RESULTS_PENDING`: wait for or claim
+child results before launching more. `RUN_BUDGET` means a launch or hop budget is
+exhausted. Result turns may call
 `agevex_delegate` again. A root admits at most
 5 active descendants by default and 4000 characters per delegated task.
 
