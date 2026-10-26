@@ -1,5 +1,5 @@
 import type { MutationCtx } from "../_generated/server.js";
-import type { AskUserMetadata } from "../../shared/tool-markers.js";
+import type { PreparedAskUser } from "../../shared/tool-markers.js";
 export declare const proposal: import("convex/values").VObject<{
     schema?: any;
     truncated?: true | undefined;
@@ -82,4 +82,4 @@ export declare function saveProposal(ctx: MutationCtx, call: {
     toolName: string;
     input?: unknown;
     providerExecuted?: boolean;
-}, id: string, metadata?: AskUserMetadata): Promise<import("convex/values").GenericId<"receipts">>;
+}, id: string, metadata?: PreparedAskUser): Promise<import("convex/values").GenericId<"receipts">>;

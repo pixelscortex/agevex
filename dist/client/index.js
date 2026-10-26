@@ -8,4 +8,4 @@ export { DELEGATE_TOOL_NAME, MESSAGE_CHILD_TOOL_NAME, ASK_PARENT_TOOL_NAME, regi
 export { LIMITS, PLATFORM } from "../component/limits.js";
 export { defineOnceTool } from "./once.js";
 export { defineTask, runTask } from "./tasks.js";
-export { assertFormSchema } from "../shared/decisions.js";
+export { assertFormSchema, validateAnswer, } from "../shared/decisions.js";

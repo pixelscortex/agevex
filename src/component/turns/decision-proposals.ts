@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import type { MutationCtx } from "../_generated/server.js";
 import { approvalKey } from "../approvals.js";
 import { DECISION_LIMITS, decisionBytes } from "../../shared/decisions.js";
-import type { AskUserMetadata } from "../../shared/tool-markers.js";
+import type { PreparedAskUser } from "../../shared/tool-markers.js";
 
 export const proposal = v.object({
   id: v.string(),
@@ -42,21 +42,23 @@ export async function saveProposal(
   ctx: MutationCtx,
   call: { toolCallId: string; toolName: string; input?: unknown; providerExecuted?: boolean },
   id: string,
-  metadata?: AskUserMetadata,
+  metadata?: PreparedAskUser,
 ) {
+  const checked = metadata?.calls.find((entry) => entry.toolCallId === call.toolCallId);
+
   const result = {
     id,
     toolCallId: call.toolCallId,
     tool: call.toolName,
-    input: call.input ?? null,
+    input: checked ? checked.input : (call.input ?? null),
     providerExecuted: !!call.providerExecuted,
-    ...(metadata?.answerSchema ? { schema: metadata.answerSchema } : {}),
+    ...(checked?.answerSchema ? { schema: checked.answerSchema } : {}),
   };
 
   if (
     decisionBytes(result) <=
       DECISION_LIMITS.proposalBytes - DECISION_LIMITS.proposalEnvelopeBytes &&
-    decisionBytes(call.input ?? null) <= DECISION_LIMITS.valueBytes &&
+    decisionBytes(result.input) <= DECISION_LIMITS.valueBytes &&
     [id, call.toolCallId, call.toolName].every(
       (value) => value.length <= DECISION_LIMITS.identifierChars,
     )

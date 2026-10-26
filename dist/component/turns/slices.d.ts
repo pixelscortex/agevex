@@ -87,7 +87,12 @@ export declare const write: import("convex/server").RegisteredMutation<"public",
     trackUsage?: boolean | undefined;
     deferredTools?: string[] | undefined;
     askUserTools?: Record<string, {
-        answerSchema?: any;
+        calls: {
+            error?: string | undefined;
+            input?: any;
+            answerSchema?: any;
+            toolCallId: string;
+        }[];
     }> | undefined;
     nativeMessages?: {
         getMessages: string;

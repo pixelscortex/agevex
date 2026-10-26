@@ -1,6 +1,6 @@
 // Shared decision bounds and a deliberately small, closed JSON Schema form dialect.
 // Reject unsupported keywords rather than silently accepting an unchecked constraint.
-import { ConvexError, getConvexSize, v } from "convex/values";
+import { ConvexError, convexToJson, getConvexSize, v } from "convex/values";
 export const DECISION_LIMITS = {
     valueBytes: 16 << 10,
     schemaBytes: 8 << 10,
@@ -44,6 +44,15 @@ export function assertJson(value, maxBytes = DECISION_LIMITS.valueBytes) {
 /** Validate the app's schema at construction, including all nested fields and keywords. */
 export function assertFormSchema(schema) {
     assertJson(schema, DECISION_LIMITS.schemaBytes);
+    // Convex 1.47 values/value.ts:201: keys are <=1024 non-control ASCII
+    // characters and cannot start with $. This checks properties and enum objects
+    // too, before a derived schema can fail serialization of a paid turn's save.
+    try {
+        convexToJson(schema);
+    }
+    catch {
+        throw new ConvexError({ code: "INVALID_FORM_SCHEMA" });
+    }
     let fields = 0;
     const visit = (node, depth) => {
         if (!node ||

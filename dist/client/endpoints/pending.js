@@ -6,6 +6,7 @@ import { DECISION_LIMITS, decisionBytes } from "../../shared/decisions.js";
 import { ConvexError, v } from "convex/values";
 import { pendingItem } from "../../component/turns/decision-reads.js";
 import { ownedThread } from "./access.js";
+import { askProjection } from "../../shared/ask-values.js";
 /** One reactive query includes the owned root and its current live children. */
 export function pendingApprovalsEndpoint(ep) {
     return queryGeneric({
@@ -25,7 +26,6 @@ export function pendingApprovalsEndpoint(ep) {
             });
             const result = calls.map((call) => {
                 const tool = ep.managedAgents.get(call.agent)?.declaredTools[call.tool];
-                const input = call.input;
                 const form = call.kind === "ask";
                 // A large item must not hide other decisions. Check before copying question
                 // or schema into the public projection, which can duplicate input bytes.
@@ -37,18 +37,14 @@ export function pendingApprovalsEndpoint(ep) {
                         truncated: true,
                         editable: false,
                     };
-                // An ask's question is projected once: keep it in `question` and drop the
-                // identical copy in `input`, so a long question plus a form schema fits.
-                const question = form && typeof input?.question === "string" ? input.question : undefined;
                 const item = {
                     ...call,
-                    ...(question !== undefined ? { input: null } : {}),
+                    ...(form ? askProjection(call.input) : {}),
                     editable: call.kind === "approval" &&
                         !call.providerExecuted &&
                         !!tool?.execute &&
                         editableApproval(tool) &&
                         !!asSchema(tool.inputSchema).validate,
-                    ...(question !== undefined ? { question } : {}),
                     ...(form && call.schema ? { schema: call.schema } : {}),
                 };
                 return decisionBytes(item) <= DECISION_LIMITS.itemBytes - DECISION_LIMITS.arrayEnvelopeBytes

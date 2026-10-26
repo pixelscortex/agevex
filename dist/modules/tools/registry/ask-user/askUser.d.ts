@@ -4,6 +4,7 @@
  * This item owns no state table and performs no tool effect.
  */
 import { type JsonSchema } from "agevex";
+import { type Schema } from "ai";
 import { z } from "zod";
 export declare const ASK_USER_LIMITS: {
     readonly minChars: 1;
@@ -12,16 +13,17 @@ export declare const ASK_USER_LIMITS: {
 export declare const questionInput: z.ZodObject<{
     question: z.ZodString;
 }, z.core.$strict>;
-/** App-supplied form metadata stays server-owned; models supply only the question.
+export type AskUserOptions<Input = z.output<typeof questionInput>> = {
+    inputSchema?: z.ZodType<Input> | JsonSchema;
+    answerSchema?: JsonSchema | ((input: Input) => JsonSchema);
+};
+/** App-supplied form metadata stays server-owned; models supply the validated input.
  * Root assignments may ask by default; children need Agent.askUser: true.
  * answer({ threadId, toolCallId, value }) validates JSON before saving/waking.
  */
-export declare function createAskUserTool(options?: {
-    answerSchema?: JsonSchema;
-}): import("ai").Tool<{
-    question: string;
-}, never, import("@ai-sdk/provider-utils").Context> & {
+export declare function createAskUserTool<Input = z.output<typeof questionInput>>(options?: AskUserOptions<Input>): import("ai").Tool<unknown, never, import("@ai-sdk/provider-utils").Context> & {
     agevexAskUser: {
-        answerSchema: JsonSchema | undefined;
+        inputSchema: Schema<unknown>;
+        answerSchema: JsonSchema | ((input: Input) => JsonSchema) | undefined;
     };
 };

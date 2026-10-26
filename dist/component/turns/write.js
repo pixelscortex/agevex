@@ -18,7 +18,14 @@ export const writeArgs = {
     nativeStream: v.optional(v.string()),
     trackUsage: v.optional(v.boolean()),
     deferredTools: v.optional(v.array(v.string())),
-    askUserTools: v.optional(v.record(v.string(), v.object({ answerSchema: v.optional(v.any()) }))),
+    askUserTools: v.optional(v.record(v.string(), v.object({
+        calls: v.array(v.object({
+            toolCallId: v.string(),
+            input: v.optional(v.any()),
+            answerSchema: v.optional(v.any()),
+            error: v.optional(v.string()),
+        })),
+    }))),
     nativeMessages: v.optional(v.object({
         getMessages: v.string(),
         finalizeMessage: v.string(),
@@ -40,7 +47,7 @@ export async function fencedWrite(ctx, args) {
         await prepareDecisions(ctx, row, args.args, args.askUserTools);
     if (args.nativeMessages &&
         (countPauseRequests(args.args.messages, deferredTools) > LIMITS.approvalsPerPause ||
-            oversizedDecisionInput(args.args.messages, deferredTools)))
+            oversizedDecisionInput(args.args.messages, deferredTools, { threadId: row.threadId, agent: row.agent }, args.askUserTools)))
         return rejectApprovalOverflow(ctx, row);
     const result = await ctx.runMutation(args.handle, args.args);
     if (args.nativeMessages) {

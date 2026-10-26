@@ -5,9 +5,7 @@ export declare function pendingApprovalsEndpoint(ep: EndpointContext): import("c
     threadId: string;
 }, Promise<{
     schema?: any;
-    question?: string | undefined;
     editable: boolean;
-    input: any;
     threadId: string;
     agent: string;
     kind: "ask" | "approval";
@@ -16,4 +14,5 @@ export declare function pendingApprovalsEndpoint(ep: EndpointContext): import("c
     providerExecuted: boolean;
     toolCallId: string;
     tool: string;
+    input: any;
 }[]>>;

@@ -33,17 +33,18 @@ export const storedProposal = v.object({
  * ref; their pending stub uses a fixed-size hash rather than copying megabytes.
  */
 export async function saveProposal(ctx, call, id, metadata) {
+    const checked = metadata?.calls.find((entry) => entry.toolCallId === call.toolCallId);
     const result = {
         id,
         toolCallId: call.toolCallId,
         tool: call.toolName,
-        input: call.input ?? null,
+        input: checked ? checked.input : (call.input ?? null),
         providerExecuted: !!call.providerExecuted,
-        ...(metadata?.answerSchema ? { schema: metadata.answerSchema } : {}),
+        ...(checked?.answerSchema ? { schema: checked.answerSchema } : {}),
     };
     if (decisionBytes(result) <=
         DECISION_LIMITS.proposalBytes - DECISION_LIMITS.proposalEnvelopeBytes &&
-        decisionBytes(call.input ?? null) <= DECISION_LIMITS.valueBytes &&
+        decisionBytes(result.input) <= DECISION_LIMITS.valueBytes &&
         [id, call.toolCallId, call.toolName].every((value) => value.length <= DECISION_LIMITS.identifierChars))
         return ctx.db.insert("receipts", { kind: "proposal", result });
     const bounded = async (value) => value.length > DECISION_LIMITS.identifierChars ? approvalKey(value) : value;

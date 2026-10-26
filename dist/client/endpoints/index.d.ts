@@ -130,9 +130,7 @@ export declare function authorizedEndpoints(component: ComponentApi, config: Reg
         threadId: string;
     }, Promise<{
         schema?: any;
-        question?: string | undefined;
         editable: boolean;
-        input: any;
         threadId: string;
         agent: string;
         kind: "ask" | "approval";
@@ -141,6 +139,7 @@ export declare function authorizedEndpoints(component: ComponentApi, config: Reg
         providerExecuted: boolean;
         toolCallId: string;
         tool: string;
+        input: any;
     }[]>>;
     answer: import("convex/server").RegisteredMutation<"public", {
         value: any;

@@ -6,6 +6,7 @@ import { approvalKey, keyString } from "../approvals.js";
 import { findReceipt } from "../receipts/records.js";
 import { proposal } from "./decision-proposals.js";
 import { DECISION_LIMITS, decisionBytes } from "../../shared/decisions.js";
+import { oversizedAskItem } from "../../shared/ask-values.js";
 
 export const pendingItem = v.object({
   ...proposal.fields,
@@ -41,12 +42,16 @@ export async function readPending(
 ) {
   const { result } = await readProposal(ctx, request);
 
-  return {
+  const call = {
     ...result,
     threadId: row.threadId,
     agent: row.agent,
     kind: request.deferred ? ("ask" as const) : ("approval" as const),
   };
+
+  // The answer endpoint reads this same projection: a public truncated stub
+  // must remain unanswerable even when the stored proposal itself fits 32 KiB.
+  return request.deferred && oversizedAskItem(call) ? { ...call, truncated: true as const } : call;
 }
 
 /** Resolve exactly one requested decision, or the already committed first receipt. */

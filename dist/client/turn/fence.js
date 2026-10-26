@@ -187,7 +187,7 @@ async function fencedWriteArgs(rt, turn, ref, payload) {
                 // 0.7.7 example/convex/chat/human.ts:125-157). Supply
                 // names only at the native-save seam; no transcript scan.
                 trackUsage: !!rt.config.usage,
-                askUserTools: askUserTools(managed.declaredTools),
+                askUserTools: await askUserTools(managed.declaredTools, payload),
                 deferredTools: deferredToolNames(managed),
                 nativeMessages: {
                     getMessages: await createFunctionHandle(managed.component.messages.getMessagesByIds),

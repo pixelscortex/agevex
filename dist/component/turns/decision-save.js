@@ -1,12 +1,10 @@
-import { DECISION_LIMITS, decisionBytes, assertFormSchema } from "../../shared/decisions.js";
+import { DECISION_LIMITS, decisionBytes, assertFormSchema, assertJson, } from "../../shared/decisions.js";
+import { oversizedAskItem } from "../../shared/ask-values.js";
 /** Recheck persisted role before any ask_user deferral, including direct saves.
  * Factory schema is trusted host metadata, never a model-supplied form program.
  * The extra run read is fixed at <=16 KiB per native save, independent of calls.
  */
 export async function prepareDecisions(ctx, row, args, tools = {}) {
-    for (const metadata of Object.values(tools))
-        if (metadata.answerSchema)
-            assertFormSchema(metadata.answerSchema);
     const run = row.runId ? await ctx.db.get("runs", row.runId) : null;
     const allowed = run?.settings?.find((entry) => entry.agent === row.agent)?.settings.askUser ??
         !row.rootAssignmentId;
@@ -22,18 +20,49 @@ export async function prepareDecisions(ctx, row, args, tools = {}) {
                 denyAsk(args, saved, part.toolCallId, part.toolName, "ROOT_ONLY");
                 continue;
             }
-            const input = part.input;
-            if (!input ||
-                typeof input.question !== "string" ||
-                !input.question.trim() ||
-                input.question.length > DECISION_LIMITS.questionChars ||
-                Object.keys(input).some((key) => key !== "question")) {
-                denyAsk(args, saved, part.toolCallId, part.toolName, "INVALID_QUESTION");
-                continue;
-            }
-            // Form metadata is copied into the compact proposal, not native model input.
+            const checked = tools[part.toolName].calls.find((call) => call.toolCallId === part.toolCallId);
+            const error = (part.toolCallId.length > DECISION_LIMITS.identifierChars ||
+                part.toolName.length > DECISION_LIMITS.identifierChars
+                ? "ASK_TOO_LARGE"
+                : undefined) ??
+                checked?.error ??
+                checkPreparedAsk(checked) ??
+                (oversizedAskItem({
+                    id: part.toolCallId,
+                    toolCallId: part.toolCallId,
+                    tool: part.toolName,
+                    input: checked.input,
+                    providerExecuted: false,
+                    ...(checked?.answerSchema !== undefined ? { schema: checked.answerSchema } : {}),
+                    threadId: row.threadId,
+                    agent: row.agent,
+                    kind: "ask",
+                })
+                    ? "ASK_TOO_LARGE"
+                    : undefined);
+            if (error)
+                denyAsk(args, saved, part.toolCallId, part.toolName, error);
         }
     }
+}
+/** The component cannot execute host schemas/callbacks. Fail closed when the
+ * host omitted validation, and independently enforce the storage dialect/bounds.
+ */
+function checkPreparedAsk(call) {
+    try {
+        assertJson(call?.input);
+    }
+    catch {
+        return "INVALID_QUESTION";
+    }
+    try {
+        if (call?.answerSchema !== undefined)
+            assertFormSchema(call.answerSchema);
+    }
+    catch {
+        return "INVALID_FORM_SCHEMA";
+    }
+    return undefined;
 }
 /** Normal tool result, with no approval request left to expose to a human.
  * Preserve AI SDK's own validation result when it already recorded one.
@@ -61,14 +90,47 @@ function denyAsk(args, saved, toolCallId, toolName, code) {
 /** Only pending input is bounded. Reasoning/text stays in native Agent storage.
  * The caller commits APPROVAL_LIMIT before native save rather than rolling back
  * a paid model step with an untyped generation failure.
+ *
+ * Every unresulted deferred call must also be answerable: the pending read marks
+ * an item truncated (unanswerable) when its identifiers or full projection exceed
+ * the item bound, so refuse here what could never be answered once saved. Factory
+ * asks are checked on their normalized form in `prepareDecisions` instead.
  */
-export function oversizedDecisionInput(messages, deferred) {
+export function oversizedDecisionInput(messages, deferred, owner, asks = {}) {
+    const resulted = new Set(messages.flatMap(({ message }) => message?.role === "tool"
+        ? message.content.flatMap((part) => (part.type === "tool-result" ? [part.toolCallId] : []))
+        : []));
     return messages.some(({ message }) => {
         if (message?.role !== "assistant" || !Array.isArray(message.content))
             return false;
         const approvals = new Set(message.content.flatMap((part) => part.type === "tool-approval-request" ? [part.toolCallId] : []));
-        return message.content.some((part) => part.type === "tool-call" &&
-            (approvals.has(part.toolCallId) || deferred.has(part.toolName)) &&
-            decisionBytes(part.input) > DECISION_LIMITS.valueBytes);
+        return message.content.some((part) => {
+            if (part.type !== "tool-call")
+                return false;
+            const pending = deferred.has(part.toolName) && !part.providerExecuted && !resulted.has(part.toolCallId);
+            return (((!deferred.has(part.toolName) ||
+                part.providerExecuted ||
+                !resulted.has(part.toolCallId)) &&
+                (approvals.has(part.toolCallId) || deferred.has(part.toolName)) &&
+                decisionBytes(part.input) > DECISION_LIMITS.valueBytes) ||
+                (pending && unanswerablePending(part, owner, asks)));
+        });
+    });
+}
+/** A pending read would project this deferred call as a truncated stub. */
+function unanswerablePending(part, owner, asks) {
+    if (part.toolCallId.length > DECISION_LIMITS.identifierChars ||
+        part.toolName.length > DECISION_LIMITS.identifierChars)
+        return true;
+    if (Object.prototype.hasOwnProperty.call(asks, part.toolName))
+        return false;
+    return oversizedAskItem({
+        id: part.toolCallId,
+        toolCallId: part.toolCallId,
+        tool: part.toolName,
+        input: part.input ?? null,
+        providerExecuted: false,
+        ...owner,
+        kind: "ask",
     });
 }

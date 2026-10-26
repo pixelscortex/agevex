@@ -11,12 +11,37 @@ export declare const writeArgs: {
     trackUsage: import("convex/values").VBoolean<boolean | undefined, "optional">;
     deferredTools: import("convex/values").VArray<string[] | undefined, import("convex/values").VString<string, "required">, "optional">;
     askUserTools: import("convex/values").VRecord<Record<string, {
-        answerSchema?: any;
+        calls: {
+            error?: string | undefined;
+            input?: any;
+            answerSchema?: any;
+            toolCallId: string;
+        }[];
     }> | undefined, import("convex/values").VString<string, "required">, import("convex/values").VObject<{
-        answerSchema?: any;
+        calls: {
+            error?: string | undefined;
+            input?: any;
+            answerSchema?: any;
+            toolCallId: string;
+        }[];
     }, {
-        answerSchema: import("convex/values").VAny<any, "optional", string>;
-    }, "required", "answerSchema" | `answerSchema.${string}`>, "optional", string>;
+        calls: import("convex/values").VArray<{
+            error?: string | undefined;
+            input?: any;
+            answerSchema?: any;
+            toolCallId: string;
+        }[], import("convex/values").VObject<{
+            error?: string | undefined;
+            input?: any;
+            answerSchema?: any;
+            toolCallId: string;
+        }, {
+            toolCallId: import("convex/values").VString<string, "required">;
+            input: import("convex/values").VAny<any, "optional", string>;
+            answerSchema: import("convex/values").VAny<any, "optional", string>;
+            error: import("convex/values").VString<string | undefined, "optional">;
+        }, "required", "error" | "toolCallId" | "input" | `input.${string}` | "answerSchema" | `answerSchema.${string}`>, "required">;
+    }, "required", "calls">, "optional", string>;
     nativeMessages: import("convex/values").VObject<{
         getMessages: string;
         finalizeMessage: string;
