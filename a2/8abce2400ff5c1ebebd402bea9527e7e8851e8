@@ -1,0 +1,27 @@
+README.md
+  s_f18b702b2b5c89::t_5dfb5fc1132bee 209
+dist/modules/sandbox/test.d.ts
+  s_f18b702b2b5c89::t_7b61376f1a90b5 88
+dist/modules/sandbox/test.js
+  s_f18b702b2b5c89::t_7485c5d6f19085 10-12
+package.json
+  s_f18b702b2b5c89::t_acb60a19a471dc 36
+src/modules/sandbox/test.ts
+  s_f18b702b2b5c89::t_530f28e9876fad 23-26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a28abce2400ff5c1ebebd402bea9527e7e8851e8",
+  "prompts": {},
+  "sessions": {
+    "s_f18b702b2b5c89": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1787a-db32-7aa3-ba2b-f35d8edcf9d6",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
