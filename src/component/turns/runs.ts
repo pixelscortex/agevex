@@ -40,7 +40,8 @@ export function newRun(
     usagePartial: false,
   };
 
-  // The 1 KiB reservation includes the native id/time envelope added on insert.
+  // Reserve 1 KiB for native id/time, lifecycle fields and bounded counter/mask
+  // growth. Both JSON UTF-8 and Convex bytes must stay <=16 KiB after updates.
   if (
     Math.max(
       getConvexSize(row),

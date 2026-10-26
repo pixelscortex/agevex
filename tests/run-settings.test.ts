@@ -477,11 +477,11 @@ it.each(["stream", "generate"] as const)(
   },
 );
 
-it("a maximum-size 64-agent snapshot and model map fit the enforced run envelope", async () => {
+it("a 64-agent snapshot and model map fit the enforced run envelope", async () => {
   const t = setup();
 
   const settings = Array.from({ length: 64 }, (_, index) => ({
-    agent: String(index).padEnd(100, "x"),
+    agent: String(index).padEnd(88, "x"),
     settings: resolveRunSettings(),
   }));
 

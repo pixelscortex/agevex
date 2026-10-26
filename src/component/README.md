@@ -172,6 +172,13 @@ requests. Only ordinary descendants/deliveries/groups fence successful closure.
 Assignments carry at most 16 active tool markers, checked against the complete
 32 KiB row envelope; every slice disarm and cancellation clears them. Query
 projection also suppresses tools on terminal nodes. No new tables are added.
+Marker start/clear writes are best effort and never awaited by tool execution
+or stream cleanup. Clear follows start; failed writes are not retried, keeping
+contention to one assignment read/patch per edge. Disarmed-slice/turn fences
+reject late starts. Cancellation preserves terminal run outcomes and timestamps.
+Run admission checks both UTF-8 JSON and Convex bytes, reserving 1 KiB for native
+metadata, lifecycle timestamps/result/error and bounded counter/mask growth
+under the 16 KiB run envelope.
 
 At hard maxima the core tree reads at most 2249 KiB: 59 assignment rows ×32 KiB,
 58 child rows ×4 KiB, three ownership reads ×32 KiB, two root metadata reads

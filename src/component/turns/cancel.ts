@@ -55,10 +55,17 @@ export async function cancelRoot(
 
   if (runIds.size > RUN_LIMITS.cancelBudgets) throw new Error("CANCEL_RUN_BUDGET");
 
-  // <=168 distinct runs *16 KiB <2.63 MiB, even with full settings maps.
+  // <=168 distinct runs *2*16 KiB <5.25 MiB for terminal guard + live patch.
   // Deduplicate across assignments: every child belongs to one root budget.
-  for (const runId of runIds)
-    await ctx.db.patch("runs", runId, { cancelled: true, finishedAt: Date.now() });
+  for (const runId of runIds) {
+    const run = await ctx.db.get("runs", runId);
+
+    // A root may already be done while a side review is live, or on an idle
+    // thread. Cancellation fences live work; recorded outcomes are immutable.
+    // Both this read and the patch read are included in limits.ts's budget.
+    if (run && run.finishedAt === undefined)
+      await ctx.db.patch("runs", runId, { cancelled: true, finishedAt: Date.now() });
+  }
 
   for (const run of children) {
     await ctx.db.patch("subagentRuns", run._id, {
@@ -120,7 +127,7 @@ async function cancelAssignment(
 
   // A staged hook continuation is addressed directly, never included in a
   // backlog scan. <=16 assignments * (64 KiB text +1 KiB metadata) read
-  // for deletion adds <=1,040 KiB to the 14,520 KiB base budget: <16 MiB.
+  // for deletion adds <=1,040 KiB to the 15,224 KiB base budget: <16 MiB.
   if (row.hookContinue && row.inboxId) await ctx.db.delete("inbox", row.inboxId);
 
   await scheduleCleanup(ctx, row, approvalCleanup);

@@ -15,8 +15,9 @@ import {
 import { waitFor } from "./message-parent.fixture.js";
 import { components, rawAssignment } from "./fixture/api.js";
 import { TREE_LIMITS } from "../src/component/run-tree-values.js";
-import { HOST_LIMITS } from "../src/component/limits.js";
+import { HOST_LIMITS, LIMITS } from "../src/component/limits.js";
 import { seedUsage } from "./run-tree-meter.seed.js";
+import { RUN_LIMITS } from "../src/component/run-settings.js";
 
 beforeEach(() => vi.useFakeTimers());
 
@@ -301,6 +302,85 @@ it("an owned thread without a request returns null", async () => {
   expect(await read(t, "empty")).toBeNull();
 });
 
+it.each(["start", "clear", "both"])(
+  "a throwing %s marker preserves the committed paid result and delivers it once",
+  async (failure) => {
+    const edges: string[] = [];
+
+    const { t } = setup({
+      marker: async ({ name }) => {
+        const edge = name ? "start" : "clear";
+
+        edges.push(edge);
+
+        if (failure === edge || failure === "both") throw new Error("marker unavailable");
+      },
+    });
+
+    v2.steps.Main = (n) => (n === 0 ? [call("write_card", { label: "paid" })] : text("done"));
+    const receipt = await open(t);
+
+    await drain(t);
+
+    const results = v2.calls
+      .flatMap(({ args }) => args.prompt)
+      .filter((m) => m.role === "tool")
+      .flatMap((m) => m.content)
+      .filter((p) => p.type === "tool-result" && p.toolName === "write_card");
+
+    expect(edges).toEqual(["start", "clear"]);
+    expect(progress.started).toEqual(["paid"]);
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({ output: { type: "text", value: "written" } });
+
+    expect((await read(t, receipt.threadId))!.nodes[0]).toMatchObject({
+      status: "done",
+      currentTool: null,
+    });
+
+    expect(
+      (await t.query(rawAssignment, { assignmentId: receipt.assignmentId }))!.activeTools,
+    ).toBeUndefined();
+  },
+);
+
+it("cancelling a done root preserves its recorded outcome and time on repeated cancel", async () => {
+  const { t } = setup();
+  const receipt = await open(t);
+
+  await drain(t);
+  const done = (await read(t, receipt.threadId))!.nodes[0];
+
+  expect(done.status).toBe("done");
+  expect(done.finishedAt).not.toBeNull();
+
+  for (let i = 0; i < 2; i++) {
+    await vi.advanceTimersByTimeAsync(1000);
+    await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
+    expect((await read(t, receipt.threadId))!.nodes[0]).toEqual(done);
+  }
+
+  await drain(t);
+});
+
+it.each([false, true])(
+  "admitted run envelopes reserve lifecycle growth (failed=%s)",
+  async (failed) => {
+    const { t } = setup();
+
+    await expect(
+      t.mutation(fixture.envelopeLifecycle, { bytes: RUN_LIMITS.metadataBytes - 256, failed }),
+    ).rejects.toThrow("RUN_METADATA_TOO_LARGE");
+
+    const boundary = await t.mutation(fixture.envelopeLifecycle, {
+      bytes: RUN_LIMITS.metadataBytes - RUN_LIMITS.nativeEnvelopeBytes,
+      failed,
+    });
+
+    expect(boundary.bytes).toBeLessThanOrEqual(RUN_LIMITS.metadataBytes);
+  },
+);
+
 it("exclusive meter usage sums to request totals including root background charges", async () => {
   const { t, meter } = setup({ meter: true });
 
@@ -350,6 +430,13 @@ it("all hard-maximum assignment and child envelopes plus meter stay below 8 MiB 
   });
 
   const root = await t.mutation(fixture.seedMaximum, {});
+  const sizes = await t.query(fixture.maximumSizes, { rootRunId: root.rootRunId });
+
+  expect(sizes.assignments).toEqual(
+    Array(1 + TREE_LIMITS.descendants).fill(LIMITS.assignmentBytes),
+  );
+
+  expect(sizes.children).toEqual(Array(TREE_LIMITS.descendants).fill(4 << 10));
 
   await seedUsage(t, "alice", root.rootRunId, [
     null,

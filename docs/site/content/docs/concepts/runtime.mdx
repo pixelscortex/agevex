@@ -156,8 +156,11 @@ Approval-resumed executions do not count toward the new-call cap.
 
 Each accepted request snapshots the resolved per-agent array on its root `runs`
 row. Children and result turns read that same run id, so registration changes
-apply only to newly accepted requests. The array fits 15 KiB, reserving 1 KiB for
-model overrides, counters and native row metadata within the 16 KiB run envelope.
+apply only to newly accepted requests. The array is capped at 15 KiB. Settings,
+model overrides and initial request metadata share a combined 15 KiB admission
+budget, measured as the larger of UTF-8 JSON and Convex bytes. The remaining
+1 KiB reserves native metadata, lifecycle timestamps/result/error and counter
+growth within the 16 KiB run envelope.
 The existing `limits.slicesPerTurn` supplies the default when `run.stepsPerTurn`
 is omitted; an explicit host slice override also caps the Workflow turn.
 

@@ -119,6 +119,9 @@ and unjoined groups fence root completion. Side reviews may finish later.
 `currentTool` is the last-started still-active local tool, including managed
 collaboration tools. It is not a concurrent tool inventory, and finished nodes
 always return `null`. No tool inputs, outputs or execution capabilities appear.
+Markers are best effort: unavailable or slow progress writes cannot change a
+tool result. Slice completion clears stale markers, and late writes are fenced.
+Cancelling live work preserves any root outcome and finish time already recorded.
 
 Without a usage adapter's query-safe `view`, envelope and node usage are `null`.
 `meter.usageSlot()` supplies live exclusive totals, so each node is summed once

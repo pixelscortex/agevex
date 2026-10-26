@@ -1,7 +1,7 @@
 /** Component-local adversarial fixtures; these handlers never ship in core. */
 import { v, getConvexSize, type Value } from "convex/values";
 import type { Doc } from "../src/component/_generated/dataModel.js";
-import { mutation, type MutationCtx } from "../src/component/_generated/server.js";
+import { mutation, query, type MutationCtx } from "../src/component/_generated/server.js";
 import { newRootAssignment } from "../src/component/turns/assignments.js";
 import { newRun } from "../src/component/turns/runs.js";
 import { newSubagentRun } from "../src/component/subagents/runs.js";
@@ -17,8 +17,15 @@ function padded<T extends Record<string, Value | undefined>>(
   bytes: number,
 ) {
   const size = Math.max(getConvexSize(row), new TextEncoder().encode(JSON.stringify(row)).length);
+  const previous = row[field];
 
-  return { ...row, [field]: "x".repeat(bytes - size - 256) };
+  if (typeof previous !== "string") throw new Error("FIXTURE_PADDING_REQUIRES_STRING");
+
+  const { _id, _creationTime, ...fields } = row;
+
+  // Measure the persisted row, including system fields and the old value.
+  // ASCII padding grows both representations by exactly one byte per character.
+  return { ...fields, [field]: "x".repeat(bytes - size + previous.length) };
 }
 
 export const seedMaximum = mutation({
@@ -61,9 +68,7 @@ export const seedMaximum = mutation({
 
     for (let i = 0; i < TREE_LIMITS.descendants; i++) await maximumChild(ctx, root, budget, i);
 
-    const { _id, _creationTime, ...rootRow } = root;
-
-    await ctx.db.replace("assignments", rootId, padded(rootRow, "runTurn", LIMITS.assignmentBytes));
+    await ctx.db.replace("assignments", rootId, padded(root, "runTurn", LIMITS.assignmentBytes));
 
     await ctx.db.patch("runs", runId, {
       startedAt: Date.now(),
@@ -82,24 +87,25 @@ async function maximumChild(
   budget: Doc<"runs">,
   i: number,
 ) {
-  const childId = await ctx.db.insert(
+  const childId = await ctx.db.insert("assignments", {
+    ...newRootAssignment({
+      subject: "alice",
+      agent: `Child-${i}`,
+      threadId: `child-${i}`,
+      runTurn: "opaque",
+      limits: root.limits,
+    }),
+    rootAssignmentId: root._id,
+    runId: budget._id,
+    childRunId: `node-${i}`,
+  });
+
+  const assignment = (await ctx.db.get("assignments", childId))!;
+
+  await ctx.db.replace(
     "assignments",
-    padded(
-      {
-        ...newRootAssignment({
-          subject: "alice",
-          agent: `Child-${i}`,
-          threadId: `child-${i}`,
-          runTurn: "opaque",
-          limits: root.limits,
-        }),
-        rootAssignmentId: root._id,
-        runId: budget._id,
-        childRunId: `node-${i}`,
-      },
-      "runTurn",
-      LIMITS.assignmentBytes,
-    ),
+    childId,
+    padded(assignment, "runTurn", LIMITS.assignmentBytes),
   );
 
   const run = newSubagentRun({
@@ -121,25 +127,125 @@ async function maximumChild(
     now: Date.now(),
   });
 
-  await ctx.db.insert(
-    "subagentRuns",
-    padded(
-      {
-        ...run,
-        status: "completed",
-        deliveryStatus: "accepted",
-        childAssignmentId: childId,
-        childThreadId: `child-${i}`,
-        taskMessageId: `task-${i}`,
-        taskPreview: taskPreview("界".repeat(256)),
-        startedAt: Date.now(),
-        events: [{ phase: "completed", at: Date.now(), errorCode: null }],
-      } satisfies Omit<Doc<"subagentRuns">, "_id" | "_creationTime">,
-      "payloadFingerprint",
-      4 << 10,
-    ),
-  );
+  const childRunId = await ctx.db.insert("subagentRuns", {
+    ...run,
+    status: "completed",
+    deliveryStatus: "accepted",
+    childAssignmentId: childId,
+    childThreadId: `child-${i}`,
+    taskMessageId: `task-${i}`,
+    taskPreview: taskPreview("界".repeat(256)),
+    startedAt: Date.now(),
+    events: [{ phase: "completed", at: Date.now(), errorCode: null }],
+  } satisfies Omit<Doc<"subagentRuns">, "_id" | "_creationTime">);
+
+  const child = (await ctx.db.get("subagentRuns", childRunId))!;
+
+  await ctx.db.replace("subagentRuns", childRunId, padded(child, "payloadFingerprint", 4 << 10));
 }
+
+/** Assert the fixture really reaches its row caps, including native metadata. */
+export const maximumSizes = query({
+  args: { rootRunId: v.id("runs") },
+  handler: async (ctx, { rootRunId }) => {
+    const run = (await ctx.db.get("runs", rootRunId))!;
+
+    const children = await ctx.db
+      .query("subagentRuns")
+      .withIndex("by_group", (q) => q.eq("parentRunId", rootRunId))
+      .take(TREE_LIMITS.descendants);
+
+    const assignments = await Promise.all(
+      [run.rootAssignmentId!, ...children.map((r) => r.childAssignmentId!)].map((id) =>
+        ctx.db.get("assignments", id),
+      ),
+    );
+
+    const sizes = (row: unknown) =>
+      Math.max(getConvexSize(row as Value), new TextEncoder().encode(JSON.stringify(row)).length);
+
+    return { assignments: assignments.map(sizes), children: children.map(sizes) };
+  },
+});
+
+/** Exercise lifecycle growth at the actual admission boundary in one transaction. */
+export const envelopeLifecycle = mutation({
+  args: { bytes: v.number(), failed: v.boolean() },
+  handler: async (ctx, { bytes, failed }) => {
+    const assignmentId = await ctx.db.insert(
+      "assignments",
+      newRootAssignment({
+        subject: "alice",
+        agent: "Main",
+        threadId: "boundary",
+        runTurn: "opaque",
+        limits: resolveLimits(),
+      }),
+    );
+
+    const metadata = {
+      rootAssignmentId: assignmentId,
+      rootCancellationEpoch: 0,
+      taskMessageId: "task",
+      taskPreview: taskPreview("界".repeat(256)),
+    };
+
+    const settings = Array.from({ length: LIMITS.agents }, (_, i) => ({
+      agent: String(i),
+      settings: resolveRunSettings(),
+    }));
+
+    const models = {
+      Main: "m".repeat(LIMITS.modelIdLength),
+      Builder: "m".repeat(LIMITS.modelIdLength),
+    };
+
+    const base = newRun(models, settings, metadata);
+
+    const size = (row: unknown) =>
+      Math.max(
+        getConvexSize(row as Value),
+        new TextEncoder().encode(
+          JSON.stringify(row, (_key, value) =>
+            typeof value === "bigint" ? value.toString() : value,
+          ),
+        ).length,
+      );
+
+    let padding = bytes - size(base);
+
+    for (const entry of settings) {
+      const added = Math.min(padding, LIMITS.requestKeyLength - entry.agent.length);
+
+      entry.agent += "x".repeat(added);
+      padding -= added;
+    }
+
+    if (padding !== 0) throw new Error("FIXTURE_PADDING_OVERFLOW");
+
+    const runId = await ctx.db.insert("runs", newRun(models, settings, metadata));
+    const root = (await ctx.db.get("assignments", assignmentId))!;
+
+    await ctx.db.patch("runs", runId, {
+      startedAt: Date.now(),
+      resultMessageId: "m".repeat(64),
+      startedAgents: (1n << 63n) - 1n,
+      routingAgents: (1n << 63n) - 1n,
+      continues: HOST_LIMITS.continuesPerRun.max,
+      sideRuns: HOST_LIMITS.sideRunsPerRun.max,
+      launches: HOST_LIMITS.runLaunches.max,
+      hops: HOST_LIMITS.runHops.max,
+    });
+
+    await ctx.db.patch("assignments", assignmentId, { runId, turnStatus: "idle" });
+    const ended = { ...root, runId, turnStatus: "idle" as const };
+
+    await endRootTurn(ctx, ended, failed ? "EXECUTION_AMBIGUOUS" : null);
+    await closeRootRun(ctx, ended);
+
+    return { bytes: size((await ctx.db.get("runs", runId))!), runId };
+  },
+});
 
 /** A never-sent owned root, proving the public null envelope. */
 export const emptyRoot = mutation({

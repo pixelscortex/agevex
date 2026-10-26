@@ -6,10 +6,19 @@ import { tool, type ToolSet } from "ai";
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import { z } from "zod";
 import { vi } from "vite-plus/test";
+import { mark } from "../src/component/turns/tools.js";
+import type { MutationCtx } from "../src/component/_generated/server.js";
+import type { Id } from "../src/component/_generated/dataModel.js";
 import agevex from "../src/test.js";
 import meterTest from "../src/modules/meter/test.js";
 import { defineMeter } from "../src/modules/meter/client/index.js";
-import { Agent, registerAgent, type Registration, type ManagedAgent } from "../src/client/index.js";
+import {
+  Agent,
+  defineOnceTool,
+  registerAgent,
+  type Registration,
+  type ManagedAgent,
+} from "../src/client/index.js";
 import { components } from "./fixture/api.js";
 import schema from "./fixture/schema.js";
 import { main, builder, reviewer, reset, v2api as api } from "./delegation-v2.host.js";
@@ -21,6 +30,19 @@ import type { ApiFromModules } from "convex/server";
 
 const modules = import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]);
 
+type MarkerArgs = {
+  assignmentId: Id<"assignments">;
+  turnToken: string;
+  sliceId?: string;
+  key: string;
+  name?: string;
+};
+
+// Convex 1.47 registration_impl.ts:263 attaches the handler; convex-test uses it.
+const markerHandler = (
+  mark as unknown as { _handler: (ctx: MutationCtx, args: MarkerArgs) => Promise<null> }
+)._handler;
+
 export const progress = {
   started: [] as string[],
   gates: new Map<string, ReturnType<typeof gate>>(),
@@ -29,9 +51,10 @@ export const progress = {
 /** A held local effect makes the public currentTool observable before completion. */
 function tools(boundary?: "approval" | "ask") {
   return {
-    write_card: tool({
-      inputSchema: z.object({ label: z.string() }),
-      execute: async ({ label }) => {
+    write_card: defineOnceTool({
+      name: "write_card",
+      input: z.object({ label: z.string() }),
+      run: async ({ label }) => {
         progress.started.push(label);
         await progress.gates.get(label)?.promise;
 
@@ -58,6 +81,7 @@ export function setup(
     meter?: boolean;
     limits?: Registration["limits"];
     boundary?: "approval" | "ask";
+    marker?: (args: MarkerArgs) => Promise<void>;
   } = {},
 ) {
   reset();
@@ -83,6 +107,16 @@ export function setup(
   t.registerComponent("agevex", agevex.schema, {
     ...agevex.modules,
     "./component/treeSeed.ts": () => import("./run-tree.seed.js"),
+    "./component/turns/tools.ts": async () => ({
+      mark: {
+        ...mark,
+        _handler: async (ctx: MutationCtx, args: MarkerArgs) => {
+          await options.marker?.(args);
+
+          return markerHandler(ctx, args);
+        },
+      },
+    }),
   });
 
   const meterComponent = meterTest.register(t);

@@ -196,17 +196,38 @@ type ApprovedInput = {
  * Mark all local calls, including collaboration, without exposing their inputs.
  * A stream stays active through consumption, cancellation or its final yield.
  */
-function withToolProgress(rt: RuntimeContext, gen: Generation, name: string, tool: Tool): Tool {
+export function withToolProgress(
+  rt: RuntimeContext,
+  gen: Generation,
+  name: string,
+  tool: Tool,
+): Tool {
   return {
     ...tool,
     execute: async function (input, options) {
       const { rawCtx, args, turnKey } = gen.turn;
-      const key = await opaqueKey("tool-progress", turnKey, options.toolCallId);
-      const marker = { ...args, key };
       const mark = rt.component.turns.tools.mark;
-      const clear = () => rawCtx.runMutation(mark, marker);
+      let marker: (typeof args & { key: string }) | undefined;
 
-      await rawCtx.runMutation(mark, { ...marker, name });
+      // Progress must never delay or replace a paid result, including hashing,
+      // start failures and stream cleanup. Sequence clear behind start so a late
+      // start cannot resurrect progress. No retries: at most one read/patch per
+      // edge contends with assignment writes. Slice disarm clears failed edges;
+      // the mutation's turn/slice fence rejects writes arriving after disarm.
+      const started = Promise.resolve()
+        .then(async () => {
+          marker = { ...args, key: await opaqueKey("tool-progress", turnKey, options.toolCallId) };
+          await rawCtx.runMutation(mark, { ...marker, name });
+        })
+        .catch(() => {});
+
+      const clear = () => {
+        void started
+          .then(async () => {
+            if (marker) await rawCtx.runMutation(mark, marker);
+          })
+          .catch(() => {});
+      };
 
       let streaming = false;
 
@@ -221,17 +242,17 @@ function withToolProgress(rt: RuntimeContext, gen: Generation, name: string, too
 
         return output;
       } finally {
-        if (!streaming) await clear();
+        if (!streaming) clear();
       }
     },
   } as Tool;
 }
 
 /** Async-generator finally handles both normal exhaustion and consumer return. */
-async function* progressStream(output: AsyncIterable<unknown>, clear: () => Promise<null>) {
+async function* progressStream(output: AsyncIterable<unknown>, clear: () => void) {
   try {
     yield* output;
   } finally {
-    await clear();
+    clear();
   }
 }
