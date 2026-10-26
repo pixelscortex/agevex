@@ -1,0 +1,234 @@
+dist/client/agent.d.ts
+  h_51b7a781d7f2c3 4
+dist/client/coordinate/launch.js
+  h_51b7a781d7f2c3 14
+dist/client/coordinate/parent-note.js
+  h_51b7a781d7f2c3 6,22,54
+dist/client/endpoints/access.d.ts
+  h_51b7a781d7f2c3 3
+dist/client/endpoints/decisions.js
+  h_51b7a781d7f2c3 16
+dist/client/endpoints/pending.js
+  h_51b7a781d7f2c3 7,22
+dist/client/endpoints/reads.js
+  h_51b7a781d7f2c3 15
+dist/client/endpoints/requests.js
+  h_51b7a781d7f2c3 15
+dist/client/index.d.ts
+  h_51b7a781d7f2c3 1-2
+dist/client/registration/context.d.ts
+  h_51b7a781d7f2c3 4
+dist/client/registration/context.js
+  h_51b7a781d7f2c3 11
+dist/client/turn/deadlines.js
+  h_51b7a781d7f2c3 6
+dist/client/turn/fence.js
+  h_51b7a781d7f2c3 15
+dist/client/turn/tools.js
+  h_51b7a781d7f2c3 86
+dist/client/types.d.ts
+  h_51b7a781d7f2c3 7
+dist/component/_generated/api.d.ts
+  h_51b7a781d7f2c3 25,27,55,57
+dist/component/_generated/component.d.ts
+  h_51b7a781d7f2c3 23,25,54,56
+dist/component/schema.js
+  h_51b7a781d7f2c3 14,18
+dist/component/subagents/deliver.js
+  h_51b7a781d7f2c3 17
+dist/component/subagents/groups.js
+  h_51b7a781d7f2c3 3
+dist/component/subagents/history.js
+  h_51b7a781d7f2c3 15
+dist/component/subagents/launch.js
+  h_51b7a781d7f2c3 21
+dist/component/subagents/messages.js
+  h_51b7a781d7f2c3 5
+dist/component/subagents/runs.js
+  h_51b7a781d7f2c3 3
+dist/component/subagents/tree.d.ts
+  h_51b7a781d7f2c3 12
+dist/component/subagents/tree.js
+  h_51b7a781d7f2c3 1-2
+dist/component/turns/approvals.js
+  h_51b7a781d7f2c3 7
+dist/component/turns/boundaries.js
+  h_51b7a781d7f2c3 1
+dist/component/turns/cancel.js
+  h_51b7a781d7f2c3 8
+dist/component/turns/claim.js
+  h_51b7a781d7f2c3 4
+dist/component/turns/decision_reads.js
+  h_51b7a781d7f2c3 6
+dist/component/turns/finish.js
+  h_51b7a781d7f2c3 21
+dist/component/turns/pause.js
+  h_51b7a781d7f2c3 7
+dist/component/turns/runs.js
+  h_51b7a781d7f2c3 2
+dist/component/turns/send.js
+  h_51b7a781d7f2c3 22,27
+dist/component/turns/tools.js
+  h_51b7a781d7f2c3 7-8
+dist/component/turns/wake.js
+  h_51b7a781d7f2c3 6
+dist/component/turns/write.js
+  h_51b7a781d7f2c3 5-6
+dist/component/workflows/lanes.js
+  h_51b7a781d7f2c3 21
+dist/modules/meter/component/aggregates.js
+  h_51b7a781d7f2c3 10
+dist/modules/meter/component/charge_creation.d.ts
+  h_51b7a781d7f2c3 2
+dist/modules/meter/component/charge_creation.js
+  h_51b7a781d7f2c3 3
+dist/modules/meter/component/charge_lookup.d.ts
+  h_51b7a781d7f2c3 4-5
+dist/modules/meter/component/charge_lookup.js
+  h_51b7a781d7f2c3 11,13
+dist/modules/meter/component/charge_updates.d.ts
+  h_51b7a781d7f2c3 9-10
+dist/modules/meter/component/charge_updates.js
+  h_51b7a781d7f2c3 2
+dist/modules/meter/component/charges.d.ts
+  h_51b7a781d7f2c3 4,56,68
+dist/modules/meter/component/charges.js
+  h_51b7a781d7f2c3 4,9-12,16
+dist/modules/meter/component/delivery.d.ts
+  h_51b7a781d7f2c3 9
+dist/modules/meter/component/delivery.js
+  h_51b7a781d7f2c3 2
+dist/modules/meter/component/outbox.js
+  h_51b7a781d7f2c3 2
+dist/modules/meter/component/reads.js
+  h_51b7a781d7f2c3 13
+dist/modules/meter/component/reconciliation.js
+  h_51b7a781d7f2c3 11
+dist/modules/meter/component/retention.d.ts
+  h_51b7a781d7f2c3 2
+dist/modules/sandbox/component/admission.js
+  h_51b7a781d7f2c3 9
+dist/modules/sandbox/component/state.js
+  h_51b7a781d7f2c3 10
+dist/testing/bridge.js
+  h_51b7a781d7f2c3 11
+package.json
+  h_51b7a781d7f2c3 87,89
+src/client/agent.ts
+  h_51b7a781d7f2c3 12
+src/client/coordinate/launch.ts
+  h_51b7a781d7f2c3 15
+src/client/coordinate/parent-note.ts
+  h_51b7a781d7f2c3 6,31,67
+src/client/endpoints/access.ts
+  h_51b7a781d7f2c3 13
+src/client/endpoints/decisions.ts
+  h_51b7a781d7f2c3 26
+src/client/endpoints/pending.ts
+  h_51b7a781d7f2c3 7,26
+src/client/endpoints/reads.ts
+  h_51b7a781d7f2c3 30
+src/client/endpoints/requests.ts
+  h_51b7a781d7f2c3 21
+src/client/index.ts
+  h_51b7a781d7f2c3 7-8
+src/client/registration/context.ts
+  h_51b7a781d7f2c3 18
+src/client/turn/deadlines.ts
+  h_51b7a781d7f2c3 7
+src/client/turn/fence.ts
+  h_51b7a781d7f2c3 16
+src/client/turn/tools.ts
+  h_51b7a781d7f2c3 113
+src/client/types.ts
+  h_51b7a781d7f2c3 20
+src/component/README.md
+  h_51b7a781d7f2c3 140-141,156
+src/component/_generated/api.ts
+  h_51b7a781d7f2c3 27,29,64,66
+src/component/_generated/component.ts
+  h_51b7a781d7f2c3 24,26,67,69
+src/component/schema.ts
+  h_51b7a781d7f2c3 15,20
+src/component/subagents/deliver.ts
+  h_51b7a781d7f2c3 24
+src/component/subagents/groups.ts
+  h_51b7a781d7f2c3 18
+src/component/subagents/history.ts
+  h_51b7a781d7f2c3 15
+src/component/subagents/launch.ts
+  h_51b7a781d7f2c3 22
+src/component/subagents/messages.ts
+  h_51b7a781d7f2c3 5
+src/component/subagents/runs.ts
+  h_51b7a781d7f2c3 16
+src/component/subagents/tree.ts
+  h_51b7a781d7f2c3 12-13
+src/component/turns/approvals.ts
+  h_51b7a781d7f2c3 28
+src/component/turns/boundaries.ts
+  h_51b7a781d7f2c3 14
+src/component/turns/cancel.ts
+  h_51b7a781d7f2c3 23
+src/component/turns/claim.ts
+  h_51b7a781d7f2c3 26
+src/component/turns/decision_reads.ts
+  h_51b7a781d7f2c3 7
+src/component/turns/finish.ts
+  h_51b7a781d7f2c3 23
+src/component/turns/pause.ts
+  h_51b7a781d7f2c3 22
+src/component/turns/runs.ts
+  h_51b7a781d7f2c3 12
+src/component/turns/send.ts
+  h_51b7a781d7f2c3 22,27
+src/component/turns/tools.ts
+  h_51b7a781d7f2c3 7-8
+src/component/turns/wake.ts
+  h_51b7a781d7f2c3 22
+src/component/turns/write.ts
+  h_51b7a781d7f2c3 23-24
+src/component/workflows/lanes.ts
+  h_51b7a781d7f2c3 22
+src/modules/meter/README.md
+  h_51b7a781d7f2c3 106-110,112-113
+src/modules/meter/component/aggregates.ts
+  h_51b7a781d7f2c3 13
+src/modules/meter/component/charge_creation.ts
+  h_51b7a781d7f2c3 9,12
+src/modules/meter/component/charge_lookup.ts
+  h_51b7a781d7f2c3 12,15,17
+src/modules/meter/component/charge_updates.ts
+  h_51b7a781d7f2c3 9,11
+src/modules/meter/component/charges.ts
+  h_51b7a781d7f2c3 4,9-12,32
+src/modules/meter/component/delivery.ts
+  h_51b7a781d7f2c3 14,16
+src/modules/meter/component/outbox.ts
+  h_51b7a781d7f2c3 10
+src/modules/meter/component/reads.ts
+  h_51b7a781d7f2c3 23
+src/modules/meter/component/reconciliation.ts
+  h_51b7a781d7f2c3 12
+src/modules/meter/component/retention.ts
+  h_51b7a781d7f2c3 9
+src/modules/sandbox/README.md
+  h_51b7a781d7f2c3 65
+src/modules/sandbox/component/admission.ts
+  h_51b7a781d7f2c3 9
+src/modules/sandbox/component/state.ts
+  h_51b7a781d7f2c3 11
+src/testing/bridge.ts
+  h_51b7a781d7f2c3 17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d6094ebfc0ff68939dc5202093237322f6555854",
+  "prompts": {},
+  "humans": {
+    "h_51b7a781d7f2c3": {
+      "author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
