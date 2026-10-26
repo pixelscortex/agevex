@@ -13,7 +13,9 @@ agent index, and `open` looks roots up in `config.agents`.
    and models once (`registration/`) and returns the endpoints, `runTurn`,
    `coordinate`, `textTask` and the host helpers.
 2. **Accept.** `open` / `send` (`endpoints/requests.ts`) authorize the subject,
-   dedupe the request key, save the native prompt and call `turns.send.accept`,
+   dedupe the request key (a replay returns its stored receipt), run agevex's own
+   rejection checks, call the host's optional `admit` for fresh requests only,
+   then save the native prompt and call `turns.send.accept`,
    which snapshots validated Agent.run settings for the root and all children.
 3. **Schedule.** The component's Workflow loop schedules `runTurn` once per turn
    slice.
@@ -67,7 +69,7 @@ can be cancelled without an unknown outcome. Native app titles always win.
 | `registration/context.ts`     | `RuntimeContext`, registration checks, `observe`, `coordinateRef`.            |
 | `registration/graph.ts`       | Delegation graph validation and resolution.                                   |
 | `endpoints/index.ts`          | `authorizedEndpoints`: composes the public endpoints.                         |
-| `endpoints/access.ts`         | Endpoint context and the `ownedThread` authorization gate.                    |
+| `endpoints/access.ts`         | Endpoint context and the owned-thread authorization scopes.                   |
 | `endpoints/requests.ts`       | `open`, `send`.                                                               |
 | `endpoints/attachments.ts`    | File validation and native file parts for `open` / `send`.                    |
 | `endpoints/controls.ts`       | `respond`, `answer`, `cancel`.                                                |

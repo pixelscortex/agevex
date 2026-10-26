@@ -1,11 +1,12 @@
 // The two public endpoints that start work: `open` (new conversation) and `send`
 // (next message in an owned root conversation).
 //
-// Both are idempotent per subject and request key: input is validated and
-// fingerprinted, a duplicate returns its stored receipt (`turns.send.lookupReceipt`),
-// and only a fresh request saves the native prompt (with its attachments) and is
-// admitted by `turns.send.accept` in the same transaction. `send` also respects the
-// thread's admission state (`turns.send.admission`) before any native write.
+// Both authorize first: the host owns the mapping from identity to subject.
+// Validated, fingerprinted inputs resolve that subject's retained receipt before
+// fresh work reaches the optional host admit hook. All returning refusals
+// (including queue and attachment limits) precede admit. After it, native saves
+// and turns.send.accept either accept together with host writes or throw to
+// roll back the entire mutation; no non-accepting receipt can commit host writes.
 
 import { createThread, saveMessage } from "@convex-dev/agent";
 import {
@@ -22,8 +23,8 @@ import { receipt } from "../../component/schema.js";
 import { savedMessageRef } from "../native-saves.js";
 import { fingerprint } from "../once.js";
 import { persistedTextConfig } from "../text/options.js";
-import type { ManagedAgent } from "../types.js";
-import { observe, ownedThread, rootAgent, type EndpointContext } from "./access.js";
+import type { AuthorizationScope, ManagedAgent } from "../types.js";
+import { observe, ownedScope, rootAgent, threadScope, type EndpointContext } from "./access.js";
 import { attachment, recordAttachments, validateFiles } from "./attachments.js";
 
 type SavedMessage = Awaited<ReturnType<typeof saveMessage>>;
@@ -64,6 +65,82 @@ function validModels(
       ([name, id]) => reachable.has(name) && ep.config.modelAllowlist?.includes(id),
     )
   );
+}
+
+type RequestScope = Extract<AuthorizationScope, { operation: "open" | "send" }>;
+type RequestInput = {
+  text: string;
+  models?: Record<string, string>;
+  files?: string[];
+};
+
+/** Bound every fingerprint input before hashing, after host authorization. */
+async function prepareRequest(
+  ep: EndpointContext,
+  scope: RequestScope,
+  input: RequestInput,
+  managed?: ManagedAgent,
+) {
+  assertFact(scope.agent, "agent");
+  const invalid = validateInput(input.text, scope.requestKey);
+
+  if (invalid) return { rejected: { status: "rejected" as const, code: invalid } };
+
+  if (!managed && !ep.config.agents.some((agent) => agent.name === scope.agent))
+    return { rejected: { status: "rejected" as const, code: "UNKNOWN_AGENT" as const } };
+
+  const native = managed ?? rootAgent(ep, scope.agent);
+
+  if (!validModels(ep, input.models, native))
+    return { rejected: { status: "rejected" as const, code: "INVALID_MODELS" as const } };
+
+  validateFiles(input.files);
+
+  const hash = await fingerprint([
+    scope.operation,
+    scope.operation === "open" ? scope.agent : scope.threadId,
+    input.text,
+    input.models ?? null,
+    input.files ?? [],
+  ]);
+
+  return { native, hash };
+}
+
+/**
+ * Authorize every call before validation or receipt lookup. Only the host's
+ * returned subject is trusted; it may differ from ctx.auth's identity subject.
+ */
+async function authorizeRequest(
+  ep: EndpointContext,
+  ctx: GenericMutationCtx<GenericDataModel>,
+  scope: RequestScope,
+) {
+  const { subject } = await ep.config.authorize(ctx, scope);
+
+  assertFact(subject, "subject");
+
+  return subject;
+}
+
+/**
+ * One exact authorized subject/key lookup uses unique() (Convex implements it
+ * with take(2)): <=2 * 1 MiB even for corrupt duplicate ledger rows, independent
+ * of queue or receipt counts. Never substitute a thread's owner for the host's
+ * authorized subject: foreign callers must not learn another subject's keys.
+ */
+function lookupRequest(
+  ep: EndpointContext,
+  ctx: GenericMutationCtx<GenericDataModel>,
+  subject: string,
+  scope: RequestScope,
+  hash: string,
+) {
+  return ctx.runQuery(ep.component.turns.send.lookupReceipt, {
+    subject,
+    requestKey: scope.requestKey,
+    fingerprint: hash,
+  });
 }
 
 /** One admitted request, as `acceptRequest` passes it to `turns.send.accept`. */
@@ -134,32 +211,16 @@ export function openEndpoint(ep: EndpointContext) {
     },
     returns: receipt,
     handler: async (ctx, args) => {
-      const { subject } = await ep.config.authorize(ctx, { operation: "open", agent: args.agent });
-
-      assertFact(subject, "subject");
-      assertFact(args.agent, "agent");
-      const invalid = validateInput(args.prompt, args.requestKey);
-
-      if (invalid) return { status: "rejected" as const, code: invalid };
-
-      if (!ep.config.agents.some((a) => a.name === args.agent))
-        return { status: "rejected" as const, code: "UNKNOWN_AGENT" as const };
-
-      const native = rootAgent(ep, args.agent);
-
-      if (!validModels(ep, args.models, native))
-        return { status: "rejected" as const, code: "INVALID_MODELS" as const };
-
-      validateFiles(args.files);
-
       const { prompt, models, files } = args;
-      const hash = await fingerprint(["open", args.agent, prompt, models ?? null, files ?? []]);
+      const scope = { operation: "open" as const, agent: args.agent, requestKey: args.requestKey };
 
-      const duplicate = await ctx.runQuery(ep.component.turns.send.lookupReceipt, {
-        subject,
-        requestKey: args.requestKey,
-        fingerprint: hash,
-      });
+      const subject = await authorizeRequest(ep, ctx, scope);
+      const prepared = await prepareRequest(ep, scope, { text: prompt, models, files });
+
+      if (prepared.rejected) return prepared.rejected;
+
+      const { native, hash } = prepared;
+      const duplicate = await lookupRequest(ep, ctx, subject, scope, hash);
 
       if (duplicate) return duplicate;
 
@@ -167,6 +228,8 @@ export function openEndpoint(ep: EndpointContext) {
 
       if ("rejected" in attached)
         return { status: "rejected" as const, code: "ATTACHMENT_LIMIT" as const };
+
+      await ep.config.admit?.(ctx, { ...scope, subject });
 
       const runTurn = await createFunctionHandle(ep.config.refs.runTurn());
       const threadId = await createThread(ctx, native.component, { userId: subject });
@@ -208,24 +271,24 @@ export function sendEndpoint(ep: EndpointContext) {
     },
     returns: receipt,
     handler: async (ctx, args) => {
-      const row = await ownedThread(ep, ctx, args.threadId, "send");
-      const invalid = validateInput(args.text, args.requestKey);
-
-      if (invalid) return { status: "rejected" as const, code: invalid };
-
-      if (!validModels(ep, args.models, row.native))
-        return { status: "rejected" as const, code: "INVALID_MODELS" as const };
-
-      validateFiles(args.files);
-
       const { threadId, text, models, files } = args;
-      const hash = await fingerprint(["send", threadId, text, models ?? null, files ?? []]);
+      const stored = await threadScope(ep, ctx, threadId);
 
-      const duplicate = await ctx.runQuery(ep.component.turns.send.lookupReceipt, {
-        subject: row.subject,
+      const scope = {
+        operation: "send" as const,
+        agent: stored.agent,
+        threadId,
         requestKey: args.requestKey,
-        fingerprint: hash,
-      });
+      };
+
+      const subject = await authorizeRequest(ep, ctx, scope);
+      const row = ownedScope(ep, stored, subject, "send");
+      const prepared = await prepareRequest(ep, scope, { text, models, files }, row.native);
+
+      if (prepared.rejected) return prepared.rejected;
+
+      const { hash } = prepared;
+      const duplicate = await lookupRequest(ep, ctx, subject, scope, hash);
 
       if (duplicate) return duplicate;
 
@@ -240,6 +303,8 @@ export function sendEndpoint(ep: EndpointContext) {
 
       if ("rejected" in attached)
         return { status: "rejected" as const, code: "ATTACHMENT_LIMIT" as const };
+
+      await ep.config.admit?.(ctx, { ...scope, subject });
 
       const saved = await saveMessage(ctx, row.native.component, {
         threadId,

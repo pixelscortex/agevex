@@ -39,6 +39,34 @@ replays the stored receipt. The same key with changed input returns
 `KEY_CONFLICT` before any native write. The fingerprint covers the operation,
 the agent or thread, the text, the model map and the file ids.
 
+`open` and `send` first call `authorize(ctx, scope)` on every attempt,
+including retries. Its scope includes `requestKey` without replay metadata.
+The returned `{ subject }` is the host's own subject mapping; it need not equal
+the auth identity's subject. The receipt lookup then uses that subject alone.
+
+Optional registration hook `admit(ctx, { subject, operation, agent, threadId?, requestKey })`
+runs only for fresh requests, after duplicate/conflict resolution and all
+agevex checks that can return a rejection receipt (input, queue and attachment
+limits). Use it to refuse new paid work (e.g. exhausted balance) without
+breaking idempotent retries:
+
+```ts
+admit: async (ctx, { subject }) => {
+  if (!(await hasBalance(ctx, subject))) throw new Error("OUT_OF_BALANCE");
+},
+```
+
+The hook receives the full host MutationCtx: **admit may write host state in the
+same transaction; those writes commit only if the request is accepted.** Native
+saves, inbox rows and receipts are written afterwards. If the hook throws, or
+any later step fails, the entire mutation rolls back, including host patches
+and scheduled work. After the hook, non-accepting results throw rather than
+returning a receipt. No reservation or settlement counterpart is required.
+
+A host that denies a retry in `authorize` still causes the call to throw.
+Purged receipts no longer identify a duplicate, so the request must pass fresh
+admission again. Another subject's retained receipt never bypasses admission.
+
 ## Approvals
 
 A pending native tool approval blocks generation and leaves the inbox row

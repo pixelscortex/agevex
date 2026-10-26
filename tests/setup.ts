@@ -1,6 +1,12 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { makeFunctionReference, mutationGeneric, queryGeneric } from "convex/server";
+import {
+  makeFunctionReference,
+  mutationGeneric,
+  queryGeneric,
+  type GenericSchema,
+  type SchemaDefinition,
+} from "convex/server";
 import workflow from "@convex-dev/workflow/test";
 import { type Registration } from "../src/client/types.js";
 import agent from "@convex-dev/agent/test";
@@ -152,6 +158,7 @@ export function setup(
   fault?: Fault,
   limits?: Registration["limits"],
   transactionLimits: NonNullable<Parameters<typeof convexTest>[0]>["transactionLimits"] = false,
+  hostSchema: SchemaDefinition<GenericSchema, boolean> = schema,
 ) {
   state.run = undefined;
   state.deferred = false;
@@ -178,6 +185,12 @@ export function setup(
   state.observerFails = false;
   state.fail = false;
   state.revoke = false;
+  state.denyFreshRequests = false;
+  state.denyAllRequests = false;
+  state.requestScopes.length = 0;
+  state.admissions.length = 0;
+  state.admit = undefined;
+  state.subjectPrefix = "";
   state.hang = false;
   state.tools = false;
   state.approval = false;
@@ -210,7 +223,7 @@ export function setup(
   state.childRelease = undefined;
 
   const t = convexTest({
-    schema,
+    schema: hostSchema,
     transactionLimits,
     modules: {
       ...modules,

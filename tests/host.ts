@@ -22,6 +22,7 @@ import {
   type CoordinateResult,
   type TurnArgs,
   type Registration,
+  type AuthorizationScope,
   type RunSettings,
 } from "../src/client/index.js";
 import { scriptedModel } from "../src/test.js";
@@ -72,6 +73,13 @@ export const state = {
   observerFails: false,
   fail: false,
   revoke: false,
+  /** Admission can deny fresh paid work while preserving authorized receipt replays. */
+  denyFreshRequests: false,
+  denyAllRequests: false,
+  requestScopes: [] as Extract<AuthorizationScope, { operation: "open" | "send" }>[],
+  admissions: [] as Parameters<NonNullable<Registration["admit"]>>[1][],
+  admit: undefined as Registration["admit"],
+  subjectPrefix: "",
   hang: false,
   tools: false,
   approval: false,
@@ -460,7 +468,19 @@ export function fixtureRuntime(limits?: Registration["limits"]) {
 
       if (!identity) throw new Error("UNAUTHENTICATED");
 
-      return { subject: identity.subject };
+      if (scope.operation === "open" || scope.operation === "send") {
+        state.requestScopes.push(scope);
+
+        if (state.denyAllRequests) throw new Error("FORBIDDEN");
+      }
+
+      return { subject: state.subjectPrefix + identity.subject };
+    },
+    admit: async (ctx, input) => {
+      state.admissions.push(input);
+      await state.admit?.(ctx, input);
+
+      if (state.denyFreshRequests) throw new Error("OUT_OF_BALANCE");
     },
     authorizeExecution: async (_ctx, scope) => {
       if (state.revoke || scope.subject !== "alice") throw new Error("REVOKED");
