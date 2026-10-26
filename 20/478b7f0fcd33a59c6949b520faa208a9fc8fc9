@@ -1,0 +1,99 @@
+docs/site/content/docs/concepts/hooks.mdx
+  s_d1acb60e801bf5::t_237ff69773be9a 32-46
+docs/site/content/docs/concepts/idempotency.mdx
+  s_5f8aecb717db8f::t_561c38192dde87 50-52
+docs/site/content/docs/concepts/slots.mdx
+  s_5f8aecb717db8f::t_c5b3f2aa836415 22-24
+src/client/README.md
+  s_d1acb60e801bf5::t_417f49a6153793 57-70,73-77
+src/client/once.ts
+  s_5f8aecb717db8f::t_bb309a6aa64478 28-29
+src/client/turn/completion.ts
+  s_5f8aecb717db8f::t_334563c01b162f 57,63,65,98-101,103-108,110-113
+src/client/turn/generation.ts
+  s_5f8aecb717db8f::t_d0f9ba12b7e212 128
+src/client/types.ts
+  s_5f8aecb717db8f::t_7ea50941155a53 43,45
+src/component/README.md
+  s_d1acb60e801bf5::t_9aeb90235e9264 62,86,92,205-210
+src/component/hooks/notes.ts
+  s_5f8aecb717db8f::t_10cf0018aed380 274
+src/component/hooks/origins.ts
+  s_5f8aecb717db8f::t_90fd891a262efc 18
+src/component/hooks/routing.ts
+  s_5f8aecb717db8f::t_223fb6d6fc7cfe 32,50
+src/component/hooks/state.ts
+  s_5f8aecb717db8f::t_30e514c4aba92f 21-22,58-61,120
+src/component/limits.ts
+  s_666fc2982f883b::t_e90549a50b4a0d 89,102-104,109,111-117,161-162,198-199
+src/component/run-settings.ts
+  s_d1acb60e801bf5::t_46a136512387bf 113-125
+src/component/schema.ts
+  s_5f8aecb717db8f::t_6d2d4d13af4637 279-288
+src/component/subagents/launch.ts
+  s_5f8aecb717db8f::t_2441c357fc5362 199
+src/component/subagents/parent-notes.ts
+  s_d1acb60e801bf5::t_09897ac997703f 37,39-40
+src/component/subagents/settle.ts
+  s_5f8aecb717db8f::t_5be30977ea86ae 60,163-164
+src/component/text/state.ts
+  s_5f8aecb717db8f::t_a4579762074ba4 31
+src/component/turns/approvals.ts
+  s_5f8aecb717db8f::t_e50b9d6ad66730 47
+src/component/turns/assignments.ts
+  s_5f8aecb717db8f::t_2a3893afda0905 19
+src/component/turns/claim.ts
+  s_d1acb60e801bf5::t_dc9ec1494dba47 24,34,51,112,121,123-139,149,311
+src/component/turns/decision-reads.ts
+  s_5f8aecb717db8f::t_2fba200fc4e789 92-93
+src/component/turns/message-ids.ts
+  s_d1acb60e801bf5::t_7b53665e6983c9 1-36
+src/component/turns/pause.ts
+  s_5f8aecb717db8f::t_553f06b4b7089e 274
+src/component/turns/write.ts
+  s_5f8aecb717db8f::t_49c95f5c9b7e09 22,119-120,265,272,280-286
+src/testing/bridge.ts
+  s_5f8aecb717db8f::t_6ae71863aaf214 139-140,142-149
+tests/message-ids.fixture.ts
+  s_5f8aecb717db8f::t_fb1497027ed47c 8,20-23,29,48
+tests/message-ids.test.ts
+  s_d1acb60e801bf5::t_f55344428d44e3 6-7,9,65,68-71,86-89,158,160-172,198-199,209,213-217,347-566
+tests/message-parent-bounds.fixture.ts
+  s_666fc2982f883b::t_c73dec62be86cf 4,102,154-160
+tests/message-parent-cancel.test.ts
+  s_d1acb60e801bf5::t_12462d6995d72d 3,6,84-87
+tests/review-regressions.test.ts
+  s_666fc2982f883b::t_6b1e822ec1f36d 773
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "20478b7f0fcd33a59c6949b520faa208a9fc8fc9",
+  "prompts": {},
+  "sessions": {
+    "s_5f8aecb717db8f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a179a3-9e3c-73a2-a348-23bd4b1857c1",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_666fc2982f883b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1798d-979d-7872-9ae8-0862181e71da",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_d1acb60e801bf5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a179a2-6b81-7d22-a42b-0465e67c2781",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}

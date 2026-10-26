@@ -1,0 +1,40 @@
+src/client/types.ts
+  s_1a2e40cc02c9bd::t_dbefa9c13e781b 41-46
+src/client/once.ts
+  s_1a2e40cc02c9bd::t_dbefa9c13e781b 28-29
+tests/message-ids.fixture.ts
+  s_1a2e40cc02c9bd::t_79f44abb19b130 1-55
+src/client/turn/completion.ts
+  s_1a2e40cc02c9bd::t_dbefa9c13e781b 98-107,110-112,116
+  s_1a2e40cc02c9bd::t_ff9f2a7b27c4c8 117
+tests/message-ids.test.ts
+  s_1a2e40cc02c9bd::t_79f44abb19b130 1-10,12-118,120-197,199,201-203,205,207-212,214-216,218-221,224-228,230,237
+  s_1a2e40cc02c9bd::t_a282da9bccd017 11,119,198,200,204,206,213,217,222-223
+  s_1a2e40cc02c9bd::t_dc4b42e6b72f5d 229,231-236,238-324
+docs/site/content/docs/concepts/hooks.mdx
+  s_1a2e40cc02c9bd::t_786e6962d57379 30-45
+src/client/README.md
+  s_1a2e40cc02c9bd::t_786e6962d57379 57-71
+docs/site/content/docs/concepts/slots.mdx
+  s_1a2e40cc02c9bd::t_786e6962d57379 19-25
+src/client/turn/generation.ts
+  s_1a2e40cc02c9bd::t_dbefa9c13e781b 128
+docs/site/content/docs/concepts/idempotency.mdx
+  s_1a2e40cc02c9bd::t_786e6962d57379 48-52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f4cd21743c98e521b21785d764dfa3e743cd07a2",
+  "prompts": {},
+  "sessions": {
+    "s_1a2e40cc02c9bd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17996-6bbe-70f3-b9a9-6556a63bb1fa",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
