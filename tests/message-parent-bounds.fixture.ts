@@ -3,7 +3,7 @@ import { getConvexSize, v } from "convex/values";
 import { mutation } from "../src/component/_generated/server.js";
 import { HOST_LIMITS, LIMITS, readyRowLimit } from "../src/component/limits.js";
 import { newRun } from "../src/component/turns/runs.js";
-import { resolveRunSettings } from "../src/component/run-settings.js";
+import { resolveRunSettings } from "../src/component/run_settings.js";
 import { newSubagentRun } from "../src/component/subagents/runs.js";
 import type { Doc } from "../src/component/_generated/dataModel.js";
 import type { MutationCtx } from "../src/component/_generated/server.js";

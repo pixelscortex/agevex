@@ -10,7 +10,7 @@ import { components } from "./_generated/api.js";
 import type { Doc } from "./_generated/dataModel.js";
 import type { MutationCtx, QueryCtx } from "./_generated/server.js";
 import { LIMITS } from "../shared/limits.js";
-import { usageProjections } from "./usage-projections.js";
+import { usageProjections } from "./usage_projections.js";
 
 export type Key = [string, number | string];
 export type Tree = DirectAggregate<{ Key: Key; Id: string; Namespace: string[] }>;

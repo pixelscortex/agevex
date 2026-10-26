@@ -15,6 +15,8 @@ cd "$repo"
 test -z "$(git status --porcelain)" || { echo "release:git: working tree is not clean" >&2; exit 1; }
 source_sha=$(git rev-parse --short HEAD)
 
+# Refuse to publish a build Convex would reject at deploy (scripts/check-deploy.sh).
+sh scripts/check-deploy.sh
 bun run build
 
 tree=$(mktemp -d)

@@ -4,7 +4,7 @@ import { asSchema } from "ai";
 import { queryGeneric } from "convex/server";
 import { DECISION_LIMITS, decisionBytes } from "../../shared/decisions.js";
 import { ConvexError, v } from "convex/values";
-import { pendingItem } from "../../component/turns/decision-reads.js";
+import { pendingItem } from "../../component/turns/decision_reads.js";
 import { ownedThread, type EndpointContext } from "./access.js";
 import { askProjection } from "../../shared/ask-values.js";
 
@@ -23,7 +23,7 @@ export function pendingApprovalsEndpoint(ep: EndpointContext) {
     handler: async (ctx, args) => {
       const row = await ownedThread(ep, ctx, args.threadId, "pendingApprovals");
 
-      const calls = await ctx.runQuery(ep.component.turns["decision-reads"].pending, {
+      const calls = await ctx.runQuery(ep.component.turns.decision_reads.pending, {
         assignmentId: row.assignmentId,
         subject: row.subject,
         ...(args.rootRunId ? { rootRunId: args.rootRunId } : {}),

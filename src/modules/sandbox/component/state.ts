@@ -8,7 +8,7 @@ import { v } from "convex/values";
 import { type FunctionHandle } from "convex/server";
 import { mutation, query } from "./_generated/server.js";
 import { HARD_LIMITS, LIMITS, bounded, integer } from "../shared/limits.js";
-import { sandbox, hasJobs, cancelWake, terminate } from "./state-helpers.js";
+import { sandbox, hasJobs, cancelWake, terminate } from "./state_helpers.js";
 import { reserveSandbox, reserveBackgroundJob } from "./admission.js";
 
 /** Read the unique bounded scope binding for host lifecycle decisions. */

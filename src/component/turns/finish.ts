@@ -20,7 +20,7 @@ import { disarmRecovery } from "./recovery.js";
 import { disarmSlice } from "./boundaries.js";
 import { completeTextTurn } from "../text/jobs.js";
 import { wake } from "./wake.js";
-import { endRootTurn } from "./run-lifecycle.js";
+import { endRootTurn } from "./run_lifecycle.js";
 
 type ErrorCode = Doc<"assignments">["errorCode"];
 

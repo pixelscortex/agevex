@@ -13,7 +13,7 @@ import type { MutationCtx, QueryCtx } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
 import { LIMITS } from "../limits.js";
 import { getConvexSize } from "convex/values";
-import { TREE_LIMITS } from "../run-tree-values.js";
+import { TREE_LIMITS } from "../run_tree_values.js";
 
 type SubagentRun = Doc<"subagentRuns">;
 

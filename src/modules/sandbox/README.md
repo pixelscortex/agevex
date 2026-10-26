@@ -62,7 +62,7 @@ the write runs in the Node action.
 | ----------------------------- | ----------------------------------------------------------------------------------------- |
 | `component/state.ts`          | Stable registered `state.*` queries and mutations; runs in Convex.                        |
 | `component/admission.ts`      | Transactional sandbox/job admission and complete row builders.                            |
-| `component/state-helpers.ts`  | Indexed lookups, active-job probes, safe wake cancellation and terminal transitions.      |
+| `component/state_helpers.ts`  | Indexed lookups, active-job probes, safe wake cancellation and terminal transitions.      |
 | `component/schema.ts`         | Scope bindings in `sandboxes`; fenced finite watchdogs in `jobs`.                         |
 | `component/convex.config.ts`  | Optional component declaration.                                                           |
 | `component/_generated/`       | Component API and data-model types.                                                       |

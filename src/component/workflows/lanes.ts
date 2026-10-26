@@ -19,7 +19,7 @@ import { WorkflowManager, type WorkflowId, type WorkflowCtx } from "@convex-dev/
 import { components, internal } from "../_generated/api.js";
 import { type MutationCtx, internalMutation } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
-import { RUN_LIMITS } from "../run-settings.js";
+import { RUN_LIMITS } from "../run_settings.js";
 import { LIMITS, type Limits } from "../limits.js";
 import { v } from "convex/values";
 import { vResultValidator } from "@convex-dev/workpool";

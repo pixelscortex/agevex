@@ -14,7 +14,7 @@ import {
   type FunctionReference,
 } from "convex/server";
 import { v } from "convex/values";
-import { assertSettingsSnapshot, settingsSnapshot, RUN_LIMITS } from "../component/run-settings.js";
+import { assertSettingsSnapshot, settingsSnapshot, RUN_LIMITS } from "../component/run_settings.js";
 import { LIMITS } from "../component/limits.js";
 import { internalQuery } from "../component/_generated/server.js";
 import { assignmentByThread } from "../component/turns/assignments.js";

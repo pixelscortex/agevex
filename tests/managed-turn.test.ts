@@ -1,5 +1,5 @@
 // @vitest-environment edge-runtime
-import { sliceWatchdogMs, resolveRunSettings } from "../src/component/run-settings.js";
+import { sliceWatchdogMs, resolveRunSettings } from "../src/component/run_settings.js";
 import { requireReceipt } from "./receipt.js";
 import { it, expect, vi, afterEach, beforeEach } from "vite-plus/test";
 import { setup, api, internal, components, state } from "./setup.js";

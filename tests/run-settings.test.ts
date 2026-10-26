@@ -19,7 +19,7 @@ import schema from "./fixture/schema.js";
 import { fixture, reset, exports, api, registration, text, call } from "./hooks.host.js";
 import { components, rawAssignment, internal } from "./fixture/api.js";
 import { requireReceipt } from "./receipt.js";
-import { RUN_LIMITS, resolveRunSettings, sliceWatchdogMs } from "../src/component/run-settings.js";
+import { RUN_LIMITS, resolveRunSettings, sliceWatchdogMs } from "../src/component/run_settings.js";
 
 const modules = import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]);
 
