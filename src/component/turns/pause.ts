@@ -11,7 +11,7 @@
  * `assignments.approvals`/`approvalBlocked` and `inbox`.
  */
 import type { MessageDoc } from "@convex-dev/agent";
-import { getConvexSize } from "convex/values";
+import { ConvexError, getConvexSize } from "convex/values";
 import type { MutationCtx } from "../_generated/server.js";
 import type { Doc } from "../_generated/dataModel.js";
 import { LIMITS } from "../limits.js";
@@ -19,6 +19,8 @@ import { approvalKey, callKey, keyString } from "../approvals.js";
 import { firstReady } from "./inbox.js";
 import { disarmRecovery } from "./recovery.js";
 import { disarmSlice } from "./boundaries.js";
+import { saveProposal } from "./decision-proposals.js";
+import type { AskUserMetadata } from "../../shared/tool-markers.js";
 
 type PauseRequest = NonNullable<Doc<"assignments">["approvals"]>["requests"][number];
 
@@ -109,23 +111,36 @@ export async function retireConsumedApprovals(
       !resulted.has(keyString(request.toolCallKey)),
   );
 
+  for (const request of row.approvals!.requests)
+    if (!remaining.includes(request)) await ctx.db.delete("receipts", request.proposalId);
+
   row.approvals = remaining.length ? { ...row.approvals!, requests: remaining } : undefined;
   await ctx.db.patch("assignments", row._id, { approvals: row.approvals });
 }
 
 /** Collect the approval requests, then the deferred calls, that a native save
- * opened. Pure apart from hashing; throws if a deferred call's id/name could
- * not fit in one bounded cancellation cleanup document. */
-export async function collectPause(messages: MessageDoc[], deferredTools: Set<string>) {
+ * opened, saving their compact proposals in the same transaction. Throws if a
+ * deferred call's id/name cannot fit in one bounded cleanup document. */
+export async function collectPause(
+  ctx: MutationCtx,
+  messages: MessageDoc[],
+  deferredTools: Set<string>,
+  askTools: Record<string, AskUserMetadata> = {},
+) {
   const pause: Pause = { requests: [], count: 0 };
 
-  await addApprovalRequests(pause, messages);
-  await addDeferredCalls(pause, messages, deferredTools);
+  await addApprovalRequests(ctx, pause, messages, askTools);
+  await addDeferredCalls(ctx, pause, messages, deferredTools, askTools);
 
   return pause;
 }
 
-async function addApprovalRequests(pause: Pause, messages: MessageDoc[]) {
+async function addApprovalRequests(
+  ctx: MutationCtx,
+  pause: Pause,
+  messages: MessageDoc[],
+  askTools: Record<string, AskUserMetadata>,
+) {
   for (const message of messages) {
     const content = assistantParts(message);
 
@@ -140,9 +155,16 @@ async function addApprovalRequests(pause: Pause, messages: MessageDoc[]) {
 
       if (pause.requests.some((request) => request.key === key)) continue;
 
+      const call = content.find(
+        (call) => call.type === "tool-call" && call.toolCallId === part.toolCallId,
+      );
+
+      if (call?.type !== "tool-call") throw new ConvexError({ code: "PENDING_CALL_NOT_FOUND" });
+
       pause.requests.push({
         key,
         messageId: message._id,
+        proposalId: await saveProposal(ctx, call, part.approvalId, askTools[call.toolName]),
         toolCallKey: await callKey(part.toolCallId),
         providerExecuted: content.some(
           (call) =>
@@ -157,8 +179,14 @@ async function addApprovalRequests(pause: Pause, messages: MessageDoc[]) {
 
 /** Only calls from declared no-execute tools can become host-answerable.
  * Record hashes + the exact native message id in the SAME transaction as
- * that assistant save. Payload/tool name stays in Agent's document. */
-async function addDeferredCalls(pause: Pause, messages: MessageDoc[], deferredTools: Set<string>) {
+ * that assistant save. Only the bounded proposal is copied into receipts. */
+async function addDeferredCalls(
+  ctx: MutationCtx,
+  pause: Pause,
+  messages: MessageDoc[],
+  deferredTools: Set<string>,
+  askTools: Record<string, AskUserMetadata>,
+) {
   for (const message of messages) {
     const content = assistantParts(message);
 
@@ -190,11 +218,12 @@ async function addDeferredCalls(pause: Pause, messages: MessageDoc[], deferredTo
           LIMITS.nativeEnvelopeBytes >
         LIMITS.cleanupMessageBytes
       )
-        throw new Error("DEFERRED_CALL_TOO_LARGE");
+        throw new ConvexError({ code: "DEFERRED_CALL_TOO_LARGE" });
 
       pause.requests.push({
         key,
         messageId: message._id,
+        proposalId: await saveProposal(ctx, part, part.toolCallId, askTools[part.toolName]),
         toolCallKey: await callKey(part.toolCallId),
         providerExecuted: false,
         deferred: true,
@@ -218,9 +247,9 @@ export async function suspendForApprovals(
   await disarmSlice(ctx, row);
   await disarmRecovery(ctx, row);
 
-  if (row.approvalBlocked) throw new Error("APPROVAL_ALREADY_PENDING");
+  if (row.approvalBlocked) throw new ConvexError({ code: "APPROVAL_ALREADY_PENDING" });
 
-  if (row.approvals?.requests.length) throw new Error("APPROVAL_RESULTS_MISSING");
+  if (row.approvals?.requests.length) throw new ConvexError({ code: "APPROVAL_RESULTS_MISSING" });
 
   // This is the suspended turn's control continuation, so it uses the
   // reserved head/approval slot even when ordinary ready work is full.

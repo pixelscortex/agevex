@@ -5,8 +5,13 @@ import { ConvexError, getConvexSize, v, type Infer, type Value } from "convex/va
 export const DECISION_LIMITS = {
   valueBytes: 16 << 10,
   schemaBytes: 8 << 10,
-  sourceBytes: 16 << 10,
+  proposalBytes: 32 << 10,
+  // System ids/timestamps plus the receipts kind/result fields, in either encoding.
+  proposalEnvelopeBytes: 512,
+  identifierChars: 512,
   itemBytes: 16 << 10,
+  // Per-item reservation covers JSON commas/brackets and Convex's array envelope.
+  arrayEnvelopeBytes: 2,
   outputBytes: 4 << 20,
   depth: 8,
   valueDepth: 32,
@@ -80,7 +85,7 @@ export function assertFormSchema(schema: JsonSchema): void {
       Object.keys(node).some((key) => !FORM_KEYWORDS.includes(key)) ||
       !["object", "array", "string", "number", "integer", "boolean", "null"].includes(node.type)
     )
-      throw new Error("INVALID_FORM_SCHEMA");
+      throw new ConvexError({ code: "INVALID_FORM_SCHEMA" });
 
     for (const key of [
       "minimum",
@@ -97,19 +102,19 @@ export function assertFormSchema(schema: JsonSchema): void {
             key !== "maximum" &&
             (!Number.isSafeInteger(node[key]) || node[key]! < 0)))
       )
-        throw new Error("INVALID_FORM_SCHEMA");
+        throw new ConvexError({ code: "INVALID_FORM_SCHEMA" });
 
     if (
       (node.title !== undefined && typeof node.title !== "string") ||
       (node.description !== undefined && typeof node.description !== "string")
     )
-      throw new Error("INVALID_FORM_SCHEMA");
+      throw new ConvexError({ code: "INVALID_FORM_SCHEMA" });
 
     if (node.enum !== undefined && (!Array.isArray(node.enum) || !node.enum.length))
-      throw new Error("INVALID_FORM_SCHEMA");
+      throw new ConvexError({ code: "INVALID_FORM_SCHEMA" });
 
     if (node.additionalProperties !== undefined && typeof node.additionalProperties !== "boolean")
-      throw new Error("INVALID_FORM_SCHEMA");
+      throw new ConvexError({ code: "INVALID_FORM_SCHEMA" });
 
     if (
       node.properties !== undefined &&
@@ -118,10 +123,10 @@ export function assertFormSchema(schema: JsonSchema): void {
         typeof node.properties !== "object" ||
         Array.isArray(node.properties))
     )
-      throw new Error("INVALID_FORM_SCHEMA");
+      throw new ConvexError({ code: "INVALID_FORM_SCHEMA" });
 
     for (const child of Object.values(node.properties ?? {})) {
-      if (++fields > DECISION_LIMITS.fields) throw new Error("INVALID_FORM_SCHEMA");
+      if (++fields > DECISION_LIMITS.fields) throw new ConvexError({ code: "INVALID_FORM_SCHEMA" });
 
       visit(child, depth + 1);
     }
@@ -135,11 +140,12 @@ export function assertFormSchema(schema: JsonSchema): void {
             !Object.prototype.hasOwnProperty.call(node.properties ?? {}, key),
         ))
     )
-      throw new Error("INVALID_FORM_SCHEMA");
+      throw new ConvexError({ code: "INVALID_FORM_SCHEMA" });
 
     if (node.items) visit(node.items, depth + 1);
 
-    if (node.type === "array" && !node.items) throw new Error("INVALID_FORM_SCHEMA");
+    if (node.type === "array" && !node.items)
+      throw new ConvexError({ code: "INVALID_FORM_SCHEMA" });
   };
 
   visit(schema, 0);
@@ -223,7 +229,7 @@ export function canonicalJson(value: unknown): string {
       : part && typeof part === "object"
         ? Object.fromEntries(
             Object.entries(part)
-              .sort(([a], [b]) => a.localeCompare(b))
+              .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
               .map(([key, item]) => [key, canonical(item)]),
           )
         : part;

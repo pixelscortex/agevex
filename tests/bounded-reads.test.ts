@@ -7,7 +7,8 @@ import { listMessages, saveMessage } from "@convex-dev/agent";
 import { setup, api, components, rawAssignment, state } from "./setup.js";
 import { main } from "./host.js";
 import type { ManagedAgent, OriginMessage } from "../src/client/index.js";
-import { LIMITS } from "../src/client/index.js";
+import { z } from "zod";
+import { defineOnceTool, LIMITS } from "../src/client/index.js";
 import { HOST_LIMITS } from "../src/component/limits.js";
 
 type Test = ReturnType<typeof setup>;
@@ -1811,4 +1812,51 @@ it("provider-executed calls refuse edits and keep the original approval pending"
   });
 
   await drain(t);
+});
+
+it("provider-executed approval edits are refused before deciding even when the host tool opts into editing", async () => {
+  const t = setup();
+  const managed = main as ManagedAgent;
+  const original = managed.declaredTools.echo;
+
+  managed.declaredTools.echo = defineOnceTool({
+    name: "echo",
+    input: z.object({ text: z.string() }),
+    approval: { editable: true },
+    run: ({ text }) => text,
+  });
+
+  try {
+    const turn = await request(t, 1, true);
+
+    const [pending] = await owner(t).query(api.agents.pendingApprovals, {
+      threadId: turn.threadId,
+    });
+
+    expect(pending).toMatchObject({ providerExecuted: true, editable: false });
+
+    await expect(
+      owner(t).mutation(api.agents.respond, {
+        threadId: turn.threadId,
+        approvalId: "approval-0",
+        decision: { kind: "approve", edit: { input: { text: "edited" } } },
+      }),
+    ).rejects.toMatchObject({ data: { code: "APPROVAL_NOT_EDITABLE" } });
+
+    expect(await execution(t, turn.assignmentId)).toMatchObject({ approvalBlocked: true });
+
+    expect(
+      (await execution(t, turn.assignmentId))?.approvals?.requests[0].resolved,
+    ).toBeUndefined();
+
+    await owner(t).mutation(api.agents.respond, {
+      threadId: turn.threadId,
+      approvalId: "approval-0",
+      decision: { kind: "reject" },
+    });
+
+    expect(await execution(t, turn.assignmentId)).toMatchObject({ approvalBlocked: false });
+  } finally {
+    managed.declaredTools.echo = original;
+  }
 });

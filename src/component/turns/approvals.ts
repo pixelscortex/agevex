@@ -44,10 +44,10 @@ type ResponseReceipt = { scope: string; key: string; fingerprint: string };
  * adds one expiry-head read and one receipt write of the same bound: <256 KiB
  * total additional I/O, independent of the <=16 calls in a pause. Together with
  * answer's <13 MiB native/readiness budget below, this remains <13.25 MiB.
- * Edited host responses additionally read <=2*32 KiB assignments, <=2*16 KiB
+ * Edited host responses additionally read <=2*32 KiB assignments, <=2*32 KiB
  * exact proposals and <=2*64 KiB receipts; the <=33 KiB effective-input receipt
  * includes one bounded call id, input and hashes. Even overcounting these reads
- * and writes together keeps the response path below 13.75 MiB <16 MiB.
+ * and writes together keeps the response path below 13.8 MiB <16 MiB.
  */
 async function responseReceipt(
   ctx: MutationCtx,
@@ -69,7 +69,8 @@ async function responseReceipt(
 async function saveResponseReceipt(ctx: MutationCtx, receipt: ResponseReceipt, messageId: string) {
   // Keep the same result bound and seven-day purge lifecycle as tool/request
   // receipts. The saved native message remains the only copy of the payload.
-  if (getConvexSize(messageId) > LIMITS.receiptResultBytes) throw new Error("RESULT_TOO_LARGE");
+  if (getConvexSize(messageId) > LIMITS.receiptResultBytes)
+    throw new ConvexError({ code: "RESULT_TOO_LARGE" });
 
   await armPurge(ctx);
   await ctx.db.insert("receipts", newDoneReceipt({ ...receipt, result: messageId }));
@@ -209,12 +210,7 @@ export async function answerDeferredCall(
 
   const call = await readPending(ctx, row, request);
 
-  const schema =
-    call.tool === "ask_user" && call.input && typeof call.input === "object"
-      ? (call.input as { agevexAnswerSchema?: JsonSchema }).agevexAnswerSchema
-      : undefined;
-
-  validateAnswer(args.value, schema);
+  validateAnswer(args.value, call.schema as JsonSchema | undefined);
   const toolName = call.tool;
 
   const messageId = await saveToolResult(ctx, row, pause, request.messageId, {
@@ -224,6 +220,8 @@ export async function answerDeferredCall(
   });
 
   await saveResponseReceipt(ctx, receipt, messageId);
+
+  await ctx.db.delete("receipts", request.proposalId);
 
   const remaining = pause.requests.filter((_, offset) => offset !== index);
   const approvals = remaining.length ? { ...pause, requests: remaining } : undefined;
@@ -309,7 +307,7 @@ export const answer = mutation({
 });
 
 /** Bind immutable input to the exact call before the native decision can wake it.
- * One <=16 KiB source plus <=64 KiB receipt. Original proposal is never rewritten.
+ * One <=32 KiB proposal plus <=64 KiB receipt. Original proposal is never rewritten.
  */
 async function recordEffectiveInput(
   ctx: MutationCtx,

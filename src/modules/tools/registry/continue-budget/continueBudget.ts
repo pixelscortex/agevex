@@ -37,7 +37,6 @@ export const continueInput = z.strictObject({
 export function createContinueBudgetTool() {
   const approval = defineOnceTool({
     name: "continue_budget",
-    approval: { editable: true },
     input: continueInput,
     run: (input, tc) => {
       tc.signal.throwIfAborted();
@@ -49,6 +48,8 @@ export function createContinueBudgetTool() {
       return { approved: true, reason: input.reason };
     },
   });
+
+  approval.needsApproval = true;
 
   approval.description =
     "Ask the user for explicit permission to spend more before the budget runs out. Approval is consent only; the host changes its budget policy separately.";

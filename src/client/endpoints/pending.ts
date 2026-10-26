@@ -1,8 +1,9 @@
 // Root-scoped UI decision projection through the host authorization contract.
+import { editableApproval } from "../once.js";
 import { asSchema } from "ai";
 import { queryGeneric } from "convex/server";
-import { DECISION_LIMITS, decisionBytes, type JsonSchema } from "../../shared/decisions.js";
-import { v } from "convex/values";
+import { DECISION_LIMITS, decisionBytes } from "../../shared/decisions.js";
+import { ConvexError, v } from "convex/values";
 import { pendingItem } from "../../component/turns/decision-reads.js";
 import { ownedThread, type EndpointContext } from "./access.js";
 
@@ -29,28 +30,43 @@ export function pendingApprovalsEndpoint(ep: EndpointContext) {
 
       const result = calls.map((call) => {
         const tool = ep.managedAgents.get(call.agent)?.declaredTools[call.tool];
-        const input = call.input as { question?: unknown; agevexAnswerSchema?: JsonSchema } | null;
+        const input = call.input as { question?: unknown } | null;
 
-        const form = call.tool === "ask_user" && call.kind === "ask";
+        const form = call.kind === "ask";
 
-        return {
+        // A large item must not hide other decisions. Check before copying question
+        // or schema into the public projection, which can duplicate input bytes.
+        if (call.truncated || decisionBytes(call) > DECISION_LIMITS.itemBytes)
+          return {
+            ...call,
+            input: null,
+            schema: undefined,
+            truncated: true as const,
+            editable: false,
+          };
+
+        const item = {
           ...call,
-          ...(form && input ? { input: { question: input.question } } : {}),
           editable:
             call.kind === "approval" &&
             !call.providerExecuted &&
             !!tool?.execute &&
+            editableApproval(tool) &&
             !!asSchema(tool.inputSchema).validate,
-          ...(typeof input?.question === "string" ? { question: input.question } : {}),
-          ...(form && input?.agevexAnswerSchema ? { schema: input.agevexAnswerSchema } : {}),
+          ...(form && typeof input?.question === "string" ? { question: input.question } : {}),
+          ...(form && call.schema ? { schema: call.schema } : {}),
         };
+
+        return decisionBytes(item) <= DECISION_LIMITS.itemBytes - DECISION_LIMITS.arrayEnvelopeBytes
+          ? item
+          : { ...call, input: null, schema: undefined, truncated: true as const, editable: false };
       });
 
       if (
         decisionBytes(result) > DECISION_LIMITS.outputBytes ||
         result.some((item) => decisionBytes(item) > DECISION_LIMITS.itemBytes)
       )
-        throw new Error("PENDING_OUTPUT_TOO_LARGE");
+        throw new ConvexError({ code: "PENDING_OUTPUT_TOO_LARGE" });
 
       return result;
     },

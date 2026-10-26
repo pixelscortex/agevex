@@ -4,7 +4,7 @@
  * Tables: `assignments` (one managed thread: execution token, epoch, queue
  * counters, approval pause, recovery), `inbox` (ready work, passive notes and
  * control ids), `runs` (one accepted request's shared budget), `receipts`
- * (idempotency ledger and attachment attestations) and `subagentRuns` (one
+ * (idempotency ledger, compact proposals and attachment attestations) and `subagentRuns` (one
  * delegation). Every field comment names its readers. The validators above
  * the schema (`receipt`, `activity`, `subagentRun`, error/denial codes, ...)
  * are shared with the client, which imports them from this file.
@@ -17,6 +17,7 @@ import { modelOverrides } from "./models.js";
 
 import { limitsValidator } from "./limits.js";
 import { textConfig, textJob, textBoundary, storedSummary } from "./text/values.js";
+import { proposal } from "./turns/decision-proposals.js";
 
 export const turnOrigin = v.union(v.literal("user"), v.literal("subagent_result"));
 export const turnStatus = v.union(
@@ -285,6 +286,9 @@ export default defineSchema({
             deferred: v.optional(v.boolean()),
             key: v.string(),
             messageId: v.string(),
+            // Pending/detail read this <=32 KiB proposal instead of native reasoning.
+            // Retire/answer/cancel delete it with the exact reference; no TTL race.
+            proposalId: v.id("receipts"),
             providerExecuted: v.boolean(),
             // Exact native ids remain in messageId's document. Hashes keep even
             // near-1 MiB call ids out of coordination rows. Read by write() to
@@ -378,12 +382,15 @@ export default defineSchema({
     hops: v.number(),
     cancelled: v.boolean(),
   }),
-  // Both are durable facts, with separate indexed lifecycles. Effect receipts
-  // expire; attachment attestations are excluded from effect cleanup.
+  // Durable facts have separate lifecycles. Effect receipts expire; proposals
+  // retire with their pause refs, and attachment attestations track native files.
   // The union avoids dummy lease/result fields on ownership records and adds
   // no table. Native Agent still owns file bytes, metadata and refcounts.
   receipts: defineTable(
     v.union(
+      // No expiry: an unanswered pause remains answerable beyond receipt retention.
+      // Read only by its exact assignment reference, deleted when that ref retires.
+      v.object({ kind: v.literal("proposal"), result: proposal }),
       v.object({
         kind: v.literal("effect"),
         scope: v.string(),

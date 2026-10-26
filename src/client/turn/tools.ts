@@ -19,6 +19,7 @@ import { boundToolDeadlines } from "./deadlines.js";
 import type { Generation } from "./context.js";
 import { slotToolBags } from "./slots.js";
 import { assertBudget } from "./admission.js";
+import { askUserMarker } from "../../shared/tool-markers.js";
 
 /** Build the complete tool set for one generation. */
 export async function buildTurnTools(rt: RuntimeContext, gen: Generation): Promise<ToolSet> {
@@ -58,12 +59,13 @@ export async function buildTurnTools(rt: RuntimeContext, gen: Generation): Promi
     tools[name] = withToolHooks(rt, gen, name, declared);
   }
 
-  if (tools.ask_user && !(claimed.settings.askUser ?? !claimed.subagent)) {
-    tools.ask_user = {
-      ...tools.ask_user,
-      execute: async () => ({ status: "denied", code: "ROOT_ONLY" }),
-    };
-  }
+  if (!(claimed.settings.askUser ?? !claimed.subagent))
+    for (const [name, tool] of Object.entries(tools))
+      if (askUserMarker(tool))
+        tools[name] = {
+          ...tool,
+          execute: async () => ({ status: "denied", code: "ROOT_ONLY" }),
+        };
 
   installCollaborationTools(rt, gen, tools, eligible);
 
@@ -110,7 +112,11 @@ function withToolHooks(rt: RuntimeContext, gen: Generation, name: string, declar
       })) as ApprovedInput | null;
 
       // Hooks receive a copy: in-place mutation must not mutate the immutable audit input.
-      if (approved) input = JSON.parse(JSON.stringify(approved.input));
+      if (approved?.edited) input = JSON.parse(JSON.stringify(approved.input));
+
+      // Plain approvals retain native parsed values, including non-JSON schema
+      // transforms. Snapshot their fingerprint before hooks can mutate input.
+      const approvedHash = approved ? await fingerprint(input) : undefined;
 
       const before = await hook(
         managed.hooks?.beforeTool
@@ -123,7 +129,7 @@ function withToolHooks(rt: RuntimeContext, gen: Generation, name: string, declar
       // The outer deadline wrapper checked budget once before this hook.
       const actual = before && "input" in before ? before.input : input;
 
-      if (approved && (await fingerprint(actual)) !== approved.effectiveHash)
+      if (approved && (await fingerprint(actual)) !== approvedHash)
         return { status: "denied", code: "APPROVED_INPUT_CHANGED" };
 
       const callKey = await opaqueKey("tool-call", facts.runId, facts.threadId, options.toolCallId);

@@ -4,11 +4,15 @@ import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { createAskUserTool } from "../../src/modules/tools/registry/ask-user/askUser.js";
 import { assertFormSchema, type Decision, type JsonSchema } from "../../src/shared/decisions.js";
 import { setup, api, native, state, child } from "./setup.js";
-import { main } from "./fixture/host.js";
+import { tool, jsonSchema } from "ai";
+import { z } from "zod";
+import { main, helper } from "./fixture/host.js";
 import { rawAssignment } from "../fixture/api.js";
 import { fingerprint } from "../../src/client/keys.js";
 import { requireReceipt } from "../receipt.js";
 import type { LanguageModelV4Content } from "@ai-sdk/provider";
+
+const editableEcho = main.declaredTools.editable_echo;
 
 const drain = (t: ReturnType<typeof setup>) =>
   t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100));
@@ -32,6 +36,12 @@ beforeEach(() => vi.useFakeTimers());
 
 afterEach(() => {
   main.declaredTools.ask_user = createAskUserTool();
+  main.declaredTools.editable_echo = editableEcho;
+
+  for (const name of ["plain_echo", "date", "large_question", "ask_human"])
+    delete main.declaredTools[name];
+
+  delete helper.declaredTools.ask_human;
   vi.clearAllTimers();
   vi.useRealTimers();
 });
@@ -323,13 +333,13 @@ it("pending queries authorize the root and reject foreign run selectors", async 
     t
       .withIdentity({ subject: "bob" })
       .query(api.host.pendingApprovals, { threadId: receipt.threadId }),
-  ).rejects.toThrow("FORBIDDEN");
+  ).rejects.toMatchObject({ data: { code: "FORBIDDEN" } });
 
   await expect(
     t
       .withIdentity({ subject: "alice" })
       .query(api.host.pendingApprovals, { threadId: receipt.threadId, rootRunId: "foreign" }),
-  ).rejects.toThrow();
+  ).rejects.toMatchObject({ data: { code: "RUN_NOT_FOUND" } });
 });
 
 it("form schemas reject remote references, excess depth and unvalidated constraints", () => {
@@ -368,4 +378,286 @@ it("an explicit false policy denies ask_user for a root without a human pause", 
   ).toEqual([]);
 
   expect(JSON.stringify(child.calls)).toContain("ROOT_ONLY");
+});
+
+it("plain needsApproval tools refuse edits and remain approvable without opting into editing", async () => {
+  const t = setup();
+
+  main.declaredTools.plain_echo = tool({
+    inputSchema: z.object({ text: z.string() }),
+    needsApproval: true,
+    execute: ({ text }) => {
+      state.effects.push(text);
+
+      return text;
+    },
+  });
+
+  state.steps.push(call("plain_echo", "plain-1", { text: "original" }));
+  const receipt = await open(t);
+  const alice = t.withIdentity({ subject: "alice" });
+  const [pending] = await alice.query(api.host.pendingApprovals, { threadId: receipt.threadId });
+
+  expect(pending.editable).toBe(false);
+
+  await expect(
+    alice.mutation(api.host.respond, {
+      threadId: receipt.threadId,
+      approvalId: pending.id,
+      decision: { kind: "approve", edit: { input: { text: "changed" } } },
+    }),
+  ).rejects.toMatchObject({ data: { code: "APPROVAL_NOT_EDITABLE" } });
+
+  expect(await alice.query(api.host.pendingApprovals, { threadId: receipt.threadId })).toHaveLength(
+    1,
+  );
+
+  await alice.mutation(api.host.respond, {
+    threadId: receipt.threadId,
+    approvalId: pending.id,
+    decision: { kind: "approve" },
+  });
+
+  await drain(t);
+  expect(state.effects).toEqual(["original"]);
+});
+
+it("plain approval accepts Date coercion without validating or serialising its parsed schema output", async () => {
+  const t = setup();
+
+  // Seed a native JSON proposal; z.coerce.date has no JSON Schema export.
+  main.declaredTools.date = tool({
+    inputSchema: z.object({ when: z.string() }),
+    needsApproval: true,
+    execute: () => "done",
+  });
+
+  state.steps.push(call("date", "date-1", { when: "2026-10-01" }));
+  const receipt = await open(t);
+  const alice = t.withIdentity({ subject: "alice" });
+  const [pending] = await alice.query(api.host.pendingApprovals, { threadId: receipt.threadId });
+
+  main.declaredTools.date = tool({
+    inputSchema: z.object({ when: z.coerce.date() }),
+    needsApproval: true,
+    execute: () => "done",
+  });
+
+  const response = await alice.mutation(api.host.respond, {
+    threadId: receipt.threadId,
+    approvalId: pending.id,
+    decision: { kind: "approve" },
+  });
+
+  expect(response.replayed).toBe(false);
+
+  const [saved] = await t.query(native.messages.getMessagesByIds, {
+    messageIds: [response.messageId],
+  });
+
+  expect(saved?.message).toMatchObject({
+    role: "tool",
+    content: [{ type: "tool-approval-response", approved: true }],
+  });
+
+  await alice.mutation(api.host.cancel, { threadId: receipt.threadId });
+  await drain(t);
+});
+
+it("a 20 KiB reasoning step remains pending and approves without another model call before execution", async () => {
+  const t = setup();
+
+  state.steps.push([
+    { type: "reasoning", text: "r".repeat(20 << 10) },
+    ...call("editable_echo", "large-reasoning", { text: "original" }),
+  ]);
+
+  const receipt = await open(t);
+  const alice = t.withIdentity({ subject: "alice" });
+  const [pending] = await alice.query(api.host.pendingApprovals, { threadId: receipt.threadId });
+
+  expect(pending).toMatchObject({ input: { text: "original" }, editable: true });
+  expect(state.calls).toHaveLength(1);
+
+  await alice.mutation(api.host.respond, {
+    threadId: receipt.threadId,
+    approvalId: pending.id,
+    decision: { kind: "approve", edit: { input: { text: "approved" } } },
+  });
+
+  await drain(t);
+  expect(state.effects).toEqual(["approved"]);
+});
+
+it("oversized pending input commits typed APPROVAL_LIMIT instead of GENERATION_FAILED", async () => {
+  const t = setup();
+
+  state.steps.push(call("editable_echo", "too-large", { text: "x".repeat(17 << 10) }));
+  const receipt = await open(t);
+
+  expect(await t.query(rawAssignment, { assignmentId: receipt.assignmentId })).toMatchObject({
+    turnStatus: "recovery_required",
+    errorCode: "APPROVAL_LIMIT",
+  });
+
+  expect(state.effects).toEqual([]);
+
+  expect(
+    await t.withIdentity({ subject: "alice" }).query(api.host.pendingApprovals, {
+      threadId: receipt.threadId,
+    }),
+  ).toEqual([]);
+});
+
+it("one oversized ask projection returns a bounded stub while ordinary approval questions are not duplicated", async () => {
+  const t = setup();
+
+  main.declaredTools.large_question = tool({ inputSchema: z.object({ question: z.string() }) });
+
+  main.declaredTools.plain_echo = tool({
+    inputSchema: z.object({ question: z.string() }),
+    needsApproval: true,
+    execute: () => "done",
+  });
+
+  state.steps.push([
+    ...call("large_question", "large-ask", { question: "q".repeat(15 << 10) }),
+    ...call("plain_echo", "large-approval", { question: "q".repeat(15 << 10) }),
+    ...call("editable_echo", "small-approval", { text: "ok" }),
+  ]);
+
+  const receipt = await open(t);
+
+  const pending = await t.withIdentity({ subject: "alice" }).query(api.host.pendingApprovals, {
+    threadId: receipt.threadId,
+  });
+
+  expect(pending).toHaveLength(3);
+
+  expect(pending.find((item) => item.tool === "large_question")).toMatchObject({
+    id: "large-ask",
+    tool: "large_question",
+    truncated: true,
+    input: null,
+  });
+
+  expect(pending.find((item) => item.tool === "plain_echo")).not.toHaveProperty("question");
+
+  expect(pending.find((item) => item.tool === "plain_echo")?.input).toEqual({
+    question: "q".repeat(15 << 10),
+  });
+
+  expect(pending.find((item) => item.tool === "editable_echo")?.editable).toBe(true);
+});
+
+it("two clients deciding concurrently commit one decision and reject the losing payload", async () => {
+  const t = setup();
+  const { alice, receipt, args } = await approval(t);
+  const otherClient = t.withIdentity({ subject: "alice" });
+
+  const outcomes = await Promise.allSettled([
+    alice.mutation(api.host.respond, {
+      ...args,
+      decision: { kind: "approve", edit: { input: { text: "first" } } },
+    }),
+    otherClient.mutation(api.host.respond, {
+      ...args,
+      decision: { kind: "approve", edit: { input: { text: "second" } } },
+    }),
+  ]);
+
+  expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
+
+  expect(outcomes.find((outcome) => outcome.status === "rejected")).toMatchObject({
+    reason: { data: { code: "KEY_CONFLICT" } },
+  });
+
+  await drain(t);
+  expect(state.effects).toHaveLength(1);
+  expect(["first", "second"]).toContain(state.effects[0]);
+  expect(await alice.query(api.host.pendingApprovals, { threadId: receipt.threadId })).toEqual([]);
+});
+
+it("ask_user registered as ask_human validates its captured schema without exposing it to the model", async () => {
+  const t = setup();
+
+  main.declaredTools.ask_human = createAskUserTool({ answerSchema: schema });
+  state.steps.push(call("ask_human", "alias-form", { question: "Choose settings" }));
+  const receipt = await open(t);
+  const alice = t.withIdentity({ subject: "alice" });
+  const [pending] = await alice.query(api.host.pendingApprovals, { threadId: receipt.threadId });
+
+  expect(pending).toMatchObject({ tool: "ask_human", schema, question: "Choose settings" });
+
+  await expect(
+    alice.mutation(api.host.answer, {
+      threadId: receipt.threadId,
+      toolCallId: "alias-form",
+      value: "bad",
+    }),
+  ).rejects.toMatchObject({ data: { code: "INVALID_ANSWER" } });
+
+  main.declaredTools.ask_human = createAskUserTool();
+
+  await alice.mutation(api.host.answer, {
+    threadId: receipt.threadId,
+    toolCallId: "alias-form",
+    value: { color: "red", count: 1 },
+  });
+
+  await drain(t);
+  expect(JSON.stringify(state.calls[1].prompt)).not.toContain("agevexAnswerSchema");
+  expect(JSON.stringify(state.calls[1].prompt)).not.toContain("additionalProperties");
+});
+
+it("ask_user registered as ask_human still enforces the default child ROOT_ONLY policy", async () => {
+  const t = setup();
+
+  helper.declaredTools.ask_human = createAskUserTool({ answerSchema: schema });
+  child.steps = [call("ask_human", "alias-child", { question: "May I?" })];
+  state.steps.push(call("agevex_delegate", "alias-delegate", { agent: "Helper", task: "Work" }));
+  const receipt = await open(t);
+
+  expect(
+    await t.withIdentity({ subject: "alice" }).query(api.host.pendingApprovals, {
+      threadId: receipt.threadId,
+    }),
+  ).toEqual([]);
+
+  expect(JSON.stringify(child.calls)).toContain("ROOT_ONLY");
+});
+
+it("approved tools without schema validate cannot have their input rewritten by hooks", async () => {
+  const t = setup();
+
+  main.declaredTools.editable_echo = tool({
+    inputSchema: jsonSchema<{ text: string }>({
+      type: "object",
+      properties: { text: { type: "string" } },
+      required: ["text"],
+    }),
+    needsApproval: true,
+    execute: ({ text }) => {
+      state.effects.push(text);
+
+      return text;
+    },
+  });
+
+  state.steps.push(call("editable_echo", "no-validate", { text: "original" }));
+  const receipt = await open(t);
+  const alice = t.withIdentity({ subject: "alice" });
+  const [pending] = await alice.query(api.host.pendingApprovals, { threadId: receipt.threadId });
+
+  state.rewrite = true;
+
+  await alice.mutation(api.host.respond, {
+    threadId: receipt.threadId,
+    approvalId: pending.id,
+    decision: { kind: "approve" },
+  });
+
+  await drain(t);
+  expect(state.effects).toEqual([]);
+  expect(JSON.stringify(state.calls[1].prompt)).toContain("APPROVED_INPUT_CHANGED");
 });

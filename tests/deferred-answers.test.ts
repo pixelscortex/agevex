@@ -407,11 +407,12 @@ it("mixed approval and free-text calls resume only after both native protocols a
   expect(JSON.stringify(state.calls[0].prompt)).toContain("Choose green");
 });
 
-it("answer reads only the exact recorded native message and never discovers calls from history", async () => {
+it("answer resolves the exact compact proposal without reading native history", async () => {
   const t = setup("transcriptReads", undefined, true);
   const receipt = await pending(t);
 
   state.transcriptReads = 0;
+  state.forbidTranscriptReads = true;
 
   await owner(t).mutation(api.agents.answer, {
     threadId: receipt.threadId,
@@ -419,16 +420,17 @@ it("answer reads only the exact recorded native message and never discovers call
     value: "exact answer",
   });
 
-  expect(state.transcriptReads).toBe(1);
+  expect(state.transcriptReads).toBe(0);
+  state.forbidTranscriptReads = false;
   await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
   await drain(t);
 });
 
-it("sixteen byte-bounded answers to a bounded source stay in budget with a full inbox", async () => {
+it("sixteen bounded answers to a large native source stay in budget with a full inbox", async () => {
   const t = setup(undefined, { queueLength: 100 }, true);
 
-  // Sixteen calls repeat parsed/raw input. Keep their complete source below 16 KiB.
-  state.deferredQuestion = "x".repeat(350);
+  // Sixteen bounded questions may share a native message larger than 16 KiB.
+  state.deferredQuestion = "x".repeat(1500);
   const receipt = await pending(t, LIMITS.approvalsPerPause);
 
   const row = (await t.query(rawAssignment, {
@@ -439,8 +441,7 @@ it("sixteen byte-bounded answers to a bounded source stay in budget with a full 
     messageIds: [row.approvals!.requests[0].messageId],
   });
 
-  expect(getConvexSize(call)).toBeGreaterThan(12 << 10);
-  expect(getConvexSize(call)).toBeLessThanOrEqual(16 << 10);
+  expect(getConvexSize(call)).toBeGreaterThan(16 << 10);
 
   for (let i = 1; i < 100; i++)
     await owner(t).mutation(api.agents.send, {

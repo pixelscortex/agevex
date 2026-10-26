@@ -2,13 +2,8 @@
 import type { MessageDoc } from "@convex-dev/agent";
 import type { Doc } from "../_generated/dataModel.js";
 import type { MutationCtx } from "../_generated/server.js";
-import {
-  DECISION_LIMITS,
-  decisionBytes,
-  assertFormSchema,
-  type JsonSchema,
-} from "../../shared/decisions.js";
-import { countPauseRequests } from "./pause.js";
+import { DECISION_LIMITS, decisionBytes, assertFormSchema } from "../../shared/decisions.js";
+import type { AskUserMetadata } from "../../shared/tool-markers.js";
 
 type NativeSave = { messages: { message: MessageDoc["message"] }[] };
 type SavedMessage = NativeSave["messages"][number];
@@ -21,9 +16,10 @@ export async function prepareDecisions(
   ctx: MutationCtx,
   row: Doc<"assignments">,
   args: NativeSave,
-  schema?: JsonSchema,
+  tools: Record<string, AskUserMetadata> = {},
 ) {
-  if (schema) assertFormSchema(schema);
+  for (const metadata of Object.values(tools))
+    if (metadata.answerSchema) assertFormSchema(metadata.answerSchema);
 
   const run = row.runId ? await ctx.db.get("runs", row.runId) : null;
 
@@ -35,11 +31,15 @@ export async function prepareDecisions(
     if (saved.message?.role !== "assistant" || !Array.isArray(saved.message.content)) continue;
 
     for (const part of saved.message.content) {
-      if (part.type !== "tool-call" || part.toolName !== "ask_user" || part.providerExecuted)
+      if (
+        part.type !== "tool-call" ||
+        !Object.prototype.hasOwnProperty.call(tools, part.toolName) ||
+        part.providerExecuted
+      )
         continue;
 
       if (!allowed) {
-        denyAsk(args, saved, part.toolCallId, "ROOT_ONLY");
+        denyAsk(args, saved, part.toolCallId, part.toolName, "ROOT_ONLY");
         continue;
       }
 
@@ -52,11 +52,11 @@ export async function prepareDecisions(
         input.question.length > DECISION_LIMITS.questionChars ||
         Object.keys(input).some((key) => key !== "question")
       ) {
-        denyAsk(args, saved, part.toolCallId, "INVALID_QUESTION");
+        denyAsk(args, saved, part.toolCallId, part.toolName, "INVALID_QUESTION");
         continue;
       }
 
-      part.input = { question: input.question, ...(schema ? { agevexAnswerSchema: schema } : {}) };
+      // Form metadata is copied into the compact proposal, not native model input.
     }
   }
 }
@@ -64,7 +64,13 @@ export async function prepareDecisions(
 /** Normal tool result, with no approval request left to expose to a human.
  * Preserve AI SDK's own validation result when it already recorded one.
  */
-function denyAsk(args: NativeSave, saved: SavedMessage, toolCallId: string, code: string) {
+function denyAsk(
+  args: NativeSave,
+  saved: SavedMessage,
+  toolCallId: string,
+  toolName: string,
+  code: string,
+) {
   if (saved.message?.role === "assistant" && Array.isArray(saved.message.content))
     saved.message.content = saved.message.content.filter(
       (part) => part.type !== "tool-approval-request" || part.toolCallId !== toolCallId,
@@ -86,7 +92,7 @@ function denyAsk(args: NativeSave, saved: SavedMessage, toolCallId: string, code
           {
             type: "tool-result",
             toolCallId,
-            toolName: "ask_user",
+            toolName,
             output: { type: "json", value: { status: "denied", code } },
           },
         ],
@@ -94,11 +100,25 @@ function denyAsk(args: NativeSave, saved: SavedMessage, toolCallId: string, code
     });
 }
 
-/** A pending source must fit in full; native storage repeats raw input metadata.
- * The post-save check rolls back its native write and coordination refs together.
+/** Only pending input is bounded. Reasoning/text stays in native Agent storage.
+ * The caller commits APPROVAL_LIMIT before native save rather than rolling back
+ * a paid model step with an untyped generation failure.
  */
-export function boundDecisionSources(messages: MessageDoc[], deferred: Set<string>) {
-  for (const doc of messages)
-    if (countPauseRequests([doc], deferred) && decisionBytes(doc) > DECISION_LIMITS.sourceBytes)
-      throw new Error("PENDING_SOURCE_TOO_LARGE");
+export function oversizedDecisionInput(messages: NativeSave["messages"], deferred: Set<string>) {
+  return messages.some(({ message }) => {
+    if (message?.role !== "assistant" || !Array.isArray(message.content)) return false;
+
+    const approvals = new Set(
+      message.content.flatMap((part) =>
+        part.type === "tool-approval-request" ? [part.toolCallId] : [],
+      ),
+    );
+
+    return message.content.some(
+      (part) =>
+        part.type === "tool-call" &&
+        (approvals.has(part.toolCallId) || deferred.has(part.toolName)) &&
+        decisionBytes(part.input) > DECISION_LIMITS.valueBytes,
+    );
+  });
 }

@@ -29,6 +29,7 @@ import type {
   runTurn,
   send,
   respond,
+  pendingApprovals,
   answer,
 } from "../host.js";
 import type * as promoted from "./promoted.js";
@@ -63,6 +64,7 @@ export const api = generatedApi as unknown as {
     open: ReferenceOf<typeof open>;
     send: ReferenceOf<typeof send>;
     respond: ReferenceOf<typeof respond>;
+    pendingApprovals: ReferenceOf<typeof pendingApprovals>;
     answer: ReferenceOf<typeof answer>;
     cancel: ReferenceOf<typeof cancel>;
     messages: ReferenceOf<typeof messages>;

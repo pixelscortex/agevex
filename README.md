@@ -564,8 +564,8 @@ by `runLaunches` (maximum 50); the active descendant cap remains 15.
 
 Human decisions use `respond({ threadId, approvalId, decision })`:
 `{ kind: "approve" }`, `{ kind: "reject", reason? }`, or
-`{ kind: "approve", edit: { input } }`. Declared local tools with an executable
-binding can be edited; provider-executed and deferred tools cannot. The host
+`{ kind: "approve", edit: { input } }`. Only local tools explicitly opting into
+`approval: { editable: true }` can be edited; provider-executed and deferred tools cannot. The host
 validates edited input with the registered tool schema in the response transaction.
 Invalid edits leave the request pending. `defineOnceTool({ approval: { editable: true }, ... })`
 also enables approval without separately setting `needsApproval`.
@@ -585,11 +585,13 @@ current owned child decisions. Each item contains `id`, `toolCallId`, `threadId`
 must match the root's current request. Subscribe to this query to render controls.
 
 Bounds are shared: 16 calls per paused assignment, 16 paused assignments, 16 KiB
-per input/answer/complete pending source document, 16 KiB per projected item and
-4 MiB per pending query output. Native storage may repeat raw input, so the whole
-source envelope must fit. Oversized saves roll back without an actionable pause.
-Exact source IDs avoid transcript scans; oversized direct native sources return
-`PENDING_SOURCE_TOO_LARGE`. Decisions and answers retain the seven-day response
+per input/answer, 8 KiB per form schema, 16 KiB per projected item and
+4 MiB per pending query output. Compact proposals (≤32 KiB) live in the existing
+receipts table beside exact native references, keeping reasoning messages out of
+pending reads. Oversized input commits a typed `APPROVAL_LIMIT` refusal. An item
+whose projection exceeds 16 KiB becomes a bounded `truncated: true` stub, allowing
+other decisions to remain visible. Proposals last until answer, execution or
+cancellation consumes their reference. Decisions and answers retain the seven-day response
 receipt: identical retries return the first `{ messageId, replayed: true }`, and
 changed payloads return `KEY_CONFLICT`.
 
@@ -766,8 +768,8 @@ calls. Without a form schema, value must be a nonblank string. Answers are ≤16
 (encoded JSON and Convex bytes). Mixed approvals and deferred
 calls share the 16-call pause bound; `respond` handles approval decisions and
 `answer` handles validated JSON. Cancel settles only open recorded calls with native
-execution-denied results. Payloads remain in Agent storage; coordination stores
-only hashed call ids and exact message references.
+execution-denied results. Agent owns the original messages; coordination stores
+hashed call ids, exact message references and references to compact proposals.
 
 A fresh send reopens a cancelled thread, preserving the existing cancellation
 contract. Failed cancellation cleanup blocks reopening with a typed `CANCELLED`
@@ -923,8 +925,9 @@ smoke test uses synthetic model events and one ingestion POST, with no paid
 model requests.
 
 `createAskUserTool({ answerSchema? })` accepts an app-supplied JSON Schema form.
-Questions remain model-supplied strings (≤2000 characters); schemas are stored with
-the exact native call. Use `answer({ threadId, toolCallId, value })` for either a
+Questions remain model-supplied strings (≤2000 characters); schemas are stored in
+the compact proposal, outside model-visible input. The factory's marker is recognized
+under any tool registration key. Use `answer({ threadId, toolCallId, value })` for either a
 plain string or structured JSON. Invalid values leave the question pending.
 `Agent.askUser` defaults to root-only: children receive `ROOT_ONLY` without a
 human pause and should use `agevex_ask_parent`. Explicit true/false applies to
@@ -932,5 +935,8 @@ either persisted role, including an Agent shared between root and child graphs.
 
 Breaking changes in v2: `respond.approved` becomes `respond.decision` (a rejection
 reason lives inside the decision), and `answer.text` becomes `answer.value`.
+Receipt payload fingerprints now use SHA-256 of canonical JSON with code-unit
+key ordering; prior fingerprint bytes are incompatible. Plain local approvals
+pin original input even without a schema validator; only edits parse the schema.
 Update host budget-consent wrappers to check `decision.kind === "approve"` and
 `!response.replayed` before recording consent. No persisted-data adapter is needed.

@@ -2,7 +2,9 @@
 import { mutation } from "../src/component/_generated/server.js";
 import { v } from "convex/values";
 import { newRootAssignment } from "../src/component/turns/assignments.js";
-import { approvalKey, callKey } from "../src/component/approvals.js";
+import type { MessageDoc } from "@convex-dev/agent";
+import type { FunctionHandle } from "convex/server";
+import { collectPause } from "../src/component/turns/pause.js";
 import { HOST_LIMITS, LIMITS } from "../src/component/limits.js";
 
 /** Seed coordination only; all proposed tool inputs live in real native documents. */
@@ -58,15 +60,11 @@ export const seed = mutation({
           events: [],
         });
 
-      const requests = [];
+      const messages = (await ctx.runQuery(args.getMessages as FunctionHandle<"query">, {
+        messageIds: source.messageIds,
+      })) as MessageDoc[];
 
-      for (const [index, messageId] of source.messageIds.entries())
-        requests.push({
-          key: await approvalKey(`approval-${offset}-${index}`),
-          messageId,
-          toolCallKey: await callKey(`call-${offset}-${index}`),
-          providerExecuted: false,
-        });
+      const { requests } = await collectPause(ctx, messages, new Set());
 
       const inboxId = await ctx.db.insert("inbox", {
         assignmentId,

@@ -1,79 +1,38 @@
 // Exact-id pending-call reads and receipt lookup; never discover calls in history.
-import type { MessageDoc } from "@convex-dev/agent";
-import type { FunctionHandle } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { query, type QueryCtx } from "../_generated/server.js";
 import type { Doc } from "../_generated/dataModel.js";
 import { approvalKey, keyString } from "../approvals.js";
 import { findReceipt } from "../receipts/records.js";
+import { proposal } from "./decision-proposals.js";
 import { DECISION_LIMITS, decisionBytes } from "../../shared/decisions.js";
 
 export const pendingItem = v.object({
-  id: v.string(),
-  toolCallId: v.string(),
+  ...proposal.fields,
   threadId: v.string(),
   agent: v.string(),
   kind: v.union(v.literal("approval"), v.literal("ask")),
-  tool: v.string(),
-  input: v.any(),
-  providerExecuted: v.boolean(),
 });
 
-/** One recorded reference reads one bounded native document, never a transcript page. */
+/** One recorded reference reads one <=32 KiB proposal, never a native transcript. */
 export async function readPending(
   ctx: QueryCtx,
   row: Doc<"assignments">,
   request: NonNullable<Doc<"assignments">["approvals"]>["requests"][number],
 ) {
-  const [doc] = (await ctx.runQuery(row.approvals!.getMessages as FunctionHandle<"query">, {
-    messageIds: [request.messageId],
-  })) as (MessageDoc | null)[];
+  const stored = await ctx.db.get("receipts", request.proposalId);
 
-  if (decisionBytes(doc) > DECISION_LIMITS.sourceBytes)
-    throw new ConvexError({ code: "PENDING_SOURCE_TOO_LARGE" });
+  if (stored?.kind !== "proposal") throw new ConvexError({ code: "PENDING_CALL_NOT_FOUND" });
 
-  const parts = doc?.message?.content;
+  if (decisionBytes(stored) > DECISION_LIMITS.proposalBytes)
+    throw new ConvexError({ code: "PENDING_ITEM_TOO_LARGE" });
 
-  if (
-    !doc ||
-    doc.threadId !== row.threadId ||
-    doc.message?.role !== "assistant" ||
-    !Array.isArray(parts)
-  )
-    throw new Error("PENDING_CALL_NOT_FOUND");
-
-  for (const call of parts) {
-    if (
-      call.type !== "tool-call" ||
-      (await approvalKey(call.toolCallId)) !== keyString(request.toolCallKey)
-    )
-      continue;
-
-    const approval = parts.find(
-      (part) => part.type === "tool-approval-request" && part.toolCallId === call.toolCallId,
-    );
-
-    const item = {
-      id: request.deferred
-        ? call.toolCallId
-        : approval?.type === "tool-approval-request"
-          ? approval.approvalId
-          : "",
-      toolCallId: call.toolCallId,
-      threadId: row.threadId,
-      agent: row.agent,
-      kind: request.deferred ? ("ask" as const) : ("approval" as const),
-      tool: call.toolName,
-      input: call.input,
-      providerExecuted: !!call.providerExecuted,
-    };
-
-    if (decisionBytes(item) > DECISION_LIMITS.itemBytes) throw new Error("PENDING_ITEM_TOO_LARGE");
-
-    return item;
-  }
-
-  throw new Error("PENDING_CALL_NOT_FOUND");
+  return {
+    ...stored.result,
+    threadId: row.threadId,
+    agent: row.agent,
+    kind: request.deferred ? ("ask" as const) : ("approval" as const),
+  };
 }
 
 /** Resolve exactly one requested decision, or the already committed first receipt. */
@@ -88,7 +47,7 @@ export const detail = query({
   handler: async (ctx, args) => {
     const row = await ctx.db.get("assignments", args.assignmentId);
 
-    if (!row || row.subject !== args.subject) throw new Error("FORBIDDEN");
+    if (!row || row.subject !== args.subject) throw new ConvexError({ code: "FORBIDDEN" });
 
     const key = await approvalKey(args.id);
 
@@ -104,16 +63,17 @@ export const detail = query({
       (r) => r.key === key && !!r.deferred === args.deferred,
     );
 
-    if (!request) throw new Error(args.deferred ? "TOOL_CALL_NOT_FOUND" : "APPROVAL_NOT_FOUND");
+    if (!request)
+      throw new ConvexError({ code: args.deferred ? "TOOL_CALL_NOT_FOUND" : "APPROVAL_NOT_FOUND" });
 
     return readPending(ctx, row, request);
   },
 });
 
-/** Root plus bounded live children. <=59*32 KiB metadata + 256*16 KiB native
- * sources + <=58*4 KiB child refs <6.1 MiB; output <=4 MiB. Reject a seventeenth
- * paused assignment BEFORE reading native bodies. Oversized direct native saves
- * fail on their first exact detail read, so cannot multiply a 1 MiB document.
+/** Root plus bounded live children: <=59*32 KiB assignment metadata +
+ * 256*32 KiB compact proposals + <=58*4 KiB child refs <10.1 MiB.
+ * Native messages (up to 1 MiB of reasoning each) are never read here.
+ * The host projects each item to <=16 KiB, giving <=4 MiB final output.
  */
 export const pending = query({
   args: {
@@ -126,17 +86,17 @@ export const pending = query({
     const root = await ctx.db.get("assignments", args.assignmentId);
 
     if (!root || root.subject !== args.subject || root.rootAssignmentId)
-      throw new Error("FORBIDDEN");
+      throw new ConvexError({ code: "FORBIDDEN" });
 
     const runId = args.rootRunId ?? root.runId;
 
     if (!runId) return [];
 
-    if (runId !== root.runId) throw new Error("RUN_NOT_FOUND");
+    if (runId !== root.runId) throw new ConvexError({ code: "RUN_NOT_FOUND" });
 
     const run = await ctx.db.get("runs", root.runId!);
 
-    if (!run) throw new Error("RUN_NOT_FOUND");
+    if (!run) throw new ConvexError({ code: "RUN_NOT_FOUND" });
 
     const children = await ctx.db
       .query("subagentRuns")
@@ -164,7 +124,8 @@ export const pending = query({
       (r) => r.approvalBlocked && !r.cancelled && !r.approvals?.cleanupPending,
     );
 
-    if (paused.length > DECISION_LIMITS.assignments) throw new Error("PENDING_LIMIT");
+    if (paused.length > DECISION_LIMITS.assignments)
+      throw new ConvexError({ code: "PENDING_LIMIT" });
 
     const result = [];
 
@@ -172,9 +133,6 @@ export const pending = query({
       for (const request of row.approvals!.requests) {
         if (!request.resolved) result.push(await readPending(ctx, row, request));
       }
-
-    if (decisionBytes(result) > DECISION_LIMITS.outputBytes)
-      throw new Error("PENDING_OUTPUT_TOO_LARGE");
 
     return result;
   },
@@ -200,7 +158,7 @@ export const effective = query({
       await approvalKey(JSON.stringify([row.threadId, args.toolCallId])),
     );
 
-    if (request.effective && !receipt) throw new Error("APPROVED_INPUT_GONE");
+    if (request.effective && !receipt) throw new ConvexError({ code: "APPROVED_INPUT_GONE" });
 
     return receipt?.result ?? null;
   },

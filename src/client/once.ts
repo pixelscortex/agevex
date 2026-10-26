@@ -33,6 +33,11 @@ export type ToolContext = {
 };
 const ONCE = Symbol("agevex.once");
 
+/** Editing is a host capability explicitly granted by defineOnceTool's config. */
+export function editableApproval(declared: Tool): boolean {
+  return !!(declared as Tool & { [ONCE]?: OnceConfig<unknown, Value> })[ONCE]?.approval?.editable;
+}
+
 type OnceConfig<Input, Output> = {
   name: string;
   /** What the model reads when choosing the tool; defaults to `name`. */

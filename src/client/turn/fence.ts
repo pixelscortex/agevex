@@ -15,6 +15,7 @@ import { createFunctionHandle, getFunctionAddress } from "convex/server";
 import { ConvexError } from "convex/values";
 import { sliceDeadlineMs } from "../../component/run-settings.js";
 import { LIMITS } from "../../component/limits.js";
+import { askUserTools } from "../../shared/tool-markers.js";
 import { deferredToolNames } from "../registration/graph.js";
 import type { RunnerCtx, RuntimeContext } from "../registration/context.js";
 import { stillRunning, type Turn } from "./context.js";
@@ -249,8 +250,7 @@ async function fencedWriteArgs(
           // 0.7.7 example/convex/chat/human.ts:125-157). Supply
           // names only at the native-save seam; no transcript scan.
           trackUsage: !!rt.config.usage,
-          boundedDecisions: true,
-          ...askUserMetadata(managed.declaredTools),
+          askUserTools: askUserTools(managed.declaredTools),
           deferredTools: deferredToolNames(managed),
           nativeMessages: {
             getMessages: await createFunctionHandle(managed.component.messages.getMessagesByIds),
@@ -283,17 +283,4 @@ function waitForSignal<T>(signal: AbortSignal, work: PromiseLike<T>): Promise<T>
       .then(resolve, reject)
       .finally(() => signal.removeEventListener("abort", abort));
   });
-}
-
-/** Factory metadata never enters model arguments; native saves receive it from the host. */
-function askUserMetadata(tools: import("ai").ToolSet) {
-  const marked = tools.ask_user as
-    | (import("ai").Tool & {
-        agevexAskUser?: { answerSchema?: import("../../shared/decisions.js").JsonSchema };
-      })
-    | undefined;
-
-  return marked?.agevexAskUser?.answerSchema
-    ? { askUserSchema: marked.agevexAskUser.answerSchema }
-    : {};
 }

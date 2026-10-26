@@ -4,6 +4,7 @@ import { ConvexError } from "convex/values";
 import type { GenericDataModel, GenericMutationCtx } from "convex/server";
 import { assertJson, type Decision } from "../../shared/decisions.js";
 import type { EndpointContext } from "./access.js";
+import { editableApproval } from "../once.js";
 
 /** Resolve by the recorded call's name. An unregistered/provider tool cannot be edited.
  * Validation and component response share the host mutation's transaction, so invalid
@@ -39,16 +40,22 @@ export async function effectiveInput(
     return {};
   }
 
-  const input = decision.edit ? decision.edit.input : call.input;
+  // Native schema transforms (for example Date coercion) belong to execution.
+  // Pin the original JSON bytes without parsing them on a plain approval.
+  if (!decision.edit) {
+    if (call.truncated) throw new ConvexError({ code: "APPROVAL_LIMIT" });
+
+    return { effectiveInput: call.input };
+  }
+
+  if (!editableApproval(tool)) throw new ConvexError({ code: "APPROVAL_NOT_EDITABLE" });
+
+  const input = decision.edit.input;
 
   assertJson(input);
   const schema = asSchema(tool.inputSchema);
 
-  if (!schema.validate) {
-    if (decision.edit) throw new ConvexError({ code: "APPROVAL_NOT_EDITABLE" });
-
-    return {};
-  }
+  if (!schema.validate) throw new ConvexError({ code: "APPROVAL_NOT_EDITABLE" });
 
   const checked = await schema.validate(input);
 

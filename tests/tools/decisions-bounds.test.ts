@@ -32,7 +32,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-it("pending decisions cap 256 distinct native reads below 8 MiB and return at most 4 MiB", async () => {
+it("pending decisions read 256 compact proposals below 8 MiB even with large native reasoning", async () => {
   const t = setup();
   const alice = t.withIdentity({ subject: "alice" });
 
@@ -59,6 +59,7 @@ it("pending decisions cap 256 distinct native reads below 8 MiB and return at mo
             message: {
               role: "assistant",
               content: [
+                { type: "reasoning", text: "r".repeat(20 << 10) },
                 {
                   type: "tool-call",
                   toolName: "editable_echo",
@@ -76,7 +77,7 @@ it("pending decisions cap 256 distinct native reads below 8 MiB and return at mo
         ],
       });
 
-      expect(getConvexSize(saved.messages[0])).toBeLessThanOrEqual(DECISION_LIMITS.sourceBytes);
+      expect(getConvexSize(saved.messages[0])).toBeGreaterThan(20 << 10);
       expect(getConvexSize(saved.messages[0])).toBeGreaterThan(15 << 10);
       messageIds.push(saved.messages[0]._id);
     }
