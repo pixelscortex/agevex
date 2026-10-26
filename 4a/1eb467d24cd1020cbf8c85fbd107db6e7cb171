@@ -1,0 +1,49 @@
+src/shared/ask-values.ts
+  s_008ccf29ac177d::t_f61cd60779aeec 1-47
+  s_008ccf29ac177d::t_68b632b59ea09a 48-49
+src/shared/decisions.ts
+  s_008ccf29ac177d::t_f61cd60779aeec 3,78-86
+  s_008ccf29ac177d::t_b62f09882e11ac 87
+tests/tools/model-authored-asks.test.ts
+  s_008ccf29ac177d::t_7990de12be9c33 5,7,115-116,346,354-472,475-479
+  s_008ccf29ac177d::t_800416107a288d 480-484
+src/shared/tool-markers.ts
+  s_008ccf29ac177d::t_326543362cb581 5,100
+  s_008ccf29ac177d::t_f61cd60779aeec 2,4,6-12,15,67-68,72,74,82,85-86,91-92,98-99,101-104
+  s_008ccf29ac177d::t_2fa0d3adb8f076 105-115
+README.md
+  s_008ccf29ac177d::t_15ee5701a23a30 941
+  s_008ccf29ac177d::t_d01e2b4d10b5e1 593-596,935-937,942-950
+src/client/endpoints/pending.ts
+  s_008ccf29ac177d::t_326543362cb581 9,49
+docs/site/content/docs/tools/ask-user.mdx
+  s_008ccf29ac177d::t_d01e2b4d10b5e1 77-79,85-87,127-129,134-140
+  s_008ccf29ac177d::t_15ee5701a23a30 88-89,99-103
+src/modules/tools/registry/ask-user/askUser.ts
+  s_008ccf29ac177d::t_f61cd60779aeec 9,28-30,65-67
+tests/tools/decisions-v2.test.ts
+  s_008ccf29ac177d::t_d01e2b4d10b5e1 558-565
+src/component/turns/decision-reads.ts
+  s_008ccf29ac177d::t_326543362cb581 9,45,51-54
+src/component/turns/decision-save.ts
+  s_008ccf29ac177d::t_326543362cb581 12,53-64
+  s_008ccf29ac177d::t_644e729cbc284b 65-68,158
+docs/site/public/r/ask-user.json
+  s_008ccf29ac177d::t_f457d1fb54673d 14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4a1eb467d24cd1020cbf8c85fbd107db6e7cb171",
+  "prompts": {},
+  "sessions": {
+    "s_008ccf29ac177d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a178dc-bda6-7063-8dd7-a224262dd669",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
