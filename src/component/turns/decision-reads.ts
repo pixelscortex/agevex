@@ -14,21 +14,35 @@ export const pendingItem = v.object({
   kind: v.union(v.literal("approval"), v.literal("ask")),
 });
 
-/** One recorded reference reads one <=32 KiB proposal, never a native transcript. */
-export async function readPending(
+/** One recorded reference reads one <=32 KiB proposal, never a native transcript.
+ * `approved` (added by respond) is split off: it is not part of the proposal's
+ * bound and is never shown in the pending projection.
+ */
+export async function readProposal(
   ctx: QueryCtx,
-  row: Doc<"assignments">,
   request: NonNullable<Doc<"assignments">["approvals"]>["requests"][number],
 ) {
   const stored = await ctx.db.get("receipts", request.proposalId);
 
   if (stored?.kind !== "proposal") throw new ConvexError({ code: "PENDING_CALL_NOT_FOUND" });
 
-  if (decisionBytes(stored) > DECISION_LIMITS.proposalBytes)
+  const { approved, ...result } = stored.result;
+
+  if (decisionBytes({ ...stored, result }) > DECISION_LIMITS.proposalBytes)
     throw new ConvexError({ code: "PENDING_ITEM_TOO_LARGE" });
 
+  return { result, approved };
+}
+
+export async function readPending(
+  ctx: QueryCtx,
+  row: Doc<"assignments">,
+  request: NonNullable<Doc<"assignments">["approvals"]>["requests"][number],
+) {
+  const { result } = await readProposal(ctx, request);
+
   return {
-    ...stored.result,
+    ...result,
     threadId: row.threadId,
     agent: row.agent,
     kind: request.deferred ? ("ask" as const) : ("approval" as const),
@@ -138,7 +152,10 @@ export const pending = query({
   },
 });
 
-/** Edited input is retrieved only for the exact recorded call, within its assignment. */
+/** Approved input is retrieved only for the exact recorded call, within its assignment.
+ * It is stored on the request's own proposal, so it lives exactly as long as the
+ * request: one <=32 KiB proposal read, no expiring receipt.
+ */
 export const effective = query({
   args: { assignmentId: v.id("assignments"), toolCallId: v.string() },
   returns: v.any(),
@@ -150,16 +167,13 @@ export const effective = query({
       (r) => r.resolved && keyString(r.toolCallKey) === key,
     );
 
-    if (!row || !request) return null;
+    if (!row || !request || !request.effective) return null;
 
-    const receipt = await findReceipt(
-      ctx,
-      "approved-input",
-      await approvalKey(JSON.stringify([row.threadId, args.toolCallId])),
-    );
+    const stored = await ctx.db.get("receipts", request.proposalId);
 
-    if (request.effective && !receipt) throw new ConvexError({ code: "APPROVED_INPUT_GONE" });
+    if (stored?.kind !== "proposal" || !stored.result.approved)
+      throw new ConvexError({ code: "APPROVED_INPUT_GONE" });
 
-    return receipt?.result ?? null;
+    return stored.result.approved;
   },
 });

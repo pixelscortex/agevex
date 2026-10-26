@@ -32,6 +32,9 @@ export async function effectiveInput(
 
   if (!call) return {}; // The response ledger decides replay/conflict before pending lookup.
 
+  // A truncated stub keeps no input, so an edit could never be bound or executed.
+  if (call.truncated && decision.edit) throw new ConvexError({ code: "PROPOSAL_TRUNCATED" });
+
   const tool = row.native.declaredTools[call.tool];
 
   if (call.providerExecuted || !tool?.execute) {

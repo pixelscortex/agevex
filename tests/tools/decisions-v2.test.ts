@@ -2,13 +2,19 @@
 // Human decisions exercise native fake-model pauses, receipts, fences and continuation.
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { createAskUserTool } from "../../src/modules/tools/registry/ask-user/askUser.js";
-import { assertFormSchema, type Decision, type JsonSchema } from "../../src/shared/decisions.js";
+import {
+  assertFormSchema,
+  DECISION_LIMITS,
+  type Decision,
+  type JsonSchema,
+} from "../../src/shared/decisions.js";
 import { setup, api, native, state, child } from "./setup.js";
 import { tool, jsonSchema } from "ai";
 import { z } from "zod";
 import { main, helper } from "./fixture/host.js";
 import { rawAssignment } from "../fixture/api.js";
 import { fingerprint } from "../../src/client/keys.js";
+import { LIMITS } from "../../src/component/limits.js";
 import { requireReceipt } from "../receipt.js";
 import type { LanguageModelV4Content } from "@ai-sdk/provider";
 
@@ -521,7 +527,8 @@ it("one oversized ask projection returns a bounded stub while ordinary approval 
   });
 
   state.steps.push([
-    ...call("large_question", "large-ask", { question: "q".repeat(15 << 10) }),
+    // Even without the duplicated input this item plus its envelope exceeds 16 KiB.
+    ...call("large_question", "large-ask", { question: "q".repeat(16300) }),
     ...call("plain_echo", "large-approval", { question: "q".repeat(15 << 10) }),
     ...call("editable_echo", "small-approval", { text: "ok" }),
   ]);
@@ -660,4 +667,120 @@ it("approved tools without schema validate cannot have their input rewritten by 
   await drain(t);
   expect(state.effects).toEqual([]);
   expect(JSON.stringify(state.calls[1].prompt)).toContain("APPROVED_INPUT_CHANGED");
+});
+
+it("an approved call still executes its approved input after a sibling stays undecided past receipt retention", async () => {
+  const t = setup();
+
+  state.steps.push([
+    ...call("editable_echo", "call-a", { text: "a-original" }),
+    ...call("editable_echo", "call-b", { text: "b-original" }),
+  ]);
+
+  const receipt = await open(t);
+  const alice = t.withIdentity({ subject: "alice" });
+  const pending = await alice.query(api.host.pendingApprovals, { threadId: receipt.threadId });
+  const idOf = (toolCallId: string) => pending.find((item) => item.toolCallId === toolCallId)!.id;
+
+  await alice.mutation(api.host.respond, {
+    threadId: receipt.threadId,
+    approvalId: idOf("call-a"),
+    decision: { kind: "approve", edit: { input: { text: "a-edited" } } },
+  });
+
+  // Past the 7-day effect-receipt retention, with the purge chain run.
+  vi.advanceTimersByTime(LIMITS.receiptRetentionMs + LIMITS.purgeIntervalMs);
+  await drain(t);
+  expect(state.effects).toEqual([]);
+
+  expect(await alice.query(api.host.pendingApprovals, { threadId: receipt.threadId })).toHaveLength(
+    1,
+  );
+
+  await alice.mutation(api.host.respond, {
+    threadId: receipt.threadId,
+    approvalId: idOf("call-b"),
+    decision: { kind: "approve" },
+  });
+
+  await drain(t);
+  expect([...state.effects].sort()).toEqual(["a-edited", "b-original"]);
+  expect(JSON.stringify(state.calls[1].prompt)).not.toContain("APPROVED_INPUT_GONE");
+});
+
+it("truncated proposals refuse edits and answers with PROPOSAL_TRUNCATED and stay pending", async () => {
+  const t = setup();
+  const longId = (prefix: string) => prefix.repeat(DECISION_LIMITS.identifierChars + 1);
+
+  main.declaredTools.ask_user = createAskUserTool({ answerSchema: schema });
+
+  state.steps.push([
+    ...call("editable_echo", longId("e"), { text: "original" }),
+    ...call("ask_user", longId("f"), { question: "Choose settings" }),
+  ]);
+
+  const receipt = await open(t);
+  const alice = t.withIdentity({ subject: "alice" });
+  const pending = await alice.query(api.host.pendingApprovals, { threadId: receipt.threadId });
+  const approvalItem = pending.find((item) => item.kind === "approval")!;
+
+  expect(pending).toHaveLength(2);
+  expect(pending.every((item) => item.truncated)).toBe(true);
+
+  await expect(
+    alice.mutation(api.host.respond, {
+      threadId: receipt.threadId,
+      approvalId: approvalItem.id,
+      decision: { kind: "approve", edit: { input: { text: "changed" } } },
+    }),
+  ).rejects.toMatchObject({ data: { code: "PROPOSAL_TRUNCATED" } });
+
+  // Even a well-formed answer is refused: the stub lost the schema, so it cannot be validated.
+  for (const value of ["not a form", { color: "green", count: 1 }])
+    await expect(
+      alice.mutation(api.host.answer, {
+        threadId: receipt.threadId,
+        toolCallId: longId("f"),
+        value,
+      }),
+    ).rejects.toMatchObject({ data: { code: "PROPOSAL_TRUNCATED" } });
+
+  expect(await alice.query(api.host.pendingApprovals, { threadId: receipt.threadId })).toHaveLength(
+    2,
+  );
+
+  expect(state.effects).toEqual([]);
+  await alice.mutation(api.host.cancel, { threadId: receipt.threadId });
+  await drain(t);
+});
+
+it("an ask with a long question and a large form schema appears in full without a duplicated input", async () => {
+  const t = setup();
+  // 2000 three-byte chars: ~6 KB, so question + copy + schema would exceed 16 KiB.
+  const question = "\u20ac".repeat(2000);
+
+  const big: JsonSchema = {
+    type: "object",
+    description: "d".repeat(7 << 10),
+    properties: { ok: { type: "boolean" } },
+  };
+
+  main.declaredTools.ask_user = createAskUserTool({ answerSchema: big });
+  state.steps.push(call("ask_user", "big-ask", { question }));
+  const receipt = await open(t);
+  const alice = t.withIdentity({ subject: "alice" });
+  const [item] = await alice.query(api.host.pendingApprovals, { threadId: receipt.threadId });
+
+  expect(item).toMatchObject({ kind: "ask", question, schema: big, editable: false });
+  expect(item.truncated).toBeUndefined();
+  expect(item.input).toBeNull();
+
+  await alice.mutation(api.host.answer, {
+    threadId: receipt.threadId,
+    toolCallId: "big-ask",
+    value: { ok: true },
+  });
+
+  await drain(t);
+  expect(state.calls).toHaveLength(2);
 });
