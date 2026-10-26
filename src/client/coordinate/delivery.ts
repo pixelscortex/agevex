@@ -290,9 +290,17 @@ function observeDelivered(
  * back and leaves the run terminal but undelivered. That outcome is then
  * recorded by a separate metadata-only transition using the same one-shot
  * capability and the same pending-status compare-and-set; the delivery itself
- * is never attempted twice. If even the failure record cannot commit, the run
- * stays honestly `pending` rather than claiming an outcome that was not
- * stored.
+ * is never attempted twice.
+ *
+ * If that failure record also cannot commit, no delivery attempt is in flight
+ * any more, so ONE more best-effort call records `failed` / `DELIVERY_UNKNOWN`
+ * (same token, same pending compare-and-set) and cannot drop a result that
+ * would otherwise arrive. Without it the run would stay `pending`, holding one
+ * of the parent's cross-request result slots (`canOweResult`) and a hop.
+ * `DELIVERY_UNKNOWN` is a separate code because the outcome really is unknown,
+ * not a known failure. If this last write throws too it is swallowed: the run
+ * stays `pending` and only a cancel (an epoch bump, which the slot guard
+ * counts) clears it. Nothing is ever retried.
  */
 export async function deliverTerminalRun(
   rt: RuntimeContext,
@@ -305,17 +313,35 @@ export async function deliverTerminalRun(
     // this path is only reachable from a child turn of such a registration.
     await ctx.runMutation(rt.config.refs.coordinate!(), { op: "notify", runId, deliveryToken });
   } catch {
+    await recordFailure(rt, ctx, runId, deliveryToken);
+  }
+}
+
+/** Record `DELIVERY_FAILED`, then `DELIVERY_UNKNOWN` if that throws; see
+ * `deliverTerminalRun`. The last write's error is swallowed on purpose. */
+async function recordFailure(
+  rt: RuntimeContext,
+  ctx: RunnerCtx,
+  runId: string,
+  deliveryToken: string,
+): Promise<void> {
+  const failed = (errorCode: "DELIVERY_FAILED" | "DELIVERY_UNKNOWN") =>
+    ctx.runMutation(rt.component.subagents.deliver.deliver, {
+      runId,
+      deliveryToken,
+      deliveryStatus: "failed",
+      parentMessageId: null,
+      errorCode,
+    });
+
+  try {
+    await failed("DELIVERY_FAILED");
+  } catch {
     try {
-      await ctx.runMutation(rt.component.subagents.deliver.deliver, {
-        runId,
-        deliveryToken,
-        deliveryStatus: "failed",
-        parentMessageId: null,
-        errorCode: "DELIVERY_FAILED",
-      });
+      await failed("DELIVERY_UNKNOWN");
     } catch {
-      // The attempt and its failure record both failed to commit; nothing is
-      // claimed about a delivery that did not happen.
+      // All three writes failed to commit; nothing is claimed about a
+      // delivery that did not happen. Only a cancel clears this row.
     }
   }
 }

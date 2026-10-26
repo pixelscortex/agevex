@@ -38,7 +38,7 @@ export const errorCode = v.union(
   v.literal("AUTHORIZATION_DENIED"),
   v.literal("EXECUTION_AMBIGUOUS"),
 );
-// A run reports every turn failure code, plus the four outcomes that only a
+// A run reports every turn failure code, plus the five outcomes that only a
 // delegated run can have. Deriving from errorCode keeps one source of truth, so
 // a new turn failure code can never be missing from run reports.
 const [, ...turnFailureCodes] = errorCode.members;
@@ -50,6 +50,9 @@ export const runErrorCode = v.union(
   v.literal("RESULT_UNVERIFIED"),
   v.literal("ROOT_UNAVAILABLE"),
   v.literal("DELIVERY_FAILED"),
+  // The delivery attempt AND its `DELIVERY_FAILED` record both threw, so the
+  // result's fate is not known; see `deliverTerminalRun`.
+  v.literal("DELIVERY_UNKNOWN"),
 );
 export const denialCode = v.union(
   v.literal("HOOK_BLOCKED"),

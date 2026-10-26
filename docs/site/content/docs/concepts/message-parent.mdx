@@ -31,8 +31,10 @@ Convex encoded size. `limits.parentNotesPerChild` defaults to 4 and has a hard
 maximum of 8; accepted notes must be at least 5 seconds apart. Every fresh
 note consumes one existing run hop and one ready inbox slot. Admission reserves
 one hop for every pending ordinary child result, including queued children and
-settled children whose delivery has not committed. Final results never wait for
-queue room, so the queue limit applies to messages only.
+settled children whose delivery has not committed. A delivery whose attempt and
+failure record both throw is recorded as `DELIVERY_UNKNOWN` at once, which
+releases that hop; if even that write fails, a cancel clears it. Final results
+never wait for queue room, so the queue limit applies to messages only.
 
 Launches separately return `RESULTS_PENDING` when the assignment still owes
 `runLaunches` child results across requests. Wait for or claim child results before
