@@ -1,0 +1,35 @@
+docs/site/content/docs/modules/meter.mdx
+  s_d863bd773ba186::t_3e8ddef6a7a4c4 229-231,236-238,241-244
+src/modules/meter/API.md
+  s_d863bd773ba186::t_d06606f27974d4 34-38,289-302
+src/modules/meter/README.md
+  s_d863bd773ba186::t_b9e7770a7a6712 44-47
+src/modules/meter/client/sinks.ts
+  s_d863bd773ba186::t_6d848ff767fed0 7,135,147-149,192,202,210,223
+src/modules/meter/component/delivery.ts
+  s_d863bd773ba186::t_7e7e6a937b62a3 21-29,70-71,125-127
+src/modules/meter/component/outbox.ts
+  s_d863bd773ba186::t_40ad632ed2b272 34-46,61
+src/modules/meter/component/schema.ts
+  s_d863bd773ba186::t_1569f35906242a 62-65,81-82
+tests/meter/sink-context.test.ts
+  s_d863bd773ba186::t_14e1a4cec6ff4c 3-9,18,303-416
+tests/meter/sinks.test.ts
+  s_d863bd773ba186::t_4fe025c5ea4e5a 9,13-15,78-81,155,164,190,195,206-208,248,262-263,299,313,321
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bdb3ea42df03e93e21028bf9d939f6dd9e6e2bef",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
