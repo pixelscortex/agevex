@@ -1,255 +1,117 @@
 # Component ownership
 
-Mount `agevex/convex.config` beside the host's native Agent component.
-Agevex internally mounts two Workflow components, each with its own nested
-Workpool: root parallelism 2, child parallelism 4. Hosts export `runTurn`, `textTask` and
-`coordinate`; no host Workflow exports are required.
+Mount `agevex/convex.config` beside the host's native Agent component. Native
+Agent owns threads, messages, titles and summaries. Workflow owns journals,
+events, dispatch and nested cancellation. Core never imports an optional module.
+The host exports `runTurn`, `coordinate` and, when enabled, `textTask`.
 
-Transcripts, tasks and result bodies stay in Agent. Workflow owns journals,
-events, nested-workflow cancellation and work dispatch. Agevex tables hold
-ids, counters, fences and one bounded optional summary. Native Agent owns titles.
+## Execution
 
-## Life of a turn
+1. The host saves a native user prompt and calls `turns.send.accept` in the
+   same transaction. Acceptance creates its run budget, ready inbox reference
+   and request receipt.
+2. `turns/wake.ts` reserves the oldest ready row and starts or pings the loop.
+   A coalesced doorbell and finite recovery check protect the atomic handoff.
+3. The loop dispatches one non-retried host action per paid model slice.
+   `turns/claim.ts` consumes ready work, flushes app notes and arms its watchdog.
+4. Every native write passes the token/epoch fence in `turns/write.ts`. Exact
+   message, stream, usage and approval identities commit with their native saves.
+5. Tool steps continue through `turns/boundaries.ts`; approval resumes retain
+   the reporting request, accumulated assistant ids and spent step allowance.
+6. `turns/finish.ts` idles a successful turn or records recovery_required. Child
+   settlement waits for descendants, pending deliveries and ready work.
+7. The coordinator verifies the exact child result and saves it natively in the
+   parent. `subagents/deliver.ts` independently enqueues each result and wakes
+   the parent. Failed delivery cannot silently become a successful delivery.
 
-1. **send**: the host saves the prompt natively and calls `turns.send.accept` in the
-   same transaction (`turns/send.ts`): run budget, ready `inbox` row, request
-   receipt.
-2. **inbox → wake**: `wake` (`turns/wake.ts`) reserves the oldest ready row as
-   the queued turn (`turnToken`) and starts or pings the loop workflow.
-3. **loop**: the loop (`workflows/lanes.ts`) gets the token from `turns.loop.next`, then
-   runs a turn workflow: one `workflows.worker.dispatch` action per paid slice.
-4. **claim**: the host action calls `turns.slices.claim` (`turns/claim.ts`). It
-   consumes the head and merges consecutive results, saves pending notes,
-   marks the turn running and arms the slice watchdog.
-5. **generate**: every native write goes through `turns.slices.write`
-   (`turns/write.ts`): the token/epoch fence, message refs, pending generation,
-   child result id and approval pauses (`turns/pause.ts`).
-6. **between slices**: `turns.slices.continueTurn`, then the turn workflow's
-   `turns.slices.betweenSlices` step (`turns/boundaries.ts`).
-7. **finish/settle**: `finish` (`turns/finish.ts`) idles the turn or parks it
-   in `recovery_required`. A child reports through `subagents.settle.settle`; its
-   run settles once nothing fences it (`subagents/settle.ts`, R3).
-8. **deliver**: `subagents.deliver.notify` asks the host coordinator to save the
-   result in the parent thread. `subagents.deliver.deliver` (`subagents/deliver.ts`)
-   then enqueues it as parent work, or marks its wait-"all" cohort ready
-   (`subagents/groups.ts`), and wakes the parent.
+`beforeTurn` selects an allowlisted model locally on every generation step,
+including tool and approval resumes. It owns no persisted routing state or
+sibling lock. `afterTurn` only notifies the host with `{ turn, text, messageIds }`.
+The host can call public send/runtime APIs to request additional work.
 
-Failures never re-run paid work. The paths are the watchdog (`stalled`), a
-throwing action (`ambiguous`), a failed loop (`failWorkflow`) and the slice
-cap (`sliceLimit`). `cancel` (`turns/cancel.ts`) fences the root and every
-live descendant in one transaction. `reconcile` re-rings a loop whose ping
-was lost.
+A watchdog, dispatch failure or unknown execution parks work for explicit
+recovery; no paid generation is automatically retried. Cancellation fences the
+root and every live descendant before cancelling workflows. Exact-id cleanup
+jobs close native placeholders, streams and approval requests separately.
 
-## Message queues and owed results
+## Queues and budgets
 
-Final results and wait-"all" joined releases always enter the ready queue, even
-above `queueLength`. User sends/open follow-ups, `message_parent` notes, questions
-and child follow-ups require `queuedMessages < queueLength`. Answers and approval
-continuations retain their control allowance. Launches reserve final-result hops;
-questions reserve answer hops. Ordinary messages cannot spend either reservation.
+User work, parent messages and progress notes respect queueLength. Final child
+results always enter the ready queue, including beside a reserved approval
+head. Launch admission reserves final-result hops; questions reserve answer
+hops. Ordinary messages cannot spend those reservations.
 
-`runLaunches` bounds launches per request and outstanding result work per assignment
-across requests. Launch admission counts pending deliveries, unreleased join members
-and ready result rows. Delivery replaces a pending result; a joined row replaces its
-members; claim removes rows. Only launch increases this total. The current-epoch
-`by_parent_delivery` range excludes cancelled history. This separate bound is needed
-because a root can accept new requests while older children still owe results.
-Reaching it returns `RESULTS_PENDING`: wait for or claim child results before
-launching more. `RUN_BUDGET` remains the denial for launch or hop budget exhaustion.
+runLaunches bounds launches per request and outstanding direct-child result
+work per assignment across requests. Launch admission counts pending deliveries
+and ready result rows. Delivery replaces a pending result; claim consumes ready
+rows. Only launch increases the total. The current-epoch by_parent_delivery
+range excludes cancelled history. Exhaustion returns RESULTS_PENDING; budget
+exhaustion returns RUN_BUDGET. Root activeRuns also bounds all live descendants.
 
-An assignment has at most `queueLength + runLaunches + 2` ready rows, including
-one answer and the reserved head or approval continuation. At all hard maxima,
-cancel covers `16 × 152 = 2,432` ready rows and 384 passive notes. It deduplicates
-at most `100 + 50 + 3 + 15 = 168` request budgets. Combining assignment state
-updates keeps the conservative read/write bounds at 15,832/11,620 KiB, below
-16 MiB; native bodies are never read by cancel. Claim consumes at most 152 rows
-including its head. The complete arithmetic is in `limits.ts`.
+At hard maxima, each assignment has at most 100 queued messages +50 results
++2 head/answer rows. Cancellation covers 16*152=2,432 ready rows and deduplicates
+at most 168 budgets. Its conservative ceilings are 14,168 KiB read and 10,572 KiB
+written, below 16 MiB. Passive note bodies are excluded and cleaned separately.
+The complete document/query/byte arithmetic lives in `limits.ts`, with enforced
+transaction-limit fixtures for cancellation, claim, decisions, tree and saves.
 
-## Background text state and budgets
+Assignments fit 16 KiB, including system fields. The maximal all-fields fixture
+uses 12,672 bytes: approvals 4,802; reporting 2,635; text handles 822; pending
+generation 988; runTurn 258; names 1,204; models 510; limits 309; remaining fields,
+names and object overhead 1,144. This leaves 3,712 bytes of headroom. Native
+saves clear active tool markers before growing the row; their own writer also
+checks the envelope. Runs stay within 16 KiB, delegations within 4 KiB.
 
-No tables are added. Root `assignments` carry:
+## Thread metadata
 
-- `textConfig`: child-lane worker/native-title-read/update handles and summary cadence;
-  read when accepting or completing a root turn and dispatching jobs.
-- `titleVersion/titleSource`: optimistic rename and generated-commit fences;
-  the title body stays on the native thread and commits in the same mutation.
-- `titleTask/summaryTask`: one-shot key, triggering run, epoch, captured title
-  version, dispatch marker and status; optional first-message ref, deferred-first-boundary flag or
-  coalesced next-run ref.
-  Claim, dispatch, completion and timeout read these. A fresh summary key may
-  request new work after an unknown outcome; cadence resumes after known failures.
-- `textCompleted`: exact saved boundary of the last successful root turn;
-  summary claims exclude active/queued tasks beyond this boundary.
-- `textSummary`: at most 8 KiB text and its exact boundary/sequence; read by
-  display and the next incremental summary.
-- Existing `contextMessages`: at most 24 exact identities, captured with saves.
-  Summaries and side reviews read successful user/assistant message references.
+Only textConfig remains on assignments: worker/native thread handles and
+feature enablement. Temporary run/epoch/first-message identities use existing
+receipts and disappear when work closes. No generated content is copied there.
+Titles generate once from the first accepted native prompt. The commit reads
+native title and updates it atomically, so app/user titles always win.
 
-A worker reads one <=34 KiB assignment plus one <=16 KiB run. Title claim/commit
-also read one exact native thread <=1 MiB to preserve app titles atomically. Exact native
-message reads total <=2 MiB, at most 24 ids; serialized messages total <=48 KiB,
-plus <=8 KiB prior summary. Both full native sizes and encoded input are checked.
-The ring stays <4 KiB, summary <9 KiB, both jobs/config <4 KiB; the existing
-8 KiB coordination/pause +6 KiB review boundaries gives 8+4+6+9+4=31 KiB,
-plus 3 KiB for turn reporting under the 34 KiB assignment envelope. Hard-limit
-fixtures enforce Convex transaction budgets with a full ring of large native
-messages. No transcript discovery, copied request bodies, new indexes or billing
-ledger are introduced. The existing receipts ledger records scheduling replay
-and paid outcomes; child Workflow journals are cleaned on finite completion.
+Summaries are explicit requests with requestKey idempotency. Input uses Agent's
+bounded recent-message query: at most 24 successful non-tool messages, a 2 MiB
+page budget plus at most one <=1 MiB crossing document. The native thread read
+adds at most 1 MiB in a separate query. Serialized input is <=48 KiB of messages
+plus <=8 KiB of previous native summary. Results update native threads.summary;
+the read endpoint queries that same native field. Unknown paid work is never
+retried; a fresh key explicitly requests new work. Workflow cleanup is finite.
 
-## File map
+## Tables and readers
 
-Registered Convex functions live in the concept folders; a file's path is its
-API path (`turns/send.ts` -> `components.agevex.turns.send.accept`). A
-registered file holds the helpers only it uses; helpers shared by several
-registered files are separate modules in the same folder. Top-level files are
-the definition, the schema and helpers used across folders and by the client.
+| Table        | Purpose and readers                                                                                                                                                                                           |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| assignments  | Thread ownership; dispatch, epoch/token fences, queue and note counters, approval refs, run linkage and bounded reporting. Read by admission, claim, write, watchdog, recovery, cancellation and projections. |
+| inbox        | Ready native message references, temporary app/parent note bodies and saved origin labels. Read by ready-range probes, claim, note cleanup and page-local origins.                                            |
+| runs         | Accepted request policy, native task/result links, lifecycle snapshots, launch/hop budgets, cancellation and usage completeness. Read by claim, effect admission, settlement and tree.                        |
+| receipts     | Request/tool idempotency, compact decision proposals, native attachment grants and temporary text capabilities. Each variant has its own lifecycle and indexed readers.                                       |
+| subagentRuns | Delegation identity, root epoch, parent/child links, exact task/result/question ids, delivery capability/status, message caps and bounded events. Read by launch, interaction, settlement, delivery and tree. |
 
-| File                      | Contents                                                                                            |
-| ------------------------- | --------------------------------------------------------------------------------------------------- |
-| `convex.config.ts`        | Component definition; mounts the root/child Workflow lanes.                                         |
-| `schema.ts`               | All tables and the shared public validators (also used by the client).                              |
-| `limits.ts`               | `PLATFORM`, `HOST_LIMITS`, `LIMITS`, the cancel budget arithmetic, `resolveLimits`.                 |
-| `facts.ts`                | Validation of identity facts (subject, thread id).                                                  |
-| `models.ts`               | Model-override validator and bounds.                                                                |
-| `approvals.ts`            | SHA-256 keys for native ids; native approval-response/denial save.                                  |
-| `turns/send.ts`           | Registered: `accept`, `lookupReceipt`, `admission`, `assignment`, `activity`.                       |
-| `turns/slices.ts`         | Registered: `claim`, `write`, `continueTurn`, `betweenSlices`, `finish`, `sliceLimit`, `execution`. |
-| `turns/failures.ts`       | Registered: `ambiguous`, `stalled`, `failWorkflow`.                                                 |
-| `turns/approvals.ts`      | Registered: `respond`, `answer`, with response receipts.                                            |
-| `turns/cancel.ts`         | Registered: `cancel`, root cancellation in one bounded transaction.                                 |
-| `turns/loop.ts`           | Registered: `next`, `reconcile`.                                                                    |
-| `turns/assignments.ts`    | `assignments` lookup by thread; root/child row builders.                                            |
-| `turns/inbox.ts`          | The shared ready-range reads of `inbox`.                                                            |
-| `turns/runs.ts`           | `runs` row builder.                                                                                 |
-| `turns/wake.ts`           | `wake` (reserve head, start/ping loop), the loop's next turn, doorbell recovery.                    |
-| `turns/recovery.ts`       | The scheduled recovery check; `cancelIfPending`.                                                    |
-| `turns/claim.ts`          | Slice claim: head consumption, note flush, watchdog, run start.                                     |
-| `turns/write.ts`          | The native-write fence and the facts recorded with each save.                                       |
-| `turns/pause.ts`          | Approval/deferred-call pauses: count, collect, retire, suspend.                                     |
-| `turns/boundaries.ts`     | Slice boundaries: `disarmSlice`, `closeSlice`, `admitNextSlice`.                                    |
-| `turns/finish.ts`         | Turn end and failure paths (defer, escalate, ambiguous, stall).                                     |
-| `turns/views.ts`          | `activity`, `execution` and `assignment` projections.                                               |
-| `subagents/launch.ts`     | Registered: `delegateContext`, `reserve`, `attach`.                                                 |
-| `subagents/settle.ts`     | Registered: `settlementContext`, `settle`, `escalate`; settlement fence, R3, notify.                |
-| `subagents/deliver.ts`    | Registered: `notify`, `deliveryContext`, `deliver`, `failDelivery`, `releaseGroups`.                |
-| `subagents/messages.ts`   | Registered: `interactionContext`, `messageChild`, `askParent`, `questionContext`.                   |
-| `subagents/history.ts`    | Registered: `delegations`, `runTree`.                                                               |
-| `subagents/runs.ts`       | `subagentRuns` lookups, event ring, cohort read, row builder.                                       |
-| `subagents/groups.ts`     | Wait-"all" cohorts: seal, ready, release.                                                           |
-| `subagents/views.ts`      | Trusted contexts and delegation history page.                                                       |
-| `subagents/tree.ts`       | Root-inclusive reactive tree, projected status and message links.                                   |
-| `run_tree_values.ts`      | Tree/usage validators and hard byte/count ceilings.                                                 |
-| `turns/run_lifecycle.ts`  | Request-scoped ready/delivery/group fences and root closure snapshots.                              |
-| `turns/tools.ts`          | Fenced start/end markers for bounded concurrent local tools.                                        |
-| `hooks/notes.ts`          | Registered: `addNote`, `beforeTurnNote`, `cancelNotes`; claim-time note saving.                     |
-| `hooks/state.ts`          | Registered: `hookState`, `continueAdmission`.                                                       |
-| `hooks/routing.ts`        | Registered: `routing`, `completeRouting`; beforeTurn model-routing ownership.                       |
-| `hooks/reviews.ts`        | Registered: `reviewContext`, `reviewed`, `capture`.                                                 |
-| `hooks/origins.ts`        | Registered: `origins`, page-local message origins.                                                  |
-| `hooks/refs.ts`           | Exact-message ref ring; side-review window and boundary.                                            |
-| `receipts/effects.ts`     | Registered: `begin`, `complete`, `unknown`, `purge`; the claim/lease protocol.                      |
-| `receipts/records.ts`     | Receipt lookup, done-receipt builder, purge arming.                                                 |
-| `files/attachments.ts`    | Registered: `register`, `owns`, `attach`, `forMessage`; grant and binding rows.                     |
-| `cancellation/cleanup.ts` | Registered: `cleanup`, `cleanupBatch`, `close`; stream abort, placeholder failure, denials.         |
-| `workflows/lanes.ts`      | Registered: root/child `Turn`/`Loop`/`Done`; lane managers and `startLoop`.                         |
-| `workflows/worker.ts`     | Registered: `dispatch`, one non-retried paid slice.                                                 |
+inbox.text remains only for app notes and message_parent notes until their safe
+native save. noteEpoch isolates cancelled payloads. passive=true holds unsaved
+notes; passive=false retains saved origin labels. Ready ranges select absent
+passive only, so retained labels cannot wake work or fence settlement.
 
-`subagents/parent_notes.ts` exposes `parentNoteContext` and `messageParent` for
-live-fenced progress admission and atomic native note/receipt publication.
+turnReport records the logical request and exact successful assistant ids in
+native save order. maxMessages enforces the resolved step cap; resumeInboxId
+preserves the report and allowance through approval resumes. New user, queued
+or child work resets it. At most 64*(37+2)=2,496 bytes of ids plus prompt/cap/resume
+metadata fit a 3 KiB reservation. ToolContext.promptMessageId uses that request.
 
-## Tables
+## Module map
 
-`runTree` now returns `{ rootRunId, usage, nodes } | null`, a breaking change
-from its descendant array. It includes the root and derives asleep/done status
-without changing stored turn/delegation enums. Explicit history ids must belong
-to the authorized root. The host composes the optional query-safe usage slot;
-core imports no meter module. `delegations` keeps its existing history contract.
+- turns/: acceptance, claims, native write fences, bounded decisions, cancellation,
+  watchdogs, recovery, FIFO handoff, slice boundaries and root lifecycle.
+- subagents/: reservations, parent/child messages, verified settlement, result
+  delivery, history and root-inclusive tree projections.
+- hooks/: shared note admission/saving and page-local origin lookups only.
+- text/: receipt-backed non-retried metadata dispatch and native commits.
+- receipts/: shared idempotency/lease ledger and bounded indexed retention cleanup.
+- files/: native attachment grants and exact message bindings.
+- cancellation/: finite native stream/placeholder/decision cleanup.
+- workflows/: versioned root/child loop and turn journals with retries disabled.
 
-Root task references/previews and lifecycle times live on `runs`; exact child
-task links/previews live on `subagentRuns`, captured with native saves. The
-`by_root` index includes implicit creation ordering; `by_run_ready` and the
-request suffix on `by_parent_delivery` prevent later sends from fencing old
-requests. Only ordinary descendants/deliveries/groups fence successful closure.
-Assignments carry at most 16 active tool markers, checked against the complete
-34 KiB row envelope; every slice disarm and cancellation clears them. Native
-saves clear markers atomically before report/ref/usage/approval metadata grows,
-then assert the complete saved assignment stays within the envelope. Query
-projection also suppresses tools on terminal nodes. No new tables are added.
-Marker start/clear writes are best effort and never awaited by tool execution
-or stream cleanup. Clear follows start; failed writes are not retried, keeping
-contention to one assignment read/patch per edge. Disarmed-slice/turn fences
-reject late starts. Cancellation preserves terminal run outcomes and timestamps.
-Run admission checks both UTF-8 JSON and Convex bytes, reserving 1 KiB for native
-metadata, lifecycle timestamps/result/error and bounded counter/mask growth
-under the 16 KiB run envelope.
-
-At hard maxima the core tree reads at most 2373 KiB: 59 assignment rows ×34 KiB,
-58 child rows ×4 KiB, three ownership reads ×34 KiB, two root metadata reads
-×16 KiB and one 1 KiB ready probe. Meter adds at most 5160 KiB through batched
-full-namespace aggregates: combined 7533 KiB <8 MiB. The host enforces the
-128 KiB output cap. Maximum-envelope fixtures enforce transaction limits.
-
-| Table          | Written by                                                                                                                                                                                                                                                                                              | Notes                                           |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `assignments`  | `turns/*` (most fields), `subagents/launch.ts` (child rows), `hooks/*` (refs, reviews, notes counters, continuation), `cancellation*` (pause/cleanup)                                                                                                                                                   | One managed thread.                             |
-| `inbox`        | `turns/send.ts`, `turns/pause.ts`, `turns/approvals.ts` (continuation `messageId`), `subagents/deliver.ts`, `subagents/groups.ts`, `subagents/messages.ts`, `subagents/launch.ts`, `hooks/notes.ts`, `hooks/state.ts`; consumed by `turns/claim.ts`; deleted by `turns/finish.ts` and `turns/cancel.ts` | Ready work, notes, control ids.                 |
-| `runs`         | `turns/send.ts` (create), `turns/claim.ts`, `hooks/*`, `subagents/*` (spend), `turns/cancel.ts`                                                                                                                                                                                                         | One request's shared budget.                    |
-| `receipts`     | `receipts/*`, `turns/send.ts`, `turns/approvals.ts`, `files/attachments.ts`                                                                                                                                                                                                                             | Idempotency ledger and attachment attestations. |
-| `subagentRuns` | `subagents/*`, `turns/claim.ts` (started), `turns/write.ts` (result id), `turns/cancel.ts`                                                                                                                                                                                                              | One delegation.                                 |
-
-What each table and field holds:
-
-- `assignments`: ownership, native thread references, workflow id, current run,
-  one execution token and cancellation epoch, the next-run model policy, and
-  bounded native approval/deferred-call references, exact message references,
-  side-review boundaries and note/turn counters.
-  `promptMessageId` is the turn's prompt: read by `beforeTurn` (including a
-  continuation's own prompt) and the anchor of native generation context.
-  `turnReport.promptMessageId` is the reporting request returned to tools;
-  `messageIds` accumulates successful assistant ids in native save order and is
-  read by completion's `hookState`; `maxMessages` enforces the resolved run/Workflow
-  step cap; `resumeInboxId` tells claim to retain the report and step count at
-  approval resume. Claim resets it for new work and staged hook prompts.
-  <=64*(37+2)=2,496 bytes of ids plus prompt/cap/resume metadata fit a 3 KiB reservation.
-  Posted notes wait for the next turn claim with no decided approvals awaiting
-  committed results; ordinary tool slices never drain them. `beforeTurn` hook
-  notes are saved before the first generation.
-- `inbox`: FIFO ready message references, passive notes and retained control ids.
-  `text` holds a posted note or a staged hook prompt until claim; `noteEpoch`
-  isolates cancelled payloads from fresh admission/cleanup. Claim saves notes
-  before a staged prompt. `join` carries a joined group's newest and earliest
-  member anchors. `from` labels notes in context and
-  the public reader. After save, `messageId`/`kind`/`from` retain origin metadata
-  with `passive: false`; `by_message` reads only ids on the requested page.
-  The ready index selects `passive: undefined`, so controls never start work or
-  block settlement. Cancel fences notes immediately, then a finite job per
-  assignment removes unsaved bodies without loading them in the cancel budget.
-  A reserved row stays until claim, so approvals retain their work.
-- `runs`: one accepted user request and all caused work; launch/hop counters,
-  cancellation, outstanding result deliveries, and a per-agent model choice
-  fixed at run start and read by every turn claim, 64-bit start/routing masks, and
-  separate hook-continuation/side-run counters.
-- `receipts`: one shared `(scope, key)` ledger for request acceptance and tools;
-  input fingerprint, claim fence, lease, status, bounded result and TTL. Request
-  results retain the original inbox position for typed duplicate receipts.
-  Parent-progress receipts retain only the exact native message id and input
-  hash, read before fresh-note caps to replay without another save or wake.
-- `subagentRuns`: child linkage, verified native result reference, root epoch,
-  delivery capability, bounded transition history and the side-run marker.
-  `parentNotesSent` and `lastParentNoteAt` are read by progress admission for
-  the lifetime count and five-second rate caps. Bodies remain in native Agent.
-  `by_result_message` supplies page-local result origins without reading history.
-  That marker excludes side runs from the settlement fence and routes their
-  replies to passive notes without spending model delegation hops.
-
-`workflows/lanes.ts` fixes the versioned loop/turn step sequence. Each action is one
-paid model slice with retries disabled. `betweenSlices` keeps its version-1
-sequence; notes and hooks are consumed inside `agentStep` without new journal
-entries. Loops rotate after a bounded number of turns/doorbells to keep the
-8 MiB journal bounded; old completed loops are cleaned up.
-
-`receipts.effects.purge` runs a single scheduled chain while the ledger is nonempty,
-removing at most `LIMITS.purgeBatch` indexed expired rows per mutation. No table
-mirrors Workflow/Workpool internals. `agevex/test` mounts extra inspection
-functions only inside the test harness to verify and replay real journals.
+Loops rotate after bounded turns/doorbells to protect the 8 MiB journal. The
+versioned step sequence remains stable and journal replay tests verify it.
+agevex/test mounts inspection functions only in the test harness.

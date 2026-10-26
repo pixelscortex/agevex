@@ -28,14 +28,12 @@ export type HookResult = void | {
   block?: string;
   input?: unknown;
   output?: unknown;
-  continue?: string;
   model?: string;
 };
 export type AgentHooks = {
-  beforeTurn?: (
-    hc: HookContext,
-    event: { prompt: string; isRunStart: boolean },
-  ) => HookResult | Promise<HookResult>;
+  /** Runs before every generation step, including tool and approval resumes. Model choices are local. */
+  beforeTurn?: (hc: HookContext, event: { prompt: string }) => HookResult | Promise<HookResult>;
+  /** Notification after a logical turn finishes; return values never alter execution. */
   afterTurn?: (
     hc: HookContext,
     event: {
@@ -45,7 +43,7 @@ export type AgentHooks = {
       /** All successful assistant saves in turn save order, across tool/approval slices. */
       messageIds: string[];
     },
-  ) => HookResult | Promise<HookResult>;
+  ) => void | Promise<void>;
   beforeTool?: (
     hc: HookContext,
     event: { tool: string; input: unknown },
@@ -58,11 +56,6 @@ export type AgentHooks = {
     hc: HookContext,
     event: { agent: string; task: string },
   ) => HookResult | Promise<HookResult>;
-};
-export type SideAgent = {
-  agent: ManagedAgent;
-  every: { turns: number; minutes?: never } | { minutes: number; turns?: never };
-  sees: "delta";
 };
 
 export type Receipt = Infer<typeof receipt>;
@@ -237,9 +230,6 @@ export type DelegationDenialCode =
   | "RUN_BUDGET"
   | "RESULTS_PENDING"
   | "DEPTH_LIMIT"
-  | "GROUP_LIMIT"
-  | "GROUP_CLOSED"
-  | "GROUP_CONFLICT"
   | "CHILD_FINISHED"
   | "MESSAGE_LIMIT"
   | "MESSAGE_TOO_LARGE"
@@ -265,14 +255,12 @@ export type DelegationDenialCode =
 export type CoordinateArgs =
   | {
       op: "launch";
-      side?: boolean;
       assignmentId: string;
       turnToken: string;
       toolCallId: string;
       agent: string;
       task: string;
-      group?: string;
-      wait?: "each" | "all";
+      wait?: "each";
     }
   | { op: "message"; assignmentId: string; turnToken: string; runId: string; text: string }
   | { op: "ask"; assignmentId: string; turnToken: string; question: string }
@@ -314,7 +302,6 @@ export type ManagedAgent = {
   run?: RunSettings;
   sandbox?: boolean;
   hooks?: AgentHooks;
-  sideAgents?: readonly SideAgent[];
   subagents: readonly ManagedAgent[];
   component: AgentComponent;
   /**

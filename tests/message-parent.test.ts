@@ -30,12 +30,11 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-it("progress wakes a sleeping wait-all parent before the child result without pausing the child and records wake usage", async () => {
+it("progress wakes a sleeping parent before the child result without pausing the child and records wake usage", async () => {
   const t = setup();
   const held = gate();
 
-  v2.steps.Main = (n) =>
-    n === 0 ? [delegate("Reviewer", { wait: "all" })] : text("read progress");
+  v2.steps.Main = (n) => (n === 0 ? [delegate("Reviewer")] : text("read progress"));
 
   v2.steps.Reviewer = async (n) => {
     if (n === 0) return [call("agevex_message_parent", { text: "mid-work evidence" })];
@@ -79,9 +78,7 @@ it("a sleeping parent wakes once for a burst while rate denials and identical re
   const held = gate();
 
   v2.steps.Main = (n) =>
-    n === 0
-      ? [delegate("Reviewer", { wait: "all" }), delegate("Reviewer", { wait: "all" })]
-      : text("read burst");
+    n === 0 ? [delegate("Reviewer"), delegate("Reviewer")] : text("read burst");
 
   v2.steps.Reviewer = async () => {
     await held.promise;
@@ -361,73 +358,70 @@ it.each(["queue", "hop"])(
   },
 );
 
-it.each(["each", "all"] as const)(
-  "accepted progress precedes final delivery with stable FIFO coalescing and retry dedupe for wait=%s",
-  async (wait) => {
-    const t = setup();
-    const childHeld = gate();
-    const parentHeld = gate();
+it("accepted progress precedes final delivery with stable FIFO coalescing and retry dedupe", async () => {
+  const t = setup();
+  const childHeld = gate();
+  const parentHeld = gate();
 
-    v2.steps.Main = async (n) => {
-      if (n === 0) return [delegate("Reviewer", { wait })];
+  v2.steps.Main = async (n) => {
+    if (n === 0) return [delegate("Reviewer")];
 
-      if (n === 1) await parentHeld.promise;
+    if (n === 1) await parentHeld.promise;
 
-      return text("parent read");
-    };
+    return text("parent read");
+  };
 
-    v2.steps.Reviewer = async () => {
-      await childHeld.promise;
+  v2.steps.Reviewer = async () => {
+    await childHeld.promise;
 
-      return text("unique final marker");
-    };
+    return text("unique final marker");
+  };
 
-    const receipt = await open(t);
+  const receipt = await open(t);
 
-    await waitFor(t, () => calls("Reviewer").length === 1);
-    const actor = await sender(t, receipt.threadId);
-    const first = await send(t, actor, "first progress marker", "first");
+  await waitFor(t, () => calls("Reviewer").length === 1);
+  const actor = await sender(t, receipt.threadId);
+  const first = await send(t, actor, "first progress marker", "first");
 
-    await waitFor(t, () => calls("Main").length === 2);
+  await waitFor(t, () => calls("Main").length === 2);
 
-    await t.action(async () => {
-      await vi.advanceTimersByTimeAsync(LIMITS.parentNoteIntervalMs);
-    });
+  await t.action(async () => {
+    await vi.advanceTimersByTimeAsync(LIMITS.parentNoteIntervalMs);
+  });
 
-    expect(await send(t, actor, "second progress marker")).toMatchObject({ status: "accepted" });
-    expect(await send(t, actor, "first progress marker", "first")).toEqual(first);
-    expect(JSON.stringify(calls("Main")[1].args.prompt)).not.toContain("second progress marker");
-    childHeld.release();
+  expect(await send(t, actor, "second progress marker")).toMatchObject({ status: "accepted" });
+  expect(await send(t, actor, "first progress marker", "first")).toEqual(first);
+  expect(JSON.stringify(calls("Main")[1].args.prompt)).not.toContain("second progress marker");
+  childHeld.release();
 
-    await waitFor(t, async () =>
-      JSON.stringify(await transcript(t, receipt.threadId)).includes("unique final marker"),
-    );
+  await waitFor(t, async () =>
+    JSON.stringify(await transcript(t, receipt.threadId)).includes("unique final marker"),
+  );
 
-    expect(calls("Main")).toHaveLength(2);
-    parentHeld.release();
-    await drain(t);
-    expect(calls("Main")).toHaveLength(3);
-    const prompt = JSON.stringify(calls("Main")[2].args.prompt);
+  expect(calls("Main")).toHaveLength(2);
+  parentHeld.release();
+  await drain(t);
+  expect(calls("Main")).toHaveLength(3);
+  const prompt = JSON.stringify(calls("Main")[2].args.prompt);
 
-    expect(prompt.indexOf("first progress marker")).toBeLessThan(
-      prompt.indexOf("second progress marker"),
-    );
+  expect(prompt.indexOf("first progress marker")).toBeLessThan(
+    prompt.indexOf("second progress marker"),
+  );
 
-    expect(prompt.indexOf("second progress marker")).toBeLessThan(
-      prompt.indexOf("unique final marker"),
-    );
+  expect(prompt.indexOf("second progress marker")).toBeLessThan(
+    prompt.indexOf("unique final marker"),
+  );
 
-    const history = await transcript(t, receipt.threadId);
+  const history = await transcript(t, receipt.threadId);
 
-    expect(
-      history.page.filter((entry) => entry.text?.includes("first progress marker")),
-    ).toHaveLength(1);
+  expect(
+    history.page.filter((entry) => entry.text?.includes("first progress marker")),
+  ).toHaveLength(1);
 
-    expect(
-      history.page.filter((entry) => entry.text?.includes("second progress marker")),
-    ).toHaveLength(1);
-  },
-);
+  expect(
+    history.page.filter((entry) => entry.text?.includes("second progress marker")),
+  ).toHaveLength(1);
+});
 
 it("a root has no message_parent tool and its internal path returns NO_PARENT", async () => {
   const t = setup();
@@ -698,47 +692,6 @@ it("five reviewers with four notes five seconds apart cannot starve any final re
       ),
     ).toHaveLength(1);
   }
-});
-
-it("a side reviewer has no message_parent and a forced call spends no hop or parent wake", async () => {
-  const t = setup(undefined, undefined, true);
-  const held = gate();
-
-  v2.steps.Main = () => text("watched result");
-
-  v2.steps.Reviewer = async () => {
-    await held.promise;
-
-    return text("NONE");
-  };
-
-  const receipt = await open(t);
-
-  await waitFor(t, () => calls("Reviewer").length === 1);
-  expect((await tree(t, receipt.threadId))[0].side).toBe(true);
-
-  expect(calls("Reviewer")[0].args.tools?.map((entry) => entry.name)).not.toContain(
-    "agevex_message_parent",
-  );
-
-  const before = await hops(t, receipt.assignmentId);
-  const parent = await t.query(rawAssignment, { assignmentId: receipt.assignmentId });
-
-  expect(await send(t, await sender(t, receipt.threadId), "forced side progress")).toMatchObject({
-    status: "denied",
-    code: "SIDE_RUN",
-  });
-
-  expect(await hops(t, receipt.assignmentId)).toBe(before);
-  expect(await t.query(rawAssignment, { assignmentId: receipt.assignmentId })).toEqual(parent);
-
-  expect(JSON.stringify(await transcript(t, receipt.threadId))).not.toContain(
-    "forced side progress",
-  );
-
-  held.release();
-  await drain(t);
-  expect(calls("Main")).toHaveLength(1);
 });
 
 it("the full 58-row delivery range reserves a settled child's final hop after activeRuns drops", async () => {

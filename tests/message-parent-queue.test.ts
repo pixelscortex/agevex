@@ -173,59 +173,6 @@ it("an ask answered mid-turn before its question is consumed cannot crowd out ei
   for (const n of [0, 1]) expect(prompt).toContain(`mid-turn result ${n}`);
 });
 
-it("a joined release and a user message can fill the queue without refusing an ordinary child result", async () => {
-  const t = setup({ queueLength: 2 });
-  const held = gate();
-  const children = [gate(), gate(), gate()];
-
-  v2.steps.Main = async (n) => {
-    if (!n)
-      return [
-        delegate("Reviewer", { wait: "all", group: "joined" }),
-        delegate("Reviewer", { wait: "all", group: "joined" }),
-        delegate("Reviewer"),
-      ];
-
-    await held.promise;
-
-    return text("read joined and ordinary results");
-  };
-
-  v2.steps.Reviewer = async (n) => {
-    await children[n].promise;
-
-    return text(`joined or ordinary result ${n}`);
-  };
-
-  const receipt = await open(t);
-
-  await waitFor(t, () => calls("Reviewer").length === 3);
-  await message(t, receipt.threadId, "wake parent");
-  await waitFor(t, () => calls("Main").length === 2);
-  children[0].release();
-  children[1].release();
-
-  await waitFor(
-    t,
-    async () =>
-      (await t.query(rawAssignment, { assignmentId: receipt.assignmentId }))?.queuedMessages === 1,
-  );
-
-  await message(t, receipt.threadId, "fill beside joined release");
-  children[2].release();
-  await results(t, receipt.threadId, 3);
-
-  expect(
-    (await t.query(rawAssignment, { assignmentId: receipt.assignmentId }))?.queuedMessages,
-  ).toBe(3);
-
-  held.release();
-  await drain(t);
-  const prompt = JSON.stringify(calls("Main")[calls("Main").length - 1]?.args.prompt);
-
-  for (const n of [0, 1, 2]) expect(prompt).toContain(`joined or ordinary result ${n}`);
-});
-
 it.each(["running", "asking"] as const)(
   "a sibling cannot message or answer a %s run and only its recorded parent can interact",
   async (status) => {
@@ -306,7 +253,7 @@ it.each(["running", "asking"] as const)(
   },
 );
 
-it.each(["each", "all"] as const)(
+it.each(["each"] as const)(
   "wait=%s fresh requests receive RESULTS_PENDING for earlier child results until capacity frees",
   async (wait) => {
     const t = setup({ queueLength: 2, runLaunches: 2 });
@@ -355,16 +302,8 @@ it.each(["each", "all"] as const)(
     children[1].release();
     await results(t, receipt.threadId, 2);
 
-    // A joined row replaces both members; individual results still occupy two
-    // result-work units until claim consumes them. Neither uses message slots.
-    expect(await launch()).toMatchObject(
-      wait === "all" ? { status: "queued" } : { status: "denied", code: "RESULTS_PENDING" },
-    );
-
-    if (wait === "all") {
-      await results(t, receipt.threadId, 3);
-      expect(await launch()).toMatchObject({ status: "denied", code: "RESULTS_PENDING" });
-    }
+    // Individual results each occupy one result-work unit until claimed.
+    expect(await launch()).toMatchObject({ status: "denied", code: "RESULTS_PENDING" });
 
     held.release();
     await drain(t);

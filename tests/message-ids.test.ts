@@ -1,12 +1,12 @@
 // @vitest-environment edge-runtime
 /** Public hook/tool message identities follow native saves and slice fences. */
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
-import { listMessages, type MessageDoc } from "@convex-dev/agent";
+import { type MessageDoc } from "@convex-dev/agent";
 import type { ToolContext } from "../src/client/index.js";
 import { getConvexSize } from "convex/values";
 import { HOST_LIMITS, LIMITS } from "../src/component/limits.js";
 import { RUN_LIMITS } from "../src/component/run_settings.js";
-import { fixture, reset, api, call, text, builder, critic } from "./hooks.host.js";
+import { fixture, reset, api, call, text, builder } from "./hooks.host.js";
 import { components, rawAssignment } from "./fixture/api.js";
 import { setup } from "./message-ids.fixture.js";
 import { requireReceipt } from "./receipt.js";
@@ -99,8 +99,6 @@ it.each(["stream", "generate"] as const)(
 );
 
 it("afterTurn includes saved assistant tool calls and excludes separate native tool-result rows", async () => {
-  fixture.builderSides = [];
-
   fixture.steps.Main = (n) =>
     n === 0 ? call("agevex_delegate", { agent: "Builder", task: "task" }) : text("done");
 
@@ -129,30 +127,6 @@ it("afterTurn includes saved assistant tool calls and excludes separate native t
 
   expect(steps[0].some((m) => m.message?.role === "tool")).toBe(true);
   await savedReplies(t, events[1]);
-});
-
-it("afterTurn continuations report only their own saved replies, even when reply text repeats", async () => {
-  const events: Event[] = [];
-
-  fixture.steps.Main = () => text("same reply");
-
-  fixture.hooks.afterTurn = (_hc, event) => {
-    events.push(event);
-
-    return event.turn < 3 ? { continue: "continue" } : undefined;
-  };
-
-  const { t, saves } = setup();
-
-  await open(t);
-  await drain(t);
-  const steps = saves.filter((batch) => batch.some((message) => message.usage));
-
-  expect(events).toHaveLength(3);
-  expect(events.map((event) => event.messageIds)).toEqual(steps.map(assistantIds));
-  expect(new Set(events.flatMap((event) => event.messageIds)).size).toBe(3);
-
-  for (const event of events) expect((await savedReplies(t, event))[0]?.text).toBe("same reply");
 });
 
 it("an approval resume reports pre-pause and resumed ids together and preserves the request prompt", async () => {
@@ -320,7 +294,6 @@ it("a child tool receives its native task message id rather than the parent's re
   };
 
   vi.spyOn(builder as { declaredTools: ToolSet }, "declaredTools", "get").mockReturnValue(tools);
-  fixture.builderSides = [];
 
   fixture.steps.Main = (n) =>
     n === 0 ? call("agevex_delegate", { agent: "Builder", task: "child task" }) : text("done");
@@ -345,7 +318,7 @@ it("a child tool receives its native task message id rather than the parent's re
   });
 });
 
-it("queued sends and afterTurn continuations give tools their own request prompts and fresh reply lists", async () => {
+it("queued sends give tools their own request prompts and fresh reply lists", async () => {
   const seen: ToolContext[] = [];
   const events: Event[] = [];
 
@@ -357,8 +330,6 @@ it("queued sends and afterTurn continuations give tools their own request prompt
 
   fixture.hooks.afterTurn = (_hc, event) => {
     events.push(event);
-
-    return event.turn === 1 ? { continue: "staged continuation" } : undefined;
   };
 
   const { t, saves } = setup();
@@ -371,54 +342,20 @@ it("queued sends and afterTurn continuations give tools their own request prompt
   });
 
   await drain(t);
-  expect(events).toHaveLength(3);
-  expect(seen).toHaveLength(3);
+  expect(events).toHaveLength(2);
+  expect(seen).toHaveLength(2);
 
   const prompts = await t.query(components.agent.messages.getMessagesByIds, {
     messageIds: seen.map((tc) => tc.promptMessageId!),
   });
 
-  expect(prompts.map((m) => m?.text)).toEqual(["request", "staged continuation", "queued request"]);
+  expect(prompts.map((m) => m?.text)).toEqual(["request", "queued request"]);
   const steps = saves.filter((batch) => batch.some((m) => m.usage));
 
   expect(events.map((e) => e.messageIds)).toEqual([
     steps.slice(0, 2).flatMap(assistantIds),
     steps.slice(2, 4).flatMap(assistantIds),
-    steps.slice(4, 6).flatMap(assistantIds),
   ]);
-});
-
-it("side review tools receive their own task prompt across tool continuations", async () => {
-  const seen: ToolContext[] = [];
-
-  const tools = {
-    probe: tool({
-      inputSchema: z.object({}),
-      execute: async (_input, options) => {
-        seen.push(options.context as ToolContext);
-
-        return "done";
-      },
-    }),
-  };
-
-  vi.spyOn(critic as { declaredTools: ToolSet }, "declaredTools", "get").mockReturnValue(tools);
-  fixture.sides = [{ agent: critic, every: { turns: 1 }, sees: "delta" }];
-  fixture.steps.Critic = (n) => (n < 2 ? call("probe", {}) : text("review"));
-  const { t, saves } = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-  expect(seen).toHaveLength(2);
-  expect(seen[0].promptMessageId).toBe(seen[1].promptMessageId);
-  expect(seen[0].promptMessageId).not.toBe(saves[0][0]._id);
-  expect(seen[0].threadId).not.toBe(receipt.threadId);
-
-  const [prompt] = await t.query(components.agent.messages.getMessagesByIds, {
-    messageIds: [seen[0].promptMessageId!],
-  });
-
-  expect(prompt).toMatchObject({ threadId: seen[0].threadId, message: { role: "user" } });
 });
 
 it("the assignment stays bounded while reporting the maximum 64 saved model steps", async () => {
@@ -564,65 +501,3 @@ it.each(["run", "host"] as const)(
     expect(row?.turnReport?.messageIds).toHaveLength(2);
   },
 );
-
-it("an exhausted step allowance ends the turn before its staged afterTurn continuation is saved", async () => {
-  // The host workflow allows two slices per execution, the run allows the
-  // maximum. The approval resume spends the turn's second (last) model step
-  // and its afterTurn hook stages a continuation, so the Workflow still offers
-  // a slice the step allowance no longer has.
-  fixture.approval = true;
-  fixture.run.Main = { stepsPerTurn: RUN_LIMITS.stepsPerTurn.max };
-
-  fixture.steps.Main = (n) =>
-    n === 0 ? call("echo", { text: "approved effect" }) : text("approved reply");
-
-  const events: Event[] = [];
-
-  fixture.hooks.afterTurn = (_hc, event) => {
-    events.push(event);
-
-    return { continue: "staged continuation" };
-  };
-
-  const { t } = setup({ slicesPerTurn: 2 });
-  const receipt = await open(t);
-
-  await drain(t);
-  const paused = await t.query(rawAssignment, { assignmentId: receipt.assignmentId });
-
-  const [request] = await t.query(components.agent.messages.getMessagesByIds, {
-    messageIds: [paused!.approvals!.requests[0].messageId],
-  });
-
-  const content = request!.message!.content;
-
-  const part = Array.isArray(content)
-    ? content.find((p) => p.type === "tool-approval-request")
-    : undefined;
-
-  if (part?.type !== "tool-approval-request") throw new Error("APPROVAL_MISSING");
-
-  await owner(t).mutation(api.agents.respond, {
-    threadId: receipt.threadId,
-    approvalId: part.approvalId,
-    decision: { kind: "approve" },
-  });
-
-  await drain(t);
-  const row = await t.query(rawAssignment, { assignmentId: receipt.assignmentId });
-
-  expect(events).toHaveLength(1);
-  expect(fixture.calls).toHaveLength(2);
-  expect(row).toMatchObject({ errorCode: "SLICE_LIMIT", turnStatus: "recovery_required" });
-  expect(row?.hookContinue).toBeFalsy();
-  expect(row?.inboxId).toBeUndefined();
-
-  const page = await t.run((ctx) =>
-    listMessages(ctx, components.agent, {
-      threadId: receipt.threadId,
-      paginationOpts: { cursor: null, numItems: 50 },
-    }),
-  );
-
-  expect(page.page.some((message) => message.text === "staged continuation")).toBe(false);
-});

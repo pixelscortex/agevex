@@ -63,7 +63,6 @@ const activity = (t: Test, threadId: string) => owner(t).query(api.agents.activi
 beforeEach(() => {
   vi.useFakeTimers();
   reset();
-  fixture.builderSides = [];
 });
 
 afterEach(() => {
@@ -645,7 +644,6 @@ it.each(["stream", "generate"] as const)(
   async (mode) => {
     for (const reason of ["tool timeout", "tool limit", "model timeout", "cancel"]) {
       reset();
-      fixture.builderSides = [];
       const t = setup();
       let release!: () => void;
 

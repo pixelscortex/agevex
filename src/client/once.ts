@@ -26,7 +26,7 @@ export type ToolContext = {
   threadId: string;
   runId: string;
   /** Request that started this reporting turn, stable across tools/approval resumes.
-   * An afterTurn continuation uses its staged prompt; absent outside managed prompts. */
+   * Absent outside managed prompts. */
   promptMessageId?: string;
   /** Bounded opaque id; the provider id remains available for attribution. */
   toolCallId: string;

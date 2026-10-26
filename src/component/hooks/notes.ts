@@ -1,5 +1,5 @@
 /**
- * Notes and staged hook continuations, from admission to native history.
+ * Notes, from admission to native history.
  *
  * Notes are short `<note from="...">` user messages posted by hooks or the
  * host. `addNote` (`queueNote`) keeps one as a passive `inbox` row (body in
@@ -18,7 +18,6 @@ import { type MutationCtx, mutation, internalMutation } from "../_generated/serv
 import type { Doc, Id } from "../_generated/dataModel.js";
 import { LIMITS } from "../limits.js";
 import { awaitingApprovalResults } from "../turns/pause.js";
-import { recordMessages } from "./refs.js";
 
 /** The native Agent handles claim needs to place notes: read the anchor, save
  * empty assistant slots, then turn each slot into the note's user message. */
@@ -36,15 +35,14 @@ export const noteHandles = v.object({
  * updateMessage (:553-597), preserving both arrival order and native positions.
  * <=24 raw rows *17 KiB read twice + six native merge heads <=6 MiB + one
  * anchor <=1 MiB +24 escaped notes *50 KiB +metadata <128 KiB: <10 MiB read,
- * <3 MiB written. A hook continuation adds <=64 KiB read/write. The bounded
- * ready-group claim uses metadata only; native heads are read just once.
+ * <3 MiB written. The bounded ready claim uses metadata only; native heads
+ * are read just once.
  */
 export async function claimNotes(
   ctx: MutationCtx,
   row: Doc<"assignments">,
   handles: Infer<typeof noteHandles>,
   order: number,
-  continuation?: Doc<"inbox">,
 ) {
   const notes = await ctx.db
     .query("inbox")
@@ -53,19 +51,12 @@ export async function claimNotes(
     )
     .take(row.limits.notesPending);
 
-  if (!notes.length && !continuation) return;
+  if (!notes.length) return;
 
-  const controls = [
-    ...notes.map((note) => ({ row: note, message: noteMessage(note.text!, note.from!) })),
-    ...(continuation
-      ? [
-          {
-            row: continuation,
-            message: { role: "user" as const, content: continuation.text! },
-          },
-        ]
-      : []),
-  ];
+  const controls = notes.map((note) => ({
+    row: note,
+    message: noteMessage(note.text!, note.from!),
+  }));
 
   const saved = (await ctx.runMutation(handles.addMessages as FunctionHandle<"mutation">, {
     threadId: row.threadId,
@@ -77,24 +68,17 @@ export async function claimNotes(
     })),
   })) as { messages: MessageDoc[] };
 
-  const finalized: MessageDoc[] = [];
-
   for (let index = 0; index < controls.length; index++) {
-    finalized.push(
-      await finalizeControl(ctx, row, handles, controls[index], saved.messages[index]._id),
-    );
+    await finalizeControl(ctx, handles, controls[index], saved.messages[index]._id);
   }
 
-  await recordMessages(ctx, row, finalized);
   await ctx.db.patch("assignments", row._id, { notesPending: 0 });
 }
 
 /** Turn one reserved assistant slot into the control's user message, retire
- * its body from the inbox row (keeping the id as origin metadata), and make a
- * hook continuation the turn's prompt. */
+ * its body from the inbox row, keeping the id as origin metadata. */
 async function finalizeControl(
   ctx: MutationCtx,
-  row: Doc<"assignments">,
   handles: Infer<typeof noteHandles>,
   control: { row: Doc<"inbox">; message: { role: "user"; content: string } },
   slotId: string,
@@ -109,11 +93,6 @@ async function finalizeControl(
     text: undefined,
     passive: false,
   });
-
-  if (control.row.kind === "continue") {
-    row.promptMessageId = message._id;
-    await ctx.db.patch("assignments", row._id, { promptMessageId: message._id });
-  }
 
   return message;
 }
@@ -266,13 +245,12 @@ export async function saveBeforeTurnNote(
     from: args.from,
   });
 
-  await recordMessages(ctx, row, [message]);
   await ctx.db.patch("assignments", row._id, { nextSequence: row.nextSequence + 1 });
 }
 
 /** Cancellation never loads the raw note bodies across all sixteen assignments.
- * One finite job per assignment reads/deletes <=24*17 KiB twice +34 KiB
- * assignment metadata =850 KiB (<864 KiB).
+ * One finite job per assignment reads/deletes <=24*17 KiB twice +16 KiB
+ * assignment metadata =832 KiB (<848 KiB).
  * Pending notes have never entered Agent; delivered origin rows are excluded.
  * The epoch index fences a fresh send even when it precedes this job. Each
  * cancelled epoch has <=24 notes, so no chain or history prefix is needed.

@@ -23,7 +23,6 @@ export const live = {
   depth: false,
   builderCalls: 0,
   reviewerCalls: 0,
-  criticCalls: 0,
   rootCalls: 0,
   childCalls: 0,
   charges: [] as { facts: SlotFacts; provider: string; key: string; usage?: unknown }[],
@@ -334,35 +333,9 @@ const main = new Agent(native, {
     "For a depth-two task delegate exactly once to Builder, then give a short final answer after its result. For other tasks use Researcher when required to delegate. Use a very short factual task. After the second Researcher result, reply in one short sentence. Never delegate to any other agent.",
 });
 
-const criticModel = provider.chat(modelId);
-const criticStream = criticModel.doStream.bind(criticModel);
-
-criticModel.doStream = (args) => {
-  live.criticCalls++;
-
-  return criticStream({
-    ...args,
-    maxOutputTokens: LIVE_LIMITS.outputTokens,
-    toolChoice: { type: "none" },
-  });
-};
-
-const critic = new Agent(native, {
-  name: "Critic",
-  languageModel: criticModel,
-  instructions: "Give one short useful review note. Do not return NONE. Do not call tools.",
-});
-
-const watched = new Agent(native, {
-  name: "Watched",
-  languageModel: rootModel,
-  sideAgents: [{ agent: critic, every: { turns: 1 }, sees: "delta" }],
-  instructions: "Answer in one short sentence.",
-});
-
 const runtime = registerAgent(agevex, {
   title: false,
-  agents: [main, watched],
+  agents: [main],
   usage: fakeUsage,
   modelAllowlist: [modelId],
   models: () => rootModel,

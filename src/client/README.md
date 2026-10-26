@@ -29,14 +29,14 @@ agent index, and `open` looks roots up in `config.agents`.
    generate step. `turn/deadlines.ts` separates provider/tool deadlines and caps
    serial tools; claim derives its watchdog from the accepted run snapshot.
 7. **Continue or complete.** `turn/completion.ts` continues after tool calls, runs
-   `afterTurn`, launches side reviews and admits continuations.
+   the `afterTurn` notification.
 8. **Finish.** `turn/finish.ts` calls `turns.slices.finish`; a child turn first settles its
    run (`coordinate/settle.ts`) and delivers the result (`coordinate/delivery.ts`).
 9. **Reconcile.** Every slice exit calls the optional usage adapter's bounded
    sweep. It reads saved provider ids and corrects existing charges; generation
    is never repeated. Observation failures leave a sticky partial run marker.
 
-Collaboration tools and side reviews call the `coordinate` mutation
+Collaboration tools call the `coordinate` mutation
 (`coordinate/coordinator.ts`), which runs each op in one transaction.
 
 ## Reactive run tree
@@ -45,7 +45,7 @@ Collaboration tools and side reviews call the `coordinate` mutation
 `{ rootRunId, usage, nodes } | null`. This breaks the previous descendant-array
 contract: consume `.nodes`, including the root. Explicit ids select history
 only within that thread. One query tracks projected queued/running/asleep/done/
-failed statuses, bounded task previews, timestamps, current local tool and exact
+failed statuses, timestamps, current local tool and exact
 message links. Finished nodes never show tools. Transcript bodies stay native.
 
 `usage.view` runs in the host query, after authorization; without it all usage
@@ -65,78 +65,75 @@ narration by exact id. No transcript listing or text matching is involved.
 The assignment accumulates ids in the native save transaction. One assistant
 row per step bounds the list by run `stepsPerTurn` and any non-default host
 `slicesPerTurn` cap (matching Workflow v1): at most 64 ids × (37 ASCII bytes + 2 Convex string bytes) = 2,496 bytes.
-Prompt/cap/resume metadata brings the reservation to 3 KiB within the 34 KiB
-assignment envelope. New user/queued/child work and a staged `afterTurn`
-continuation start fresh lists; approval resumes retain the list and step count.
+Prompt/cap/resume metadata brings the reservation to 3 KiB within the 16 KiB
+assignment envelope. New user/queued/child work starts fresh lists; approval
+resumes retain the list and step count.
 So approving a call requested on the turn's last allowed step ends the turn with
-`SLICE_LIMIT` (`recovery_required`) before the approved tool runs, and a staged
-`afterTurn` continuation past the limit is dropped unsaved. Give `stepsPerTurn`
+`SLICE_LIMIT` (`recovery_required`) before the approved tool runs. Give `stepsPerTurn`
 (and any host `slicesPerTurn`) headroom when tools need approval.
 
 `ToolContext.promptMessageId?: string` comes from the trusted component claim,
 never tool input. It identifies the user request or child's task that started
 this reporting turn and stays fixed across tool continuations and approval
-resumes, including side reviews. An `afterTurn` continuation uses its staged
-prompt. The native generation anchor can advance independently to an approval
+resumes. The native generation anchor can advance independently to an approval
 response. Contexts without a managed prompt may omit the id; hooks inherit it.
 
 ## Background text
 
-`text/options.ts` validates default-on title policy and opt-in summary/cadence
+`text/options.ts` validates default-on title policy and on-demand summary
 settings. Hosts export `textTask` and supply `refs.textTask`, or opt
 out with `title: false` while leaving summary off. `endpoints/text.ts` authorizes
 root title/rename/summary/summarize operations. `text/task.ts` rechecks execution
-policy (`purpose: title | summary`) and budget, reads exact bounded native ids,
-and invokes a receipt-backed task without tools or repairs. Usage records the
+policy (`purpose: title | summary`) and budget, reads the exact title message or a bounded native summary page,
+and invokes a receipt-backed generation without tools or repairs. Usage records the
 triggering run, purpose and exact provider response id; evidence failures mark
-reporting partial and cannot retry the model. Summaries are display-only and
-never modify native model context. Dispatch starts the paid lease; preparation
+reporting partial and cannot retry the model. Title and summary text live only on the native Agent thread. Dispatch starts the paid lease; preparation
 can be cancelled without an unknown outcome. Native app titles always win.
 
 ## File map
 
-| File                          | What is in it                                                                 |
-| ----------------------------- | ----------------------------------------------------------------------------- |
-| `index.ts`                    | Public exports of the package.                                                |
-| `runtime.ts`                  | `registerAgent`: composes everything below.                                   |
-| `agent.ts`                    | The managed `Agent` class (native Agent plus graph metadata).                 |
-| `types.ts`                    | Public types: hooks, registration, scopes, events, coordinator args.          |
-| `slots.ts`                    | Optional slot contracts and the replay-stable scoped meter.                   |
-| `once.ts`                     | `defineOnceTool` / `bindOnceTool`: exactly-once tools on the receipts ledger. |
-| `tasks.ts`                    | `defineTask` / `runTask`: one structured model call per receipt.              |
-| `keys.ts`                     | `fingerprint` and `opaqueKey`.                                                |
-| `tool-names.ts`               | Reserved managed tool names.                                                  |
-| `native-saves.ts`             | Native saves whose exact id is recorded in the same transaction.              |
-| `registration/context.ts`     | `RuntimeContext`, registration checks, `observe`, `coordinateRef`.            |
-| `registration/graph.ts`       | Delegation graph validation and resolution.                                   |
-| `endpoints/index.ts`          | `authorizedEndpoints`: composes the public endpoints.                         |
-| `endpoints/access.ts`         | Endpoint context and the owned-thread authorization scopes.                   |
-| `endpoints/requests.ts`       | `open`, `send`.                                                               |
-| `endpoints/attachments.ts`    | File validation and native file parts for `open` / `send`.                    |
-| `endpoints/controls.ts`       | `respond`, `answer`, `cancel`.                                                |
-| `endpoints/reads.ts`          | `messages`, `streams`, `activity`, `runTree`, `delegations`.                  |
-| `coordinate/coordinator.ts`   | The `coordinate` mutation and op dispatch.                                    |
-| `coordinate/launch.ts`        | `launch`: start a child run or side review.                                   |
-| `coordinate/interaction.ts`   | `message` and `ask` between parent and child.                                 |
-| `coordinate/parent-note.ts`   | `message_parent`: receipt-backed progress to the immediate parent.            |
-| `coordinate/settle.ts`        | `settle`: record a child run's verified outcome.                              |
-| `coordinate/delivery.ts`      | `notify` and one-shot delivery to the parent.                                 |
-| `coordinate/verify.ts`        | Child-result verification against the native transcript.                      |
-| `host/files.ts`               | `registerFile`, `fileAttached`.                                               |
-| `host/notes.ts`               | `note`, `sandboxComplete`, `postNote`.                                        |
-| `turn/run-turn.ts`            | The `runTurn` action: the order of the turn phases.                           |
-| `turn/context.ts`             | `Turn`, `Generation`, `TurnOutcome` and the fence predicates.                 |
-| `turn/claim.ts`               | Load the execution and claim the turn.                                        |
-| `turn/admission.ts`           | `authorizeExecution` and the budget check.                                    |
-| `turn/usage.ts`               | Fail-open evidence and bounded reconciliation on slice exit.                  |
-| `turn/provider-evidence.ts`   | Preserve exact provider response ids in native saved metadata.                |
-| `turn/fence.ts`               | Cancellation deadline, poll and the fenced action context.                    |
-| `turn/generation.ts`          | One generation: phases, native model step, failure mapping.                   |
-| `turn/hook-runner.ts`         | Validated hook calls and hook notes.                                          |
-| `turn/routing.ts`             | `beforeTurn` model choice and per-agent routing.                              |
-| `turn/tools.ts`               | Tool set: slot tools, receipts binding, tool hooks.                           |
-| `turn/collaboration-tools.ts` | Managed delegation, parent/child messages and blocking parent questions.      |
-| `turn/completion.ts`          | Post-step decisions: continue, `afterTurn`, side reviews, child result.       |
-| `turn/finish.ts`              | Finish the turn; settle and deliver for a child.                              |
-| `turn/slots.ts`               | Usage, extract, sandbox and telemetry slots during a turn.                    |
-| `turn/download.ts`            | Byte-bounded attachment downloads for one generation.                         |
+| File                          | What is in it                                                                   |
+| ----------------------------- | ------------------------------------------------------------------------------- |
+| `index.ts`                    | Public exports of the package.                                                  |
+| `runtime.ts`                  | `registerAgent`: composes everything below.                                     |
+| `agent.ts`                    | The managed `Agent` class (native Agent plus graph metadata).                   |
+| `types.ts`                    | Public types: hooks, registration, scopes, events, coordinator args.            |
+| `slots.ts`                    | Optional slot contracts and the replay-stable scoped meter.                     |
+| `once.ts`                     | `defineOnceTool` / `bindOnceTool`: exactly-once tools on the receipts ledger.   |
+| `tasks.ts`                    | `defineTask` / `runTask`: one structured model call per receipt.                |
+| `keys.ts`                     | `fingerprint` and `opaqueKey`.                                                  |
+| `tool-names.ts`               | Reserved managed tool names.                                                    |
+| `native-saves.ts`             | Native saves whose exact id is recorded in the same transaction.                |
+| `registration/context.ts`     | `RuntimeContext`, registration checks, `observe`, `coordinateRef`.              |
+| `registration/graph.ts`       | Delegation graph validation and resolution.                                     |
+| `endpoints/index.ts`          | `authorizedEndpoints`: composes the public endpoints.                           |
+| `endpoints/access.ts`         | Endpoint context and the owned-thread authorization scopes.                     |
+| `endpoints/requests.ts`       | `open`, `send`.                                                                 |
+| `endpoints/attachments.ts`    | File validation and native file parts for `open` / `send`.                      |
+| `endpoints/controls.ts`       | `respond`, `answer`, `cancel`.                                                  |
+| `endpoints/reads.ts`          | `messages`, `streams`, `activity`, `runTree`, `delegations`.                    |
+| `coordinate/coordinator.ts`   | The `coordinate` mutation and op dispatch.                                      |
+| `coordinate/launch.ts`        | `launch`: start a child run.                                                    |
+| `coordinate/interaction.ts`   | `message` and `ask` between parent and child.                                   |
+| `coordinate/parent-note.ts`   | `message_parent`: receipt-backed progress to the immediate parent.              |
+| `coordinate/settle.ts`        | `settle`: record a child run's verified outcome.                                |
+| `coordinate/delivery.ts`      | `notify` and one-shot delivery to the parent.                                   |
+| `coordinate/verify.ts`        | Child-result verification against the native transcript.                        |
+| `host/files.ts`               | `registerFile`, `fileAttached`.                                                 |
+| `host/notes.ts`               | `note`, `sandboxComplete`, `postNote`.                                          |
+| `turn/run-turn.ts`            | The `runTurn` action: the order of the turn phases.                             |
+| `turn/context.ts`             | `Turn`, `Generation`, `TurnOutcome` and the fence predicates.                   |
+| `turn/claim.ts`               | Load the execution and claim the turn.                                          |
+| `turn/admission.ts`           | `authorizeExecution` and the budget check.                                      |
+| `turn/usage.ts`               | Fail-open evidence and bounded reconciliation on slice exit.                    |
+| `turn/provider-evidence.ts`   | Preserve exact provider response ids in native saved metadata.                  |
+| `turn/fence.ts`               | Cancellation deadline, poll and the fenced action context.                      |
+| `turn/generation.ts`          | One generation: phases, native model step, failure mapping.                     |
+| `turn/hook-runner.ts`         | Validated hook calls and hook notes.                                            |
+| `turn/routing.ts`             | Stateless `beforeTurn` model choice per generation.                             |
+| `turn/tools.ts`               | Tool set: slot tools, receipts binding, tool hooks.                             |
+| `turn/collaboration-tools.ts` | Managed delegation, parent/child messages and blocking parent questions.        |
+| `turn/completion.ts`          | Post-step decisions: tool continuation, `afterTurn` notification, child result. |
+| `turn/finish.ts`              | Finish the turn; settle and deliver for a child.                                |
+| `turn/slots.ts`               | Usage, extract, sandbox and telemetry slots during a turn.                      |
+| `turn/download.ts`            | Byte-bounded attachment downloads for one generation.                           |

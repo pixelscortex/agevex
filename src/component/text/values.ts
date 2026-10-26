@@ -1,5 +1,5 @@
-/** Bounded background-text state. Bodies stay native except the small summary;
- * task capabilities, epochs and versions fence every scheduled metadata write. */
+/** Native thread text policy. Temporary capabilities use the existing receipts
+ * ledger; title and summary bodies are never stored by agevex. */
 import { v, getConvexSize } from "convex/values";
 
 export const TEXT_LIMITS = {
@@ -8,13 +8,13 @@ export const TEXT_LIMITS = {
   summaryBytes: 8 << 10,
   inputBytes: 48 << 10,
   readBytes: 2 << 20,
+  messages: 24,
   promptCharacters: 4 << 10,
   taskPromptCharacters: 64 << 10,
   timeoutMs: 30_000,
   leaseMs: 35_000,
   titleTokens: 128,
   summaryTokens: 2048,
-  everyTurns: 1_000_000,
 } as const;
 
 export const textKind = v.union(v.literal("title"), v.literal("summary"));
@@ -25,39 +25,9 @@ export const textConfig = v.object({
   getThread: v.string(),
   title: v.boolean(),
   summary: v.boolean(),
-  everyTurns: v.optional(v.number()),
-});
-export const textBoundary = v.object({
-  id: v.string(),
-  order: v.number(),
-  stepOrder: v.number(),
-  sequence: v.number(),
-});
-export const textJob = v.object({
-  key: v.string(),
-  runId: v.id("runs"),
-  epoch: v.number(),
-  version: v.number(),
-  status: v.union(
-    v.literal("queued"),
-    v.literal("running"),
-    v.literal("done"),
-    v.literal("failed"),
-    v.literal("unknown"),
-  ),
-  dispatched: v.optional(v.boolean()),
-  again: v.optional(v.id("runs")),
-  deferred: v.optional(v.boolean()),
-  titleRef: v.optional(
-    v.object({ id: v.string(), order: v.number(), stepOrder: v.number(), bytes: v.number() }),
-  ),
-});
-export const storedSummary = v.object({
-  text: v.string(),
-  through: textBoundary,
 });
 
-/** Count encoded output as well as characters before either metadata store. */
+/** Count encoded output as well as characters before updating native metadata. */
 export function validText(text: string, kind: "title" | "summary") {
   return (
     !!text.trim() &&

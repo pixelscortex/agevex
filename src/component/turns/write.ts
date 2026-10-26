@@ -22,7 +22,6 @@ import { LIMITS } from "../limits.js";
 import { assertFunctionHandle } from "../facts.js";
 import { appendTurnMessages } from "./message_ids.js";
 import { prepareDecisions, oversizedDecisionInput } from "./decision_save.js";
-import { recordMessages } from "../hooks/refs.js";
 import { runById } from "../subagents/runs.js";
 import { disarmRecovery } from "./recovery.js";
 import { disarmSlice } from "./boundaries.js";
@@ -162,7 +161,7 @@ function assertWriteHandles(args: WriteArgs) {
  * else null. A child can settle immediately before cancel, while its source
  * action still owns the turn token. It no longer occupies an active slot, so
  * cancel need not visit its assignment. The root epoch still fences every
- * late native/tool write: two <=34 KiB assignment reads plus one <=4 KiB
+ * late native/tool write: two <=16 KiB assignment reads plus one <=4 KiB
  * child-run reference (<=72 KiB), no traversal. */
 async function liveWriter(ctx: MutationCtx, row: Doc<"assignments"> | null, args: WriteArgs) {
   const root = row?.rootAssignmentId ? await ctx.db.get("assignments", row.rootAssignmentId) : null;
@@ -244,7 +243,6 @@ async function recordNativeSave(
   // Agent 0.7.7 addMessages returns the actual pending document, including
   // its id (vercel/client/saveInputMessages.ts). Record only coordination
   // metadata in the SAME transaction as the native placeholder creation.
-  await recordMessages(ctx, row, messages);
 
   const modelStep =
     args.trackUsage || row.textConfig?.summary

@@ -1,5 +1,5 @@
-/** A child claims a full previous report, 152 ready rows and fifty deferred groups. */
-import { getConvexSize, v } from "convex/values";
+/** A child claims a full previous report, 152 ready rows and maximum notes. */
+import { v } from "convex/values";
 import { mutation } from "../src/component/_generated/server.js";
 import { HOST_LIMITS, LIMITS, resolveLimits } from "../src/component/limits.js";
 import { newRootAssignment } from "../src/component/turns/assignments.js";
@@ -51,7 +51,7 @@ export const seed = mutation({
       turnStatus: "queued",
       turnToken: "claim",
       turnOrigin: "subagent_result",
-      queuedMessages: limits.queueLength + 1,
+      queuedMessages: limits.queueLength + limits.runLaunches + 1,
     });
 
     const child = (await ctx.db.get("assignments", childId))!;
@@ -63,8 +63,6 @@ export const seed = mutation({
       root,
       budget,
       depth: 1,
-      wait: "each",
-      group: undefined,
       dedupKey: "child",
       sequence: 0,
       now: Date.now(),
@@ -88,28 +86,14 @@ export const seed = mutation({
       previousResume = id;
     }
 
-    for (let i = 0; i < limits.runLaunches; i++) {
-      const id = await ctx.db.insert("subagentRuns", {
-        ...run,
-        runId: `group-${i}`,
-        actorAssignmentId: childId,
-        dedupKey: `group-${i}`,
-        group: `group-${i}`,
-        sequence: i + 1,
-        status: "completed",
-        deliveryStatus: "accepted",
-        join: "ready",
-        resultMessageId: args.promptMessageId,
-        resultSequence: i + limits.queueLength + 2,
+    for (let i = 0; i < limits.runLaunches; i++)
+      await ctx.db.insert("inbox", {
+        assignmentId: childId,
+        runId,
+        kind: "result",
+        messageId: args.promptMessageId,
+        sequence: i + limits.queueLength + 2,
       });
-
-      const member = (await ctx.db.get("subagentRuns", id))!;
-
-      await ctx.db.patch("subagentRuns", id, {
-        payloadFingerprint:
-          member.payloadFingerprint + "x".repeat((4 << 10) - getConvexSize(member)),
-      });
-    }
 
     await ctx.db.patch("assignments", childId, {
       inboxId: head,

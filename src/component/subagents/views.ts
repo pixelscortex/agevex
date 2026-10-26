@@ -49,8 +49,7 @@ export async function delegateScope(
  * What a finishing child turn needs before it reports its outcome: the run it
  * is finishing, the child's recorded final assistant message (written by
  * turns.slices.write in the same transaction as the native save), and whether the
- * settlement fence still holds (`blocked`: pending inbox work, descendants or
- * an unjoined cohort). The host uses it to verify the result before calling
+ * settlement fence still holds (`blocked`: pending inbox work, descendants). The host uses it to verify the result before calling
  * `settle`. Null unless this exact turn token still owns a running child turn
  * whose run is live and attached to it, so a stale or cancelled action can
  * never settle a run it no longer owns.
@@ -98,7 +97,6 @@ export const deliveryContextFields = {
   status: v.union(v.literal("completed"), v.literal("failed")),
   errorCode: runErrorCode,
   rootAvailable: v.boolean(),
-  side: v.optional(v.boolean()),
 } as const;
 
 /** Everything the coordinator needs to deliver a terminal, undelivered run:
@@ -117,7 +115,6 @@ export async function terminalContext(ctx: QueryCtx, run: Doc<"subagentRuns">) {
 
   return {
     runId: run.runId,
-    side: run.side,
     agent: run.agent,
     rootAgent: root.agent,
     parentAgent: parent.agent,
@@ -185,7 +182,6 @@ export async function delegationPage(
 function delegationView(run: Doc<"subagentRuns">) {
   return {
     runId: run.runId,
-    side: run.side ?? false,
     // Defensively preserve absence between reservation and attachment,
     // or on older rows, even though the coordinator commits both together.
     childThreadId: run.childThreadId ?? null,

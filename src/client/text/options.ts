@@ -16,8 +16,8 @@ export type TextTaskOptions = {
 export type ThreadTextOptions = {
   /** On by default, once after the first user message. User renames always win. */
   title?: false | TextTaskOptions;
-  /** Opt in for on-demand summaries; cadence is a separate opt-in. */
-  summary?: false | (TextTaskOptions & { everyTurns?: number });
+  /** Opt in for on-demand summaries; call summarize from your own cadence hook. */
+  summary?: false | TextTaskOptions;
 };
 export type TextTaskArgs = { assignmentId: string; kind: "title" | "summary"; key: string };
 
@@ -46,15 +46,6 @@ export function assertTextOptions(config: Registration) {
 
   const summary = config.summary;
 
-  if (
-    summary &&
-    summary.everyTurns !== undefined &&
-    (!Number.isSafeInteger(summary.everyTurns) ||
-      summary.everyTurns < 1 ||
-      summary.everyTurns > TEXT_LIMITS.everyTurns)
-  )
-    throw new Error("INVALID_TEXT_OPTIONS");
-
   for (const agent of config.agents)
     if (
       ((config.title !== false && !config.title?.model) || (summary && !summary.model)) &&
@@ -64,7 +55,7 @@ export function assertTextOptions(config: Registration) {
 }
 
 /** Native update handle crosses the component boundary so automatic title and
- * version/source commit in one mutation (Agent client/threads.ts:55-64). */
+ * text commit in one mutation (Agent client/threads.ts:55-64). */
 export async function persistedTextConfig(config: Registration, native: ManagedAgent) {
   if (config.title === false && !config.summary) return undefined;
 
@@ -74,6 +65,5 @@ export async function persistedTextConfig(config: Registration, native: ManagedA
     getThread: await createFunctionHandle(native.component.threads.getThread),
     title: config.title !== false,
     summary: !!config.summary,
-    everyTurns: config.summary ? config.summary.everyTurns : undefined,
   };
 }

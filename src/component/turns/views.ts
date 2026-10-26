@@ -65,6 +65,8 @@ export const vExecution = v.object({
   approvalBlocked: v.boolean(),
   // Read by usage capture to match the exact step saved by turns.slices.write.
   modelStep: v.optional(v.object({ messageId: v.string(), stepOrder: v.number() })),
+  // Read by afterTurn completion; exact native ids, never response content.
+  messageIds: v.array(v.string()),
   // Read by runTurn's bounded download of attached files.
   attachmentBytes: v.number(),
 });
@@ -84,6 +86,7 @@ export function executionView(row: Doc<"assignments">) {
     cancelled: row.cancelled,
     approvalBlocked: !!row.approvalBlocked,
     modelStep: row.modelStep,
+    messageIds: row.turnReport?.messageIds ?? [],
     attachmentBytes: row.limits.attachmentBytes,
   };
 }

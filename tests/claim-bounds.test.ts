@@ -1,5 +1,5 @@
 // @vitest-environment edge-runtime
-/** Combined claim bounds include a child's repeated group recovery and native notes. */
+/** Combined claim bounds include a child's maximum result backlog and native notes. */
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { createThread, saveMessage } from "@convex-dev/agent";
 import { componentsGeneric, createFunctionHandle, type ApiFromModules } from "convex/server";
@@ -16,7 +16,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-it("a full 34 KiB child drains 50 deferred groups and maximum notes with six native heads within transaction limits", async () => {
+it("a full 16 KiB child drains 50 child results and maximum notes with six native heads within transaction limits", async () => {
   const t = setup(undefined, undefined, true);
 
   t.registerComponent("agevex", agevex.schema, {

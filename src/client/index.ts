@@ -18,7 +18,6 @@ export type {
   HookContext,
   HookResult,
   AgentHooks,
-  SideAgent,
   Activity,
   Receipt,
   Registration,

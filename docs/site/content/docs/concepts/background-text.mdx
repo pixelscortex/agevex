@@ -1,79 +1,70 @@
 ---
 title: Background text
-description: Default titles, optional summaries, rename fences and dispatch leases.
+description: Native thread titles and on-demand summaries with receipt-backed dispatch.
 status: Available
 ---
 
 Titles run once after the first user message commits, without waiting for an
 assistant answer. Their default model is the root Agent model, including its
 accepted model override. `title: { model, prompt, maxOutputTokens }` configures
-that call; `title: false` disables it. Outputs fit 120 Unicode code points and 512 UTF-8 bytes.
+that call; `title: false` disables it. Outputs fit 120 Unicode code points and 512 encoded bytes.
 
-The [getting-started registration](/docs/getting-started) exports `textTask` from
-`runtime.internalFunctions()` and supplies `refs.textTask`. That reference is
-required when either titles or summaries are enabled. Both disabled permits a
-registration with only the foreground references. Generated-reference inference
-cycles can use `RegisteredAction<"internal", TextTaskArgs, null>` from
-`convex/server`, with `TextTaskArgs` imported from `agevex`.
+Export `textTask` from `runtime.internalFunctions()` and supply `refs.textTask`
+when either titles or summaries are enabled. Generated-reference inference cycles
+can use `RegisteredAction<"internal", TextTaskArgs, null>` from `convex/server`,
+with `TextTaskArgs` imported from `agevex`.
 
 ## User titles
 
-`title({ threadId })` returns `{ text: string | null, source: "auto" | "user" |
-null, version: number }`. Call `rename({ threadId, text, expectedVersion })` with
-that version. A user rename or title already set directly on the native thread always wins
-over a late generated title. An identical
-retry replays; competing text at an outdated version throws `VERSION_CONFLICT`.
-The shared `{ messageId, replayed }` response receipt identifies the native thread
-in `messageId`; renaming creates no transcript message. All four metadata
-endpoints authorize the persisted root owner through the host policy.
+`title({ threadId })` returns `{ text: string | null }` from the native Agent
+thread. Call `rename({ threadId, text })` to set it; repeating identical text
+returns `replayed: true`. The response `{ messageId, replayed }` identifies the
+native thread in `messageId`; renaming creates no message.
 
-## Opt in to summaries
+A user rename or title set directly on the native thread always wins over late
+automatic generation. The native title check and generated title update share a
+transaction. All metadata endpoints authorize the persisted root owner.
+
+## On-demand summaries
 
 Leave `summary` absent or false to make no summary calls. `summary: {}` enables
-on-demand `summarize({ threadId, requestKey })`, returning `queued` or `replayed`.
-`summary: { everyTurns: 10 }` also requests work after each tenth completed root
-turn. Cadence accepts integers from 1 through 1,000,000; tools and child turns do
-not increment it. `model`, `prompt` and `maxOutputTokens` configure summary
-generation separately.
+`summarize({ threadId, requestKey })`, returning `queued` or `replayed`.
+Configure `model`, `prompt` and `maxOutputTokens` separately for summaries.
+A developer who wants a cadence calls `summarize` from their own `afterTurn` hook.
 
-`summary({ threadId })` returns `{ text, throughMessageId }` or null. The exact
-boundary covers successful completed-root work, excluding active/queued prompts
-beyond it. Input uses the prior summary plus at most 24 exact recent native
-messages, 48 KiB serialized; full native document reads fit 2 MiB. Summary output
-fits 8 KiB. A delayed worker reads the newest available completed boundary when
-claimed. One summary runs per thread; later requests coalesce into one follow-up
-for newer completed work. An early on-demand request waits for the first completed
-root boundary without occupying a worker or polling.
+`summary({ threadId })` reads `{ text }` or null directly from the native Agent
+thread's `summary` field. Generation uses the native previous summary and a
+bounded recent page of successful, non-tool messages. It reads at most 24 messages
+with a 2 MiB query byte budget (plus one crossing document), and passes at most
+48 KiB of message JSON plus 8 KiB of previous summary to the model. Summary output
+fits 8 KiB. It never rewrites messages or stores a second summary on agevex rows.
 
-Summaries are display-only and never change native model context.
+One summary can be in flight per thread; a different request key receives
+`SUMMARY_BUSY` until it closes. Repeating the active key still replays. The
+existing receipts ledger holds this single admission marker.
+
+Each request key schedules at most one attempt within receipt retention. A fresh
+key explicitly requests a fresh summary, including after failed or unknown work.
+No cadence, completion counter, context ring or summary coverage metadata is kept.
 
 ## Capacity, usage and failure
 
-Workers use the child/background lane and never await a model on the foreground
-turn. Each call rechecks `authorizeExecution` with persisted ownership and
-`purpose: "title" | "summary"`, then the optional budget. No interactive identity
-is assumed. Titles use 128 output tokens and summaries 2,048 unless
-`maxOutputTokens` (a positive integer up to 4,096, validated at registration)
-sets a cap. Calls stop waiting
-after 30 seconds, including providers that ignore abort. Prompts have a 4,096
-character configuration bound. Tasks use no tools, no repairs and no paid retries.
+Workers use the child/background lane. Each call rechecks `authorizeExecution`
+with persisted ownership and `purpose: "title" | "summary"`, then the optional
+budget. Titles use 128 output tokens and summaries 2,048 unless `maxOutputTokens`
+sets a positive integer cap up to 4,096. Configured prompts fit 4,096 characters.
+Calls stop waiting after 30 seconds, including providers that ignore abort. Tasks
+use no tools, no repairs and no paid retries.
 
-Usage passes through the ordinary usage slot with `title`/`summary` purpose,
-the triggering root run and an exact provider response id when available.
-A title or summary charge whose cost ends `unknown` (for example a transport
-failure with no token evidence) stays recorded, billed and visible, but the
-meter's budget gate ignores it, so cosmetic work never stops the run that
-triggered it; known and estimated amounts still count toward that run's spend.
-Reconciliation can settle after that run closes. Recording failures mark usage
-partial without changing metadata or buying another call. Reconciliation scheduling
-failure alone does not mark usage partial. Cancellation blocks queued summaries
-and late summary commits; titles still describe the first accepted message even
-when its turn is cancelled. Incurred usage remains recorded.
+Usage passes through the ordinary usage slot with the purpose, triggering root
+run and exact provider response id when available. Evidence failures mark usage
+partial without buying another call. Reconciliation scheduling failure alone
+does not mark usage partial. Unknown-cost title/summary charges remain visible;
+the meter's budget gate ignores them, while known and estimated spend still counts.
 
-Failures preserve previous text and conversation progress. A fresh explicit
-summary request can start new work after a failed or unknown result. Repeating
-its old request key only replays scheduling. Unknown outcomes block automatic
-cadence work; known failures permit the next cadence point. A lease starts only
-when provider dispatch starts, after authorization and bounded input reads.
-Preparation cancelled before dispatch never becomes an unknown paid outcome.
-Title generation is attempted once per thread.
+The existing receipts ledger keeps temporary identities and dispatch status,
+never generated text. The paid lease starts immediately before provider dispatch.
+Crashes and transport failures become unknown, and the same request key never
+retries them. Failures preserve prior native text and foreground progress.
+Cancellation fences summary publication; titles still describe the first accepted
+message even when its turn is cancelled. Incurred usage remains recorded.

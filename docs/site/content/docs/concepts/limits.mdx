@@ -13,8 +13,6 @@ own validated defaults, hard ceilings and combined action budget.
 | Limit                    | Default       | Hard max      |
 | ------------------------ | ------------- | ------------- |
 | `attachmentBytes`        | 8 MiB         | 16 MiB        |
-| `continuesPerRun`        | 3             | 8             |
-| `sideRunsPerRun`         | 2             | 8             |
 | `notesPending`           | 8             | 24            |
 | `maxDepth`               | 2             | 2             |
 | `messagesPerChild`       | 4             | 8             |
@@ -42,14 +40,8 @@ own validated defaults, hard ceilings and combined action budget.
 | `taskRepairs`            | 1             | 1             |
 | `taskPromptLength`       | 16,000        | 16,000        |
 | `agents`                 | 64            | 64            |
-| `sideAgents`             | 8             | 8             |
-| `cadence`                | 1,000,000     | 1,000,000     |
 | `minuteMs`               | 60,000        | 60,000        |
-| `contextMessages`        | 24            | 24            |
-| `assignmentBytes`        | 34 KiB        | 34 KiB        |
-| `contextBytes`           | 48 KiB        | 48 KiB        |
-| `contextReadBytes`       | 2 MiB         | 2 MiB         |
-| `groupLength`            | 200           | 200           |
+| `assignmentBytes`        | 16 KiB        | 16 KiB        |
 | `nameLength`             | 200           | 200           |
 | `turnsPerLoop`           | 50            | 50            |
 | `workflowVersion`        | 1             | 1             |
@@ -84,7 +76,7 @@ stored function handle at most `functionHandleBytes` UTF-8 bytes (real Convex
 handles are about 60–100). Sends, delegations and native writes beyond them
 fail with `INVALID_SUBJECT`, `INVALID_AGENT` or `INVALID_FUNCTION_HANDLE`
 before anything is saved. With every field at its cap, an assignment stays
-under its 34 KiB envelope.
+under its 16 KiB envelope.
 
 `slicesPerTurn` and `stepsPerTurn` also bound approval resumes, which keep the
 turn's step count; see

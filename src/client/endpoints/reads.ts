@@ -34,13 +34,13 @@ import { ownedThread, type EndpointContext } from "./access.js";
 // UI parts are upstream AI SDK extensible unions. Preserve them unchanged and
 // validate the envelope; reuse native stream validators rather than raw MessageDoc.
 export type OriginMessage = UIMessage & {
-  origin: "user" | "result" | "note" | "continue";
+  origin: "user" | "result" | "note";
   from?: string;
   runId?: string;
 };
 
 const uiMessage = v.object({
-  origin: v.union(v.literal("user"), v.literal("result"), v.literal("note"), v.literal("continue")),
+  origin: v.union(v.literal("user"), v.literal("result"), v.literal("note")),
   from: v.optional(v.string()),
   runId: v.optional(v.string()),
   id: v.string(),

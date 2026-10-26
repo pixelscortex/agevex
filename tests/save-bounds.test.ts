@@ -9,7 +9,6 @@ import { getConvexSize } from "convex/values";
 import agevex from "../src/test.js";
 import { HOST_LIMITS, LIMITS, resolveLimits } from "../src/component/limits.js";
 import schema from "../src/component/schema.js";
-import { TEXT_LIMITS } from "../src/component/text/values.js";
 import { setup, components, rawAssignment } from "./setup.js";
 
 beforeEach(() => vi.useFakeTimers());
@@ -132,7 +131,6 @@ it("the largest assignment every writer bound admits fits the save envelope", as
   expect(fields.filter((field) => row[field as keyof typeof row] === undefined)).toEqual([]);
   expect(row.turnReport?.messageIds).toHaveLength(HOST_LIMITS.slicesPerTurn.max);
   expect(row.approvals?.requests).toHaveLength(LIMITS.approvalsPerPause);
-  expect(getConvexSize(row.textSummary!.text)).toBeGreaterThan(TEXT_LIMITS.summaryBytes - 16);
   expect(new TextEncoder().encode(row.agent).byteLength).toBe(3 * LIMITS.nameLength);
   expect(row.runTurn).toHaveLength(LIMITS.functionHandleBytes);
   expect(getConvexSize(row)).toBeLessThanOrEqual(LIMITS.assignmentBytes);
@@ -194,7 +192,6 @@ it.each([
   ["write", "nativeStream"],
   ["reserve", "agent"],
   ["reserve", "coordinateHandle"],
-  ["reviewed", "agent"],
 ] as const)("%s refuses an oversized %s before any write commits", async (writer, field) => {
   const t = setup(undefined, undefined, true);
 
@@ -247,21 +244,14 @@ it.each([
             messages: [{ message: { role: "assistant", content: "paid result" } }],
           },
         })
-      : writer === "reserve"
-        ? t.mutation(components.agevex.subagents.launch.reserve, {
-            assignmentId,
-            turnToken: "save",
-            toolCallId: "call",
-            agent: field === "agent" ? wide(LIMITS.nameLength + 1) : "Builder",
-            payloadFingerprint: "payload",
-            coordinateHandle: field === "coordinateHandle" ? longHandle : "coordinate",
-          })
-        : t.mutation(components.agevex.hooks.reviews.reviewed, {
-            assignmentId,
-            executionId: "save",
-            agent: wide(LIMITS.nameLength + 1),
-            boundary: 0,
-          });
+      : t.mutation(components.agevex.subagents.launch.reserve, {
+          assignmentId,
+          turnToken: "save",
+          toolCallId: "call",
+          agent: field === "agent" ? wide(LIMITS.nameLength + 1) : "Builder",
+          payloadFingerprint: "payload",
+          coordinateHandle: field === "coordinateHandle" ? longHandle : "coordinate",
+        });
 
   await expect(call).rejects.toMatchObject({
     data: { code: field === "agent" ? "INVALID_AGENT" : "INVALID_FUNCTION_HANDLE" },

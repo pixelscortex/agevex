@@ -31,7 +31,7 @@ export type Claimed = NonNullable<FunctionReturnType<ComponentApi["turns"]["slic
 export type Turn = {
   /**
    * The raw, unfenced action context. Right for the runner's own control reads
-   * and writes (claim checks, routing, finish, settle, fence polls) and for
+   * and writes (claim checks, finish, settle, fence polls) and for
    * `bindOnceTool`, which fences by explicit args; model, tool, hook and slot
    * work must use the fenced `Generation.fence.ctx` instead.
    */

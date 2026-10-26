@@ -11,7 +11,7 @@ import { Agent, registerAgent, type Registration, type SlotFacts } from "../src/
 import schema from "./fixture/schema.js";
 import { components, rawAssignment } from "./fixture/api.js";
 import { coordinateReference, runTurnReference } from "./host.js";
-import { main, reviewer, reset, v2, v2api as api } from "./delegation-v2.host.js";
+import { main, reset, v2, v2api as api } from "./delegation-v2.host.js";
 import { requireReceipt } from "./receipt.js";
 import { advanceUntil } from "./clock.js";
 
@@ -28,11 +28,7 @@ const charge = {
 };
 
 /** Registration adds native approval/deferred tools only for boundary tests. */
-function runtime(
-  limits?: Registration["limits"],
-  boundary?: "approval" | "deferred",
-  sideReview = false,
-) {
+function runtime(limits?: Registration["limits"], boundary?: "approval" | "deferred") {
   const tools: ToolSet = boundary
     ? {
         human:
@@ -50,7 +46,6 @@ function runtime(
     name: "Main",
     languageModel: main.textModel,
     subagents: main.subagents,
-    sideAgents: sideReview ? [{ agent: reviewer, every: { turns: 1 }, sees: "delta" }] : [],
     tools,
   });
 
@@ -87,11 +82,7 @@ function runtime(
 }
 
 /** Enforce real transaction ceilings; callers can select every hard host maximum. */
-export function setup(
-  limits?: Registration["limits"],
-  boundary?: "approval" | "deferred",
-  sideReview = false,
-) {
+export function setup(limits?: Registration["limits"], boundary?: "approval" | "deferred") {
   reset();
   evidence.length = 0;
 
@@ -101,7 +92,7 @@ export function setup(
     modules: {
       ...modules,
       "./fixture/agents.ts": async () => {
-        const rt = runtime(limits, boundary, sideReview);
+        const rt = runtime(limits, boundary);
 
         return { ...rt.internalFunctions(), ...rt.authorizedEndpoints() };
       },

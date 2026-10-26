@@ -88,7 +88,6 @@ it("cancel clears 2,432 ready rows and 168 maximum-size budgets across sixteen a
     expect(filled?.turnReport?.messageIds).toHaveLength(HOST_LIMITS.slicesPerTurn.max);
     expect(getConvexSize(filled)).toBe(LIMITS.assignmentBytes);
     expect(getConvexSize(filled?.turnReport)).toBeLessThanOrEqual(LIMITS.turnReportBytes);
-    expect(filled?.hookContinue).toBe(true);
     expect(filled?.notesPending).toBe(HOST_LIMITS.notesPending.max);
   }
 
@@ -97,7 +96,7 @@ it("cancel clears 2,432 ready rows and 168 maximum-size budgets across sixteen a
     "query",
     "internal",
     Record<string, never>,
-    { inbox: { passive?: boolean }[]; runs: { cancelled: boolean; routingAgents: bigint }[] }
+    { inbox: { passive?: boolean }[]; runs: { cancelled: boolean }[] }
   >;
 
   const before = await t.query(queuedWork, {});
@@ -118,8 +117,8 @@ it("cancel clears 2,432 ready rows and 168 maximum-size budgets across sixteen a
     return ctx.meta.getTransactionMetrics();
   });
 
-  expect(metrics.bytesRead.used).toBeLessThanOrEqual(15_820 << 10);
-  expect(metrics.bytesWritten.used).toBeLessThanOrEqual(12_206 << 10);
+  expect(metrics.bytesRead.used).toBeLessThanOrEqual(14_168 << 10);
+  expect(metrics.bytesWritten.used).toBeLessThanOrEqual(10_572 << 10);
   // Regression tripwires well inside the documented limits.ts ceilings:
   // measured 10,642 KiB read / 3,032 KiB written, plus 25%.
   expect(metrics.bytesRead.used).toBeLessThan(13_305 << 10);
@@ -131,7 +130,6 @@ it("cancel clears 2,432 ready rows and 168 maximum-size budgets across sixteen a
   expect(after.inbox.filter((row) => row.passive !== true)).toEqual([]);
   expect(after.inbox).toHaveLength(ids.length * HOST_LIMITS.notesPending.max);
   expect(after.runs.every((run) => run.cancelled)).toBe(true);
-  expect(after.runs.every((run) => run.routingAgents === 0n)).toBe(true);
 
   for (const assignmentId of ids) {
     const row = await t.query(rawAssignment, { assignmentId });
@@ -140,12 +138,6 @@ it("cancel clears 2,432 ready rows and 168 maximum-size budgets across sixteen a
       cancelled: true,
       queuedMessages: 0,
     });
-
-    expect(row?.routingAgentIndex).toBeUndefined();
-
-    expect(
-      await t.mutation(components.agevex.subagents.deliver.releaseGroups, { assignmentId }),
-    ).toBe(false);
   }
 
   held.release();

@@ -155,9 +155,7 @@ function useTitle(api: Omit<AgevexApi, "runTree">, threadId?: string) {
     rename: async (text: string) => {
       const id = threadRequired(threadId);
 
-      if (data === undefined) throw new Error("agevex/react: wait for the title before renaming");
-
-      return rename({ threadId: id, text, expectedVersion: data.version });
+      return rename({ threadId: id, text });
     },
   };
 }
@@ -168,7 +166,10 @@ function useSummary(api: Omit<AgevexApi, "runTree">, threadId?: string) {
 
   return {
     ...queryState(threadId, data),
-    summarize: async () =>
-      summarize({ threadId: threadRequired(threadId), requestKey: requestKey() }),
+    summarize: async (intent?: { requestKey: string }) =>
+      summarize({
+        threadId: threadRequired(threadId),
+        requestKey: intent?.requestKey ?? requestKey(),
+      }),
   };
 }

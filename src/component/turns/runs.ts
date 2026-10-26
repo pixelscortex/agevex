@@ -2,8 +2,8 @@
  * Row builder for the `runs` table.
  *
  * A run is one accepted user request and all the work it causes: every turn,
- * delegated child, delivered result and hook continuation spends from the same
- * launch/hop/continue/side-run counters. `turns.send.accept` creates one per send;
+ * delegated child and delivered result spends from the same
+ * launch/hop counters. `turns.send.accept` creates one per send;
  * descendants inherit its id. Claim reads the per-agent model choice fixed
  * here, and cancel marks the run cancelled for every assignment under it.
  */
@@ -17,10 +17,7 @@ import type { Doc } from "../_generated/dataModel.js";
 export function newRun(
   models: Doc<"runs">["models"],
   settings: Doc<"runs">["settings"] = [],
-  metadata: Pick<
-    Doc<"runs">,
-    "rootAssignmentId" | "rootCancellationEpoch" | "taskMessageId" | "taskPreview"
-  > = {},
+  metadata: Pick<Doc<"runs">, "rootAssignmentId" | "rootCancellationEpoch" | "taskMessageId"> = {},
 ): WithoutSystemFields<Doc<"runs">> {
   assertSettingsSnapshot(settings);
 
@@ -28,19 +25,14 @@ export function newRun(
     ...metadata,
     settings,
     models,
-    // 64-bit agent-index masks: who started in this run / who owns routing.
-    startedAgents: 0n,
-    routingAgents: 0n,
     // Spend counters, each checked against its limits.ts bound.
-    continues: 0,
-    sideRuns: 0,
     launches: 0,
     hops: 0,
     cancelled: false,
     usagePartial: false,
   };
 
-  // Reserve 1 KiB for native id/time, lifecycle fields and bounded counter/mask
+  // Reserve 1 KiB for native id/time, lifecycle fields and bounded counter
   // growth. Both JSON UTF-8 and Convex bytes must stay <=16 KiB after updates.
   if (
     Math.max(

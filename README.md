@@ -294,16 +294,16 @@ message, using the root model (including an accepted model override). Configure
 `maxOutputTokens` (a positive integer up to 4,096, refused at registration
 otherwise) overrides the title's 128 or the summary's 2,048 output cap. Export the supplied
 `textTask` internal action and provide `refs.textTask` when either feature is on.
-Native app titles and user `rename({ threadId, text, expectedVersion })` always
-win over late work. Titles are generated even if the first turn is cancelled.
-`title` returns `{ text, source, version }`; conflicting renames throw
-`VERSION_CONFLICT`. Rename receipts identify the native thread in `messageId`;
-renaming adds no transcript message.
+Native app titles and user `rename({ threadId, text })` always win over late
+work. Titles are generated even if the first turn is cancelled. `title` returns
+`{ text }` from the native thread. Repeating an identical rename replays and adds
+no message.
 
 Summaries are off. `summary: {}` enables on-demand
-`summarize({ threadId, requestKey })`; `everyTurns: N` adds completed-root-turn
-cadence. `summary({ threadId })` returns text and an exact `throughMessageId`.
-Summaries are display-only and never change native model context. See [background text](docs/site/content/docs/concepts/background-text.mdx).
+`summarize({ threadId, requestKey })`; developers can call it from their own
+`afterTurn` hook for a cadence. `summary({ threadId })` reads `{ text }` or null
+from the native Agent thread summary. No summary content, cadence counter or
+context ring is stored by agevex. See [background text](docs/site/content/docs/concepts/background-text.mdx).
 
 Jobs use child capacity, 30-second model deadlines, no tools, no repairs and no
 paid retries. Their usage carries `title`/`summary` purpose labels on the
@@ -345,14 +345,14 @@ A user prompt starts one run. Its turns and child results share a budget of
 12 launches / 24 hops (launches, delivered results, notes, questions, answers and
 follow-ups). Each launch reserves its result's hop; each question reserves its
 answer hop. Notes, questions and follow-ups cannot spend those reserved hops.
-Final results and joined groups always enter the ready queue, even above
+Final results always enter the ready queue, even above
 `queueLength`. The queue limit applies to messages: user sends, parent notes,
 questions and child follow-ups are refused at capacity (`QUEUE_FULL` for user
 sends, `QUEUE_LIMIT` for component enqueues). Answers and approval continuations
 retain their control allowance. Messages are refused until the queue drains
 below its limit. Launch admission also caps outstanding result work per assignment
 at `runLaunches` across user requests: pending results, unreleased join members
-and queued result rows. A joined row replaces its members; claim frees this
+and queued result rows. Delivery replaces a pending result; claim frees this
 capacity. Reaching this separate bound returns `RESULTS_PENDING`: wait for or claim
 child results before launching more. `RUN_BUDGET` means a launch or hop budget is
 exhausted. Result turns may call
@@ -363,19 +363,15 @@ Failures are sanitized and never automatically replayed. Ambiguous execution
 sets `recovery_required`; the watchdog covers each active slice, excluding
 queue and between-slice time.
 
-## Hooks, notes and side agents
+## Hooks and notes
 
 Hooks belong to an `Agent`: `beforeTurn`, `afterTurn`, `beforeTool`,
 `afterTool`, and `beforeDelegate`. They receive trusted execution context and
-return one `HookResult`: `note`, `block`, `input`, `output`, `continue`, or
-`model`. They run inside the existing action; no Workflow steps are added.
+return `note`, `block`, `input`, `output` or `model` where appropriate.
+`afterTurn(hc, { turn, text, messageIds })` is a notification returning void.
+Hooks run inside the existing action; no Workflow steps are added.
 
 ```ts
-const critic = new Agent(components.agent, {
-  name: "Critic",
-  languageModel,
-  instructions: "Review the delta. Return a short note, or NONE.",
-});
 const main = new Agent(components.agent, {
   name: "Main",
   languageModel,
@@ -384,16 +380,14 @@ const main = new Agent(components.agent, {
       prompt.trim() ? undefined : { block: "A prompt is required." },
     afterTool: (_hc, { output }) => ({ output: redact(output) }),
   },
-  sideAgents: [{ agent: critic, every: { turns: 3 }, sees: "delta" }],
 });
 ```
 
-`beforeTurn` can choose an allowlisted model only when `isRunStart` is true;
-that choice persists for the agent's run. Concurrent siblings share the first
-routing attempt. If its owner is denied, fails or is cancelled, siblings use
-the committed model or their default; the classifier is never retried.
-`afterTurn.continue` requests another
-bounded turn (default 3 per run, hard maximum 8). A throwing hook fails the turn
+`beforeTurn` runs before each model generation, including tool steps and approval
+resumes. Its allowlisted `model` applies to that invocation only. Return it every
+time to keep using it; concurrent siblings choose independently. No hook choice
+is stored. `afterTurn` cannot request more work; use the public send/runtime API
+from your own code for a follow-up. A throwing hook fails the turn
 with `HOOK_FAILED`; private details stay outside the transcript. Tool execution
 hooks include native and `defineOnceTool` effects. The SDK's delegate, message
 and ask protocols are excluded; delegation uses `beforeDelegate`. Provider-owned
@@ -410,23 +404,12 @@ That claim saves all pending notes atomically in arrival order, after prior
 tool results. Ordinary tool-step slices never drain notes. Notes never start a
 turn or schedule work.
 
-Notes and hook continuation prompts use the claimed request's native order
+Notes use the claimed request's native order
 group, keeping future queued requests hidden without context injection.
-The authorized `messages` reader adds `origin: user | result | note | continue`,
+The authorized `messages` reader adds `origin: user | result | note`,
 `from` for notes and `runId` for results. Unclassified native messages (including
 assistant replies) use `user`. Page-local exact-id indexes add at most 201 small
 metadata reads (532 KiB); total message reads remain below 8.27 MiB.
-`delegations` and `runTree` include `side: boolean` for every public run.
-
-Side cadence uses completed turns or `{ minutes: N }` since the last review,
-checked after a turn without a cron. Deltas use exact recorded native ids and
-orders: at most 24 recent messages and 48 KiB of text, with tool output stripped.
-Skipped reviews retain their delta. Side runs use the child lane and root run
-attribution, with a separate cap of 2 per run (hard maximum 8). Their replies
-become passive notes; empty replies and `NONE` add nothing. Side runs never
-hold a parent's settlement fence, never fail their parent, and cancel with the
-root. Side agents keep their own configured model; root model overrides do not
-apply to them. Their threads use the same authorized `messages` reader as other children.
 
 ## Optional module slots
 
@@ -550,18 +533,13 @@ Agents may delegate two edges deep: Main → Builder → Reviewer. Set
 registration. Shared child Agent objects are supported. Launch/hop budgets and
 cancellation cover every descendant; results return to the immediate parent.
 
-Parents receive `agevex_delegate({ agent, task, group?, wait? })` and
+Parents receive `agevex_delegate({ agent, task, wait?: "each" })` and
 `agevex_message_child({ runId, text })`. Default `wait: "each"` delivers each
-settled result immediately. With `wait: "all"`, a group
-wakes its parent once after the launching slice ends and every member settles,
-including failures. Membership seals when that slice ends; later launches into
-the group return `GROUP_CLOSED`. Groups belong to one parent assignment and user run.
-A group has at most `activeChildrenPerRoot` members (hard maximum 15);
-omitting its name selects the unnamed group. Names are at most 200 characters.
+settled result independently.
 
 Children receive `agevex_ask_parent({ question })`: one open question pauses
 the child as `asking`, and its verified question wakes its parent immediately,
-even inside a waiting group. The parent answers with `agevex_message_child`.
+The parent answers with `agevex_message_child`.
 Follow-ups reach running or idle children in the same root; finished or foreign
 runs return typed denials. Each child accepts 4 follow-ups by default (maximum
 8); questions and follow-ups spend the originating run's hops. Both use the
@@ -570,7 +548,7 @@ reserved for their answer.
 
 Children also receive `agevex_message_parent({ text })` to report progress and
 keep working. It returns `{ status: "accepted", messageId }` or a typed denial.
-Notes wake a sleeping parent, including in wait-all groups, at its next safe
+Notes wake a sleeping parent at its next safe
 turn without bypassing approval or deferred calls. Inbox commit order is FIFO:
 accepted notes precede that child's final result, and consecutive work may
 share a turn. Identical tool-call retries replay without another save or wake.
@@ -642,8 +620,8 @@ accepted by a provider still depend on that provider's abort behavior.
 At the hard maximum of 15 descendants, cancel covers 16 assignments, up to
 2,432 ready rows (`16 × (100 messages + 50 results + 2 control rows)`) and
 384 pending notes. Cancel deduplicates up to 168 request budgets. Its conservative
-read bound is 15,560 KiB of 16,384 KiB, including routing ownership and staged
-continuations; native message bodies are cleaned separately.
+read bound is 14,168 KiB of 16,384 KiB; written bytes stay within 10,572 KiB.
+Native message bodies are cleaned separately.
 
 Pending native tool approvals block generation and leave the inbox row
 waiting, avoiding Agent 0.7.7's automatic denial on a new generation.

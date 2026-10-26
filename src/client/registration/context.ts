@@ -34,10 +34,6 @@ export type RuntimeContext = {
   limits: Limits;
   graph: Graph;
   settings: SettingsSnapshot;
-  /** Stable index per agent name (sorted), used by per-agent model routing. */
-  agentIndexes: Map<string, number>;
-  /** Whether native saves must be captured for side-review deltas or root summaries. */
-  watching: boolean;
 };
 
 /**
@@ -71,18 +67,11 @@ export function createRuntimeContext(component: ComponentApi, config: Registrati
   assertDeferredTools(graph);
   assertTextOptions(config);
 
-  const collaboration =
-    [...graph.edges.values()].some((allowed) => allowed.size > 0) ||
-    [...graph.byName.values()].some((agent) => agent.sideAgents?.length);
-
-  const agentIndexes = new Map([...graph.byName.keys()].sort().map((name, index) => [name, index]));
+  const collaboration = [...graph.edges.values()].some((allowed) => allowed.size > 0);
 
   if (collaboration && !config.refs.coordinate) throw new Error("COORDINATE_REF_REQUIRED");
 
-  const watching =
-    !!config.summary || [...graph.byName.values()].some((agent) => agent.sideAgents?.length);
-
-  const rt: RuntimeContext = { component, config, limits, graph, agentIndexes, watching, settings };
+  const rt: RuntimeContext = { component, config, limits, graph, settings };
 
   return rt;
 }

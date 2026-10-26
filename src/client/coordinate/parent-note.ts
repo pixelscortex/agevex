@@ -5,7 +5,7 @@
  */
 import { parentNoteFits } from "../../component/subagents/parent_notes.js";
 import { fingerprint, opaqueKey } from "../keys.js";
-import { saveTrackedMessage } from "../native-saves.js";
+import { saveMessage } from "@convex-dev/agent";
 import type { CoordinatorCtx, RuntimeContext } from "../registration/context.js";
 import type { CoordinateArgs } from "../types.js";
 
@@ -57,7 +57,7 @@ export async function messageParent(
     return { status: "denied" as const, code: "FORBIDDEN" as const };
   }
 
-  const { messageId } = await saveTrackedMessage(rt, ctx, parent.component, {
+  const { messageId } = await saveMessage(ctx, parent.component, {
     threadId: target.parentThreadId,
     prompt: `${target.agent} reports progress (run ${target.runId}):\n\n${args.text}`,
     agentName: target.agent,

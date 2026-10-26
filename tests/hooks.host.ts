@@ -3,7 +3,6 @@ import {
   registerAgent,
   defineOnceTool,
   type AgentHooks,
-  type SideAgent,
   type Registration,
   type TurnArgs,
   type CoordinateArgs,
@@ -38,8 +37,6 @@ export const fixture = {
   toolWork: undefined as undefined | ((tc: ToolContext) => Promise<unknown>),
   hooks: {} as AgentHooks,
   builderHooks: {} as AgentHooks,
-  builderSides: undefined as readonly SideAgent[] | undefined,
-  sides: [] as SideAgent[],
   calls: [] as { agent: string; args: Args }[],
   effects: [] as string[],
   approval: false,
@@ -122,7 +119,6 @@ export const builder = new Agent(components.agent, {
   name: "Builder",
   languageModel: model("Builder"),
   subagents: [critic],
-  sideAgents: [{ agent: critic, every: { turns: 1 }, sees: "delta" }],
 });
 
 const echo = {
@@ -179,16 +175,10 @@ export const main = new Agent(components.agent, {
 Object.defineProperty(main, "run", { get: () => fixture.run.Main });
 Object.defineProperty(builder, "run", { get: () => fixture.run.Builder });
 Object.defineProperty(critic, "run", { get: () => fixture.run.Critic });
-const originalBuilderSides = builder.sideAgents;
-
-Object.defineProperty(builder, "sideAgents", {
-  get: () => fixture.builderSides ?? originalBuilderSides,
-});
 
 Object.defineProperty(builder, "hooks", { get: () => fixture.builderHooks });
 Object.defineProperty(main, "sandbox", { get: () => fixture.sandbox });
 Object.defineProperty(main, "hooks", { get: () => fixture.hooks });
-Object.defineProperty(main, "sideAgents", { get: () => fixture.sides });
 export function reset() {
   fixture.generationIds = false;
   fixture.run = {};
@@ -200,8 +190,6 @@ export function reset() {
   fixture.toolWork = undefined;
   fixture.hooks = {};
   fixture.builderHooks = {};
-  fixture.builderSides = undefined;
-  fixture.sides = [];
   fixture.calls = [];
   fixture.effects = [];
   fixture.approval = false;

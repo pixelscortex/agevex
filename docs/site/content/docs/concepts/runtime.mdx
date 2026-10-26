@@ -79,9 +79,9 @@ All require the host authorization policy. Optional arguments use `?`.
 | `respond`          | `threadId, approvalId, decision`              | `{ messageId, replayed }`                             |
 | `pendingApprovals` | `threadId, rootRunId?`                        | Bounded root and owned child decisions                |
 | `answer`           | `threadId, toolCallId, value`                 | `{ messageId, replayed }`                             |
-| `title`            | `threadId`                                    | `{ text, source, version }`                           |
-| `rename`           | `threadId, text, expectedVersion`             | `{ messageId, replayed }`                             |
-| `summary`          | `threadId`                                    | `{ text, throughMessageId }` or null                  |
+| `title`            | `threadId`                                    | `{ text }`                                            |
+| `rename`           | `threadId, text`                              | `{ messageId, replayed }`                             |
+| `summary`          | `threadId`                                    | `{ text }` or null                                    |
 | `summarize`        | `threadId, requestKey`                        | `{ status: "queued" or "replayed" }`                  |
 | `cancel`           | `threadId`                                    | `null`                                                |
 | `messages`         | `threadId, paginationOpts`                    | Native message page with origin metadata              |
@@ -169,9 +169,7 @@ is omitted; an explicit host slice override also caps the Workflow turn.
 An approval resume continues the same logical turn: it keeps the steps already
 spent and does not grant new ones. If the turn's last allowed step requests
 approval, approving it ends the turn with `SLICE_LIMIT` and the thread enters
-`recovery_required`. The approved tool does not run. An `afterTurn`
-continuation staged after the last allowed step is dropped the same way, before
-it is saved. When agents use approvals, set `stepsPerTurn` (and any host
+`recovery_required`. The approved tool does not run. When agents use approvals, set `stepsPerTurn` (and any host
 `slicesPerTurn`) with headroom above the steps you expect before a pause.
 
 ## Usage and budget boundaries

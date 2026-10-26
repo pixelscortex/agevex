@@ -1,16 +1,13 @@
 /** Fill the bounded delivery range, including a settled-but-undelivered child. */
 import { getConvexSize, v } from "convex/values";
 import { mutation } from "../src/component/_generated/server.js";
-import { HOST_LIMITS, LIMITS, readyRowLimit } from "../src/component/limits.js";
+import { HOST_LIMITS, readyRowLimit } from "../src/component/limits.js";
 import { newRun } from "../src/component/turns/runs.js";
 import { resolveRunSettings } from "../src/component/run_settings.js";
-import { newSubagentRun } from "../src/component/subagents/runs.js";
-import type { Doc } from "../src/component/_generated/dataModel.js";
-import type { MutationCtx } from "../src/component/_generated/server.js";
 import { fillAssignment, fillNotes, fullReport } from "./assignment-envelope.fixture.js";
 
 /** The live actor and terminal gap both need final hops, even with activeRuns=1.
- * Keep all 58 rows near their 4 KiB metadata envelope; no native bodies copied.
+ * Keep all 50 rows near their 4 KiB metadata envelope; no native bodies copied.
  */
 export const seed = mutation({
   args: { assignmentId: v.id("assignments") },
@@ -20,33 +17,30 @@ export const seed = mutation({
 
     const live = (await ctx.db
       .query("subagentRuns")
-      .withIndex("by_group", (q) => q.eq("parentRunId", root.runId!))
+      .withIndex("by_parent_run", (q) => q.eq("parentRunId", root.runId!))
       .first())!;
 
     const { _id, _creationTime, ...template } = live;
     const ordinary = HOST_LIMITS.runLaunches.max;
-    const sides = HOST_LIMITS.sideRunsPerRun.max;
 
-    for (let index = 1; index < ordinary + sides; index++)
+    for (let index = 1; index < ordinary; index++)
       await ctx.db.insert("subagentRuns", {
         ...template,
         runId: `headroom-${index}`,
         dedupKey: `headroom-${index}`,
         payloadFingerprint: "x".repeat(3 << 10),
-        side: index >= ordinary || undefined,
         childAssignmentId: undefined,
         childThreadId: undefined,
         sequence: index + 1,
         status: "completed",
         // Exactly one terminal ordinary result still awaits delivery; the
-        // remaining history and side reviews reserve no final-result hops.
+        // remaining history reserves no final-result hops.
         deliveryStatus: index === 1 ? "pending" : index === 2 ? "failed" : "accepted",
       });
 
     await ctx.db.patch("runs", root.runId!, {
       launches: ordinary,
-      sideRuns: sides,
-      // 50 launches +47 accepted ordinary results; failed/side results spend no hop.
+      // 50 launches +47 accepted ordinary results; failed results spend no hop.
       hops: HOST_LIMITS.runHops.max - 3,
     });
 
@@ -66,7 +60,7 @@ export const fillQueue = mutation({
 
     const live = (await ctx.db
       .query("subagentRuns")
-      .withIndex("by_group", (q) => q.eq("parentRunId", root.runId!))
+      .withIndex("by_parent_run", (q) => q.eq("parentRunId", root.runId!))
       .first())!;
 
     const budget = (await ctx.db.get("runs", root.runId!))!;
@@ -103,7 +97,7 @@ export const fillQueue = mutation({
 });
 
 /** Conservative cancellation envelope, seeded ONE assignment per transaction.
- * <=152 ready rows +152 full settings snapshots +one <=34 KiB assignment
+ * <=152 ready rows +152 full settings snapshots +one <=16 KiB assignment
  * stay <3 MiB written per seed. Root rows use distinct request budgets;
  * child rows share one inherited budget. Across 16 assignments cancel must
  * clear all 2,432 ready rows and 168 distinct budgets in one transaction.
@@ -141,11 +135,6 @@ export const fillCancelQueue = mutation({
         messageId: "m".repeat(200),
         from: "f".repeat(200),
         kind: result ? ("result" as const) : ("parent" as const),
-        ...(result
-          ? {
-              join: { newestSequence: index, earliestId: "e".repeat(200), earliestSequence: index },
-            }
-          : {}),
       };
 
       expectReadySize(ready);
@@ -154,69 +143,21 @@ export const fillCancelQueue = mutation({
       head ??= id;
     }
 
-    const staged = await ctx.db.insert("inbox", {
-      assignmentId,
-      runId: childBudget ?? row.runId!,
-      messageId: "",
-      text: "\uFFFF".repeat(LIMITS.messageLength),
-      sequence: row.nextSequence + count,
-      kind: "continue",
-      passive: false,
-    });
-
     await ctx.db.patch("assignments", row._id, {
       turnReport: fullReport(head!),
       queuedMessages: count - 1,
-      hookContinue: true,
-      inboxId: staged,
+      inboxId: head,
       turnStatus: "queued",
       nextSequence: row.nextSequence + count,
-      routingAgentIndex: 0,
       ...(childBudget ? { runId: childBudget } : {}),
     });
 
-    await ctx.db.patch("runs", childBudget ?? row.runId!, { routingAgents: 1n });
     await fillNotes(ctx, { ...row, runId: childBudget ?? row.runId });
-    await fillDeferredGroups(ctx, { ...row, runId: childBudget ?? row.runId });
     await fillAssignment(ctx, row._id);
 
     return null;
   },
 });
-
-/** Deferred groups coexist with queues from older requests. Overfill even the
- * result-work envelope to prove cancel neither scans them nor revives them.
- * Their old epoch remains fenced after cancel, independent of ready FIFO size.
- */
-async function fillDeferredGroups(ctx: MutationCtx, actor: Doc<"assignments">) {
-  const root = actor.rootAssignmentId
-    ? (await ctx.db.get("assignments", actor.rootAssignmentId))!
-    : actor;
-
-  const budget = (await ctx.db.get("runs", actor.runId!))!;
-
-  for (let i = 0; i < actor.limits.runLaunches; i++)
-    await ctx.db.insert("subagentRuns", {
-      ...newSubagentRun({
-        request: { agent: "Reviewer", payloadFingerprint: "hash", coordinateHandle: "opaque" },
-        runId: `deferred-${actor._id}-${i}`,
-        actor,
-        root,
-        budget,
-        depth: 2,
-        wait: "all",
-        group: `deferred-${i}`,
-        dedupKey: `deferred-${i}`,
-        sequence: i + 1,
-        now: Date.now(),
-      }),
-      status: "completed",
-      deliveryStatus: "accepted",
-      join: "ready",
-      resultMessageId: actor.promptMessageId,
-      resultSequence: i + 1,
-    });
-}
 
 function expectReadySize(row: Parameters<typeof getConvexSize>[0]) {
   // Native ids/time add less than 128 bytes; cancel's envelope is 1 KiB/row.

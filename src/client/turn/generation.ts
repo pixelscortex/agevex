@@ -7,9 +7,7 @@
 // outcome: a hook failure is HOOK_FAILED; a `beforeTurn` block finishes a root
 // turn without an error code and settles a child run as EMPTY_RESULT; anything
 // else is GENERATION_FAILED. Once the phases start, the fence is always stopped
-// and, on a run-start slice of an agent with `beforeTurn`, the routing attempt
-// is completed. A throw while assembling the generation (`startGeneration`)
-// reaches neither and propagates. Called by `turn/run-turn.ts`.
+// A throw while assembling the generation (`startGeneration`) propagates. Called by `turn/run-turn.ts`.
 
 import { boundedModel } from "./deadlines.js";
 import { LIMITS } from "../../component/limits.js";
@@ -28,7 +26,7 @@ import {
 } from "./context.js";
 import { startTurnFence } from "./fence.js";
 import { hookRunner } from "./hook-runner.js";
-import { completeRouting, selectTurnModel } from "./routing.js";
+import { selectTurnModel } from "./routing.js";
 import { extractAttachedFiles, meterBackend, telemetryIntegrations } from "./slots.js";
 import { buildTurnTools } from "./tools.js";
 import { markUsagePartial } from "./usage.js";
@@ -84,8 +82,6 @@ export async function generateTurn(rt: RuntimeContext, turn: Turn): Promise<Turn
       await markUsagePartial(rt, turn);
 
     gen.fence.stop();
-
-    if (turn.claimed.isRunStart && turn.managed.hooks?.beforeTurn) await completeRouting(rt, turn);
   }
 }
 
