@@ -32,8 +32,9 @@ function dueRows(ctx: Pick<QueryCtx, "db">, sink: string) {
 
 /**
  * Called by the host delivery action. Takes <=100 due outbox rows of one sink
- * (<=2 KiB each: event, <=6 attribution labels of 128 bytes, 256-byte key):
- * <=200 KiB read and written, 100 docs. Never reads charge rows. The claim
+ * (<=3 KiB each: frozen amount/classification, seven 128-byte attribution
+ * labels plus purpose, provider/sink labels and the key/external id):
+ * <=300 KiB read and written, 100 docs. Never reads charge rows. The claim
  * marker records that this job took its batch, even after every row is
  * acknowledged and deleted, so a later crash charges only the job's own rows.
  */
@@ -111,15 +112,21 @@ async function acknowledge(ctx: MutationCtx, row: Delivery, config: Jobs) {
 
   if (!charge || !sink?.pending || sink.pending.externalId !== row.event.externalId) return;
 
-  const totalNanos = sink.pending.totalNanos;
+  const { totalNanos, status, source } = sink.pending;
 
   const sinkState = charge.sinkState.map((entry) =>
     entry.name === row.sink
-      ? { name: entry.name, revision: entry.revision, deliveredNanos: totalNanos }
+      ? {
+          ...entry,
+          pending: undefined,
+          deliveredNanos: totalNanos,
+          deliveredStatus: status,
+          deliveredSource: source,
+        }
       : entry,
   );
 
-  // May enqueue the next signed delta if the amount changed during delivery.
+  // Catch up amount OR classification changes after acknowledging the frozen event.
   await prepareSinks(ctx, { ...charge, sinkState }, config, true);
 }
 

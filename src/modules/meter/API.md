@@ -27,9 +27,13 @@ export const { meterLookup, meterDeliver } = meter.internalFunctions();
 
 `workers` points to the two exported **internal** host actions so callbacks and
 credentials remain in host code. A lookup provider requires its lookup worker;
-sinks require the delivery worker. Custom sinks accept `{ deliver(batch) }`,
-optionally `name`; keep unnamed sinks in stable array order across deployments.
-Built-in sinks and custom sinks may be named explicitly.
+sinks require the delivery worker. Custom sinks accept `{ deliver(batch, ctx) }`,
+optionally `name` and `estimates: true`; keep unnamed sinks in stable array order
+across deployments. `ctx` is the delivery worker's host `ActionCtx`, including
+`runMutation` for the host's own internal mutations. Existing one-argument
+callbacks remain valid. Built-in sinks accept the same optional name and
+estimate opt-in. Estimate delivery defaults to false and is frozen per charge
+at creation; enabling it later does not backfill existing charges.
 
 `polarSink({ accessToken })` takes a string or a getter
 (`() => string | Promise<string>`). A getter is called at each delivery, never at
@@ -101,7 +105,7 @@ Every `correct`, `attach` and `settle` call requires a stable operation `key`
 for retries; use a new key for each distinct operation. A repeated key returns
 the original charge snapshot without changing current state, totals, jobs or
 sinks, even if its arguments differ. `get()` returns current state. Revisions
-only describe amount transitions; there is no revision argument or fallback.
+describe amount/state transitions; there is no revision argument or fallback.
 
 The charge retains at most `LIMITS.maxOperations` (32) operation receipts. A
 new key at capacity throws `OPERATION_CAPACITY`; old keys remain replayable.
@@ -258,6 +262,30 @@ callbacks cannot create duplicate retry chains. No
 provider operation that incurs cost is invoked by this module.
 
 Billable charges enter the durable sink outbox (`deliveries`): settled and corrected ones, plus unknown charges with a known amount (`THREAD_CAPACITY` with a settled/inline/lookup amount, `OVER_CAP`).
+For a sink with `estimates: true`, known `status: "estimate"` charges also enter
+its outbox, including token estimates from `record`. Unknown estimates remain
+excluded. Lookup expiry retains any estimate already delivered.
+
+```ts
+import type { Sink } from "agevex/meter";
+
+const sink: Sink = {
+  name: "usage",
+  estimates: true,
+  async deliver(batch, ctx) {
+    await ctx.runMutation(internal.usage.receive, { events: batch });
+  },
+};
+```
+
+`SinkEvent` contains `externalId`, `key`, signed `nanos`, absolute `totalNanos`,
+monotonic per-sink `revision`, `attribution`, `provider`, `status` and `source`.
+Status is `"estimate" | "settled" | "corrected" | "unknown"`; source is
+`"estimate" | "inline" | "settlement" | "lookup"`. Corrections keep source
+`"estimate"` and use status `"corrected"`, matching the charge vocabulary.
+Both classification fields are immutable snapshots taken at enqueue time;
+delivery reads only the outbox, never the mutable charge.
+
 One delivery job drains up to 100 due events of one sink into one `deliver`
 call, i.e. one Polar ingest request; new events wait one second so bursts
 share a request. Sink errors retry with backoff and stable external ids, at
@@ -268,11 +296,15 @@ crashed or cancelled job counts as one failed attempt for the rows it claimed
 Recording does not wait for the sink. Failed deliveries stay pending;
 `retrySinks(ctx, { key, subject })` resumes them. With `maxAttempts: 1` a single pre-claim crash fails the sink's due rows at once; keep it at 2 or more. Jobs run only on demand.
 
-First delivery uses `externalId = charge.key`. Subsequent corrections send
+First delivery uses `externalId = charge.key`. Subsequent changes send
 **signed nanodollar deltas** under `key:delta:revision`, with `totalNanos` for
-the new absolute amount. An in-flight event's amount and id stay frozen until
-acknowledgement, then another delta catches up. Every sink must durably dedupe
-external ids. Replayed HTTP requests are not new billable events. Configure
+the new absolute amount. Same-amount status/source changes emit a new revision
+with `nanos: 0`. An in-flight event's amount, classification and id stay frozen
+until acknowledgement, then another revision catches up to current state.
+Pending intermediate changes coalesce into that next revision. Retries keep the
+same externalId/revision. Every sink must durably dedupe external ids; consumers
+replacing totals group by `key` and apply only newer revisions. Replayed HTTP
+requests are not new billable events. Configure
 Polar's meter to **sum numeric `metadata.nanos`**, including negative deltas;
 `_cost.amount` is a JSON decimal **number in cents**, with up to 17 digits and
 12 decimal places ([Polar cost metadata schema](https://polar.sh/docs/features/cost-insights/cost-events#cost-metadata-schema)).
@@ -296,33 +328,35 @@ run and subject totals. `prune` refuses a cutoff newer than now minus
 `charges`, its sink outbox `deliveries` and delivery-job `claims` markers are owned. Aggregate and Workpool
 own their own component state.
 
-| Field                                                      | Reader / purpose                                                                                                    |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `key`                                                      | Unique indexed lookup, replay detection, job addressing and first external id.                                      |
-| `attribution.subject`                                      | Subject totals, budget gates, axis namespaces, sink customer id and retry authorization.                            |
-| `attribution.rootThreadId`, `threadId`                     | Root/child aggregate attribution and fallback for standalone root charges.                                          |
-| `attribution.runId`                                        | Run-scoped aggregate namespace and budget gate.                                                                     |
-| `attribution.agent`, `model`                               | Thread agent key, thread model grouping and subject axis projections.                                               |
-| `provider`                                                 | Registered decoder/lookup routing and provider breakdown/sink metadata.                                             |
-| `breakdowns`                                               | Frozen opt-ins used by corrections, settlement and workers to replace exactly the projections written at creation.  |
-| `profile`, `quantity`                                      | Profile selection for quantity corrections and retained quantity on settlement; exact evidence via `get`.           |
-| `status`, `source`                                         | State transitions, unknown fencing, estimated/settled aggregate classification and sink eligibility.                |
-| `nanos`, `credits`                                         | Exact aggregate summand / provider credit evidence and settlement result.                                           |
-| `providerRequestId`, `lookupUntil`                         | Lookup identity, reattach conflict detection, deadline and stale-result fencing.                                    |
-| `revision`                                                 | Monotonic amount revision returned with the saved outcome; no longer used as a correction input.                    |
-| `lastStale.{operation,revision}`                           | Latest rejected operation and observed revision exposed by `get`.                                                   |
-| `operations[].key`                                         | Bounded charge-wide replay lookup before any state change or worker admission.                                      |
-| `operations[].outcome`                                     | Original charge snapshot returned on replay; excludes operations to prevent recursive growth.                       |
-| `lookupAttempt`                                            | Next admissible lookup attempt; rejects duplicate retry admission and stale workers.                                |
-| `reason`                                                   | Why the charge is unknown (`OVER_CAP` may also come from `correct`/`settle`); `THREAD_CAPACITY` routes to overflow. |
-| `sinkState.name`                                           | Sink routing.                                                                                                       |
-| `sinkState.deliveredNanos`, `revision`                     | Next signed delta and stable external id.                                                                           |
-| `sinkState.pending.{externalId,revision,nanos,totalNanos}` | Immutable delivery snapshot, acknowledgement fence and absolute delivered amount.                                   |
-| `terminal` (indexed)                                       | Settled with every sink acknowledged: the only rows `prune` reads.                                                  |
-| `_creationTime`                                            | UTC day ordinal, stable across corrections; `prune` cutoff.                                                         |
-| `deliveries.{sink,key,event,attribution,provider}`         | One row per pending (charge, sink) event: what a job sends, read without loading charges.                           |
-| `deliveries.{attempts,limited,failed,dueAt,claim}`         | Backoff, 429 allowance, terminal failure, due order and the job holding it (crash accounting).                      |
-| `claims.claim`                                             | Marker that a delivery job claimed its batch; its `onComplete` then charges only that job's rows.                   |
+| Field                                                                    | Reader / purpose                                                                                                    |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `key`                                                                    | Unique indexed lookup, replay detection, job addressing and first external id.                                      |
+| `attribution.subject`                                                    | Subject totals, budget gates, axis namespaces, sink customer id and retry authorization.                            |
+| `attribution.rootThreadId`, `threadId`                                   | Root/child aggregate attribution and fallback for standalone root charges.                                          |
+| `attribution.runId`                                                      | Run-scoped aggregate namespace and budget gate.                                                                     |
+| `attribution.agent`, `model`                                             | Thread agent key, thread model grouping and subject axis projections.                                               |
+| `provider`                                                               | Registered decoder/lookup routing and provider breakdown/sink metadata.                                             |
+| `breakdowns`                                                             | Frozen opt-ins used by corrections, settlement and workers to replace exactly the projections written at creation.  |
+| `profile`, `quantity`                                                    | Profile selection for quantity corrections and retained quantity on settlement; exact evidence via `get`.           |
+| `status`, `source`                                                       | State transitions, unknown fencing, estimated/settled aggregate classification and sink eligibility.                |
+| `nanos`, `credits`                                                       | Exact aggregate summand / provider credit evidence and settlement result.                                           |
+| `providerRequestId`, `lookupUntil`                                       | Lookup identity, reattach conflict detection, deadline and stale-result fencing.                                    |
+| `revision`                                                               | Monotonic amount/state revision returned with the saved outcome; no longer used as a correction input.              |
+| `lastStale.{operation,revision}`                                         | Latest rejected operation and observed revision exposed by `get`.                                                   |
+| `operations[].key`                                                       | Bounded charge-wide replay lookup before any state change or worker admission.                                      |
+| `operations[].outcome`                                                   | Original charge snapshot returned on replay; excludes operations to prevent recursive growth.                       |
+| `lookupAttempt`                                                          | Next admissible lookup attempt; rejects duplicate retry admission and stale workers.                                |
+| `reason`                                                                 | Why the charge is unknown (`OVER_CAP` may also come from `correct`/`settle`); `THREAD_CAPACITY` routes to overflow. |
+| `sinkState.name`                                                         | Sink routing.                                                                                                       |
+| `sinkState.estimates`                                                    | Frozen opt-in used by outbox admission for initial known estimates.                                                 |
+| `sinkState.deliveredNanos`, `revision`                                   | Next signed delta and stable external id.                                                                           |
+| `sinkState.deliveredStatus`, `deliveredSource`                           | Compare acknowledged classification with current charge, including same-amount transitions.                         |
+| `sinkState.pending.{externalId,revision,nanos,totalNanos,status,source}` | Immutable delivery snapshot, acknowledgement fence and absolute delivered amount/classification.                    |
+| `terminal` (indexed)                                                     | Settled with every sink acknowledged: the only rows `prune` reads.                                                  |
+| `_creationTime`                                                          | UTC day ordinal, stable across corrections; `prune` cutoff.                                                         |
+| `deliveries.{sink,key,event,attribution,provider}`                       | One row per pending (charge, sink) event: what a job sends, read without loading charges.                           |
+| `deliveries.{attempts,limited,failed,dueAt,claim}`                       | Backoff, 429 allowance, terminal failure, due order and the job holding it (crash accounting).                      |
+| `claims.claim`                                                           | Marker that a delivery job claimed its batch; its `onComplete` then charges only that job's rows.                   |
 
 There is no deployment-wide capacity and no read of a shared tree. Every
 aggregate namespace belongs to one subject or one root thread. A root thread
@@ -362,7 +396,7 @@ of 24 (depth 25 needs ~5.6×10^11 charges for one subject). Worst cases:
 - An axis page: 31 aggregate queries, <=5,952 node reads (<11.7 MiB). Seven
   days: `7 × 4 × 192 × 1 KiB = 5.25 MiB`.
 - Thread pages: `3 × (15 × 30 + 16 × 80) × 2 KiB = 10.14 MiB`, plus O(1) totals.
-- A delivery job: claim <=100 outbox rows (<=200 KiB); acknowledge 16 per
+- A delivery job: claim <=100 outbox rows (<=300 KiB, including frozen classification); acknowledge 16 per
   mutation (`16 × 280 KiB = 4.4 MiB`). Crash accounting touches outbox rows only.
 - `prune`: each row costs its size plus `8·D+4` node reads per projection; the
   batch stops below 16k docs / 12 MiB, i.e. >=9 default (476 nodes plus a

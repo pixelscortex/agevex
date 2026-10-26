@@ -14,6 +14,8 @@ function event(index: number): SinkEvent {
     key: `charge${index}`,
     externalId: `charge${index}`,
     revision: 1,
+    status: "settled",
+    source: "inline",
     nanos: 100_000_000,
     totalNanos: 100_000_000,
     attribution: { subject: "customer" },
@@ -181,6 +183,83 @@ it("webhook delivery bounds batches and retains signed correction deltas and sta
   await sink.deliver([event(0), correction]);
   expect(bodies[0].map((e) => e.nanos)).toEqual([100_000_000, -50_000_000]);
 });
+
+it.each([false, true])(
+  "built-in sinks deliver initial estimates only with opt-in %s",
+  async (estimates) => {
+    vi.useFakeTimers();
+
+    try {
+      const costs: number[] = [];
+      const events: SinkEvent[] = [];
+
+      const { t, meter } = setup({
+        sinks: [
+          polarSink({
+            estimates,
+            meter: "usage",
+            accessToken: "test-token",
+            fetch: async (_url, init) => {
+              const body = JSON.parse(String(init?.body as string | undefined)) as {
+                events: { metadata: { nanos: number } }[];
+              };
+
+              costs.push(...body.events.map((entry) => entry.metadata.nanos));
+
+              return Response.json({ inserted: body.events.length, duplicates: 0 });
+            },
+          }),
+          webhookSink({
+            estimates,
+            url: "https://sink.example/events",
+            fetch: async (_url, init) => {
+              const body = JSON.parse(String(init?.body as string | undefined)) as {
+                events: SinkEvent[];
+              };
+
+              events.push(...body.events);
+
+              return new Response(null, { status: 204 });
+            },
+          }),
+        ],
+      });
+
+      const estimate = () =>
+        t.run(async (ctx) => {
+          await meter.scope(ctx, attribution).estimate("fal", {
+            key: "built-in-estimate",
+            profile: "image",
+            quantity: 1,
+          });
+        });
+
+      await estimate();
+      await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100), 1000);
+      expect(costs).toEqual(estimates ? [250_000_000] : []);
+      expect(events.map((entry) => entry.status)).toEqual(estimates ? ["estimate"] : []);
+
+      await t.run(async (ctx) => {
+        const charge = await meter.scope(ctx, attribution).estimate("fal", {
+          key: "built-in-estimate",
+          profile: "image",
+          quantity: 1,
+        });
+
+        await charge.settle({ usd: 0.25, key: "settle" });
+      });
+
+      await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100), 1000);
+      expect(costs).toEqual(estimates ? [250_000_000, 0] : [250_000_000]);
+
+      expect(events.map((entry) => entry.status)).toEqual(
+        estimates ? ["estimate", "settled"] : ["settled"],
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);
 
 it("OpenRouter cost extraction distinguishes valid zero from absent or malformed evidence", () => {
   for (const cost of [0, 0.001])

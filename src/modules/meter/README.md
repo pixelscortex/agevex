@@ -38,6 +38,19 @@ guards standalone operations, while core slots trust server-derived attribution.
 `prune` requires the host's own admin guard. See [API.md](API.md) for provider
 profiles, sinks, breakdown opt-ins, retention and the full guarantees.
 
+Custom sinks use `{ name?, estimates?: true, deliver(batch, ctx) }`. `ctx` is the
+delivery worker's host action context, so delivery can call host internal
+mutations. Existing one-argument callbacks remain valid. Set `estimates: true`
+per sink (also supported by `polarSink` and `webhookSink`) to receive initial
+known estimates; the default keeps waiting for correction or authoritative cost.
+The opt-in is frozen when each charge is created, without backfill.
+
+Events freeze `status` and `source` alongside amount at enqueue time. A
+same-amount classification change sends a new revision with `nanos: 0` and the
+same absolute `totalNanos`. Retries preserve `externalId` and revision; recipients
+deduplicate by `externalId`. Later revisions use `key:delta:revision` and retain
+the original charge `key` so recipients can replace its absolute total.
+
 ## Live usage
 
 `record` accepts an optional exact `requestId`. Configure `Provider.estimate` for
@@ -111,7 +124,7 @@ Paths below are relative to this module. Internal builders are not package expor
 ## Charge lifecycle
 
 Recording validates and authorizes, finds the exact key, checks root capacity,
-then inserts the charge and its aggregate entries. Authoritative cost prepares
+then inserts the charge and its aggregate entries. Eligible cost prepares
 immutable sink events; delivery claims small outbox rows and acknowledges in
 bounded chunks. Corrections/settlements save their original operation outcomes.
 Attachment records an exact provider request and deadline; read-only lookup

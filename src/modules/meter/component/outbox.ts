@@ -43,9 +43,16 @@ export async function prepareSinks(
   const sinkState = row.sinkState.map((sink) => ({ ...sink }));
   const due: string[] = [];
 
-  if (billable(row) && row.nanos !== undefined)
+  if (row.nanos !== undefined)
     for (const sink of sinkState) {
-      if (sink.pending || sink.deliveredNanos === row.nanos) continue;
+      if (
+        !billable(row, sink.estimates) ||
+        sink.pending ||
+        (sink.deliveredNanos === row.nanos &&
+          sink.deliveredStatus === row.status &&
+          sink.deliveredSource === row.source)
+      )
+        continue;
 
       sink.revision++;
 
@@ -57,6 +64,9 @@ export async function prepareSinks(
         revision: sink.revision,
         nanos: row.nanos - (sink.deliveredNanos ?? 0),
         totalNanos: row.nanos,
+        // Freeze classification alongside amount: delivery never consults the charge.
+        status: row.status,
+        source: row.source,
       };
 
       await ctx.db.insert("deliveries", newDelivery(row, sink.name, sink.pending));
