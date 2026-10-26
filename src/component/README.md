@@ -83,13 +83,13 @@ No tables are added. Root `assignments` carry:
 - Existing `contextMessages`: at most 24 exact identities, captured with saves.
   Summaries and side reviews read successful user/assistant message references.
 
-A worker reads one <=40 KiB assignment plus one <=16 KiB run. Title claim/commit
+A worker reads one <=34 KiB assignment plus one <=16 KiB run. Title claim/commit
 also read one exact native thread <=1 MiB to preserve app titles atomically. Exact native
 message reads total <=2 MiB, at most 24 ids; serialized messages total <=48 KiB,
 plus <=8 KiB prior summary. Both full native sizes and encoded input are checked.
 The ring stays <4 KiB, summary <9 KiB, both jobs/config <4 KiB; the existing
 8 KiB coordination/pause +6 KiB review boundaries gives 8+4+6+9+4=31 KiB,
-plus 9 KiB for turn reporting under the 40 KiB assignment envelope. Hard-limit
+plus 3 KiB for turn reporting under the 34 KiB assignment envelope. Hard-limit
 fixtures enforce Convex transaction budgets with a full ring of large native
 messages. No transcript discovery, copied request bodies, new indexes or billing
 ledger are introduced. The existing receipts ledger records scheduling replay
@@ -170,7 +170,7 @@ task links/previews live on `subagentRuns`, captured with native saves. The
 request suffix on `by_parent_delivery` prevent later sends from fencing old
 requests. Only ordinary descendants/deliveries/groups fence successful closure.
 Assignments carry at most 16 active tool markers, checked against the complete
-32 KiB row envelope; every slice disarm and cancellation clears them. Query
+34 KiB row envelope; every slice disarm and cancellation clears them. Query
 projection also suppresses tools on terminal nodes. No new tables are added.
 Marker start/clear writes are best effort and never awaited by tool execution
 or stream cleanup. Clear follows start; failed writes are not retried, keeping
@@ -180,10 +180,10 @@ Run admission checks both UTF-8 JSON and Convex bytes, reserving 1 KiB for nativ
 metadata, lifecycle timestamps/result/error and bounded counter/mask growth
 under the 16 KiB run envelope.
 
-At hard maxima the core tree reads at most 2249 KiB: 59 assignment rows ×32 KiB,
-58 child rows ×4 KiB, three ownership reads ×32 KiB, two root metadata reads
+At hard maxima the core tree reads at most 2373 KiB: 59 assignment rows ×34 KiB,
+58 child rows ×4 KiB, three ownership reads ×34 KiB, two root metadata reads
 ×16 KiB and one 1 KiB ready probe. Meter adds at most 5160 KiB through batched
-full-namespace aggregates: combined 7409 KiB <8 MiB. The host enforces the
+full-namespace aggregates: combined 7533 KiB <8 MiB. The host enforces the
 128 KiB output cap. Maximum-envelope fixtures enforce transaction limits.
 
 | Table          | Written by                                                                                                                                                                                                                                                                                              | Notes                                           |
@@ -207,7 +207,7 @@ What each table and field holds:
   read by completion's `hookState`; `maxMessages` enforces the resolved run/Workflow
   step cap; `resumeInboxId` tells claim to retain the report and step count at
   approval resume. Claim resets it for new work and staged hook prompts.
-  <=64*(128+1)=8,256 bytes of ids plus <1 KiB metadata fit a 9 KiB reservation.
+  <=64*(37+2)=2,496 bytes of ids plus prompt/cap/resume metadata fit a 3 KiB reservation.
   Posted notes wait for the next turn claim with no decided approvals awaiting
   committed results; ordinary tool slices never drain them. `beforeTurn` hook
   notes are saved before the first generation.

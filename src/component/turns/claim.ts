@@ -13,7 +13,7 @@
 import type { MessageDoc } from "@convex-dev/agent";
 import type { FunctionHandle } from "convex/server";
 import { v, type Infer } from "convex/values";
-import { api, internal } from "../_generated/api.js";
+import { internal } from "../_generated/api.js";
 import type { MutationCtx } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
 import { scope, turnOrigin as vTurnOrigin } from "../schema.js";
@@ -28,6 +28,7 @@ import { LIMITS, readyRowLimit } from "../limits.js";
 import { claimNotes, noteHandles } from "../hooks/notes.js";
 import { firstReady } from "./inbox.js";
 import { appendEvent, runById } from "../subagents/runs.js";
+import { releaseReadyCohort } from "../subagents/groups.js";
 import { assertAgentIndex } from "../hooks/routing.js";
 import { disarmRecovery } from "./recovery.js";
 import { disarmSlice } from "./boundaries.js";
@@ -188,9 +189,15 @@ async function consumeHead(ctx: MutationCtx, row: Doc<"assignments">) {
  * hide a consumed answer on the very next turn. Never cross another run/user turn.
  * <=100 backlog + reserved answer +50 joins + reserved head =152 rows.
  * The by_join "ready" range is scoped to this budget: <=50 members TOTAL
- * across its cohorts. <=100 run metadata reads (1,600 KiB), <=152
- * inbox deletes/assignment patches and fixed per-iteration probes stay
- * <10 MiB, <2,000 reads/<600 writes even at all host maxima.
+ * across its cohorts. Reuse loaded parent/root rows, accumulate queue/sequence
+ * counters in memory and publish ONE assignment patch after the atomic drain.
+ * No per-iteration assignment reads or patch reads remain, even with a full
+ * previous report. Conservative metadata (KiB): <=100 run reads *16=1,600,
+ * <=50 cohort members *3*4=600 (candidate/member/patch), <=152 ready rows
+ * *2*1=304 (probe/delete), and <=16 fixed assignment reads/patches *34=544:
+ * <=3,048 KiB <3 MiB. Together with notes' <10 MiB native/metadata allowance
+ * (hooks/notes.ts), the COMBINED claim stays <13 MiB read, <4 MiB written,
+ * <2,000 reads/<600 writes/<1,000 queries at all host maxima.
  * @convex-dev/agent/src/component/messages.ts:298-322 anchors native
  * context at the prompt's recorded order, rather than our inbox order.
  * Moves `row.promptMessageId` to the newest merged message and returns the
@@ -205,12 +212,16 @@ async function mergeConsecutive(
   let newest = head.join?.newestSequence ?? head.sequence;
   let earliest = head.join?.earliestSequence ?? newest;
   const bound = readyRowLimit(row.limits) - 1;
+  const root = row.rootAssignmentId ? await ctx.db.get("assignments", row.rootAssignmentId) : row;
+
+  if (!root) throw new Error("ROOT_UNAVAILABLE");
 
   for (let count = 0; count < bound; count++) {
-    await ctx.runMutation(api.subagents.deliver.releaseGroups, {
-      assignmentId: row._id,
-      parentRunId: head.runId,
-    });
+    await releaseReadyCohort(
+      ctx,
+      { assignmentId: row._id, parentRunId: head.runId },
+      { parent: row, root },
+    );
 
     const item = await firstReady(ctx, row._id);
 
@@ -230,14 +241,17 @@ async function mergeConsecutive(
       row.promptMessageId = item.messageId;
     }
 
-    const current = (await ctx.db.get("assignments", row._id))!;
-
-    await ctx.db.patch("assignments", row._id, {
-      queuedMessages: current.queuedMessages - 1,
-    });
+    row.queuedMessages -= 1;
   }
 
-  await ctx.db.patch("assignments", row._id, { promptMessageId: row.promptMessageId });
+  // Publish counters once after the atomic drain. Group release updates this
+  // same loaded row, so neither consumption nor release needs a per-item
+  // assignment reread/patch (including Convex's implicit patch reads).
+  await ctx.db.patch("assignments", row._id, {
+    promptMessageId: row.promptMessageId,
+    queuedMessages: row.queuedMessages,
+    nextSequence: row.nextSequence,
+  });
 
   return noteAnchor;
 }

@@ -196,7 +196,7 @@ async function cohortRefusal(
   group: string,
   wait: "each" | "all",
 ) {
-  // <=15 small rows (<=4 KiB each) + two <=40 KiB assignments and fixed
+  // <=15 small rows (<=4 KiB each) + two <=34 KiB assignments and fixed
   // admission metadata <160 KiB; no native
   // result bodies are read. Index scope excludes every other parent/run.
   const members = await groupMembers(

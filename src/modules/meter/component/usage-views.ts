@@ -28,7 +28,7 @@ export const usageProjection = v.object({
 /** Complete namespaces read <=7 docs per aggregate operation (lazy root and
  * <=5 children plus metadata). 60*6*7 <=2520 docs /5040 KiB at <=2 KiB/node;
  * pending-operation probes add <=60 docs /120 KiB. Combined with core's
- * 2249 KiB tree metadata: <=7409 KiB <8 MiB. Output <=60*512 bytes <32 KiB.
+ * 2373 KiB tree metadata: <=7533 KiB <8 MiB. Output <=60*512 bytes <32 KiB.
  * Aggregate's supported btree.aggregateBetweenBatch returns count AND sum
  * (aggregate src/component/btree.ts:1279), avoiding duplicate count/sum reads.
  */

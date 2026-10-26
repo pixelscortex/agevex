@@ -1,8 +1,8 @@
 /** One reactive, request-scoped run tree. Native Agent owns all message bodies.
  * D = HOST_LIMITS.runLaunches.max + sideRunsPerRun.max = 58.
- * (1+D)*32 KiB assignments +D*4 KiB children +3*32 KiB ownership
- * +2*16 KiB root metadata +1 KiB ready probe = 2249 KiB core reads.
- * Meter's batched projection adds <=5160 KiB: combined <=7409 KiB <8 MiB;
+ * (1+D)*34 KiB assignments +D*4 KiB children +3*34 KiB ownership
+ * +2*16 KiB root metadata +1 KiB ready probe = 2373 KiB core reads.
+ * Meter's batched projection adds <=5160 KiB: combined <=7533 KiB <8 MiB;
  * The host checks both Convex and JSON output bytes against 128 KiB.
  * No per-node transcript, meter or settlement scans: reuse the already bounded
  * child set to project transitive ordinary delivery/group fences in memory.

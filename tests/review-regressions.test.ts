@@ -770,7 +770,7 @@ it.each(["routing", "approval"])(
 
         expect(paused?.approvals?.requests).toHaveLength(LIMITS.approvalsPerPause);
 
-        // The max-size model snapshot and F1 metadata fit the documented 40 KiB
+        // The max-size model snapshot and F1 metadata fit the documented 34 KiB
         // assignment allowance, together with all sixteen pause references.
         expect(new TextEncoder().encode(JSON.stringify(paused)).length).toBeLessThan(
           LIMITS.assignmentBytes,

@@ -42,8 +42,8 @@ Tool continuations and approval pauses emit no hook until completion. A staged
 
 Each slice saves at most one assistant row. Run `stepsPerTurn` and any non-default
 host `slicesPerTurn` cap bound the list, including approval resumes: at most
-64 ids, each at most 128 UTF-8 bytes. Reporting state reserves 9 KiB within the
-assignment's 40 KiB envelope.
+64 ids, each at most 37 ASCII characters. Reporting state reserves 3 KiB within the
+assignment's 34 KiB envelope.
 
 ## Model routing at run start
 

@@ -14,7 +14,7 @@
  */
 import type { MessageDoc } from "@convex-dev/agent";
 import type { FunctionHandle } from "convex/server";
-import { ConvexError, v, type ObjectType } from "convex/values";
+import { ConvexError, getConvexSize, v, type ObjectType } from "convex/values";
 import { internal } from "../_generated/api.js";
 import type { MutationCtx } from "../_generated/server.js";
 import type { Doc } from "../_generated/dataModel.js";
@@ -85,6 +85,16 @@ export async function fencedWrite(ctx: MutationCtx, args: WriteArgs): Promise<un
   )
     throw new Error("INVALID_DEFERRED_TOOLS");
 
+  if (args.nativeMessages || args.nativeStream) {
+    // Progress is best effort. Clear it in this transaction BEFORE any save
+    // metadata grows, even if the action's asynchronous marker clear is late.
+    // A paid result must never compete with tool names for assignment space.
+    if (row.activeTools) {
+      await ctx.db.patch("assignments", row._id, { activeTools: undefined });
+      row.activeTools = undefined;
+    }
+  }
+
   if (args.nativeMessages) await prepareDecisions(ctx, row, args.args, args.askUserTools);
 
   if (
@@ -109,6 +119,16 @@ export async function fencedWrite(ctx: MutationCtx, args: WriteArgs): Promise<un
 
   if (args.nativeStream) await trackStream(ctx, row, args, result as string);
 
+  if (args.nativeMessages || args.nativeStream) {
+    const saved = (await ctx.db.get("assignments", row._id))!;
+
+    // Assert the complete persisted value after refs, report, usage, pending
+    // generation and approval metadata have all grown. A failure rolls back
+    // the native write too; ids can never escape their creating transaction.
+    if (getConvexSize(saved) > LIMITS.assignmentBytes)
+      throw new Error("ASSIGNMENT_METADATA_TOO_LARGE");
+  }
+
   return result;
 }
 
@@ -116,8 +136,8 @@ export async function fencedWrite(ctx: MutationCtx, args: WriteArgs): Promise<un
  * else null. A child can settle immediately before cancel, while its source
  * action still owns the turn token. It no longer occupies an active slot, so
  * cancel need not visit its assignment. The root epoch still fences every
- * late native/tool write: two <=40 KiB assignment reads plus one <=4 KiB
- * child-run reference (<88 KiB), no traversal. */
+ * late native/tool write: two <=34 KiB assignment reads plus one <=4 KiB
+ * child-run reference (<72 KiB), no traversal. */
 async function liveWriter(ctx: MutationCtx, row: Doc<"assignments"> | null, args: WriteArgs) {
   const root = row?.rootAssignmentId ? await ctx.db.get("assignments", row.rootAssignmentId) : null;
   const run = row?.childRunId ? await runById(ctx, row.childRunId) : null;

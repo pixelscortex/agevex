@@ -44,7 +44,7 @@ type ResponseReceipt = { scope: string; key: string; fingerprint: string };
  * adds one expiry-head read and one receipt write of the same bound: <256 KiB
  * total additional I/O, independent of the <=16 calls in a pause. Together with
  * answer's <13 MiB native/readiness budget below, this remains <13.25 MiB.
- * Edited host responses additionally read <=2*40 KiB assignments, <=2*32 KiB
+ * Edited host responses additionally read <=2*34 KiB assignments, <=2*32 KiB
  * exact proposals and <=2*64 KiB receipts, and rewrite one proposal with its
  * <=33 KiB approved-input annotation (one bounded call id, input and hashes).
  * Even overcounting these reads and writes together keeps the response path

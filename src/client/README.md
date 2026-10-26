@@ -64,8 +64,8 @@ narration by exact id. No transcript listing or text matching is involved.
 
 The assignment accumulates ids in the native save transaction. One assistant
 row per step bounds the list by run `stepsPerTurn` and any non-default host
-`slicesPerTurn` cap (matching Workflow v1): at most 64 ids × (128 UTF-8 bytes + 1 terminator) = 8,256 bytes.
-Prompt/cap/resume metadata brings the reservation to 9 KiB within the 40 KiB
+`slicesPerTurn` cap (matching Workflow v1): at most 64 ids × (37 ASCII bytes + 2 Convex string bytes) = 2,496 bytes.
+Prompt/cap/resume metadata brings the reservation to 3 KiB within the 34 KiB
 assignment envelope. New user/queued/child work and a staged `afterTurn`
 continuation start fresh lists; approval resumes retain the list and step count.
 

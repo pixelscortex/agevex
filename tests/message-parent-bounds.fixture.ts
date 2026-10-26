@@ -4,6 +4,7 @@ import { mutation } from "../src/component/_generated/server.js";
 import { HOST_LIMITS, LIMITS, readyRowLimit } from "../src/component/limits.js";
 import { newRun } from "../src/component/turns/runs.js";
 import { resolveRunSettings } from "../src/component/run-settings.js";
+import { fillAssignment, fillNotes, fullReport } from "./assignment-envelope.fixture.js";
 
 /** The live actor and terminal gap both need final hops, even with activeRuns=1.
  * Keep all 58 rows near their 4 KiB metadata envelope; no native bodies copied.
@@ -99,7 +100,7 @@ export const fillQueue = mutation({
 });
 
 /** Conservative cancellation envelope, seeded ONE assignment per transaction.
- * <=152 ready rows +152 full settings snapshots +one <=40 KiB assignment
+ * <=152 ready rows +152 full settings snapshots +one <=34 KiB assignment
  * stay <3 MiB written per seed. Root rows use distinct request budgets;
  * child rows share one inherited budget. Across 16 assignments cancel must
  * clear all 2,432 ready rows and 168 distinct budgets in one transaction.
@@ -150,21 +151,30 @@ export const fillCancelQueue = mutation({
       head ??= id;
     }
 
+    const staged = await ctx.db.insert("inbox", {
+      assignmentId,
+      runId: childBudget ?? row.runId!,
+      messageId: "",
+      text: "\uFFFF".repeat(LIMITS.messageLength),
+      sequence: row.nextSequence + count,
+      kind: "continue",
+      passive: false,
+    });
+
     await ctx.db.patch("assignments", row._id, {
-      turnReport: {
-        promptMessageId: "p".repeat(LIMITS.messageIdBytes),
-        messageIds: Array.from({ length: HOST_LIMITS.slicesPerTurn.max }, (_, i) =>
-          String(i).padStart(LIMITS.messageIdBytes, "m"),
-        ),
-        maxMessages: HOST_LIMITS.slicesPerTurn.max,
-      },
+      turnReport: fullReport(head!),
       queuedMessages: count - 1,
-      inboxId: head,
+      hookContinue: true,
+      inboxId: staged,
       turnStatus: "queued",
       nextSequence: row.nextSequence + count,
       routingAgentIndex: 0,
       ...(childBudget ? { runId: childBudget } : {}),
     });
+
+    await ctx.db.patch("runs", childBudget ?? row.runId!, { routingAgents: 1n });
+    await fillNotes(ctx, { ...row, runId: childBudget ?? row.runId });
+    await fillAssignment(ctx, row._id);
 
     return null;
   },

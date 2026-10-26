@@ -84,40 +84,38 @@ export const HOST_LIMITS = {
  * loop/turn's in-progress step; Workpool 0.4.14 lib.ts:137-150,238-259 reads
  * globals/work/pending-cancel and pings the worker. The 64A doc allowance is
  * retained; current-run reads/patches are already included in the unique U.
- * Routing settlement adds one write and TWO reads per owner: get the run
- * and read it again to patch it. Cancel clears routing ownership, watchdog
- * and recovery fields in its single assignment patch, saving 3A*40 KiB
- * compared with separate disarm/routing state patches.
- * Writes <=2I+N+6A+C+1+64A=6,384 <8,000 <16,000.
- * Reads <=3I+2N+4A+A+2A+2C+2+64A+U=9,400 <32,000.
+ * Collect routing ownership masks during the assignment loop, then clear
+ * their union in the existing unique-run guard/patch. No separate routing
+ * reads/writes remain, including when several owners share one run.
+ * Cancel clears watchdog/recovery/routing ownership in one assignment patch.
+ * Writes <=2I+N+5A+C+1+64A=6,368 <8,000 <16,000.
+ * Reads <=3I+2N+4A+A+2C+2+64A+U=9,368 <32,000.
  * Indexed queries <=3 child-status ranges +A inbox ranges +64A SDK allowance
  * =1,043 <4,096; point reads above do not execute indexed range queries.
  * Bytes (KiB): inbox reads 2I=4,864; unique run guard+patch 2U*16=5,376;
- * assignment read/patch 2A*40=1,280; scheduler 2A*4=128; child runs 2C*4=120;
- * ownership/final root 2*40=80; SDK allowance 64A*3=3,072;
- * cleanup jobs A*4=64; routing A*(16+16)=512.
- * Total <=15,496 KiB; staged continuations add <=1,040 KiB (turns/cancel.ts):
- * <=16,536 KiB <16,384 KiB, exceeding the read ceiling by 152 KiB.
+ * assignment read/patch 2A*34=1,088; scheduler 2A*4=128; child runs 2C*4=120;
+ * ownership/final root 2*34=68; SDK allowance 64A*3=3,072;
+ * cleanup jobs A*4=64. Base <=14,780 KiB; staged continuations add
+ * <=1,040 KiB (turns/cancel.ts): <=15,820 KiB <16,384 KiB,
+ * leaving 564 KiB read headroom. This saves 512 KiB of separate routing reads.
  * Written bytes: run patches/inbox deletes <=U*16+I KiB, note deletes
- * <=N KiB, coordination <=2A*40+A*16+2A*4 KiB,
- * children <=C*4 KiB, final root <=40 KiB, SDK <=64A*4 KiB, and routing
- * <=A*16 KiB: <=11,620 KiB <16 MiB.
+ * <=N KiB, coordination <=2A*34+A*16+2A*4 KiB,
+ * children <=C*4 KiB, final root <=34 KiB, SDK <=64A*4 KiB:
+ * <=11,166 KiB, plus <=1,040 KiB staged-continuation deletion allowance
+ * =12,206 KiB <16 MiB. Routing writes are folded into the run patches.
  * Native messages (including each nearly
  * 1 MiB placeholder) are NEVER read by cancel; cleanup runs separately.
  * Subagent rows stay <=4 KiB: names/subjects/groups <=200 UTF-16 units,
  * hashed tool-call dedup keys, ids, counters and <=4 small events. Assignments
- * allow <=40 KiB: the original <=8 KiB (16 approval/deferred-call keys),
+ * allow <=34 KiB: the original <=8 KiB (16 approval/deferred-call keys),
  * <=4 KiB exact message references, <=6 KiB side-review boundaries, two
  * prompt ids and scalar counters. Root text metadata adds <=9 KiB summary/
- * boundary and <=4 KiB job/config refs: 8+4+6+9+4=31 KiB. R9 adds
- * <=64*(128+1)=8,256 bytes of ids plus prompt/cap/resume metadata within
- * 9 KiB, making the assignment envelope 40 KiB. Compared with 32 KiB,
- * assignment read/patch +final ownership adds (2A+2)*8=272 KiB read,
- * and (2A+1)*8=264 KiB written, included in the totals above. No document
- * counts change: <=9,232 reads /6,384 writes /1,043 indexed queries.
+ * boundary and <=4 KiB job/config refs: 8+4+6+9+4=31 KiB. Reporting adds
+ * <=64*(37+2)=2,496 bytes of native ids plus prompt/cap/resume metadata:
+ * <=2,653 bytes within a 3 KiB reservation, making the envelope 34 KiB.
  * The old envelope was conservative after removing the <=10 KiB control-id replay
  * list. Notes have their own bounded queue N; each raw row stays <=17 KiB
- * and is read only by separate per-assignment cleanup transactions (<864 KiB including ownership).
+ * and is read only by separate per-assignment cleanup transactions (<=850 KiB including ownership).
  * Saved control rows retain <=1 KiB of exact-id origin metadata and are excluded
  * from every ready/cancel index range. Runs carry a <=15 KiB settings map,
  * <=512-byte model map, scalar counters and two 64-bit start/routing masks.
@@ -158,8 +156,9 @@ export const LIMITS = {
   cadence: 1_000_000,
   minuteMs: 60_000,
   contextMessages: 24,
-  assignmentBytes: 40 << 10,
-  messageIdBytes: 128,
+  assignmentBytes: 34 << 10,
+  turnReportBytes: 3 << 10,
+  messageIdBytes: 37,
   contextBytes: 48 << 10,
   contextReadBytes: 2 << 20,
   maxDepth: HOST_LIMITS.maxDepth.default,
@@ -195,8 +194,8 @@ export const LIMITS = {
   // (3 statuses * tool/non-tool; Agent src/component/messages.ts:809-845).
   // Messages: 0.5 MiB page + 1 MiB overshoot + 6*1 MiB heads + 0.25 MiB
   // coordination = 7.75 MiB <16 MiB. Count: <=100 page rows + six heads.
-  // Origin lookup adds <=100*1 KiB controls +100*4 KiB results +40 KiB
-  // ownership =540 KiB and <=201 reads/queries; combined <8.28 MiB <16 MiB.
+  // Origin lookup adds <=100*1 KiB controls +100*4 KiB results +34 KiB
+  // ownership =534 KiB and <=201 reads/queries; combined <8.28 MiB <16 MiB.
   // Stream deltas: 2*1 MiB metadata + 8 MiB native page + 1 MiB delta
   // overshoot + 0.25 MiB coordination = 11.25 MiB <16 MiB. Agent's fixed
   // 8 MiB page reads <=200 deltas (src/component/streams.ts:listDeltas).
