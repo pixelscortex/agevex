@@ -1,0 +1,156 @@
+scripts/check-deploy.sh
+  s_d863bd773ba186::t_d7cc1944a77abd 1-57
+AGENTS.md
+  s_d863bd773ba186::t_9ab8a4010538b2 32-33
+  s_d863bd773ba186::t_6845138ad24a93 53-56
+tests/module-paths.test.ts
+  s_d863bd773ba186::t_ff7a403e1a856d 1-71
+package.json
+  s_d863bd773ba186::t_618805c627e648 89
+scripts/release-git.sh
+  s_d863bd773ba186::t_0b3fac531fcd46 18-19
+src/client/agent.ts
+  s_d863bd773ba186::t_5aa1c2982ff9cc 12
+src/client/coordinate/launch.ts
+  s_d863bd773ba186::t_0207276bb1518d 15
+src/client/coordinate/parent-note.ts
+  s_d863bd773ba186::t_7ce9617a61b87b 6,31,67
+src/client/endpoints/access.ts
+  s_d863bd773ba186::t_9efbe246ae5a10 13
+src/client/endpoints/decisions.ts
+  s_d863bd773ba186::t_ce67d6925c3240 26
+src/client/endpoints/pending.ts
+  s_d863bd773ba186::t_e6dc33cd96201e 7,26
+src/client/endpoints/reads.ts
+  s_d863bd773ba186::t_227db909250ab8 30
+src/client/endpoints/requests.ts
+  s_d863bd773ba186::t_124a70fc7f48ee 21
+src/client/index.ts
+  s_d863bd773ba186::t_8988658942b62b 7-8
+src/client/registration/context.ts
+  s_d863bd773ba186::t_4f31d9d6d371d9 18
+src/client/turn/deadlines.ts
+  s_d863bd773ba186::t_1b08bef8c1c60b 7
+src/client/turn/fence.ts
+  s_d863bd773ba186::t_6844153e6daa84 16
+src/client/turn/tools.ts
+  s_d863bd773ba186::t_6a1ce5f7ecd18d 113
+src/client/types.ts
+  s_d863bd773ba186::t_109faee6c1d92e 20
+src/component/README.md
+  s_d863bd773ba186::t_d513416bd8cf5b 140-141,156
+src/component/_generated/api.ts
+  s_d863bd773ba186::t_9419f82c4ef3f8 27,29,64,66
+src/component/_generated/component.ts
+  s_d863bd773ba186::t_538d8767b311bf 24,26,67,69
+src/component/schema.ts
+  s_d863bd773ba186::t_dfb35791091a5f 15,20
+src/component/subagents/deliver.ts
+  s_d863bd773ba186::t_c4a5ca0f2ee369 24
+src/component/subagents/groups.ts
+  s_d863bd773ba186::t_2e549670449fb8 18
+src/component/subagents/history.ts
+  s_d863bd773ba186::t_e6cc51fc93e950 15
+src/component/subagents/launch.ts
+  s_d863bd773ba186::t_d73eb8f44f49ac 22
+src/component/subagents/messages.ts
+  s_d863bd773ba186::t_0b39b2c404cdd7 5
+src/component/subagents/runs.ts
+  s_d863bd773ba186::t_7f84693da52f1d 16
+src/component/subagents/tree.ts
+  s_d863bd773ba186::t_85d9b13cb38734 12-13
+src/component/turns/approvals.ts
+  s_d863bd773ba186::t_79ac56ab23e419 28
+src/component/turns/boundaries.ts
+  s_d863bd773ba186::t_10d610fce64094 14
+src/component/turns/cancel.ts
+  s_d863bd773ba186::t_c9cbcb9d74a6a3 23
+src/component/turns/claim.ts
+  s_d863bd773ba186::t_ce7a62ac47dd49 26
+src/component/turns/decision_reads.ts
+  s_d863bd773ba186::t_a8ec6390c11910 7
+src/component/turns/finish.ts
+  s_d863bd773ba186::t_5185d976870a85 23
+src/component/turns/pause.ts
+  s_d863bd773ba186::t_9b3c5981afa146 22
+src/component/turns/runs.ts
+  s_d863bd773ba186::t_fa5e1d7c736d83 12
+src/component/turns/send.ts
+  s_d863bd773ba186::t_1ba5b886d15d5f 22,27
+src/component/turns/tools.ts
+  s_d863bd773ba186::t_d6319e3e5c5b3f 7-8
+src/component/turns/wake.ts
+  s_d863bd773ba186::t_7ec14f109332ff 22
+src/component/turns/write.ts
+  s_d863bd773ba186::t_ab10c713325dc5 23-24
+src/component/workflows/lanes.ts
+  s_d863bd773ba186::t_d10bf3ddc962c6 22
+src/modules/meter/README.md
+  s_d863bd773ba186::t_40dec7a8a4c015 106-110,112-113
+src/modules/meter/component/aggregates.ts
+  s_d863bd773ba186::t_d0c8534c947981 13
+src/modules/meter/component/charge_creation.ts
+  s_d863bd773ba186::t_220b24403b5e52 9,12
+src/modules/meter/component/charge_lookup.ts
+  s_d863bd773ba186::t_deb6f623a516cc 12,15,17
+src/modules/meter/component/charge_updates.ts
+  s_d863bd773ba186::t_f9744990354dad 9,11
+src/modules/meter/component/charges.ts
+  s_d863bd773ba186::t_c8bb60baea9617 4,9-12,32
+src/modules/meter/component/delivery.ts
+  s_d863bd773ba186::t_f42f33c13e105f 14,16
+src/modules/meter/component/outbox.ts
+  s_d863bd773ba186::t_b02169cbccf5b6 10
+src/modules/meter/component/reads.ts
+  s_d863bd773ba186::t_98e45e1d2d2fea 23
+src/modules/meter/component/reconciliation.ts
+  s_d863bd773ba186::t_13fb7a7bebf073 12
+src/modules/meter/component/retention.ts
+  s_d863bd773ba186::t_c6a780b2cbbf77 9
+src/modules/sandbox/README.md
+  s_d863bd773ba186::t_0b7c41df774a16 65
+src/modules/sandbox/component/admission.ts
+  s_d863bd773ba186::t_b006f0a2890d07 9
+src/modules/sandbox/component/state.ts
+  s_d863bd773ba186::t_e8633d4214da11 11
+src/testing/bridge.ts
+  s_d863bd773ba186::t_6594b2653fe320 17
+tests/claim-bounds.fixture.ts
+  s_d863bd773ba186::t_2f24ec5c4ea212 8
+tests/delegation.test.ts
+  s_d863bd773ba186::t_b1a303c335fd2b 7
+tests/managed-turn.test.ts
+  s_d863bd773ba186::t_c5e06aab262151 2
+tests/message-id-bounds.test.ts
+  s_d863bd773ba186::t_c7f5607c42f398 7
+tests/message-ids.test.ts
+  s_d863bd773ba186::t_00d5bac1cf500c 8
+tests/message-parent-bounds.fixture.ts
+  s_d863bd773ba186::t_3ef0bdc6e8b9d7 6
+tests/review-regressions.test.ts
+  s_d863bd773ba186::t_da20dcda142cef 2
+tests/run-settings.test.ts
+  s_d863bd773ba186::t_623d3b87079f5d 22
+tests/run-tree.seed.ts
+  s_d863bd773ba186::t_e0c6fd559b786f 9-11
+tests/run-tree.test.ts
+  s_d863bd773ba186::t_7377f313475bbf 17,20
+tests/watchdog-backlog.test.ts
+  s_d863bd773ba186::t_0db45b128be458 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5ebd615df3fee01796a0d40289a38494cd109412",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
