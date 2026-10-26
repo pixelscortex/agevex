@@ -1,0 +1,89 @@
+---
+title: Contributing
+description: Repository layout, checks, and implementation conventions.
+status: Available
+---
+
+## Layout
+
+| Path                              | Responsibility                                                                   |
+| --------------------------------- | -------------------------------------------------------------------------------- |
+| `src/component/`                  | Core schema, Convex functions and generated types                                |
+| `src/client/`                     | Core host runtime; package entry is `index.ts`                                   |
+| `src/modules/<name>/`             | Optional module's `component/`, `client/`, `shared/` and `test.ts`, where needed |
+| `src/modules/telemetry/client/`   | Host-only telemetry                                                              |
+| `src/modules/tools/registry/`     | Installable host state and tool sources                                          |
+| `src/testing/`, `tests/<module>/` | Shared fake backends and behavior tests                                          |
+| `docs/site/`                      | Independent Bun docs and registry app                                            |
+| `.agents/skills/`                 | Pinned Convex guidance; `skills-lock.json` records versions                      |
+
+Read [AGENTS.md](https://github.com/pixelscortex/agevex/blob/HEAD/AGENTS.md)
+first. Use the [architecture](/docs/concepts/architecture) links for detailed
+file maps. Core never imports an optional module. Components never import host
+clients. Preserve registered function paths and component names.
+
+## Commands
+
+Use Bun for installs and commands. From the repository root:
+
+```sh title="Terminal"
+bun install
+bun install --cwd docs/site
+bun run check
+bun run test
+bun run --cwd docs/site build
+```
+
+`check` runs Oxfmt, type-aware Oxlint, library/test/docs type checks and the
+Convex lint gate. `test` runs offline fake backends with two workers and needs
+no prior build. Use `bun run fmt` to format. After editing registry sources,
+run `bun run registry:build` and `bun run test:tools`.
+
+## Documentation checks
+
+Run `bun run --cwd docs/site api:build` to regenerate module API tables from
+exported TypeScript signatures. Error behavior is maintained beside the generator.
+Run `bun run --cwd docs/site check:snippets` to build the package and compile
+every TypeScript block in temporary host apps. The command prints the scratch
+fixture and manifest paths; it calls no providers and deploys nothing.
+
+## Live checks
+
+```sh title="Terminal"
+bun run test:live
+```
+
+Live checks are opt-in. Their loaders read the main checkout's
+`/Volumes/mypixel/pxc/agevex/.env.local`. Required names are
+`OPENROUTER_API_KEY`, `DAYTONA_API_KEY`, `FIRECRAWL_API_KEY`,
+`LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` and `LANGFUSE_BASE_URL`.
+Never print their values. Use `openrouter/free`, at most three Firecrawl calls,
+and one smallest, cheapest image per full live run.
+
+## Conventions
+
+- Keep functions at most 90 lines. Report existing oversized functions for the next refactor.
+- Give files header comments. Explain non-obvious rules and budget arithmetic.
+- Use complete row builders for creation so defaults and lifecycle fields stay together.
+- Bound reads by count and bytes, including hard maximum host overrides. Use indexes.
+- Keep numeric bounds in module `LIMITS` and validate overrides. Documents fit 1 MiB; put large bodies in storage.
+- Preserve execution fences across cancellation and replay. Never retry an unknown paid outcome automatically.
+- Save exact native message and stream ids in the creating transaction. Never scan transcripts to rediscover them.
+- Host wrappers own authorization and environment access. Public functions need args and returns validators.
+- Tests check promised behavior. Their titles name the guarantee; hard-maximum fixtures enforce transaction budgets.
+- Use conventional local commits without AI attribution. Push only when asked.
+
+## Convex skills
+
+Read the relevant `SKILL.md` before changing a backend boundary:
+
+| Task                               | Repository skill                                  |
+| ---------------------------------- | ------------------------------------------------- |
+| Component ownership and boundaries | `.agents/skills/convex-create-component/SKILL.md` |
+| Backend/schema design              | `.agents/skills/convex-design/SKILL.md`           |
+| Security and performance review    | `.agents/skills/convex-reviewer/SKILL.md`         |
+| Behavior tests                     | `.agents/skills/convex-test/SKILL.md`             |
+
+Follow referenced files in the selected skill. `.claude/skills` links to the
+same pinned directory. If the checkout has `.codegraph/`, use `codegraph explore`
+before source search or reads. Do not create an index unless requested.

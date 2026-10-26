@@ -11,6 +11,7 @@ Run the offline suite with two workers and no prior build:
 bun run test
 bun run check
 bun run typecheck:tests
+bun run --cwd docs/site check:snippets
 ```
 
 Tests resolve package imports to source. Registry payloads also type-check in a
@@ -34,7 +35,8 @@ Live tests use keys from the main checkout's `.env.local`:
 `OPENROUTER_API_KEY`, `DAYTONA_API_KEY`, and `FIRECRAWL_API_KEY`. Use
 `openrouter/free`, keep Firecrawl to at most three calls per full run, and never
 print credentials. Telemetry live checks additionally require the Langfuse keys
-and base URL configured there.
+and base URL configured there: `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`
+and `LANGFUSE_BASE_URL`.
 
 Assert promised behavior: each test title names the guarantee it protects.
 Workflow journal replay tests preserve step ordering. Fake backends keep the

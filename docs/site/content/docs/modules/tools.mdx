@@ -1,42 +1,141 @@
 ---
 title: Tools
-icon: Wrench
-description: Bounded AI SDK tools copied into your Convex host.
+description: Host factories and editable, bounded registry state.
 status: Available
 ---
 
-Tools are editable source from the [registry](/docs/registry). Install only
-what you need into an existing agevex host; no extra Convex component is mounted.
-Set `"tsx": true` in the host's `components.json` before installing.
+Tools provides model tool factories and installable host state. Use it for todos,
+thread goals, user questions and explicit spending consent. Factories run in the
+host action with core's fenced ToolContext. Installed queries, mutations and
+tables run in the host Convex app. This module owns no component.
 
-| Item                                           | Contract and state                                                                                                                                                                                                                                                                         |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [Todo](/docs/tools/todo)                       | `todo_read` / `todo_write`: replace or read up to 100 items and 32 KiB per list. Host table `agevexTodos`, scoped by owner and thread.                                                                                                                                                     |
-| [Goals](/docs/tools/goals)                     | `goal_set` / `goal_check`: set or read one goal, up to 4000 characters. Host table `agevexGoals`: one row per owner and thread; the goal survives later runs.                                                                                                                              |
-| [Ask the user](/docs/tools/ask-user)           | `ask_user`: a deferred question up to 2000 characters, answered with free text through core `answer`. No item table.                                                                                                                                                                       |
-| [Continue budget](/docs/tools/continue-budget) | `continue_budget`: native approval with a reason up to 2000 characters, plus `resumeAfterBudgetStop`, an atomic one-mutation resume for runs stopped with `BUDGET_EXCEEDED`. Host table `agevexBudgetConsents` holds single-use, run-bound consent; consent does not change budget policy. |
+## Wire it into agevex
 
-Start the docs site from `docs/site` with `bun run dev`, or replace the origin:
+Install the [built package and peers](/docs/getting-started). There is no module
+convex.config mount. Start the docs site or replace the registry origin, then
+install the stateful tools you need:
 
-```sh title="Terminal"
+```sh title="Host app"
 bunx shadcn add http://localhost:3000/r/todo.json
 bunx shadcn add http://localhost:3000/r/goals.json
-bunx shadcn add http://localhost:3000/r/ask-user.json
-bunx shadcn add http://localhost:3000/r/continue-budget.json
 ```
 
-Merge the todo, goal and consent table snippets into your existing host schema. Each
-item's guide shows its factory and registration. Todo, goals and
-continue-budget use core `defineOnceTool` for trusted `ToolContext` facts,
-cancellation fences and idempotent results; `ask_user` is a deferred tool with no
-`execute`. Ownership is never model input; the host keeps its
-`authorize` and `authorizeExecution` policies and owns state retention.
+Merge their tables into the host schema and run `bunx convex dev` to generate
+state references. The [registry guide](/docs/registry) covers install details.
 
-Answer `ask_user` with core `answer({ threadId, toolCallId, text })` and
-`continue_budget` approvals with core `respond({ threadId, approvalId, approved })`
-so the waiting turn wakes; saving a native result or response directly does not.
-Pending-call state lives in core and the native Agent.
+```ts title="convex/schema.ts"
+import { defineSchema } from "convex/server";
+import { todoTables } from "./agevexTools/todoSchema.js";
+import { goalTables } from "./agevexTools/goalsSchema.js";
 
-Factories are also exported from `agevex/tools`. Registry source lives in
-`src/modules/tools/registry/<item>/`; rebuilding the registry keeps the same
-installed `convex/agevexTools/` targets.
+export default defineSchema({ ...todoTables, ...goalTables });
+```
+
+Define the tool bag:
+
+```ts title="convex/toolset.ts"
+import {
+  createTodoTools,
+  createGoalTools,
+  createAskUserTool,
+  createContinueBudgetTool,
+} from "agevex/tools";
+import { internal } from "./_generated/api.js";
+import type { ToolSet } from "ai";
+
+export const tools: ToolSet = {
+  ...createTodoTools(internal.agevexTools.todoState),
+  ...createGoalTools(internal.agevexTools.goalsState),
+  ask_user: createAskUserTool(),
+  continue_budget: createContinueBudgetTool(),
+};
+```
+
+Replace `convex/agents.ts` from getting started. Reuse the policies and refs
+in `agentConfig.ts`, and register a root with the tools:
+
+```ts title="convex/agents.ts"
+import { Agent, registerAgent } from "agevex";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { components } from "./_generated/api.js";
+import { registration } from "./agentConfig.js";
+import { tools } from "./toolset.js";
+
+const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY });
+const main = new Agent(components.agent, {
+  name: "Main",
+  languageModel: openrouter.chat("openrouter/free", { usage: { include: true } }),
+  instructions: "Use tools to track work and ask for missing information.",
+  tools,
+});
+export const runtime = registerAgent(components.agevex, {
+  ...registration,
+  agents: [main],
+});
+export const { runTurn, coordinate } = runtime.internalFunctions();
+export const {
+  open,
+  send,
+  cancel,
+  respond,
+  answer,
+  messages,
+  streams,
+  activity,
+  runTree,
+  delegations,
+} = runtime.authorizedEndpoints();
+```
+
+There is no tools slot. Register `continue_budget` on roots only and install
+its [consent state and approve/resume wrappers](/docs/tools/continue-budget)
+before offering that flow.
+
+## Tool behavior
+
+| Item                                           | Model API                                | Host state                                    |
+| ---------------------------------------------- | ---------------------------------------- | --------------------------------------------- |
+| [Todo](/docs/tools/todo)                       | `todo_write({ todos })`, `todo_read({})` | One list per owner/thread                     |
+| [Goals](/docs/tools/goals)                     | `goal_set({ goal })`, `goal_check({})`   | One goal per owner/thread                     |
+| [Ask the user](/docs/tools/ask-user)           | `ask_user({ question })`                 | No item table; core records the deferred call |
+| [Continue budget](/docs/tools/continue-budget) | `continue_budget({ reason })`            | Single-use, run-bound host consent            |
+
+Answer deferred questions through core `answer`. Answer approvals through
+core `respond`; a native-only response does not wake the managed turn.
+Effects use once-tool receipts. Owner/thread facts come from ToolContext, never
+model input. Public wrappers must authorize callers before internal state calls.
+
+## API reference
+
+{/* GENERATED_API_START */}
+
+Generated from the current exported TypeScript signatures in [the module entry](https://github.com/pixelscortex/agevex/blob/HEAD/src/modules/tools/client/index.ts). TypeScript does not encode thrown errors; the error column describes implementation behavior.
+
+AI SDK tool types come from `ai`. Local `Result` is `{ todos: { id: string; text: string; done: boolean }[] }`; `Context` is the AI SDK context type.
+
+| Name                                                 | Arguments                              | Returns                                                                                                                                                                               | Errors / failure behavior                                           |
+| ---------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `createTodoTools`                                    | `refs: TodoFunctions`                  | `{ todo_read: Tool<Record<string, never>, Result>; todo_write: Tool<{ todos: { id: string; text: string; done: boolean; }[]; }, Result>; }`                                           | Model validation; managed receipt denied/failed/unknown outcomes.   |
+| `createGoalTools`                                    | `refs: GoalFunctions`                  | `{ goal_set: Tool<{ goal: string; }, { goal: string; }>; goal_check: Tool<Record<string, never>, { goal: string \| null; }>; }`                                                       | Model validation; managed receipt denied/failed/unknown outcomes.   |
+| `createAskUserTool`                                  | `—`                                    | `Tool<{ question: string; }, never, Context>`                                                                                                                                         | Model validation; no execute function, so the call is deferred.     |
+| `createContinueBudgetTool`                           | `—`                                    | `Tool<{ reason: string; }, { status: string; code: string; approved?: undefined; reason?: undefined; } \| { approved: true; reason: string; status?: undefined; code?: undefined; }>` | Model validation; ROOT_ONLY after approval on a child.              |
+| `resumeAfterBudgetStop<Receipt extends SendReceipt>` | `flow: ResumeAfterBudgetStop<Receipt>` | `Promise<{ status: "no-consent"; } \| { status: "not-stopped"; } \| { status: "resumed"; receipt: Exclude<Receipt, { status: "rejected" \| "duplicate"; }>; }>`                       | Rejected send code or DUPLICATE_RESUME throws; consent errors deny. |
+
+{/* GENERATED_API_END */}
+
+## Limits
+
+| Item                      | Bound                                         |
+| ------------------------- | --------------------------------------------- |
+| Todo list                 | 100 items, 32 KiB serialized UTF-8 total      |
+| Todo id / text            | 100 / 4,000 characters                        |
+| Goal                      | 1–4,000 trimmed characters                    |
+| Question / consent reason | 1–2,000 trimmed characters                    |
+| Consent approval id       | 512 UTF-8 bytes                               |
+| State cleanup             | 128 deletions plus one lookahead row per call |
+
+Host state outlives threads. Call each internal cleanup until `done`; no cleanup
+reschedules itself. Consent retention outlasts core receipt replay. A failed,
+duplicate or rejected budget-resume send throws and rolls back consent spending,
+budget changes and cancellation. Unknown paid outcomes never retry automatically.
+See the [module README](https://github.com/pixelscortex/agevex/blob/HEAD/src/modules/tools/README.md).

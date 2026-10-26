@@ -30,8 +30,17 @@ nonblank, trimmed question at 2000 characters; blank, oversized or extra fields
 Show the pending question from the thread's `messages` (the tool call's
 `input.question`), then answer through core:
 
-```ts
-await answer({ threadId, toolCallId, text: "Use the green option" });
+```ts title="client/answerQuestion.ts"
+import type { ConvexClient } from "convex/browser";
+import { api } from "../convex/_generated/api.js";
+
+export async function answerQuestion(client: ConvexClient, threadId: string, toolCallId: string) {
+  return client.mutation(api.agents.answer, {
+    threadId,
+    toolCallId,
+    text: "Use the green option",
+  });
+}
 ```
 
 Core authorizes the thread owner, saves `text` as the native tool result and

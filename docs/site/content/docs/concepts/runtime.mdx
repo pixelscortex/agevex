@@ -1,88 +1,72 @@
 ---
 title: Runtime
-icon: Cpu
-description: Current Workpool basics and the planned Workflow execution model.
-status: Planned
+description: Workflow-backed turns, authorization, and exported host endpoints.
+status: Available
 ---
 
-## Available: current runtime basics
+## Register once
 
-Today, Workpool dispatches one action per turn, with a 120-second watchdog.
-Uncertain outcomes enter `recovery_required` and are not retried. Delegation is
-depth 1; result turns cannot delegate, and there is no cancel or durable waiting.
-The native Agent component keeps the transcript and streaming.
+`registerAgent(component, registration)` returns `authorizedEndpoints()`,
+`internalFunctions()`, `runTask`, `registerFile`, `fileAttached`, `note`
+and `sandboxComplete`. See the complete [registration](/docs/getting-started).
 
-## Planned: Workflow-backed turns
+Export `runTurn` and `coordinate` as internal host functions. Only roots go in
+`registration.agents`; reachable children belong in each Agent's `subagents`.
+Direct native Agent calls remain unmanaged.
 
-A long-lived loop workflow manages each thread. It runs turn workflows and sleeps
-on `awaitEvent('ping')` when the inbox is empty. Inbox rows are the source of
-truth; a ping is only a doorbell.
+## Execute bounded slices
 
-```text title="Planned workflow execution"
-open/send → inbox row (durable) → ping
-loop workflow (one per managed thread)
-  └─ turn workflow
-       take next inbox row
-       repeat slice ≤ maxSlices:
-         agentStep action (one model step, maxRetries 0, retry false)
-         tools run inside the step; delegation/sandbox/extract enqueue work
-         between slices: take steering posts, check budget, check cancel
-       if waiting on children/jobs → awaitEvent, then continue
-       report to parent (if child) → finish
-```
+Each managed thread has a loop Workflow. It reserves FIFO inbox work and invokes
+a turn Workflow, which dispatches one host action per model slice. Root and child
+lanes default to parallelism 2 and 4. Only ids and small control values cross
+Workflow steps. Journals rotate before their 8 MiB ceiling.
 
-Each slice performs one model step. Paid actions use `maxRetries: 0` and
-`retry: false`; recovery is explicit. The workflow can resume and record a typed
-failure without automatically repeating paid generation.
+A slice rechecks authorization and budget, runs hooks, executes one native model
+step and records exact saved ids. Tool calls can admit the next slice. The default
+is 16 slices per turn, at most 64. Model retries and paid action retries are
+disabled. A 90-second generation deadline and 120-second watchdog bound failure.
+An uncertain outcome enters `recovery_required`; it never silently regenerates.
 
-Only IDs cross steps. Transcripts, file bodies and tool outputs stay outside
-workflow arguments: the journal is bounded to 8 MiB and a step value to 800 KiB.
-Step order is versioned and protected by journal replay checks.
+## Authorize at both boundaries
 
-Cancellation cannot stop an action directly. Actions poll a cancel flag about
-every second, abort through an `AbortController`, and fence writes with
-`(executionId, cancellationEpoch)`.
+`authorize(ctx, scope)` returns `{ subject }` for public operations and
+background delegation, delivery and sandbox completion. Background scopes carry
+persisted, capability-checked facts; recheck them against current host policy.
+Do not require an interactive identity on a background call or blindly echo its
+subject.
 
-## Registration shape (planned)
+`authorizeExecution(actionCtx, scope)` runs before every model generation,
+including children and result turns. It returns void or throws. It receives
+server-derived assignment, thread, run-origin and optional child facts.
 
-```ts title="Planned runtime registration"
-const runtime = registerAgent(components.sdk, {
-  agents: [main],
-  refs: { runTurn: () => internal.agents.runTurn, coordinate: () => internal.agents.coordinate },
-  authorize,                // public reads/writes + background ops (unchanged contract)
-  authorizeExecution,       // before every generation (unchanged)
-  limits?: Partial<Limits>, // §3.3 bounds
-  observe?: ObserveAgentEvent,   // PR #2
-  usage?: UsageHooks,            // §6
-  telemetry?: TelemetryOptions,  // §7
-})
-export const { open, send, cancel, messages, activity, delegations } =
-  runtime.authorizedEndpoints()
-```
+## Public host endpoints
 
-The draft renames `registerAgevex` to `registerAgent`. Public operations and
-background operations still require host authorization; execution policy is
-checked before every generation.
+The following endpoints come from `runtime.authorizedEndpoints()`.
+All require the host authorization policy. Optional arguments use `?`.
 
-## State ownership
+| Endpoint      | Arguments                                     | Result                                         |
+| ------------- | --------------------------------------------- | ---------------------------------------------- |
+| `open`        | `agent, prompt, requestKey, models?, files?`  | `Receipt` for a new root thread                |
+| `send`        | `threadId, text, requestKey, models?, files?` | `Receipt` for an existing root                 |
+| `respond`     | `threadId, approvalId, approved, reason?`     | `{ messageId, replayed }`                      |
+| `answer`      | `threadId, toolCallId, text`                  | `{ messageId, replayed }`                      |
+| `cancel`      | `threadId`                                    | `null`                                         |
+| `messages`    | `threadId, paginationOpts`                    | Native message page with origin metadata       |
+| `streams`     | `threadId, streamArgs`                        | Native stream synchronization result           |
+| `activity`    | `threadId`                                    | `Activity` for a root                          |
+| `runTree`     | `threadId`                                    | Current root request's bounded descendant tree |
+| `delegations` | `threadId, paginationOpts`                    | Root history, newest first                     |
 
-The draft evolves assignments into threads and pending rows into a FIFO inbox.
-It extends receipts and child runs, and adds one core table, `runs`, for a user
-request’s launch/hop counters and budget. It does not copy Workflow or Workpool
-state. The Agent component still owns threads, messages and streaming.
+## Cancellation
 
-Tools receive trusted facts, rather than an SDK permission system:
+Cancel fences the root and every live descendant in one bounded transaction.
+Running actions poll cancellation about once a second. Their managed writes
+check the execution id and cancellation epoch. Cancellation settles recorded
+pending calls with native execution-denied results; it cannot retract an
+external request already in flight. A fresh send can reopen a cancelled thread
+once cleanup succeeds.
 
-```ts title="Planned tool context"
-type ToolContext = {
-  ctx: ActionCtx; // the normal Convex action ctx
-  subject: string; // whose request this is (the thread owner)
-  threadId: string; // the thread this call runs in (root or child)
-  runId: string; // the user request it belongs to (grouping, costs)
-  toolCallId: string; // unique per call; a ready-made idempotency key
-  signal: AbortSignal; // fires on cancel or deadline; pass to fetch/providers
-};
-```
-
-The host enforces tool permissions. See [delegation](/docs/concepts/delegation),
-[idempotency](/docs/concepts/idempotency) and [limits](/docs/concepts/limits).
+The component's execution read is
+`components.agevex.turns.slices.execution`, a bounded projection for the host
+runner. It is internal coordination data, not a public authorization surface.
+See [architecture](/docs/concepts/architecture) for ownership and current paths.

@@ -1,53 +1,66 @@
 ---
 title: Idempotency
-icon: FingerprintPattern
-description: The planned receipts ledger fences stale work and preserves unknown outcomes.
-status: Planned
+description: Fenced effect admission, replay, and unknown outcomes.
+status: Available
 ---
 
-The SDK extends its existing `receipts` table into a shared idempotency ledger.
-A `(scope, key)` pair identifies work; the key defaults to `toolCallId`. A hash
-of the input detects a reused key with changed arguments as `KEY_CONFLICT`.
+## Request and effect identities
 
-## State transitions
+`open` and `send` dedupe by subject and request key. Managed once-tools use
+`receipts.effects.begin` and `receipts.effects.complete`. Their scope hashes
+the subject, thread and tool name; the key hashes the custom key or tool-call id.
+An input fingerprint detects changed input under the same key.
 
-```text title="Planned receipt transitions"
-begin(scope, key, fingerprint)
-  no row                          → running, new claim         → run it
-  running, lease live             → "in progress"              → don't run
-  running, lease expired          → unknown                    → don't run (outcome unknown)
-  done / failed                   → return stored result       → don't run
-  any row, different fingerprint  → KEY_CONFLICT
-complete(claim, result | failure)
-  claim matches and row running   → done / failed
-  otherwise                       → ignored (stale or superseded)
+| Receipt state         | Admission behavior                                                  |
+| --------------------- | ------------------------------------------------------------------- |
+| Missing               | Create a running claim and run once                                 |
+| Running, lease live   | Return `running`                                                    |
+| Done or failed        | Replay the stored result                                            |
+| Expired or unknown    | Return `unknown`; only an explicitly repeat-safe effect can reclaim |
+| Different fingerprint | Deny with `KEY_CONFLICT`                                            |
+| Stale execution fence | Refuse the managed write                                            |
+
+Completion checks the claim, lease and execution fence. Expiration does not
+prove that a provider did no work. Inspect the provider outcome before deciding
+whether to issue a new operation.
+
+## Define a managed tool
+
+```ts title="convex/echo.ts"
+import { defineOnceTool } from "agevex";
+import { z } from "zod";
+
+export const echo = defineOnceTool({
+  name: "echo",
+  input: z.strictObject({ text: z.string().max(1000) }),
+  run: ({ text }, tc) => {
+    tc.signal.throwIfAborted();
+    return { text, threadId: tc.threadId };
+  },
+});
 ```
 
-A random claim fences completion. A live claim blocks concurrent execution.
-A lease that expires becomes **unknown**: expiration is not evidence that an
-external effect did not happen, so the SDK does not silently run it again.
-The model receives an unknown outcome and must check before retrying.
+Add `echo` to a managed Agent's `tools`. The runtime binds the receipt and
+trusted `ToolContext`; calling its unbound execute throws
+`MANAGED_TOOL_CONTEXT_REQUIRED`. `run` returns a Convex-serializable value.
+A thrown tool body saves a sanitized `TOOL_FAILED` result when its claim is valid.
 
-The ledger stores bounded results, or a storage ID for larger results. Rows
-have `expiresAt` and are purged in scheduled batches.
+`key(input, tc)` can define an effect identity across tool calls. Keep it
+stable. `repeatSafe` defaults to false. `leaseMs` defaults to ten minutes;
+the registration default may be raised up to one day. A tool-specific
+`leaseMs` must be positive. Results must fit 64 KiB; return a
+storage id for larger content. Receipts retain a seven-day replay window and
+are purged in bounded batches.
 
-## Tool helper (planned)
+## Structured tasks
 
-This is a spec shape; the optional-property notation describes the contract.
+`defineTask` declares input/output schemas, a prompt and optional model.
+`runTask(hc, task, input)` inside a managed hook inherits the receipt context,
+attribution and fence. Standalone `runtime.runTask(ctx, task, input, options)`
+requires a stable `key`, server-derived `attribution` and a model on the task
+or options. One repair re-ask is allowed for invalid structured output; unknown
+paid outcomes are never retried. See [slots](/docs/concepts/slots).
 
-```ts title="Planned idempotent tool helper"
-defineOnceTool({
-  name, input, run,
-  key?: (input, tc) => string,   // default tc.toolCallId
-  repeatSafe?: boolean,          // true: an expired lease may be re-claimed
-  leaseMs?: number,              // default 10 min
-})
-```
-
-Only an explicitly repeat-safe effect may reclaim an expired lease. The default
-lease is ten minutes. This provides fenced admission, not exactly-once external
-effects: a safe retry still depends on the provider.
-
-The same ledger backs open/send keys, sandbox background jobs and extraction
-admission. Today’s runtime already deduplicates accepted requests; this extended
-ledger and its unknown-outcome rules are planned.
+Sandbox and extract have their own durable claims. They do not share the core
+request ledger for all module operations. Receipt fencing controls admission;
+external exactly-once effects still require provider support.

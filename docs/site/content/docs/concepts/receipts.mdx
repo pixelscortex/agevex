@@ -8,24 +8,13 @@ status: Available
 `open` and `send` return a receipt immediately. They never wait for a model
 turn.
 
-```ts title="Receipt union"
-type Receipt =
-  | {
-      status: "accepted";
-      position: number;
-      threadId: string;
-      assignmentId: string;
-      receiptId: string;
-    }
-  | {
-      status: "duplicate";
-      position?: number;
-      threadId: string;
-      assignmentId: string;
-      receiptId: string;
-    }
-  | { status: "rejected"; code: RejectionCode };
-```
+| Status      | Fields                                                    |
+| ----------- | --------------------------------------------------------- |
+| `accepted`  | `threadId, assignmentId, receiptId, position`             |
+| `duplicate` | The same identity fields and required original `position` |
+| `rejected`  | A typed `code`                                            |
+
+Import the validator-derived `Receipt` type from `agevex`.
 
 `position` is the zero-based inbox place at acceptance, including a reserved
 head until a claim consumes it. A duplicate keeps the position of the original

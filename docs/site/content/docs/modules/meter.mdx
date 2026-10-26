@@ -1,40 +1,41 @@
 ---
 title: Meter
-icon: Coins
-description: Cost recording, core usage and budget slots, aggregate reads and durable billing sinks.
+description: Attributed costs, budget gates, and durable billing sinks.
 status: Available
 ---
 
-## Setup
+Meter records provider costs and gates the next slice on known spend. Use it for
+per-run budgets, cost breakdowns or billing sinks. Its Convex component owns
+charges, operation receipts and a durable sink outbox. Host functions own pricing,
+authorization, provider evidence and sink credentials.
 
-Mount the component, then register providers and any internal host workers.
+## Wire it into agevex
+
+Install the [built package and peers](/docs/getting-started). Meter needs no
+additional host package. Mount it explicitly as `meter`:
 
 ```ts title="convex/convex.config.ts"
 import { defineApp } from "convex/server";
+import agent from "@convex-dev/agent/convex.config";
+import agevex from "agevex/convex.config";
 import meter from "agevex/meter/convex.config";
 
 const app = defineApp();
+app.use(agent, { name: "agent" });
+app.use(agevex, { name: "agevex" });
 app.use(meter, { name: "meter" });
 export default app;
 ```
 
+Define the host workers. Inline OpenRouter evidence requires provider usage cost
+metadata; request `usage: { include: true }` on OpenRouter model calls.
+
 ```ts title="convex/billing.ts"
-import { defineMeter, inline, polarSink } from "agevex/meter";
-import { components, internal } from "./_generated/api";
+import { defineMeter, inline } from "agevex/meter";
+import { components, internal } from "./_generated/api.js";
 
 export const meter = defineMeter(components.meter, {
-  providers: {
-    openrouter: inline(),
-    fal: { profiles: { image: { unit: "image", usd: 0.04 } } },
-    firecrawl: { credits: { usdPerCredit: 0.001 } },
-  },
-  breakdowns: ["thread.model", "thread.provider"],
-  sinks: [
-    polarSink({
-      meter: "ai_usage",
-      accessToken: process.env.POLAR_ACCESS_TOKEN!,
-    }),
-  ],
+  providers: { openrouter: inline() },
   workers: {
     lookup: internal.billing.meterLookup,
     deliver: internal.billing.meterDeliver,
@@ -44,322 +45,119 @@ export const meter = defineMeter(components.meter, {
 export const { meterLookup, meterDeliver } = meter.internalFunctions();
 ```
 
-Lookup providers require `workers.lookup`; sinks require `workers.deliver`.
-Authorize public wrappers with the host's ownership policy.
-
-Host `authorize(ctx, scope)` guards host-facing calls: `scope`, `threadCost`,
-`subjectCost`, `breakdown`, `check` and `retrySinks`. The slot adapters
-(`usageSlot`, including `tc.meter`, and `budgetSlot`) skip it: they trust
-whatever attribution core passes and run in background actions without user
-identity. Core derives that attribution for managed turns, but
-`runtime.runTask(ctx, task, input, { attribution })` forwards host-supplied
-attribution, which must therefore be server-derived, never client input.
-`prune` is a host admin operation, like extract's `purge`: it performs no
-`authorize`; expose it only behind your own admin check.
-
-## Wire it into agevex
-
-Pass the adapters to the core registration alongside your agents, authorization
-and runtime references:
+Replace `convex/agents.ts` from [getting started](/docs/getting-started). Keep
+its `agentConfig.ts`, which supplies the agents, policies and internal refs.
 
 ```ts title="convex/agents.ts"
 import { registerAgent } from "agevex";
-import { meter } from "./billing";
+import { components } from "./_generated/api.js";
+import { registration } from "./agentConfig.js";
+import { meter } from "./billing.js";
 
-const runtime = registerAgent(components.agevex, {
-  agents: [main],
-  authorize,
-  refs,
+export const runtime = registerAgent(components.agevex, {
+  ...registration,
   usage: meter.usageSlot(),
   budget: meter.budgetSlot(),
 });
+export const { runTurn, coordinate } = runtime.internalFunctions();
+export const {
+  open,
+  send,
+  cancel,
+  respond,
+  answer,
+  messages,
+  streams,
+  activity,
+  runTree,
+  delegations,
+} = runtime.authorizedEndpoints();
 ```
 
-Managed tools receive `tc.meter` with subject, root/thread, run and agent
-attribution plus stable hashed keys. Core records one charge per saved model
-step, including model attribution, and adds none on replay. For OpenRouter
-enable `usage: { include: true }`.
+Core derives attribution and replay-stable keys. `usageSlot` resolves exact
+provider names, explicit mappings, then the longest registered dotted prefix.
+For example, `openrouter.chat` resolves to `openrouter`. Unresolved providers
+record unknown cost. Do not also attach `usageHandlerFor` to managed calls.
 
-Core passes the Agent's stored `message.provider`, the AI SDK provider id
-(`"openrouter.chat"` for `@openrouter/ai-sdk-provider`), else `"model"`. The
-slot resolves an exact registered name, then an explicit
-`usageSlot({ providers: { "<sdk id>": "<registered name>" } })` mapping, then
-the longest registered dotted prefix (`google.vertex.chat` resolves to `google.vertex` before `google`), so `openrouter: inline()` prices
-`"openrouter.chat"`. An unresolved name is recorded `unknown` and denies the
-next slice. A model id over 128 bytes is stored as `sha256:<hex>`.
-Use `usageHandlerFor` only for standalone Agent calls outside this registration
-to avoid charging the same step twice.
+## Charge and budget semantics
 
-`budgetSlot()` uses the configured `budgets` policy; `budgetSlot(scope =>
-({ maxUsd: 2 }))` overrides the cap for this registration. It checks before
-each slice, counts estimates and fails closed on unknown costs or check errors.
-A denied slice ends with `BUDGET_EXCEEDED`. This gate reserves no future spend.
-Read the result with `meter.threadCost(ctx, { threadId })` using the root thread id.
+`scope(ctx, attribution)` serves standalone host operations. Supply stable
+creation keys and a distinct stable operation key for each attach/correct/settle.
+Creation-key conflicts throw `KEY_CONFLICT`. Operation-key replays return their
+original snapshots; use `get()` for current state. After 32 operation keys,
+new operations fail with `OPERATION_CAPACITY`; retained keys still replay.
 
-### Provider kinds
+Providers can combine `inline`, per-unit `profiles`, `credits` conversion
+and read-only `lookup`. Lookup never repeats a paid provider call. Unknown
+cost denies the budget check even without a configured cap. Estimates count
+against the cap; the check reserves no future spend. A denied core slice ends
+with `BUDGET_EXCEEDED`.
 
-Providers are host-named `Provider` objects; capabilities can be combined.
+Amounts above $90 remain `unknown / OVER_CAP`: aggregates count at most $90
+for that charge, while sinks retain its full known amount. Other unknown reasons
+include missing/invalid evidence, unregistered providers/profiles and root-thread
+capacity. Authoritative settlement can resolve an unknown charge. Settlement is
+final; later amount changes are ignored.
 
-| Configuration                                         | Evidence and behavior                                                                                                                                                      |
-| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `inline(decode?)`                                     | Defaults to `providerMetadata.openrouter.usage.cost`. Custom decoders return `{ usd }`, `{ credits }` or `undefined`; valid zero settles, absent evidence records unknown. |
-| `profiles: { [name]: { unit, usd } }`                 | Host assumptions for per-unit estimates and quantity corrections.                                                                                                          |
-| `credits: { usdPerCredit }`                           | Explicit conversion rate required for credit evidence; credits are not dollars.                                                                                            |
-| `lookup: async (ctx, requestId) => Cost \| undefined` | Read-only billing evidence after attachment; never repeat a paid operation. `lookupFor` accepts milliseconds, `"1h"` or `"1d"`.                                            |
-| No cost evidence                                      | A record remains unknown; an unpriced estimate contributes an unknown to reads.                                                                                            |
+`authorize` guards standalone operations. Core slots trust server-derived
+attribution and skip that callback. Public wrappers must check ownership.
+`prune` has no authorization callback; put it behind a host admin check.
+Pruning makes a removed key available again, so retain keys beyond your replay
+window. Model/provider breakdowns are opt-in and do not backfill old charges.
 
-`record` and `estimate` never throw on a charge they cannot price: it is
-recorded `unknown` with a `reason` and `check` denies. Reasons: `NO_COST`,
-`DECODE_FAILED`, `INVALID_COST`, `OVER_CAP` (above $90), `PROVIDER_NOT_REGISTERED`
-`PROFILE_NOT_REGISTERED` and `THREAD_CAPACITY`. A USD `settle` can resolve it.
+## API reference
 
-Budgeting and billing differ: `unknown` always denies `check`, but a known
-amount is still billed. A `THREAD_CAPACITY` charge with a settled/inline
-amount and an `OVER_CAP` charge (its full amount is kept) are delivered to
-sinks; unknown estimates are not. `correct`/`settle` and lookup results above $90 likewise become `unknown` / `OVER_CAP` with the amount, instead of throwing. Reads under-report them: `threadCost`, `subjectCost` and `breakdown` count at most $90 per `OVER_CAP` charge, while sinks bill the full amount.
+{/* GENERATED_API_START */}
 
-### Charge lifecycle and keys
+Generated from the current exported TypeScript signatures in [the module entry](https://github.com/pixelscortex/agevex/blob/HEAD/src/modules/meter/client/index.ts). TypeScript does not encode thrown errors; the error column describes implementation behavior.
 
-Inside a host action, supply attribution and stable keys explicitly:
+`Meter`, context, provider and charge types are exported from `agevex/meter`. Budget and usage slot types are exported from `agevex`; `UsageHandler` comes from `@convex-dev/agent`.
 
-```ts title="Recording a charge in a host action"
-import { meter } from "./billing";
+| Name                        | Arguments                                                                                                                                                                                                        | Returns                                                                                                                                                                                                                 | Errors / failure behavior                                                                            |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `defineMeter`               | `component: ComponentApi, options: MeterOptions`                                                                                                                                                                 | `Meter`                                                                                                                                                                                                                 | Invalid configuration/arguments or host policy throws; unknown price is recorded, then denies check. |
+| `inline`                    | `decode?: NonNullable<Provider["inline"]>`                                                                                                                                                                       | `Provider`                                                                                                                                                                                                              | Decoder failures become unknown cost when recording.                                                 |
+| `openRouterCost`            | `providerMetadata: unknown`                                                                                                                                                                                      | `number \| undefined`                                                                                                                                                                                                   | Returns undefined for absent or invalid cost evidence.                                               |
+| `observeProviderOutcome<T>` | `options: { invoke: () => Promise<T>; onSuccess: (result: T) => void \| Promise<void>; onFailure?: (error: unknown) => void \| Promise<void>; onObservationError?: (error: unknown) => void \| Promise<void>; }` | `Promise<T>`                                                                                                                                                                                                            | Rethrows invoke failure; observation failures are contained.                                         |
+| `usageHandlerFor`           | `meter: Meter, options: { provider?: string; identity: (args: Parameters<UsageHandler>[1]) => Pick< Attribution, "subject" \| "rootThreadId" \| "runId" > & { messageId: string; step: number; }; }`             | `UsageHandler`                                                                                                                                                                                                          | USAGE_THREAD_REQUIRED; invalid identity or metering errors.                                          |
+| `polarSink`                 | `options: { meter: string; accessToken: string; server?: "production" \| "sandbox"; name?: string; fetch?: typeof fetch; }`                                                                                      | `Sink`                                                                                                                                                                                                                  | SinkDeliveryError for HTTP, timeout or response failures.                                            |
+| `webhookSink`               | `options: { url: string; name?: string; headers?: Record<string, string>; fetch?: typeof fetch; }`                                                                                                               | `Sink`                                                                                                                                                                                                                  | SinkDeliveryError for HTTP, timeout or response failures.                                            |
+| `meter.internalFunctions`   | `—`                                                                                                                                                                                                              | `ReturnType<Meter["internalFunctions"]>`                                                                                                                                                                                | Invalid configuration/arguments or host policy throws; unknown price is recorded, then denies check. |
+| `meter.prune`               | `ctx: WriteCtx, args: { before: number; limit?: number }`                                                                                                                                                        | `Promise<{ deleted: number; more: boolean; }>`                                                                                                                                                                          | Invalid cutoff/limit. Caller must enforce admin authorization.                                       |
+| `meter.retrySinks`          | `ctx: WriteCtx, args: { key: string; subject: string }`                                                                                                                                                          | `Promise<null>`                                                                                                                                                                                                         | Host policy; CHARGE_NOT_FOUND.                                                                       |
+| `meter.threadCost`          | `ctx: ReadCtx, args: { threadId: string; cursors?: Partial<Record<"agent" \| "model" \| "provider", string>> }`                                                                                                  | `Promise<ThreadCost>`                                                                                                                                                                                                   | Host policy; BreakdownDisabledError for disabled cursor projections.                                 |
+| `meter.subjectCost`         | `ctx: ReadCtx, args: { subject: string; runId?: string }`                                                                                                                                                        | `Promise<{ totalNanos: number; estimatedNanos: number; settledNanos: number; unknown: number; unknownNanos: number; usd: { estimated: number; settled: number; }; }>`                                                   | Invalid configuration/arguments or host policy throws; unknown price is recorded, then denies check. |
+| `meter.breakdown`           | `ctx: ReadCtx, args: { subject: string; from: number; to: number; by: "day" \| "agent" \| "model" \| "provider"; cursor?: string; }`                                                                             | `Promise<{ page: { totalNanos: number; estimatedNanos: number; settledNanos: number; unknown: number; unknownNanos: number; usd: { estimated: number; settled: number; }; key: string; }[]; cursor: string \| null; }>` | Host policy; BreakdownDisabledError for disabled projections; invalid range.                         |
+| `meter.check`               | `ctx: ReadCtx, args: { subject: string; runId?: string }`                                                                                                                                                        | `Promise<{ maxNanos: number \| null; totalNanos: number; estimatedNanos: number; settledNanos: number; unknown: number; unknownNanos: number; usd: { estimated: number; settled: number; }; allowed: boolean; }>`       | Host policy; INVALID_BUDGET; unknown costs return allowed: false.                                    |
+| `meter.scope`               | `ctx: WriteCtx, attribution: Attribution`                                                                                                                                                                        | `ScopedMeter`                                                                                                                                                                                                           | Invalid configuration/arguments or host policy throws; unknown price is recorded, then denies check. |
+| `meter.usageSlot`           | `slot?: { providers?: Record<string, string> }`                                                                                                                                                                  | `UsageSlot`                                                                                                                                                                                                             | Invalid configuration/arguments or host policy throws; unknown price is recorded, then denies check. |
+| `meter.budgetSlot`          | `policy?: MeterOptions["budgets"]`                                                                                                                                                                               | `BudgetSlot`                                                                                                                                                                                                            | Invalid configuration/arguments or host policy throws; unknown price is recorded, then denies check. |
+| `scoped.estimate`           | `provider: string, args: { key: string; profile?: string; quantity: number }`                                                                                                                                    | `Promise<ChargeHandle>`                                                                                                                                                                                                 | KEY_CONFLICT; validation/policy errors. Missing pricing records unknown.                             |
+| `scoped.record`             | `provider: string, args: { key: string; usage?: unknown; providerMetadata?: unknown }`                                                                                                                           | `Promise<ChargeHandle>`                                                                                                                                                                                                 | KEY_CONFLICT; validation/policy errors. Invalid evidence records unknown.                            |
+| `charge.attach`             | `args: { requestId: string; key: string }`                                                                                                                                                                       | `Promise<Charge>`                                                                                                                                                                                                       | REQUEST_ID_CONFLICT, OPERATION_CAPACITY; validation/policy errors.                                   |
+| `charge.correct`            | `args: { quantity: number; key: string }`                                                                                                                                                                        | `Promise<Charge>`                                                                                                                                                                                                       | OPERATION_CAPACITY; validation/policy errors.                                                        |
+| `charge.settle`             | `args: Cost & { key: string }`                                                                                                                                                                                   | `Promise<Charge>`                                                                                                                                                                                                       | OPERATION_CAPACITY; validation/policy errors.                                                        |
+| `charge.get`                | `—`                                                                                                                                                                                                              | `Promise<Charge \| null>`                                                                                                                                                                                               | Host policy or invalid key.                                                                          |
 
-// ctx is the action context; ids and model come from the host operation.
-const scoped = meter.scope(ctx, {
-  subject,
-  rootThreadId,
-  threadId,
-  runId,
-  agent: "Builder",
-  model,
-});
-const charge = await scoped.estimate("fal", {
-  key: toolCallId,
-  profile: "image",
-  quantity: 6,
-});
-await charge.attach({ requestId, key: `${toolCallId}:attach` });
-await charge.correct({ quantity: 5, key: `${toolCallId}:correct` });
-await charge.settle({ usd: 0.19, key: `${toolCallId}:settle` });
-const current = await charge.get();
-```
-
-An estimate can become `corrected` (still `source: "estimate"`) or `settled`.
-A lookup deadline makes unresolved estimates unknown, retaining the last amount
-in `unknownNanos`. Corrections cannot revive unknowns; authoritative settlement
-or real lookup evidence already in flight can resolve them. Settlement is final:
-later amount changes are ignored.
-
-Creation keys are unique within the mount; `:delta:` is reserved.
-Reusing a creation key preserves the charge; conflicting provider or attribution
-throws `KEY_CONFLICT`. Every `attach`, `correct` and `settle` requires an operation
-`key`, shared across the three methods for that charge. Reuse it for retries;
-use a new key for each distinct operation. Valid replays return the original
-saved snapshot without changing totals, jobs or sinks, even if arguments differ;
-`get()` returns current state. There is no revision input.
-
-Receipts are never evicted. After 32 distinct operation keys, new keys fail with
-`OPERATION_CAPACITY`; old keys remain replayable. State-rejected operations save
-a receipt; validation errors and request-id conflicts consume none.
-Reattaching the same request id starts no duplicate lookup; changing it throws
-`REQUEST_ID_CONFLICT`. Lookup retries use exponential backoff and a separate
-deadline that survives exhausted retries or a crashed worker.
-
-## API
-
-Signatures use the types exported from `agevex/meter`; `ComponentApi` is the
-meter component type, slot types come from `agevex`, and `UsageHandler` comes
-from `@convex-dev/agent`.
-
-| Function / signature                                                                                                                                                                                                                                   | Purpose                                                                                                                                   |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `defineMeter(component: ComponentApi, options: MeterOptions): Meter`                                                                                                                                                                                   | Register providers, projections, budgets, guards and workers.                                                                             |
-| `inline(decode?: NonNullable<Provider["inline"]>): Provider`                                                                                                                                                                                           | Create an inline cost provider.                                                                                                           |
-| `meter.scope(ctx: WriteCtx, attribution: Attribution): ScopedMeter`                                                                                                                                                                                    | Bind required subject and optional root/thread/run/agent/model attribution.                                                               |
-| `meter.usageSlot(options?: { providers?: Record<string, string> }): UsageSlot`                                                                                                                                                                         | Adapt core usage and managed tool calls to the attributed, idempotent meter; resolves AI SDK provider ids.                                |
-| `meter.budgetSlot(policy?: MeterOptions["budgets"]): BudgetSlot`                                                                                                                                                                                       | Gate core slices with the configured or overridden budget policy.                                                                         |
-| `scoped.estimate(provider: string, args: { key: string; profile?: string; quantity: number }): Promise<ChargeHandle>`                                                                                                                                  | Create or replay an estimate.                                                                                                             |
-| `scoped.record(provider: string, args: { key: string; usage?: unknown; providerMetadata?: unknown }): Promise<ChargeHandle>`                                                                                                                           | Decode inline evidence and record settled or unknown cost.                                                                                |
-| `charge.attach(args: { requestId: string; key: string }): Promise<Charge>`                                                                                                                                                                             | Save request identity and start a configured lookup.                                                                                      |
-| `charge.correct(args: { quantity: number; key: string }): Promise<Charge>`                                                                                                                                                                             | Reprice using the charge's registered profile; requires that profile.                                                                     |
-| `charge.settle(args: Cost & { key: string }): Promise<Charge>`                                                                                                                                                                                         | Supply authoritative USD or credits.                                                                                                      |
-| `charge.get(): Promise<Charge \| null>`                                                                                                                                                                                                                | Read current state by the handle's exact key.                                                                                             |
-| `meter.threadCost(ctx: ReadCtx, args: { threadId: string; cursors?: Partial<Record<"agent" \| "model" \| "provider", string>> }): Promise<ThreadCost>`                                                                                                 | Read root totals and independent axis pages.                                                                                              |
-| `meter.subjectCost(ctx: ReadCtx, args: { subject: string; runId?: string })`                                                                                                                                                                           | Read subject lifetime or run totals.                                                                                                      |
-| `meter.breakdown(ctx: ReadCtx, args: { subject: string; from: number; to: number; by: "day" \| "agent" \| "model" \| "provider"; cursor?: string })`                                                                                                   | Read bounded aggregate pages.                                                                                                             |
-| `meter.check(ctx: ReadCtx, args: { subject: string; runId?: string })`                                                                                                                                                                                 | Return totals, `allowed` and `maxNanos` (null without a budget).                                                                          |
-| `meter.retrySinks(ctx: WriteCtx, args: { key: string; subject: string }): Promise<null>`                                                                                                                                                               | Resume pending deliveries after checking the stored subject.                                                                              |
-| `meter.prune(ctx: WriteCtx, args: { before: number; limit?: number }): Promise<{ deleted: number; more: boolean }>`                                                                                                                                    | Host admin retention (no `authorize`; keep behind your own admin check): delete settled, fully delivered charges created before `before`. |
-| `meter.internalFunctions()`                                                                                                                                                                                                                            | Return internal `meterLookup` and `meterDeliver` actions for host export.                                                                 |
-| `openRouterCost(providerMetadata: unknown): number \| undefined`                                                                                                                                                                                       | Extract finite nonnegative OpenRouter USD evidence, including zero.                                                                       |
-| `usageHandlerFor(meter: Meter, options: { provider?: string; identity: (args: Parameters<UsageHandler>[1]) => Pick<Attribution, "subject" \| "rootThreadId" \| "runId"> & { messageId: string; step: number } }): UsageHandler`                        | Record saved Agent steps using host identity.                                                                                             |
-| `observeProviderOutcome<T>(options: { invoke: () => Promise<T>; onSuccess: (result: T) => void \| Promise<void>; onFailure?: (error: unknown) => void \| Promise<void>; onObservationError?: (error: unknown) => void \| Promise<void> }): Promise<T>` | Observe evidence while preserving the provider result or original error.                                                                  |
-| `polarSink(options: { meter: string; accessToken: string; server?: "production" \| "sandbox"; name?: string; fetch?: typeof fetch }): Sink`                                                                                                            | Deliver Polar ingest events; production is the default.                                                                                   |
-| `webhookSink(options: { url: string; name?: string; headers?: Record<string, string>; fetch?: typeof fetch }): Sink`                                                                                                                                   | POST `{ events }` to an HTTP(S) endpoint.                                                                                                 |
-| `new SinkDeliveryError(retryAfterMs?: number, rateLimited?: boolean)`                                                                                                                                                                                  | Signal a sink failure with an optional retry delay; `rateLimited` marks a 429.                                                            |
-| `new BreakdownDisabledError(breakdown: Breakdown)`                                                                                                                                                                                                     | Identify a required projection with `code: "BREAKDOWN_DISABLED"`.                                                                         |
-
-### Reads and budget gates
-
-Totals and page entries expose integer `totalNanos`, `estimatedNanos`,
-`settledNanos`, `unknown`, `unknownNanos`, plus `usd: { estimated, settled }`.
-One dollar is 1,000,000,000 nanos. `totalNanos` sums estimates and settlements;
-unknown amounts are retained separately.
-
-`threadCost` takes the root thread id and includes children attributed with that
-`rootThreadId`. It always returns `byAgent`; `byModel` and `byProvider` are
-optional fields enabled by `thread.model` and `thread.provider`. Each axis is
-`{ page, cursor }`, with at most `limits.maxGroups` entries. Pass returned
-non-null cursors independently in `cursors: { agent, model, provider }`; omitting
-an axis cursor restarts it. Missing agent/model labels use `""`.
-
-`breakdown` uses UTC-midnight millisecond endpoints: `from` inclusive, `to`
-exclusive. Day pages cover at most `limits.maxDays` days and use string UTC-day
-ordinals as keys. Other axes use exclusive continuation cursors and up to
-`limits.maxGroups` entries; a known group with no charges in the range can have
-zero totals. These reads query aggregates, never scan charges.
-
-`check` includes estimates and denies any unknown, even without a budget.
-With a budget it permits only `totalNanos < maxNanos`. Supplying `runId` checks
-that subject's run; omitting it checks the subject's lifetime total. The gate is
-a snapshot, not an atomic reservation for future work.
-
-### Projections and write cost
-
-`breakdowns` defaults to `[]`. Always-on projections provide thread totals and
-agent pages, subject totals and UTC-day reads, plus run totals when `runId`
-exists. Each optional breakdown adds one projection per new charge:
-
-| Projection                  | Enable with          |
-| --------------------------- | -------------------- |
-| Thread model pages          | `"thread.model"`     |
-| Thread provider pages       | `"thread.provider"`  |
-| Subject agent/date pages    | `"subject.agent"`    |
-| Subject model/date pages    | `"subject.model"`    |
-| Subject provider/date pages | `"subject.provider"` |
-
-A disabled subject axis, or a cursor for a disabled thread model/provider axis,
-throws `BreakdownDisabledError` with `code: "BREAKDOWN_DISABLED"` and
-`breakdown` naming the option to enable. Disabled thread fields are omitted
-when no cursor is requested. Enabling later does not backfill; each charge
-freezes its original projection membership for future updates and workers.
-
-Every aggregate namespace belongs to one subject or one root thread; no write
-or read touches a deployment-wide tree. Roots stay lazy. Defaults write three
-projections per charge (two without run); all five breakdowns write eight.
-State movement is part of replacement, not an extra projection. Replays and
-stale operations do no aggregate writes. Each mutation handles one charge.
-
-### Sinks
-
-Custom sinks implement `{ name?: string, deliver(batch: SinkEvent[]): Promise<void> }`.
-Keep unnamed sinks in stable array order; give multiple built-in sinks unique
-names. Billable charges (corrected, settled, and unknown ones with a known amount) enter a durable outbox; recording
-does not wait for HTTP delivery. One delivery job sends up to 100 due events of
-one sink in one `deliver` call (one Polar request); new events wait one second
-so bursts share it. Failures back off and stop after `limits.maxAttempts`. A 429
-with `Retry-After` reschedules once without consuming an attempt; the next
-consecutive 429 consumes one. A crashed or cancelled job counts as one failed
-attempt for the events it claimed and charges no other event; a job that died before claiming is retried without charging, up to `maxAttempts - 1` times, then its sink's due rows take one attempt, so a worker that can never run still drives them to `failed`. Failed events stay pending for explicit `retrySinks` recovery. With `maxAttempts: 1` there is no free retry, so a single transient pre-claim crash marks that sink's due rows `failed` at once; keep `maxAttempts` at 2 or more, or call `retrySinks` after a crash.
-
-The first external id is the charge key. Later events use `key:delta:revision`
-and signed `nanos` deltas, with `totalNanos` holding the new absolute amount.
-An in-flight event's id and amount remain frozen until acknowledgement; a later
-delta catches up. Recipients must durably deduplicate external ids across retries.
-Webhooks receive `{ events }` with these same ids and deltas.
-
-Polar uses REST event ingestion with the subject as `external_customer_id`.
-Configure its meter to **sum numeric `metadata.nanos`, including negative deltas**.
-Metadata also includes `total_nanos`, `provider` and `_cost` with currency
-`"usd"`; `_cost.amount` is an exact JSON decimal number in cents (at most seven
-fractional places), not a string or dollars. For example, 290,000,000 nanos emits
-`29` cents. This adapter does not manage subscriptions or webhooks.
-
-### Saved Agent steps
-
-For standalone Agent calls outside the core usage slot, Agent 0.7.7 calls its
-usage handler after each saved model step without providing message/step
-identity. Supply it from the host's generation context:
-
-```ts title="Host usage-handler factory"
-import { usageHandlerFor } from "agevex/meter";
-import { meter } from "./billing";
-
-export function savedStepUsage(identity: {
-  subject: string;
-  rootThreadId: string;
-  runId: string;
-  messageId: string;
-  step: number;
-}) {
-  return usageHandlerFor(meter, {
-    provider: "openrouter",
-    identity: () => identity,
-  });
-}
-```
-
-Pass the returned handler as the Agent's `usageHandler`. For multistep generation,
-the identity callback must return the corresponding stable step ordinal each time.
-The charge key is the JSON tuple `[threadId, messageId, step]`; replaying the same
-identity records once. The hook supplies thread, agent name and model; provider
-defaults to the hook's provider unless overridden. Set OpenRouter
-`usage: { include: true }`. Missing thread identity throws `USAGE_THREAD_REQUIRED`;
-embeddings without a thread need an explicit scoped record. No transcript scan
-or random identity fallback is used.
-
-### Retention
-
-`meter.prune(ctx, { before, limit })` deletes up to `limit` (default 100, max 500) settled charges whose sinks all acknowledged, created before `before`, and
-their aggregate contributions. It stops early at its transaction budget and
-returns `{ deleted, more }`; call it from a host cron (it performs no `authorize`) until `more` is false. It
-never reschedules itself. Totals then cover retained charges only; pick `before`
-past any replay window, since a pruned key recorded again is a new charge.
-`before` must precede every active run and budget window: pruning lowers
-run and subject totals. `prune` refuses a cutoff newer than now minus
-`limits.pruneMinAgeMs` (7 days; hosts may lower it) with `PRUNE_TOO_RECENT`.
+{/* GENERATED_API_END */}
 
 ## Limits
 
-From exported `LIMITS`; only `maxThreadCharges`, `maxGroups`, `maxDays`,
-`maxAttempts` and `pruneMinAgeMs` accept positive integer overrides, and only downward.
+| Bound                                     | Default / ceiling                                   |
+| ----------------------------------------- | --------------------------------------------------- |
+| Providers / profiles per provider / sinks | 16 / 32 / 4                                         |
+| Charges per root thread                   | 100,000; lower with `limits.maxThreadCharges`       |
+| Distinct operation keys per charge        | 32                                                  |
+| Group page / breakdown day window         | 4 / 7; may be lowered                               |
+| Lookup/delivery attempts                  | 8; may be lowered                                   |
+| Lookup horizon                            | 1 hour default, 1 day maximum                       |
+| Sink batch / acknowledgement batch        | 100 / 16                                            |
+| Prune batch                               | 100 default, 500 maximum, also transaction-budgeted |
+| Minimum prune age                         | 7 days default; host may lower it                   |
+| Labels / keys                             | 128 / 256 UTF-8 bytes                               |
 
-| Limit                                                       | Default                          | Hard maximum                |
-| ----------------------------------------------------------- | -------------------------------- | --------------------------- |
-| `maxThreadCharges` per root thread (then `THREAD_CAPACITY`) | 100,000                          | 100,000                     |
-| `maxGroups` per axis page                                   | 4                                | 4                           |
-| `maxDays` per day page                                      | 7                                | 7                           |
-| `maxAttempts` per lookup/delivery sequence                  | 8                                | 8                           |
-| `maxOperations` receipts per charge                         | 32                               | 32                          |
-| `maxChargeNanos` (then `OVER_CAP`)                          | 90,000,000,000 ($90)             | Same                        |
-| `maxKeyBytes` (creation/operation keys)                     | 256 UTF-8 bytes                  | 256                         |
-| `maxStringBytes` (labels/request ids)                       | 128 UTF-8 bytes                  | 128                         |
-| `maxQuantity` (quantity/credits/step ordinal)               | 1,000,000                        | 1,000,000                   |
-| `maxProviders`                                              | 16                               | 16                          |
-| `maxProfiles` per provider                                  | 32                               | 32                          |
-| `maxSinks`                                                  | 4                                | 4                           |
-| Lookup window (`lookupMs` / `maxLookupMs`)                  | 3,600,000 ms (1h)                | 86,400,000 ms (1d)          |
-| Backoff (`backoffMs` / `maxBackoffMs`)                      | 1,000 ms base, multiplier 2      | 60,000 ms exponential delay |
-| `maxParallelism` (Workpool)                                 | 4                                | 4                           |
-| `sinkBatch` (events per delivery job)                       | 100 events                       | 100                         |
-| `pruneLimit` / `maxPruneLimit`                              | 100                              | 500                         |
-| `pruneMinAgeMs` (then `PRUNE_TOO_RECENT`)                   | 604,800,000 ms (7 days)          | Same                        |
-| `maxResponseBytes` (Polar acknowledgement)                  | 16,384 bytes                     | 16,384                      |
-| `requestTimeoutMs` (built-in HTTP sinks)                    | 30,000 ms                        | 30,000                      |
-| `maxTimestamp` (breakdown endpoints)                        | 8,640,000,000,000,000 ms ceiling | Same                        |
-
-## Guarantees
-
-- [Sink](#sinks) failures cannot roll back cost recording.
-- Unpriceable charges are recorded `unknown` and deny the next `check`; recording never throws for them.
-- Maximum-capacity fixtures exercise all [projections](#projections-and-write-cost), full receipts, four sinks, updates, maximum reads and `prune` within Convex transaction bounds; the next charge in the full thread is recorded `THREAD_CAPACITY`.
-
-## Known limits
-
-- Standalone calls require keys and host attribution. Gateway pricing integration and embedding middleware are not included.
-- Root/child relationships are supplied by the host; Meter does not discover them from Agent messages.
-- Fal has no per-request cost endpoint. Profiles are assumptions; Firecrawl credits need an explicit plan rate.
-- Breakdown opt-ins have no backfill. Budget gates reserve no future spend, and HTTP delivery requires recipient deduplication.
-- Retention is host-driven through `prune`. Receipts have a per-charge cap and cannot be evicted.
-- There are no browser-facing host endpoints; ownership checks remain the host's responsibility.
+Sinks deliver known amounts independently of the gate. Use stable sink event
+keys for downstream dedupe. Explicit `retrySinks` resets failed delivery;
+unknown paid work is never retried. See the
+[module README](https://github.com/pixelscortex/agevex/blob/HEAD/src/modules/meter/README.md)
+and [API notes](https://github.com/pixelscortex/agevex/blob/HEAD/src/modules/meter/API.md).

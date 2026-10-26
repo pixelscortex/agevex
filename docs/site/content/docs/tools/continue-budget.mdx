@@ -49,11 +49,20 @@ records the consent row in the same transaction. The row is
 `{ subject, threadId, approvalId, runId, spent }` in `agevexBudgetConsents`, where
 `runId` is the thread's `activity.runId` at approval time.
 
-```ts
+```ts title="convex/approveContinue.ts"
+import { mutationGeneric } from "convex/server";
+import { v } from "convex/values";
+import { api, internal } from "./_generated/api.js";
+
 export const approveContinue = mutationGeneric({
   args: { threadId: v.string(), approvalId: v.string() },
-  handler: async (ctx, { threadId, approvalId }) => {
-    const subject = await myAuthorize(ctx); // your host policy
+  handler: async (
+    ctx,
+    { threadId, approvalId },
+  ): Promise<{ messageId: string; replayed: boolean }> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("UNAUTHENTICATED");
+    const subject = identity.subject;
     const response = await ctx.runMutation(api.agents.respond, {
       threadId,
       approvalId,
@@ -61,6 +70,7 @@ export const approveContinue = mutationGeneric({
     });
     if (!response.replayed) {
       const { runId } = await ctx.runQuery(api.agents.activity, { threadId });
+      if (!runId) throw new Error("RUN_NOT_FOUND");
       await ctx.runMutation(internal.agevexTools.continueBudgetState.record, {
         subject,
         threadId,
@@ -109,27 +119,37 @@ never resumes it, because the step that tripped the budget may be an uncertain
 paid step. `resumeAfterBudgetStop` runs the supported sequence, and you call it
 inside **one host mutation**:
 
-```ts
+```ts title="convex/resumeBudget.ts"
 import { resumeAfterBudgetStop } from "./agevexTools/continueBudget.js";
+import type { GenericDataModel, GenericMutationCtx } from "convex/server";
+import { api, internal } from "./_generated/api.js";
 
-export const resumeAfterBudget = mutationGeneric({
-  args: { threadId: v.string(), approvalId: v.string() },
-  handler: async (ctx, { threadId, approvalId }) => {
-    const subject = await myAuthorize(ctx);
-    return resumeAfterBudgetStop({
-      threadId,
-      approvalId,
-      consumeConsent: (args) =>
-        ctx.runMutation(internal.agevexTools.continueBudgetState.consume, { subject, ...args }),
-      activity: () => ctx.runQuery(api.agents.activity, { threadId }), // includes runId
-      raiseBudget: () => ctx.runMutation(internal.budgets.raise, { subject }), // idempotent
-      cancel: () => ctx.runMutation(api.agents.cancel, { threadId }),
-      send: (args) => ctx.runMutation(api.agents.send, { threadId, ...args }),
-    });
-  },
-});
-// "no-consent" | "not-stopped" | { status: "resumed", receipt }
+export async function resumeBudget(
+  ctx: GenericMutationCtx<GenericDataModel>,
+  args: { threadId: string; approvalId: string },
+  raiseBudget: (subject: string) => Promise<unknown>,
+) {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) throw new Error("UNAUTHENTICATED");
+  const subject = identity.subject;
+  const { threadId, approvalId } = args;
+  return resumeAfterBudgetStop({
+    threadId,
+    approvalId,
+    consumeConsent: (scope) =>
+      ctx.runMutation(internal.agevexTools.continueBudgetState.consume, { subject, ...scope }),
+    activity: () => ctx.runQuery(api.agents.activity, { threadId }),
+    raiseBudget: () => raiseBudget(subject),
+    cancel: () => ctx.runMutation(api.agents.cancel, { threadId }),
+    send: (input) => ctx.runMutation(api.agents.send, { threadId, ...input }),
+  });
+}
 ```
+
+Call this helper from your host mutation. Supply an idempotent `raiseBudget`
+callback that writes your budget policy through that same mutation context.
+The result is `{ status: "no-consent" }`, `{ status: "not-stopped" }`, or
+`{ status: "resumed", receipt }`.
 
 Order: check the stop, check consent, raise your budget policy, cancel the
 stopped run (clears its recovery state and discards its pending notes), then
