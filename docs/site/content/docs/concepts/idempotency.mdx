@@ -54,7 +54,8 @@ are purged in bounded batches.
 
 ## Structured tasks
 
-`defineTask` declares input/output schemas, a prompt and optional model.
+`defineTask` declares input/output schemas, a prompt, optional system
+`instructions` (part of the payload fingerprint) and an optional model.
 `runTask(hc, task, input)` inside a managed hook inherits the receipt context,
 attribution and fence. Standalone `runtime.runTask(ctx, task, input, options)`
 requires a stable `key`, server-derived `attribution` and a model on the task

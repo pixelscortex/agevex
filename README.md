@@ -282,7 +282,9 @@ when generated-reference inference needs an explicit type.
 
 Titles are on by default: one tool-free background call after the first user
 message, using the root model (including an accepted model override). Configure
-`title: { model, prompt }` or disable with `title: false`. Export the supplied
+`title: { model, prompt, maxOutputTokens }` or disable with `title: false`.
+`maxOutputTokens` (a positive integer up to 4,096, refused at registration
+otherwise) overrides the title's 128 or the summary's 2,048 output cap. Export the supplied
 `textTask` internal action and provide `refs.textTask` when either feature is on.
 Native app titles and user `rename({ threadId, text, expectedVersion })` always
 win over late work. Titles are generated even if the first turn is cancelled.
@@ -298,7 +300,9 @@ Summaries are display-only and never change native model context. See [backgroun
 Jobs use child capacity, 30-second model deadlines, no tools, no repairs and no
 paid retries. Their usage carries `title`/`summary` purpose labels on the
 triggering root run. Authorization and budget are rechecked before spend; failures
-leave the conversation and previous metadata unaffected. A fresh summary key
+leave the conversation and previous metadata unaffected. An unknown-cost
+title/summary charge stays recorded, billed and visible but never stops the
+run that triggered it (the budget gate ignores background `unknown`s). A fresh summary key
 can request new work after an unknown/failed result; cadence resumes after known
 failures. A job lease starts at provider dispatch, after authorization and input reads.
 
@@ -487,6 +491,7 @@ const classify = defineTask({
   name: "classify",
   input: z.object({ text: z.string() }),
   output: z.object({ category: z.string() }),
+  instructions: "You label support messages.", // optional system message
   prompt: ({ text }) => `Classify: ${text}`,
   model: languageModel,
   repair: 1,
@@ -496,6 +501,12 @@ const result = await runTask(hc, classify, { text });
 // Inside an authorized host action: supply trusted attribution explicitly.
 const hostResult = await runtime.runTask(ctx, classify, { text }, { key, attribution });
 ```
+
+`instructions` (a string or `(input) => string`) is sent as the model's system
+message, while `prompt` stays the user message. It is bounded like the prompt
+(non-empty, within `maxPromptLength`), is part of the receipt payload
+fingerprint, and repair re-asks reuse it unchanged. Omit it and no system
+message is sent.
 
 Standalone `runTask(ctx, ...)` accepts `component`, `attribution`, and optional
 `usage` in its options. Hooks default to a key derived from run + turn + task

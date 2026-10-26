@@ -6,8 +6,8 @@ status: Available
 
 Titles run once after the first user message commits, without waiting for an
 assistant answer. Their default model is the root Agent model, including its
-accepted model override. `title: { model, prompt }` configures that call;
-`title: false` disables it. Outputs fit 120 Unicode code points and 512 UTF-8 bytes.
+accepted model override. `title: { model, prompt, maxOutputTokens }` configures
+that call; `title: false` disables it. Outputs fit 120 Unicode code points and 512 UTF-8 bytes.
 
 The [getting-started registration](/docs/getting-started) exports `textTask` from
 `runtime.internalFunctions()` and supplies `refs.textTask`. That reference is
@@ -33,7 +33,8 @@ Leave `summary` absent or false to make no summary calls. `summary: {}` enables
 on-demand `summarize({ threadId, requestKey })`, returning `queued` or `replayed`.
 `summary: { everyTurns: 10 }` also requests work after each tenth completed root
 turn. Cadence accepts integers from 1 through 1,000,000; tools and child turns do
-not increment it. `model` and `prompt` configure summary generation separately.
+not increment it. `model`, `prompt` and `maxOutputTokens` configure summary
+generation separately.
 
 `summary({ threadId })` returns `{ text, throughMessageId }` or null. The exact
 boundary covers successful completed-root work, excluding active/queued prompts
@@ -51,12 +52,18 @@ Summaries are display-only and never change native model context.
 Workers use the child/background lane and never await a model on the foreground
 turn. Each call rechecks `authorizeExecution` with persisted ownership and
 `purpose: "title" | "summary"`, then the optional budget. No interactive identity
-is assumed. Titles use 128 output tokens; summaries use 2,048. Calls stop waiting
+is assumed. Titles use 128 output tokens and summaries 2,048 unless
+`maxOutputTokens` (a positive integer up to 4,096, validated at registration)
+sets a cap. Calls stop waiting
 after 30 seconds, including providers that ignore abort. Prompts have a 4,096
 character configuration bound. Tasks use no tools, no repairs and no paid retries.
 
 Usage passes through the ordinary usage slot with `title`/`summary` purpose,
 the triggering root run and an exact provider response id when available.
+A title or summary charge whose cost ends `unknown` (for example a transport
+failure with no token evidence) stays recorded, billed and visible, but the
+meter's budget gate ignores it, so cosmetic work never stops the run that
+triggered it; known and estimated amounts still count toward that run's spend.
 Reconciliation can settle after that run closes. Recording failures mark usage
 partial without changing metadata or buying another call. Reconciliation scheduling
 failure alone does not mark usage partial. Cancellation blocks queued summaries

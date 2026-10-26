@@ -100,6 +100,80 @@ it("defineTask repairs invalid structured output exactly once", async () => {
   expect(JSON.stringify(model.calls[1].prompt)).toContain("previous response");
 });
 
+it("task instructions are sent as the system message, separate from the user prompt, on every attempt", async () => {
+  const t = setup();
+
+  const model = counted(
+    mockModel({
+      contentSteps: [
+        [{ type: "text", text: '{"category":"invalid"}' }],
+        [{ type: "text", text: '{"category":"yes"}' }],
+      ],
+    }),
+  );
+
+  const definition = defineTask({
+    name: "classify",
+    input: z.object({ text: z.string() }),
+    output: z.object({ category: z.enum(["yes", "no"]) }),
+    instructions: ({ text }) => `Be terse about ${text}.`,
+    prompt: ({ text }) => `Classify: ${text}`,
+    model,
+  });
+
+  const result = await t.action((ctx) => runTask(ctx, definition, { text: "hello" }, options));
+
+  expect(result).toEqual({ status: "done", value: { category: "yes" } });
+  expect(model.calls).toHaveLength(2);
+
+  for (const call of model.calls) {
+    const system = call.prompt.filter((message) => message.role === "system");
+    const users = call.prompt.filter((message) => message.role === "user");
+
+    expect(system).toEqual([{ role: "system", content: "Be terse about hello." }]);
+    expect(users).toHaveLength(1);
+    expect(JSON.stringify(users[0].content)).toContain("Classify: hello");
+    expect(JSON.stringify(users[0].content)).not.toContain("Be terse");
+  }
+});
+
+it("a task without instructions sends no system message", async () => {
+  const t = setup();
+  const { model, definition } = task(['{"category":"yes"}']);
+
+  await t.action((ctx) => runTask(ctx, definition, { text: "hello" }, options));
+
+  expect(model.calls).toHaveLength(1);
+  expect(model.calls[0].prompt.some((message) => message.role === "system")).toBe(false);
+});
+
+it("task instructions are bounded like the prompt before any receipt or paid work", async () => {
+  const t = setup();
+
+  const model = counted(
+    mockModel({ contentSteps: [[{ type: "text", text: '{"category":"yes"}' }]] }),
+  );
+
+  const define = (instructions: string) =>
+    defineTask({
+      name: "classify",
+      input: z.string(),
+      output: z.object({ category: z.string() }),
+      instructions,
+      prompt: (text) => text,
+      model,
+    });
+
+  for (const instructions of [" ", "x".repeat(101)])
+    await expect(
+      t.action((ctx) =>
+        runTask(ctx, define(instructions), "hello", { ...options, maxPromptLength: 100 }),
+      ),
+    ).rejects.toThrow("INVALID_TASK_INSTRUCTIONS");
+
+  expect(model.calls).toHaveLength(0);
+});
+
 it("a second invalid output is terminal and replay cannot buy another repair", async () => {
   const t = setup();
   const { model, definition } = task(['{"category":"invalid"}']);
