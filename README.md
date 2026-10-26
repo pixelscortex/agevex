@@ -590,7 +590,10 @@ per input/answer, 8 KiB per form schema, 16 KiB per projected item and
 receipts table beside exact native references, keeping reasoning messages out of
 pending reads. Oversized input commits a typed `APPROVAL_LIMIT` refusal. An item
 whose projection exceeds 16 KiB becomes a bounded `truncated: true` stub, allowing
-other decisions to remain visible. Proposals last until answer, execution or
+other decisions to remain visible; truncated asks refuse answers with
+`PROPOSAL_TRUNCATED`. Factory asks check input, schema, identifiers, and projection
+envelope before saving: exceeding the combined item bound returns `ASK_TOO_LARGE`
+to the model without a pending item. Proposals last until answer, execution or
 cancellation consumes their reference. Decisions and answers retain the seven-day response
 receipt: identical retries return the first `{ messageId, replayed: true }`, and
 changed payloads return `KEY_CONFLICT`.
@@ -929,14 +932,22 @@ smoke test uses synthetic model events and one ingestion POST, with no paid
 model requests.
 
 `createAskUserTool({ inputSchema?, answerSchema? })` accepts a Zod type or closed
-JSON Schema for model input (≤16 KiB). The default stays strict `{ question }`
+JSON Schema with top-level `type: "object"` for model input (≤16 KiB).
+JSON input schemas default top-level `additionalProperties` to `false`.
+The default stays strict `{ question }`
 (≤2000 characters). `answerSchema` accepts a static JSON Schema or a synchronous
 `(validatedInput) => JsonSchema` callback, computed on the host during the turn.
 Each compact proposal stores validated input and its own schema (≤8 KiB, depth 8,
-32 fields), outside model-visible input. `pendingApprovals` exposes custom `input`,
-optional string `question`, and the stored `schema`; question-only inputs keep a
-single `question` copy. Oversized projections remain bounded stubs. Invalid input
-or derived schemas become tool errors without pausing. The factory's marker works
+32 fields), outside model-visible input. `pendingApprovals` exposes custom `input`
+and the stored `schema`; question-only inputs keep a single `question` copy with
+`input: null`. Custom inputs keep their question inside `input` only. Asks that
+exceed the combined 16 KiB pending item budget return `ASK_TOO_LARGE` without a pause.
+Schema property names must be ≤1024 non-control ASCII characters (U+0020–U+007E)
+and cannot start with `$`. Invalid input or derived schemas return `INVALID_QUESTION`
+or `INVALID_FORM_SCHEMA` without failing the turn. Optional `undefined` values in
+validated input and derived schemas are omitted before serialization checks.
+Async answer-schema callbacks fail at registration with a synchronous-callback error.
+The factory's marker works
 under any registration key. Use `answer({ threadId, toolCallId, value })` for a
 plain string or JSON validated against the stored schema; invalid answers stay pending.
 `Agent.askUser` defaults to root-only: children receive `ROOT_ONLY` without a

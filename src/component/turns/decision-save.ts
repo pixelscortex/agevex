@@ -9,6 +9,7 @@ import {
   assertJson,
 } from "../../shared/decisions.js";
 import type { PreparedAskUser } from "../../shared/tool-markers.js";
+import { oversizedAskItem } from "../../shared/ask-values.js";
 
 type NativeSave = { messages: { message: MessageDoc["message"] }[] };
 type SavedMessage = NativeSave["messages"][number];
@@ -49,7 +50,22 @@ export async function prepareDecisions(
         (call) => call.toolCallId === part.toolCallId,
       );
 
-      const error = checked?.error ?? checkPreparedAsk(checked);
+      const error =
+        checked?.error ??
+        checkPreparedAsk(checked) ??
+        (oversizedAskItem({
+          id: part.toolCallId,
+          toolCallId: part.toolCallId,
+          tool: part.toolName,
+          input: checked!.input,
+          providerExecuted: false,
+          ...(checked?.answerSchema !== undefined ? { schema: checked.answerSchema } : {}),
+          threadId: row.threadId,
+          agent: row.agent,
+          kind: "ask",
+        })
+          ? "ASK_TOO_LARGE"
+          : undefined);
 
       if (error) denyAsk(args, saved, part.toolCallId, part.toolName, error);
     }
@@ -139,7 +155,7 @@ export function oversizedDecisionInput(messages: NativeSave["messages"], deferre
     return message.content.some(
       (part) =>
         part.type === "tool-call" &&
-        !resulted.has(part.toolCallId) &&
+        (!deferred.has(part.toolName) || part.providerExecuted || !resulted.has(part.toolCallId)) &&
         (approvals.has(part.toolCallId) || deferred.has(part.toolName)) &&
         decisionBytes(part.input) > DECISION_LIMITS.valueBytes,
     );

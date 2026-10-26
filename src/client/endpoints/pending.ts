@@ -6,6 +6,7 @@ import { DECISION_LIMITS, decisionBytes } from "../../shared/decisions.js";
 import { ConvexError, v } from "convex/values";
 import { pendingItem } from "../../component/turns/decision-reads.js";
 import { ownedThread, type EndpointContext } from "./access.js";
+import { askProjection } from "../../shared/ask-values.js";
 
 /** One reactive query includes the owned root and its current live children. */
 export function pendingApprovalsEndpoint(ep: EndpointContext) {
@@ -30,8 +31,6 @@ export function pendingApprovalsEndpoint(ep: EndpointContext) {
 
       const result = calls.map((call) => {
         const tool = ep.managedAgents.get(call.agent)?.declaredTools[call.tool];
-        const input = call.input as { question?: unknown } | null;
-
         const form = call.kind === "ask";
 
         // A large item must not hide other decisions. Check before copying question
@@ -45,21 +44,15 @@ export function pendingApprovalsEndpoint(ep: EndpointContext) {
             editable: false,
           };
 
-        // Preserve custom validated inputs in full. For the default question-only
-        // form, project the question once so a long question and schema still fit.
-        const question = form && typeof input?.question === "string" ? input.question : undefined;
-        const questionOnly = question !== undefined && Object.keys(input!).length === 1;
-
         const item = {
           ...call,
-          ...(questionOnly ? { input: null } : {}),
+          ...(form ? askProjection(call.input) : {}),
           editable:
             call.kind === "approval" &&
             !call.providerExecuted &&
             !!tool?.execute &&
             editableApproval(tool) &&
             !!asSchema(tool.inputSchema).validate,
-          ...(question !== undefined ? { question } : {}),
           ...(form && call.schema ? { schema: call.schema } : {}),
         };
 

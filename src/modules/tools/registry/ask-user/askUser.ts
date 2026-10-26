@@ -6,6 +6,7 @@
 import { assertFormSchema, validateAnswer, type JsonSchema } from "agevex";
 import { asSchema, jsonSchema, tool, type Schema } from "ai";
 import { z } from "zod";
+import { ConvexError } from "convex/values";
 
 export const ASK_USER_LIMITS = { minChars: 1, questionChars: 2000 } as const;
 export const questionInput = z.strictObject({
@@ -24,6 +25,9 @@ export type AskUserOptions<Input = z.output<typeof questionInput>> = {
 export function createAskUserTool<Input = z.output<typeof questionInput>>(
   options: AskUserOptions<Input> = {},
 ) {
+  if (options.answerSchema?.constructor.name === "AsyncFunction")
+    throw new Error("answerSchema must be synchronous; async callbacks are not supported");
+
   if (options.answerSchema && typeof options.answerSchema !== "function")
     assertFormSchema(options.answerSchema);
 
@@ -58,6 +62,9 @@ function unparsedSchema(schema: Schema) {
  * AI SDK's jsonSchema alone advertises a schema but does not validate calls.
  */
 function formInputSchema(schema: JsonSchema) {
+  if (schema.type !== "object") throw new ConvexError({ code: "INVALID_FORM_SCHEMA" });
+
+  schema = { ...schema, additionalProperties: schema.additionalProperties ?? false };
   assertFormSchema(schema);
 
   return jsonSchema<unknown>(schema as Parameters<typeof jsonSchema>[0], {

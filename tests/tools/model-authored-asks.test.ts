@@ -2,8 +2,9 @@
 // Model-authored forms cross the host/component seam as bounded per-call JSON.
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
+import { jsonSchema, tool } from "ai";
 import { createAskUserTool } from "../../src/modules/tools/registry/ask-user/askUser.js";
-import { DECISION_LIMITS, type JsonSchema } from "../../src/shared/decisions.js";
+import { assertFormSchema, DECISION_LIMITS, type JsonSchema } from "../../src/shared/decisions.js";
 import { main, helper } from "./fixture/host.js";
 import { setup, api, state, child } from "./setup.js";
 import { requireReceipt } from "../receipt.js";
@@ -107,10 +108,11 @@ it("three model-authored questions expose validated input and derived schema; in
       kind: "ask",
       tool: "ask_human",
       input,
-      question: input.question,
       schema: derive(input),
     },
   ]);
+
+  expect((await pending())[0]).not.toHaveProperty("question");
 
   expect(
     JSON.stringify(state.calls[0].tools?.find((tool) => tool.name === "ask_human")),
@@ -341,7 +343,7 @@ it("a child without askUser permission cannot pause with a custom ask marker und
   expect(JSON.stringify(child.calls)).toContain("ROOT_ONLY");
 });
 
-it("custom input and schema that exceed the pending item budget project a bounded stub", async () => {
+it("an ask exceeding the pending item budget returns ASK_TOO_LARGE and the model retries with a fitting ask", async () => {
   const t = setup();
 
   main.declaredTools.ask_human = createAskUserTool({
@@ -349,9 +351,135 @@ it("custom input and schema that exceed the pending item budget project a bounde
     answerSchema: () => ({ type: "string", description: "s".repeat(7 << 10) }),
   });
 
-  state.steps.push([call("large", { text: "x".repeat(10 << 10) })]);
+  state.steps.push([call("large", { text: "x".repeat(10 << 10) })], [call("fits", { text: "ok" })]);
   const { pending } = await open(t);
 
-  expect(await pending()).toMatchObject([{ truncated: true, input: null, editable: false }]);
-  expect((await pending())[0].schema).toBeUndefined();
+  expect(await pending()).toMatchObject([{ toolCallId: "fits", input: { text: "ok" } }]);
+  expect((await pending())[0].truncated).toBeUndefined();
+  expect(state.calls).toHaveLength(2);
+  expect(JSON.stringify(state.calls[1].prompt)).toContain("ASK_TOO_LARGE");
+});
+
+it.each(["café", "$ref", "q\n1", "x".repeat(2000)])(
+  "invalid Convex property name %s denies a derived form and the paid turn continues",
+  async (id) => {
+    const t = setup();
+
+    main.declaredTools.ask_human = createAskUserTool({ inputSchema, answerSchema: derive });
+    state.steps.push([call("bad-key", { ...input, questions: [{ ...input.questions[0], id }] })]);
+    const { alice, receipt, pending } = await open(t);
+
+    expect(await pending()).toEqual([]);
+    expect(state.calls).toHaveLength(2);
+    expect(JSON.stringify(state.calls[1].prompt)).toContain("INVALID_FORM_SCHEMA");
+
+    expect(await alice.query(api.host.activity, { threadId: receipt.threadId })).toMatchObject({
+      turnStatus: "idle",
+      errorCode: null,
+    });
+
+    expect(() =>
+      assertFormSchema({ type: "object", properties: { [id]: { type: "string" } } }),
+    ).toThrow("INVALID_FORM_SCHEMA");
+  },
+);
+
+it.each(["café", "$field"])(
+  "a transformed input with an invalid Convex field %s is a typed denial",
+  async (key) => {
+    const t = setup();
+
+    main.declaredTools.ask_human = createAskUserTool({
+      inputSchema: z.strictObject({ text: z.string() }).transform(({ text }) => ({ [key]: text })),
+    });
+
+    state.steps.push([call("invalid-output", { text: "ok" })]);
+    const { alice, receipt, pending } = await open(t);
+
+    expect(await pending()).toEqual([]);
+    expect(state.calls).toHaveLength(2);
+    expect(JSON.stringify(state.calls[1].prompt)).toContain("INVALID_QUESTION");
+
+    expect(await alice.query(api.host.activity, { threadId: receipt.threadId })).toMatchObject({
+      errorCode: null,
+    });
+  },
+);
+
+it.each([true, false])(
+  "old registry markers without inputSchema still pause a valid question (validator: %s)",
+  async (validator) => {
+    const t = setup();
+
+    const ownSchema = validator
+      ? z.strictObject({ question: z.string().trim() })
+      : jsonSchema({ type: "object" });
+
+    main.declaredTools.ask_human = Object.assign(tool({ inputSchema: ownSchema }), {
+      agevexAskUser: { answerSchema: { type: "string", enum: ["yes"] } },
+    });
+
+    state.steps.push([call("old-marker", { question: "Proceed?" })]);
+    const { pending } = await open(t);
+
+    expect(await pending()).toMatchObject([
+      { kind: "ask", question: "Proceed?", schema: { enum: ["yes"] } },
+    ]);
+
+    expect(state.calls).toHaveLength(1);
+  },
+);
+
+it("undefined optional fields in validated input and derived schemas are omitted before saving", async () => {
+  const t = setup();
+
+  main.declaredTools.ask_human = createAskUserTool({
+    inputSchema: z
+      .strictObject({ question: z.string() })
+      .transform((value) => ({ ...value, unused: undefined })),
+    answerSchema: () => ({ type: "string", title: undefined }),
+  });
+
+  state.steps.push([call("optional", { question: "Proceed?" })]);
+  const { pending } = await open(t);
+
+  expect(await pending()).toMatchObject([
+    { question: "Proceed?", input: null, schema: { type: "string" } },
+  ]);
+
+  expect((await pending())[0].schema).not.toHaveProperty("title");
+});
+
+it("JSON input schemas require an object root and reject extra fields by default", async () => {
+  expect(() => createAskUserTool({ inputSchema: { type: "string" } })).toThrow(
+    "INVALID_FORM_SCHEMA",
+  );
+
+  const t = setup();
+
+  main.declaredTools.ask_human = createAskUserTool({
+    inputSchema: {
+      type: "object",
+      required: ["question"],
+      properties: { question: { type: "string" } },
+    },
+  });
+
+  state.steps.push(
+    [call("extra", { question: "Proceed?", extra: true })],
+    [call("valid", { question: "Proceed?" })],
+  );
+
+  const { pending } = await open(t);
+
+  expect(await pending()).toMatchObject([{ toolCallId: "valid", question: "Proceed?" }]);
+  expect(state.calls).toHaveLength(2);
+});
+
+it("async answerSchema callbacks fail at registration with a synchronous callback error", () => {
+  expect(() =>
+    createAskUserTool({
+      answerSchema: (async () => ({ type: "string" })) as unknown as () => JsonSchema,
+    }),
+  ).toThrow("answerSchema must be synchronous");
 });

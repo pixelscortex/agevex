@@ -1,10 +1,18 @@
 // Reserved factory metadata crosses the host/native save boundary by registration name.
-import type { Schema, Tool, ToolSet } from "ai";
+import { asSchema, type Schema, type Tool, type ToolSet } from "ai";
 import type { MessageDoc } from "@convex-dev/agent";
-import { assertJson, assertFormSchema, type JsonSchema } from "./decisions.js";
+import { convexToJson, type Value } from "convex/values";
+import {
+  assertJson,
+  assertFormSchema,
+  validateAnswer,
+  DECISION_LIMITS,
+  type JsonSchema,
+} from "./decisions.js";
+import { definedAskValue } from "./ask-values.js";
 
 export type AskUserMetadata = {
-  inputSchema: Schema;
+  inputSchema?: Schema;
   answerSchema?: JsonSchema | ((input: unknown) => JsonSchema);
 };
 /** Only this serializable, per-call result crosses into the component. */
@@ -56,12 +64,14 @@ async function prepareAsk(tool: Tool, input: unknown) {
 
   try {
     assertJson(input);
-    const checked = await askUserMarker(tool)?.inputSchema.validate?.(input);
+    const schema = askUserMarker(tool)?.inputSchema ?? asSchema(tool.inputSchema);
+    const checked = schema.validate ? await schema.validate(input) : checkDefaultQuestion(input);
 
     if (!checked?.success) return { error: "INVALID_QUESTION" };
 
-    validated = checked.value;
+    validated = definedAskValue(checked.value);
     assertJson(validated);
+    convexToJson(validated as Value);
   } catch {
     return { error: "INVALID_QUESTION" };
   }
@@ -69,16 +79,37 @@ async function prepareAsk(tool: Tool, input: unknown) {
   try {
     const configured = askUserMarker(tool)?.answerSchema;
 
-    const answerSchema =
+    const answerSchema = definedAskValue(
       typeof configured === "function"
         ? configured(JSON.parse(JSON.stringify(validated)))
-        : configured;
+        : configured,
+    ) as JsonSchema | undefined;
 
     if (typeof configured === "function" || answerSchema !== undefined)
       assertFormSchema(answerSchema!);
+
+    if (answerSchema !== undefined) convexToJson(answerSchema as Value);
 
     return { input: validated, ...(answerSchema !== undefined ? { answerSchema } : {}) };
   } catch {
     return { error: "INVALID_FORM_SCHEMA" };
   }
+}
+
+/** Old installed registry markers lack a parsed schema. Prefer the tool's own
+ * validator above; if absent, enforce the original strict question contract.
+ */
+function checkDefaultQuestion(input: unknown) {
+  validateAnswer(input, {
+    type: "object",
+    required: ["question"],
+    additionalProperties: false,
+    properties: {
+      question: { type: "string", minLength: 1, maxLength: DECISION_LIMITS.questionChars },
+    },
+  });
+
+  const question = (input as { question: string }).question.trim();
+
+  return { success: !!question, value: { question } };
 }

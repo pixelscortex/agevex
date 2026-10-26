@@ -1,0 +1,49 @@
+// Ask normalization and projection are shared by the save fence and human reads.
+import { ConvexError } from "convex/values";
+import { DECISION_LIMITS, decisionBytes } from "./decisions.js";
+
+/** Drop optional undefined fields/items, preserving invalid values for assertJson
+ * to reject. Never JSON.stringify first: it hides NaN, Dates and other non-JSON
+ * values. Bound recursion before walking callback output (including cycles).
+ */
+export function definedAskValue(value: unknown, depth = 0): unknown {
+  if (depth > DECISION_LIMITS.valueDepth) throw new ConvexError({ code: "INVALID_VALUE" });
+
+  if (Array.isArray(value))
+    return value
+      .filter((item) => item !== undefined)
+      .map((item) => definedAskValue(item, depth + 1));
+
+  if (value && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype)
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, item]) => item !== undefined)
+        .map(([key, item]) => [key, definedAskValue(item, depth + 1)]),
+    );
+
+  return value;
+}
+
+/** Custom input is complete; only the default question-only shape needs a
+ * separate question projection. Each question is copied exactly once.
+ */
+export function askProjection(input: unknown) {
+  if (input && typeof input === "object" && Object.keys(input).length === 1) {
+    const question = (input as { question?: unknown }).question;
+
+    if (typeof question === "string") return { input: null, question };
+  }
+
+  return { input };
+}
+
+/** Check both the component response and public projection, with the real
+ * identifiers/envelope. 256 items * (16 KiB including array reservation) <=4 MiB.
+ */
+export function oversizedAskItem(call: { input: unknown; [key: string]: unknown }) {
+  return (
+    decisionBytes(call) > DECISION_LIMITS.itemBytes ||
+    decisionBytes({ ...call, ...askProjection(call.input), editable: false }) >
+      DECISION_LIMITS.itemBytes - DECISION_LIMITS.arrayEnvelopeBytes
+  );
+}

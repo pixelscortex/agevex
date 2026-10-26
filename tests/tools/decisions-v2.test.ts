@@ -555,6 +555,14 @@ it("one oversized ask projection returns a bounded stub while ordinary approval 
   });
 
   expect(pending.find((item) => item.tool === "editable_echo")?.editable).toBe(true);
+
+  await expect(
+    t.withIdentity({ subject: "alice" }).mutation(api.host.answer, {
+      threadId: receipt.threadId,
+      toolCallId: "large-ask",
+      value: "blind answer",
+    }),
+  ).rejects.toThrow("PROPOSAL_TRUNCATED");
 });
 
 it("two clients deciding concurrently commit one decision and reject the losing payload", async () => {
