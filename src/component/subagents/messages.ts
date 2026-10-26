@@ -122,7 +122,7 @@ export async function interaction(
 
   if (!replay) {
     const kind = args.op === "message_parent" ? "note" : answering ? "answer" : args.op;
-    const refusal = await reserveFor(ctx, kind, root, budget, target);
+    const refusal = await reserveFor(ctx, kind, root, budget, target, run._id);
 
     if (refusal) return refusal;
   }

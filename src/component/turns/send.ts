@@ -26,6 +26,7 @@ import { queueText } from "../text/jobs.js";
 import { wake } from "./wake.js";
 import { activity as vActivity, receipt as vReceipt, scope } from "../schema.js";
 import { activityView, assignmentScope } from "./views.js";
+import { queueHasRoom } from "../subagents/headroom.js";
 
 export const acceptArgs = {
   subject: v.string(),
@@ -90,7 +91,7 @@ export async function acceptSend(ctx: MutationCtx, args: ObjectType<typeof accep
 
   if (row.turnStatus === "recovery_required") throw new Error("RECOVERY_REQUIRED");
 
-  if (row.queuedMessages >= row.limits.queueLength) throw new Error("QUEUE_LIMIT");
+  if (!(await queueHasRoom(ctx, row))) throw new Error("QUEUE_LIMIT");
 
   if (row.cancelled) {
     await ctx.db.patch("assignments", row._id, { cancelled: false });
@@ -184,7 +185,7 @@ export const admission = query({
         code: row.cancelled ? ("CANCELLED" as const) : ("RECOVERY_REQUIRED" as const),
       };
 
-    if (row.queuedMessages >= row.limits.queueLength)
+    if (!(await queueHasRoom(ctx, row)))
       return { status: "rejected" as const, code: "QUEUE_FULL" as const };
 
     return null;

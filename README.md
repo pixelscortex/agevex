@@ -334,9 +334,13 @@ into one parent continuation. Every workflow carries a version argument;
 step order is protected by replay fixtures.
 
 A user prompt starts one run. Its turns and child results share a budget of
-12 launches / 24 hops (launches, delivered results, questions and follow-ups). Result turns may
-call `agevex_delegate` again. Over budget returns
-`{ status: "denied", code: "RUN_BUDGET" }`. A root admits at most
+12 launches / 24 hops (launches, delivered results, notes, questions, answers and
+follow-ups). Each launch reserves its result's hop; each question reserves its
+answer. Notes, questions, messages and user sends cannot take the queue slots
+or hops that owed results need. `RUN_BUDGET` or `QUEUE_LIMIT` may therefore
+appear before the ordinary limit is reached; user sends receive the existing
+`QUEUE_FULL` refusal earlier when results are owed. Result turns may call
+`agevex_delegate` again. A root admits at most
 5 active descendants by default and 4000 characters per delegated task.
 
 Failures are sanitized and never automatically replayed. Ambiguous execution

@@ -69,9 +69,13 @@ acknowledgement. The host's `runtime.note` remains passive and never wakes.
 
 ## Budgets
 
-A user prompt starts one run. Its turns, results, questions, progress and follow-ups
-share 12 launches and 24 hops, with hard maxima of 50 and 100. Over budget,
-`agevex_delegate` returns `{ status: "denied", code: "RUN_BUDGET" }`. A root
+A user prompt starts one run. Launches, delivered results, notes, questions,
+answers and follow-ups share 12 launches and 24 hops, with hard maxima of 50
+and 100. Each launch reserves its result's hop; each question reserves its
+answer. Notes, questions, messages and user sends cannot take the queue slots
+or hops that owed results need. `RUN_BUDGET` or `QUEUE_LIMIT` may therefore
+appear earlier. User sends receive the existing `QUEUE_FULL` refusal earlier
+when results are owed (`QUEUE_LIMIT` at component acceptance). A root
 admits at most 5 active descendants, 15 at the hard maximum.
 
 ## Reading the tree

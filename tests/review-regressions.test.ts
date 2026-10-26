@@ -792,19 +792,27 @@ it.each(["routing", "approval"])(
           }),
         ).toBe(true);
 
-    for (let i = mode === "approval" ? 1 : 0; i < HOST_LIMITS.queueLength.max; i++) {
-      await alice.mutation(api.agents.send, {
-        threadId: receipt.threadId,
-        text: "😀".repeat(LIMITS.messageLength / 2),
-        requestKey: "max-backlog-" + i,
-      });
+    // Side runs owe no queued result. The seven ordinary children reserve
+    // seven of the hundred slots; the approval continuation already counts
+    // as one queued row. Saturate the largest backlog admission now permits.
+    const reservedResults = HOST_LIMITS.activeChildrenPerRoot.max - HOST_LIMITS.sideRunsPerRun.max;
+    const backlog = HOST_LIMITS.queueLength.max - reservedResults;
+
+    for (let i = mode === "approval" ? 1 : 0; i < backlog; i++) {
+      expect(
+        await alice.mutation(api.agents.send, {
+          threadId: receipt.threadId,
+          text: "😀".repeat(LIMITS.messageLength / 2),
+          requestKey: "max-backlog-" + i,
+        }),
+      ).toMatchObject({ status: "accepted" });
     }
 
     expect(
       await t.query(rawAssignment, {
         assignmentId: receipt.assignmentId,
       }),
-    ).toMatchObject({ queuedMessages: HOST_LIMITS.queueLength.max });
+    ).toMatchObject({ queuedMessages: backlog });
 
     await expect(
       alice.mutation(api.agents.send, {
@@ -838,7 +846,7 @@ it.each(["routing", "approval"])(
     expect(before.runs.every((run: unknown) => getConvexSize(run as never) <= 16 << 10)).toBe(true);
 
     expect(before.inbox).toHaveLength(
-      HOST_LIMITS.queueLength.max +
+      backlog +
         (mode === "approval" ? HOST_LIMITS.activeChildrenPerRoot.max : 0) +
         turns.length * HOST_LIMITS.notesPending.max,
     );
