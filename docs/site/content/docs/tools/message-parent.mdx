@@ -1,0 +1,50 @@
+---
+title: Message the parent
+description: Report bounded progress to an immediate parent while the child keeps working.
+status: Available
+---
+
+`agevex_message_parent` is installed automatically on delegated child turns.
+Roots do not receive it. These examples are model tool calls, not JavaScript
+SDK exports:
+
+```ts
+agevex_message_parent({
+  text: "The source confirms the revised date. Checking the remaining references.",
+});
+// { status: "accepted", messageId: "..." }
+// or { status: "denied", code: "MESSAGE_RATE_LIMIT" }
+```
+
+The child continues without waiting for a reply. Use `agevex_ask_parent` for a
+blocking question and `agevex_message_child` for a parent's follow-up or answer.
+The recipient comes from persisted delegation state; there is no target input.
+
+A note wakes a sleeping parent at its next safe turn, including while waiting
+on a wait-all group. A running parent finishes current tools/results first.
+Unresolved approval and deferred calls remain paused. Accepted notes precede
+that child's final result in FIFO commit order; consecutive notes/results can
+share one model turn. Woken turns record usage normally.
+
+Text must be nonblank and fit 2 KiB, measured as the larger of UTF-8 JSON and
+Convex encoded size. `limits.parentNotesPerChild` defaults to 4 and has a hard
+maximum of 8; accepted notes must be at least 5 seconds apart. Every fresh
+note consumes one existing run hop and one ready inbox slot.
+
+| Denial code                                 | Meaning                                                              |
+| ------------------------------------------- | -------------------------------------------------------------------- |
+| `MESSAGE_TOO_LARGE`                         | Blank text or encoded text exceeds 2 KiB.                            |
+| `MESSAGE_RATE_LIMIT`                        | Less than 5 seconds since this child's last accepted note.           |
+| `MESSAGE_LIMIT`                             | This child has exhausted its accepted-note allowance.                |
+| `RUN_BUDGET`                                | The originating run has no remaining hop.                            |
+| `QUEUE_LIMIT`                               | The parent's ready queue is full.                                    |
+| `KEY_CONFLICT`                              | The same tool-call identity was retried with different text.         |
+| `STALE_TURN`, `CHILD_FINISHED`, `FORBIDDEN` | The child/parent capability, epoch or host policy is no longer live. |
+| `NO_PARENT`                                 | A root attempted the internal coordinator path.                      |
+
+Denials save no native note. Identical retries from a live child replay the
+accepted message id before checking fresh-note caps, without another queue
+entry or wake. Finished/cancelled children cannot post or replay. Committed
+notes survive cancellation in history. No automatic acknowledgement is sent;
+app prompts decide whether to respond. The host's `runtime.note` remains
+passive and never wakes a turn.

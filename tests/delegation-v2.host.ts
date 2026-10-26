@@ -34,7 +34,7 @@ export function reset() {
 export const call = (
   toolName: string,
   input: unknown,
-  toolCallId = crypto.randomUUID(),
+  toolCallId: string = crypto.randomUUID(),
 ): LanguageModelV4Content => ({
   type: "tool-call",
   toolName,

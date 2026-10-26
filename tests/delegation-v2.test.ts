@@ -183,7 +183,12 @@ it("registration rejects depth three, cycles and all reserved tools while sharin
   expect(() => registerAgent(components.agevex, policy)).toThrow("SUBAGENT_DEPTH");
   expect(() => registration({ maxDepth: 1 })).toThrow("SUBAGENT_DEPTH");
 
-  for (const toolName of ["agevex_delegate", "agevex_message_child", "agevex_ask_parent"]) {
+  for (const toolName of [
+    "agevex_delegate",
+    "agevex_message_child",
+    "agevex_ask_parent",
+    "agevex_message_parent",
+  ]) {
     const reserved = new Agent(components.agent, {
       name: "Reserved",
       languageModel: mockModel(),
@@ -421,9 +426,10 @@ it("managed tool names are offered only on parents and children where they are m
     "agevex_ask_parent",
     "agevex_delegate",
     "agevex_message_child",
+    "agevex_message_parent",
   ]);
 
-  expect(names("Reviewer")).toEqual(["agevex_ask_parent"]);
+  expect(names("Reviewer")).toEqual(["agevex_ask_parent", "agevex_message_parent"]);
 });
 
 async function manualRoot(t: Test, requestKey = "manual") {

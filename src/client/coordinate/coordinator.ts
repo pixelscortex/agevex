@@ -4,7 +4,8 @@
 // `buildCoordinate` returns the registered internal mutation the host exports
 // (as `refs.coordinate`). Its handler only dispatches on `op` to the op modules:
 // `launch.ts` (start a child or side review), `interaction.ts` (`message` /
-// `ask`), `settle.ts` (record a child outcome) and `delivery.ts` (`notify`).
+// `ask`), `parent-note.ts` (`message_parent`), `settle.ts` (record a child
+// outcome) and `delivery.ts` (`notify`).
 // Each op runs entirely inside this one mutation's transaction.
 
 import { internalMutationGeneric, type RegisteredMutation } from "convex/server";
@@ -16,6 +17,7 @@ import { notifyRun } from "./delivery.js";
 import { interact } from "./interaction.js";
 import { launchChild } from "./launch.js";
 import { settleRun } from "./settle.js";
+import { messageParent } from "./parent-note.js";
 
 /**
  * Convex argument validator for the coordinator.
@@ -57,6 +59,7 @@ export function buildCoordinate(
     returns: v.union(
       delegationResult,
       v.object({ status: v.literal("accepted"), runId: v.string() }),
+      v.object({ status: v.literal("accepted"), messageId: v.string() }),
       v.object({ status: v.literal("deferred"), runId: v.string() }),
       v.null(),
     ),
@@ -80,6 +83,8 @@ async function coordinate(rt: RuntimeContext, ctx: CoordinatorCtx, args: Coordin
   if (args.op === "launch") return launchChild(rt, ctx, args);
 
   if (args.op === "message" || args.op === "ask") return interact(rt, ctx, args);
+
+  if (args.op === "message_parent") return messageParent(rt, ctx, args);
 
   if (args.op === "settle") return settleRun(rt, ctx, args);
 

@@ -148,7 +148,12 @@ async function consumeHead(ctx: MutationCtx, row: Doc<"assignments">) {
 
   const noteAnchor = head.join?.earliestId ?? head.messageId;
 
-  await ctx.db.delete("inbox", head._id);
+  await consumeReady(ctx, head);
+
+  // A progress/result-origin turn can pause with kind="result". Keep its
+  // decided approval continuation anchored to the response until generation
+  // commits the approved tool results; merging a later note would skip them.
+  if (head._id === row.approvals?.inboxId && awaitingApprovalResults(row)) return noteAnchor;
 
   if (head.kind !== "result" && head.kind !== "note" && head.kind !== "parent") return noteAnchor;
 
@@ -189,7 +194,7 @@ async function mergeConsecutive(
 
     if (!item || item.runId !== head.runId || item.kind === "user") break;
 
-    await ctx.db.delete("inbox", item._id);
+    await consumeReady(ctx, item);
     const order = item.join?.newestSequence ?? item.sequence;
     const noteOrder = item.join?.earliestSequence ?? order;
 
@@ -213,6 +218,13 @@ async function mergeConsecutive(
   await ctx.db.patch("assignments", row._id, { promptMessageId: row.promptMessageId });
 
   return noteAnchor;
+}
+
+/** Progress notes retain only exact-id origin metadata after consumption, like
+ * saved hook notes. passive=false excludes them from ready and raw-note ranges. */
+async function consumeReady(ctx: MutationCtx, item: Doc<"inbox">) {
+  if (item.kind === "note" && item.from) await ctx.db.patch("inbox", item._id, { passive: false });
+  else await ctx.db.delete("inbox", item._id);
 }
 
 /** Flush posted notes only at a turn claim with no decided approvals still

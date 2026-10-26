@@ -1,7 +1,7 @@
 // The managed collaboration tools the SDK installs on eligible turns.
 //
 // `agevex_delegate` and `agevex_message_child` exist on turns of agents that have
-// child edges; `agevex_ask_parent` on turns of delegated children. Each tool is a
+// child edges; `agevex_ask_parent` and `agevex_message_parent` on delegated children. Each tool is a
 // thin call to the coordinator mutation (`coordinate/`) under the turn's fence,
 // carrying the turn's capability (assignment + turn token + native tool call id).
 // They record `delegated` / `asked` on the generation, which decides how the turn
@@ -15,6 +15,7 @@ import {
   ASK_PARENT_TOOL_NAME,
   DELEGATE_TOOL_NAME,
   MESSAGE_CHILD_TOOL_NAME,
+  MESSAGE_PARENT_TOOL_NAME,
 } from "../tool-names.js";
 import type { Generation } from "./context.js";
 
@@ -38,6 +39,27 @@ export function installCollaborationTools(
   if (eligible) tools[MESSAGE_CHILD_TOOL_NAME] = messageChildTool(rt, gen);
 
   if (gen.turn.child) tools[ASK_PARENT_TOOL_NAME] = askParentTool(rt, gen);
+
+  if (gen.turn.child) tools[MESSAGE_PARENT_TOOL_NAME] = messageParentTool(rt, gen);
+}
+
+/** Report progress without changing the child's continuation or completion state. */
+function messageParentTool(rt: RuntimeContext, gen: Generation) {
+  const { args } = gen.turn;
+
+  return tool({
+    description:
+      "Send your immediate parent a short progress message and keep working. No answer is required. At most 2 KiB, with at least 5 seconds between accepted messages.",
+    inputSchema: z.object({ text: z.string() }),
+    execute: (input, options) =>
+      gen.fence.ctx.runMutation(coordinateRef(rt), {
+        op: "message_parent",
+        assignmentId: args.assignmentId,
+        turnToken: args.turnToken,
+        toolCallId: options.toolCallId,
+        text: input.text,
+      }),
+  });
 }
 
 /**

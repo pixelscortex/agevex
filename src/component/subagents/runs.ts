@@ -118,6 +118,7 @@ export function newSubagentRun(fields: {
     rootCancellationEpoch: root.cancellationEpoch,
     depth: fields.depth,
     messagesReceived: 0,
+    parentNotesSent: 0,
     // Cohort membership (wait "all" rows carry a join state).
     group: fields.group,
     ...(fields.wait === "all" ? { join: "open" as const } : {}),

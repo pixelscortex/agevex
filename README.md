@@ -548,6 +548,19 @@ runs return typed denials. Each child accepts 4 follow-ups by default (maximum
 task-length bound. Asking children remain cancellable; one inbox slot is
 reserved for their answer.
 
+Children also receive `agevex_message_parent({ text })` to report progress and
+keep working. It returns `{ status: "accepted", messageId }` or a typed denial.
+Notes wake a sleeping parent, including in wait-all groups, at its next safe
+turn without bypassing approval or deferred calls. Inbox commit order is FIFO:
+accepted notes precede that child's final result, and consecutive work may
+share a turn. Identical tool-call retries replay without another save or wake.
+Text fits 2 KiB encoded; each child can send 4 notes by default (8 maximum,
+`limits.parentNotesPerChild`), at least 5 seconds apart. Each fresh note spends
+one hop and one ready queue slot. Size, rate, count, hop and queue denials save
+nothing. Finished/cancelled children cannot send; committed notes remain in
+history. Woken turns record usage through the usual slot. `runtime.note` stays
+passive and does not wake a turn.
+
 R1: The inbox holds ready work in FIFO order; claims coalesce consecutive head rows.
 R2: `ask_parent` denies `ASK_WITH_CHILDREN` while any descendant is non-terminal.
 R3: Runs settle after the last turn ends, descendants settle, and the inbox empties.

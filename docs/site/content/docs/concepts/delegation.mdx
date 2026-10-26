@@ -10,14 +10,15 @@ another agent's `subagents`. Registration allows two edges from each root;
 `limits.maxDepth: 1` lowers that, and cycles or deeper graphs fail at
 registration.
 
-Parents reach children through three managed tools: `agevex_delegate` with
-`{ agent, task, group?, wait? }`, `agevex_message_child` with `{ runId, text }`
-and `agevex_ask_parent` with `{ question }`.
+Parents receive `agevex_delegate` with `{ agent, task, group?, wait? }` and
+`agevex_message_child` with `{ runId, text }`. Children receive
+`agevex_ask_parent` with `{ question }` and
+[`agevex_message_parent`](/docs/tools/message-parent) with `{ text }`.
 
 ## Groups
 
 `wait` defaults to `"each"`: each settled result reaches the parent
-immediately. With `wait: "all"`, the group wakes its parent once, after the
+immediately. With `wait: "all"`, the group's final results wake its parent once, after the
 launching slice ends and every member settles, failures included. Membership
 seals when that slice ends, so a later launch into the same group returns
 `GROUP_CLOSED`. A group holds at most `activeChildrenPerRoot` members: 5 by
@@ -46,9 +47,29 @@ the parent immediately, even inside a waiting group. The parent answers with
 Questions and follow-ups spend the run's hops and use `limits.taskLength`: 4,000
 UTF-16 units by default, 16,000 at the hard maximum.
 
+## Non-blocking progress
+
+`agevex_message_parent({ text })` sends a short message to the immediate
+persisted parent and lets the child keep working. A sleeping parent wakes at
+its next safe turn, even while a wait-all group still has running members.
+A running parent finishes its current tools/results first; progress never
+bypasses an unresolved approval or deferred call. Woken turns record normal usage.
+
+Accepted notes enter the parent's FIFO before that child's final delivery.
+Consecutive notes and results may share a turn. Repeating the same tool-call
+identity and input replays the original message id without saving or waking
+again; a changed payload returns `KEY_CONFLICT`.
+
+Text fits 2 KiB encoded, with at least 5 seconds between accepted notes and
+4 accepted notes per child by default (`parentNotesPerChild`, maximum 8).
+Each fresh note consumes one hop and one ready queue slot. Over-limit calls
+return typed denials before saving. Finished or cancelled children cannot post;
+notes committed before cancellation remain in history. There is no automatic
+acknowledgement. The host's `runtime.note` remains passive and never wakes.
+
 ## Budgets
 
-A user prompt starts one run. Its turns, results, questions and follow-ups
+A user prompt starts one run. Its turns, results, questions, progress and follow-ups
 share 12 launches and 24 hops, with hard maxima of 50 and 100. Over budget,
 `agevex_delegate` returns `{ status: "denied", code: "RUN_BUDGET" }`. A root
 admits at most 5 active descendants, 15 at the hard maximum.
