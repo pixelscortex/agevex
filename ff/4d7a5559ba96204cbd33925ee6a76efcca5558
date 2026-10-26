@@ -1,0 +1,247 @@
+docs/site/content/docs/concepts/runtime.mdx
+  s_151bd37d4860f2::t_b4771bd06a1404 90
+  s_151bd37d4860f2::t_2277ac6519fcf8 75-89,91
+  s_f297ab3b4c34c9::t_c28162877c3fc4 159-163
+src/component/turns/boundaries.ts
+  s_151bd37d4860f2::t_fd5bc4109f813f 33
+src/component/subagents/tree.ts
+  s_151bd37d4860f2::t_223517243f0fdc 6,24-30,41-43,49-50,67-71,76-95,97,103-108,136-142,169-184,186-195,197-200,209-210
+  s_151bd37d4860f2::t_d2092b7f246667 109-111
+  s_151bd37d4860f2::t_31fc7789e26d89 12,40,44,208
+  s_151bd37d4860f2::t_5b51dd701e4a81 1-4,7-11,13-23,31-39,45-48,51-66,72-75,96,98-102,112-135,143-168,185,196,201-207,211
+  s_151bd37d4860f2::t_c8df0c1cc8950c 5
+  s_151bd37d4860f2::t_fdaf1806dda8bf 212-215
+src/component/turns/tools.ts
+  s_151bd37d4860f2::t_5aecf8a7227156 1-49
+  s_151bd37d4860f2::t_1801e49ad731ad 50-61
+src/component/subagents/runs.ts
+  s_151bd37d4860f2::t_68f6a3900f5e08 15-16,116,147-161
+  s_151bd37d4860f2::t_ed8ffa553f23a6 162-163
+src/client/index.ts
+  s_151bd37d4860f2::t_68f6a3900f5e08 8
+src/component/subagents/views.ts
+  s_151bd37d4860f2::t_223517243f0fdc 9
+tests/run-tree.fixture.ts
+  s_151bd37d4860f2::t_3e2702da4c0379 10,141,144
+  s_151bd37d4860f2::t_f4f6e87e38814d 1-3,12-13,17-19,29-30,33-39,53-60,65-85,123-127,131-140,143,152-154,179-186,188-196
+  s_151bd37d4860f2::t_47ec3b764efa1f 11,142,187
+  s_151bd37d4860f2::t_c8f8cf9e32c4d5 31-32,155-161,172-178
+  s_151bd37d4860f2::t_e47eefc09d7fb9 197-235
+  s_f297ab3b4c34c9::t_f5b7a629d49a19 15-16,162
+  s_f297ab3b4c34c9::t_1af131ffbf7a03 14,20-25,27,40-51,128,163-171
+  s_f297ab3b4c34c9::t_a43d40c0a2b423 52,61-64
+  s_d1acb60e801bf5::t_395faa35715eec 4-9,26,28,86-122,129-130,145-151
+src/modules/meter/component/usage-views.ts
+  s_151bd37d4860f2::t_c8df0c1cc8950c 6,29-33,65-77,80
+  s_151bd37d4860f2::t_a1541e0afb643b 81-86
+src/component/README.md
+  s_151bd37d4860f2::t_b4771bd06a1404 138-142,161-174,182-187
+  s_151bd37d4860f2::t_5cce0b87f26a2e 188
+  s_f297ab3b4c34c9::t_294ca690b64a49 175-181
+src/client/README.md
+  s_151bd37d4860f2::t_b4771bd06a1404 42-56
+  s_1a2e40cc02c9bd::t_786e6962d57379 57-71
+src/component/turns/wake.ts
+  s_151bd37d4860f2::t_fd5bc4109f813f 22,63
+  s_6249b1c1f07e7c::t_60dcacfc7c7ed4 64
+src/component/turns/run-lifecycle.ts
+  s_151bd37d4860f2::t_fd5bc4109f813f 1-8,15-22,37-38,52-59,61-67,70-91
+  s_151bd37d4860f2::t_d2092b7f246667 9-14,23-36,39-51,60,68-69
+  s_151bd37d4860f2::t_32734dec96fcdd 92-95
+src/component/turns/claim.ts
+  s_151bd37d4860f2::t_fd5bc4109f813f 327-333
+tests/run-tree-meter.seed.ts
+  s_151bd37d4860f2::t_02b5ffd53a54da 1-67
+  s_151bd37d4860f2::t_27f6f1f890a991 68-90
+tests/run-tree.seed.ts
+  s_151bd37d4860f2::t_3e2702da4c0379 2,14,38
+  s_151bd37d4860f2::t_d3710765c6a1ba 1,3,5-13,15-19,21,29-37,39-70,72-89,106,109-115,118-119
+  s_151bd37d4860f2::t_0291f9f39a61c7 116-117,120-129,145-146,250-338
+  s_f297ab3b4c34c9::t_c921c0053df7df 171-174,196,227-229,238-249
+  s_f297ab3b4c34c9::t_4d512867ac315e 4,24-27,71,102-104,142-144,147-151,155-156,166-167
+  s_f297ab3b4c34c9::t_18f7dcfe1514c3 20,22-23,28,194-195,198-201
+  s_f297ab3b4c34c9::t_1f31e7286b7479 90-101,105,107-108,130-140,153-154,158-165,175-193,203-226,230-237
+  s_f297ab3b4c34c9::t_4443e65973366e 141,152,157,168-170,197,202
+src/component/hooks/state.ts
+  s_151bd37d4860f2::t_d2092b7f246667 46,50
+  s_151bd37d4860f2::t_6b54e5195a2236 44-45,47-49
+src/client/endpoints/requests.ts
+  s_151bd37d4860f2::t_ba2731c2ee969b 21,180
+src/component/schema.ts
+  s_151bd37d4860f2::t_d2092b7f246667 378-380
+  s_151bd37d4860f2::t_69d4fccebb87af 191-193,370,375-377,381-387,408,455-457,537
+src/component/subagents/deliver.ts
+  s_151bd37d4860f2::t_fd5bc4109f813f 24,98
+  s_6249b1c1f07e7c::t_7c701da02a9f3a 99
+src/component/subagents/history.ts
+  s_151bd37d4860f2::t_5b51dd701e4a81 13-15,32-33,39
+src/client/turn/tools.ts
+  s_151bd37d4860f2::t_8b95101fe20ed9 73-75,195-199,206-208,210-223,225-230,232-234,236-237
+  s_f297ab3b4c34c9::t_c059f6763fe93c 200
+  s_f297ab3b4c34c9::t_3d976fcbb3989c 201-205,224,231,235
+  s_d1acb60e801bf5::t_4378d2f66640d2 22,209
+src/client/coordinate/launch.ts
+  s_151bd37d4860f2::t_ba2731c2ee969b 15,268
+src/component/turns/runs.ts
+  s_151bd37d4860f2::t_d2092b7f246667 20
+  s_151bd37d4860f2::t_82d9c34396a266 21-23,28
+  s_f297ab3b4c34c9::t_50d53a6168e8f6 43-44
+src/component/run-tree-values.ts
+  s_151bd37d4860f2::t_6b54e5195a2236 78-84
+  s_151bd37d4860f2::t_68f6a3900f5e08 9-10,29-33,35-44,59-66,72-77
+  s_151bd37d4860f2::t_69d4fccebb87af 1-8,11-28,34,45-58,67,69-71,85
+  s_151bd37d4860f2::t_31fc7789e26d89 68
+src/component/turns/send.ts
+  s_151bd37d4860f2::t_ba2731c2ee969b 27,38,110-111,113-115
+  s_151bd37d4860f2::t_d2092b7f246667 112
+src/component/turns/cancel.ts
+  s_151bd37d4860f2::t_fd5bc4109f813f 157
+  s_f297ab3b4c34c9::t_50d53a6168e8f6 60-64,66-68
+  s_f297ab3b4c34c9::t_1fc721779e2e94 58,65,130
+docs/site/content/docs/concepts/delegation.mdx
+  s_151bd37d4860f2::t_b4771bd06a1404 90-121,125-136
+  s_f297ab3b4c34c9::t_294ca690b64a49 122-124
+src/client/endpoints/reads.ts
+  s_151bd37d4860f2::t_cb30f0ae3b97fe 224,229-233
+  s_151bd37d4860f2::t_223517243f0fdc 26,228,235
+  s_151bd37d4860f2::t_baa84525d7833f 30,210-211,217-218,221-223,225-227,234,236-243,248-250
+  s_151bd37d4860f2::t_d2092b7f246667 28,215-216,244-247
+src/component/turns/finish.ts
+  s_151bd37d4860f2::t_fd5bc4109f813f 23,49-50,102-103,105
+src/testing/bridge.ts
+  s_151bd37d4860f2::t_49cd845617e9a7 19-44
+  s_151bd37d4860f2::t_94c025e2a59070 45-55
+src/component/subagents/groups.ts
+  s_151bd37d4860f2::t_5aecf8a7227156 224-225
+  s_151bd37d4860f2::t_fd5bc4109f813f 18
+tests/delegation-state.ts
+  s_151bd37d4860f2::t_49cd845617e9a7 1-16
+  s_151bd37d4860f2::t_918fc4d1291864 17-20
+src/component/subagents/launch.ts
+  s_151bd37d4860f2::t_ba2731c2ee969b 21,226,269-270
+  s_151bd37d4860f2::t_68f6a3900f5e08 23,268,273-276
+src/component/turns/write.ts
+  s_151bd37d4860f2::t_6b54e5195a2236 178,232-234
+  s_151bd37d4860f2::t_f885a2d8fa100b 27,219,235,243-251
+  s_151bd37d4860f2::t_2b9ec58bd306c0 252-253
+tests/run-tree.test.ts
+  s_151bd37d4860f2::t_47ec3b764efa1f 21-22
+  s_151bd37d4860f2::t_02b5ffd53a54da 9,199,210
+  s_151bd37d4860f2::t_3e2702da4c0379 1-8,10-17,19,23-198,200-205
+  s_151bd37d4860f2::t_54255e85c99a0f 206-209,211-304,384-432,440-455
+  s_f297ab3b4c34c9::t_1af131ffbf7a03 18,305-348,363-381
+  s_f297ab3b4c34c9::t_c921c0053df7df 20,349-357,360
+  s_f297ab3b4c34c9::t_535cb3a1101b4f 358-359,361-362,382-383,433-439
+src/component/_generated/api.ts
+  s_151bd37d4860f2::t_ce62764f80aec1 35,73
+src/component/_generated/component.ts
+  s_151bd37d4860f2::t_54758e01de69fe 31,75
+tests/delegation-v2.test.ts
+  s_151bd37d4860f2::t_d4abbf630c7e93 1,70,381-388,396-398,1714-1719
+tests/hooks.test.ts
+  s_151bd37d4860f2::t_a6f9f20209c850 1,842,954,1064,1127-1128,1490,1535,1687-1689
+tests/live/runtime.live.ts
+  s_151bd37d4860f2::t_d5d371dcfe377b 270,273-274
+tests/message-parent.fixture.ts
+  s_151bd37d4860f2::t_2b8890a19ebae6 1,128
+tests/slots.test.ts
+  s_151bd37d4860f2::t_e0599cad854b61 1,899-901
+src/component/run-settings.ts
+  s_f297ab3b4c34c9::t_c28162877c3fc4 26-27
+  s_f297ab3b4c34c9::t_50d53a6168e8f6 17-19
+tests/tool-progress.test.ts
+  s_f297ab3b4c34c9::t_cf08b38fc2fec3 11-14,16-17,32-46,48-57,63-76,84-115
+  s_f297ab3b4c34c9::t_1054bea053f5b0 1-4,6-10,15,24-25,27,47,58-62,77-83
+  s_f297ab3b4c34c9::t_294ca690b64a49 26
+  s_f297ab3b4c34c9::t_a57043d6684069 116-126
+  s_d1acb60e801bf5::t_2060c356906c12 5,18-23,28-31,127-176
+src/component/limits.ts
+  s_f297ab3b4c34c9::t_1fc721779e2e94 71-72,76-77,82-86,92,95-100
+tests/run-settings.test.ts
+  s_f297ab3b4c34c9::t_c059f6763fe93c 480,484
+docs/site/content/docs/concepts/main-builder-reviewer.mdx
+  s_d1acb60e801bf5::t_cdb32b304824cb 94-98
+src/client/turn/claim.ts
+  s_d1acb60e801bf5::t_6c9894e4ac3efb 79-89
+src/client/turn/context.ts
+  s_d1acb60e801bf5::t_29d5cb98e52f15 41-42
+src/client/turn/run-turn.ts
+  s_d1acb60e801bf5::t_25ca2af2097a62 21,49
+src/client/turn/tool-progress.ts
+  s_d1acb60e801bf5::t_d34db754c27a53 1-70
+tests/acceptance/main-builder-reviewer.test.ts
+  s_d1acb60e801bf5::t_20a4509d5a7882 44,135-167,237-262,367-374
+tests/acceptance/work.fixture.ts
+  s_d1acb60e801bf5::t_8f871170efd1d1 21,25-26,81,121-133,148,159-164
+tests/turn-tool-progress.test.ts
+  s_d1acb60e801bf5::t_d8ada91754f1a6 1-135
+src/client/types.ts
+  s_1a2e40cc02c9bd::t_dbefa9c13e781b 41-46
+src/client/once.ts
+  s_1a2e40cc02c9bd::t_dbefa9c13e781b 28-29
+tests/message-ids.fixture.ts
+  s_1a2e40cc02c9bd::t_79f44abb19b130 1-55
+src/client/turn/completion.ts
+  s_1a2e40cc02c9bd::t_dbefa9c13e781b 98-107,110-112,116
+  s_1a2e40cc02c9bd::t_ff9f2a7b27c4c8 117
+tests/message-ids.test.ts
+  s_1a2e40cc02c9bd::t_79f44abb19b130 1-10,12-118,120-197,199,201-203,205,207-212,214-216,218-221,224-228,230,237
+  s_1a2e40cc02c9bd::t_a282da9bccd017 11,119,198,200,204,206,213,217,222-223
+  s_1a2e40cc02c9bd::t_dc4b42e6b72f5d 229,231-236,238-324
+docs/site/content/docs/concepts/hooks.mdx
+  s_1a2e40cc02c9bd::t_786e6962d57379 30-45
+docs/site/content/docs/concepts/slots.mdx
+  s_1a2e40cc02c9bd::t_786e6962d57379 19-25
+src/client/turn/generation.ts
+  s_1a2e40cc02c9bd::t_dbefa9c13e781b 128
+docs/site/content/docs/concepts/idempotency.mdx
+  s_1a2e40cc02c9bd::t_786e6962d57379 48-52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ff4d7a5559ba96204cbd33925ee6a76efcca5558",
+  "prompts": {},
+  "sessions": {
+    "s_151bd37d4860f2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1796d-2cac-78e3-ac14-6a17d7bfca72",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_1a2e40cc02c9bd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17996-6bbe-70f3-b9a9-6556a63bb1fa",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_6249b1c1f07e7c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1796d-3879-7ee3-aa3b-987711204a87",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_d1acb60e801bf5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a179a2-6b81-7d22-a42b-0465e67c2781",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_f297ab3b4c34c9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17991-7957-7212-81a4-eb0c1694c51a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}

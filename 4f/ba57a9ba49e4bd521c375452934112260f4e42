@@ -1,0 +1,20 @@
+tests/acceptance/main-builder-reviewer.test.ts
+  s_74223a8a8c2f4c::t_fc7598ea1fb8fd 8,254-266
+  s_74223a8a8c2f4c::t_50289daf48d919 267-271
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4fba57a9ba49e4bd521c375452934112260f4e42",
+  "prompts": {},
+  "sessions": {
+    "s_74223a8a8c2f4c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a179b7-4664-73c1-ab1d-400909cccb3a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
