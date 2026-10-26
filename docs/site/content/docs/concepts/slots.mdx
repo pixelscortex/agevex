@@ -89,8 +89,10 @@ attachment question for an adapter.
 
 ## Structured tasks
 
-`defineTask({ name, input, output, prompt, model?, repair? })` declares a
-schema-checked task. `runTask(hc, task, input)` inside a managed hook inherits
+`defineTask({ name, input, output, prompt, instructions?, model?, repair? })`
+declares a schema-checked task; `instructions` (string or `(input) => string`)
+is sent as the system message while `prompt` is the user message, bounded like
+the prompt and reused unchanged by the repair re-ask. `runTask(hc, task, input)` inside a managed hook inherits
 the component, attribution, usage and fence; `runtime.runTask(ctx, task,
 input, { key, attribution })` supplies them explicitly. Outcomes are `{ status:
 "done", value }`, `{ status: "failed", code }`, `{ status: "running" }`,

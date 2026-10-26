@@ -10,6 +10,7 @@ import {
   byThread,
   bySubject,
   combine,
+  runBlockingUnknown,
   summary,
   groups,
   type Axis,
@@ -134,9 +135,18 @@ export const cost = query({
 
     // Both are unbounded reads of ONE owned namespace: on a lazy root that is
     // the root plus <=5 children per call, independent of how many charges exist.
-    return runId
-      ? await summary(ctx, bySubject, ["run", subject, runId])
-      : await summary(ctx, bySubject, ["subject", subject]);
+    // `unknown` counts every unknown charge; `blockingUnknown` is the subset the
+    // budget gate denies on (run scope skips title/summary charges).
+    if (!runId) {
+      const all = await summary(ctx, bySubject, ["subject", subject]);
+
+      return { ...all, blockingUnknown: all.unknown };
+    }
+
+    return {
+      ...(await summary(ctx, bySubject, ["run", subject, runId])),
+      blockingUnknown: await runBlockingUnknown(ctx, subject, runId),
+    };
   },
 });
 

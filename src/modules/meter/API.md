@@ -71,7 +71,9 @@ next slice. A model id over 128 bytes is stored as `sha256:<hex>`.
 `budgetSlot(policy?: MeterOptions["budgets"]): BudgetSlot` checks the run
 before each next model call and local tool effect, using the configured policy unless overridden. Estimates
 count; unknown costs and authorization/read/policy errors fail closed with
-`BUDGET_EXCEEDED`. The gate is a snapshot, not a spend reservation.
+`BUDGET_EXCEEDED`. Unknown charges with `purpose: "title" | "summary"` are the
+exception: background work never blocks its run (see below). The gate is a
+snapshot, not a spend reservation.
 
 ## Standalone recording
 
@@ -140,15 +142,24 @@ evidence), `DECODE_FAILED`, `INVALID_COST`, `OVER_CAP` (above $90),
 `PROVIDER_NOT_REGISTERED`, `PROFILE_NOT_REGISTERED`, `THREAD_CAPACITY`. A
 later USD `settle` resolves it. Malformed keys, names and quantities still throw.
 
-Budgeting and billing differ: `unknown` always denies `check`, but a known
+Budgeting and billing differ: `unknown` denies `check` (except background title/summary charges on a run), but a known
 amount is still billed. A `THREAD_CAPACITY` charge with a settled/inline
 amount and an `OVER_CAP` charge (its full amount is kept) are delivered to
 sinks; unknown estimates are not. `correct`/`settle` and lookup results above $90 likewise become `unknown` / `OVER_CAP` with the amount, instead of throwing. Reads under-report them: `threadCost`, `subjectCost` and `breakdown` count at most $90 per `OVER_CAP` charge, while sinks bill the full amount.
 
+Background purposes are excluded from the unknown-blocks rule: a run-scoped
+`check` ignores unknown charges whose attribution `purpose` is `"title"` or
+`"summary"`, so a failed cosmetic call cannot stop real work. Those charges stay
+recorded, billed through sinks and visible (`unknown` still counts them), and
+their estimated or settled amounts still count toward the run's spend. Reads
+add `blockingUnknown`, the unknown count the gate denies on. An unknown turn,
+hook or tool charge still denies, and a subject-wide `check` (no `runId`) still
+denies on every unknown. Run entries recorded before this rule keep blocking.
+
 Reads return integer `totalNanos`, `settledNanos`, `estimatedNanos`, `unknown`,
 `unknownNanos`, plus convenience USD fields. Unknowns retain their last known
-estimate separately and always deny `check`; unknown is never interpreted as
-free. `check({ subject, runId })` includes estimates and checks that run;
+estimate separately and deny `check` (background title/summary excepted); unknown
+is never interpreted as free. `check({ subject, runId })` includes estimates and checks that run;
 omitting `runId` checks the subject's lifetime total. A gate is a snapshot,
 not an atomic reservation for future work.
 

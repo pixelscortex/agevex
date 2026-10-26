@@ -944,6 +944,47 @@ it("unpriceable, over-cap and unregistered-provider usage is recorded unknown an
   });
 });
 
+it("an unknown title or summary charge never stops its run and keeps its known spend", async () => {
+  const { t, meter, component } = setup({ budgets: () => ({ maxUsd: 1 }) });
+  const cost = { openrouter: { usage: { cost: 0.5 } } };
+
+  await t.run(async (ctx) => {
+    const title = meter.scope(ctx, { ...attribution, purpose: "title" });
+
+    await title.record("openrouter", { key: "title-known", providerMetadata: cost });
+    await title.record("model", { key: "title-unknown" });
+    await meter.scope(ctx, { ...attribution, purpose: "summary" }).record("model", { key: "s" });
+  });
+
+  // Still recorded and visible as unknown; only the gate ignores them.
+  expect(await t.query(component.charges.get, { key: "title-unknown" })).toMatchObject({
+    status: "unknown",
+  });
+
+  expect(await t.run((ctx) => meter.check(ctx, { subject: "owner", runId: "run" }))).toMatchObject({
+    allowed: true,
+    unknown: 2,
+    totalNanos: 500_000_000,
+  });
+});
+
+it("an unknown turn, hook or tool charge still stops its run", async () => {
+  const { t, meter } = setup();
+
+  for (const purpose of ["agent", "hook", "tool", undefined] as const) {
+    const runId = `run-${purpose}`;
+
+    await t.run(async (ctx) => {
+      await meter.scope(ctx, { ...attribution, runId, purpose }).record("model", { key: runId });
+    });
+
+    expect(await t.run((ctx) => meter.check(ctx, { subject: "owner", runId }))).toMatchObject({
+      allowed: false,
+      unknown: 1,
+    });
+  }
+});
+
 it("charge capacity is per root thread: a full thread records unknown without throwing while other threads keep pricing", async () => {
   const { t, meter, component } = setup({ limits: { maxThreadCharges: 1 } });
   const cost = { openrouter: { usage: { cost: 0.1 } } };
