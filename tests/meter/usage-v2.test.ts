@@ -6,6 +6,10 @@ import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { LIMITS, openRouterProvider, tokenEstimate } from "../../src/modules/meter/client/index.js";
 import { setup, attribution, allBreakdowns } from "./setup.js";
 
+// A safety margin only: the 59-node test takes ~2 s (it records and settles 59
+// maximum-length nodes through the real path, then reads them in one query).
+const TEST_LIMITS = { maxUsageNodesTimeoutMs: 30_000 };
+
 const usage = { inputTokens: 3, outputTokens: 10 };
 const estimate = tokenEstimate({ inputUsdPerMillion: 10, outputUsdPerMillion: 20 });
 
@@ -213,38 +217,42 @@ it("usage views isolate owned runs and enforce host authorization", async () => 
   ).rejects.toThrow("FORBIDDEN");
 });
 
-it("59 maximum-length usage nodes and all projections remain within enforced transaction budgets", async () => {
-  const { t, meter } = setup({ breakdowns: allBreakdowns, providers: { fake: { estimate } } });
+it(
+  "59 maximum-length usage nodes and all projections remain within enforced transaction budgets",
+  async () => {
+    const { t, meter } = setup({ breakdowns: allBreakdowns, providers: { fake: { estimate } } });
 
-  const nodeIds = Array.from({ length: LIMITS.maxUsageNodes }, (_, index) =>
-    `${index}`.padEnd(LIMITS.maxStringBytes, "n"),
-  );
+    const nodeIds = Array.from({ length: LIMITS.maxUsageNodes }, (_, index) =>
+      `${index}`.padEnd(LIMITS.maxStringBytes, "n"),
+    );
 
-  for (const nodeId of nodeIds)
-    await t.run(async (ctx) => {
-      const charge = await meter
-        .scope(ctx, { ...attribution, nodeId, purpose: "agent" })
-        .record("fake", {
-          key: nodeId,
-          usage: { inputTokens: LIMITS.maxTokens, outputTokens: LIMITS.maxTokens },
-        });
+    for (const nodeId of nodeIds)
+      await t.run(async (ctx) => {
+        const charge = await meter
+          .scope(ctx, { ...attribution, nodeId, purpose: "agent" })
+          .record("fake", {
+            key: nodeId,
+            usage: { inputTokens: LIMITS.maxTokens, outputTokens: LIMITS.maxTokens },
+          });
 
-      await charge.settle({ usd: 0.01, key: "settle" });
+        await charge.settle({ usd: 0.01, key: "settle" });
+      });
+
+    const view = await t.run((ctx) => meter.usageView(ctx, { ...viewArgs, nodeIds }));
+
+    expect(view.nodes).toHaveLength(LIMITS.maxUsageNodes);
+
+    expect(view.total).toMatchObject({
+      inputTokens: LIMITS.maxUsageNodes * LIMITS.maxTokens,
+      settledUsd: LIMITS.maxUsageNodes * 0.01,
     });
 
-  const view = await t.run((ctx) => meter.usageView(ctx, { ...viewArgs, nodeIds }));
-
-  expect(view.nodes).toHaveLength(LIMITS.maxUsageNodes);
-
-  expect(view.total).toMatchObject({
-    inputTokens: LIMITS.maxUsageNodes * LIMITS.maxTokens,
-    settledUsd: LIMITS.maxUsageNodes * 0.01,
-  });
-
-  await expect(
-    t.run((ctx) => meter.usageView(ctx, { ...viewArgs, nodeIds: [...nodeIds, "extra"] })),
-  ).rejects.toThrow("INVALID_USAGE_NODES");
-});
+    await expect(
+      t.run((ctx) => meter.usageView(ctx, { ...viewArgs, nodeIds: [...nodeIds, "extra"] })),
+    ).rejects.toThrow("INVALID_USAGE_NODES");
+  },
+  TEST_LIMITS.maxUsageNodesTimeoutMs,
+);
 
 it.each([0, 0.015, undefined, -1, "0.1"])(
   "OpenRouter generation lookup accepts only matching finite nonnegative cost (%s)",

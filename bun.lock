@@ -41,6 +41,9 @@
       },
     },
   },
+  "patchedDependencies": {
+    "convex-test@0.0.61": "patches/convex-test@0.0.61.patch",
+  },
   "overrides": {
     "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0",
     "vitest": "5.0.4",

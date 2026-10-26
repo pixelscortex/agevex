@@ -1,0 +1,48 @@
+diff --git a/dist/index.js b/dist/index.js
+index 5c26f80a5c32c532059a3af80643822b2daa3154..d278cd8109dd13b24a1a0ac7477856be4c2e14f6 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -30,6 +30,10 @@ const convexGlobalStorage = new AsyncLocalStorage();
+ class DatabaseFake {
+     _componentPath;
+     _documents = {};
++    // Committed ids per table, in first-insertion order (the order
++    // `Object.keys(_documents)` yields). Lets table scans cost O(table size)
++    // instead of O(every document in the component).
++    _tableIds = new Map();
+     _storage = {};
+     _nextQueryId = 1;
+     _nextDocId = 10000;
+@@ -203,10 +207,12 @@ class DatabaseFake {
+             if (this._writes.length === 0) {
+                 if (write === null) {
+                     delete this._documents[_id];
++                    this._tableIds.get(tableNameFromId(_id))?.delete(_id);
+                 }
+                 else {
+                     this._documents[_id] =
+                         commitTs === null ? write : resolveCommittedValues(write, commitTs);
++                    this._indexId(_id);
+                 }
+             }
+             else {
+@@ -392,9 +398,18 @@ class DatabaseFake {
+             pageStatus,
+         };
+     }
++    _indexId(id) {
++        const table = tableNameFromId(id);
++        let ids = this._tableIds.get(table);
++        if (ids === undefined) {
++            ids = new Set();
++            this._tableIds.set(table, ids);
++        }
++        ids.add(id);
++    }
+     _iterateDocs(tableName, callback) {
+         const isInTable = (id) => tableNameFromId(id) === tableName;
+-        const ids = new Set(Object.keys(this._documents).filter(isInTable));
++        const ids = new Set(this._tableIds.get(tableName) ?? []);
+         for (let i = 0; i < this._writes.length; i++) {
+             for (const id of Object.keys(this._writes[i]).filter(isInTable)) {
+                 ids.add(id);

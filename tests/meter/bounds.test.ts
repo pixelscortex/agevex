@@ -5,7 +5,12 @@ import aggregate from "@convex-dev/aggregate/test";
 import { LIMITS, type SinkEvent } from "../../src/modules/meter/client/index.js";
 import { setup, allBreakdowns } from "./setup.js";
 
-const TEST_LIMITS = { seedBatch: 256, timeoutMs: 180_000, days: LIMITS.maxDays, idBytes: 64 };
+// timeoutMs is only a safety margin: the test takes ~15 s because seeding the
+// ~1.3M maximum-occupancy entries dominates. Before the convex-test patch
+// (patches/convex-test@*.patch, which makes table scans O(table) instead of
+// O(every document in the component)) each of the ~hundreds of aggregate
+// operations rescanned all seeded B-tree nodes and the same test took ~150 s.
+const TEST_LIMITS = { seedBatch: 256, timeoutMs: 60_000, days: LIMITS.maxDays, idBytes: 64 };
 
 type Item = { k: Value; v: string; s: number };
 type Node = { items: Item[]; children: number[]; aggregate?: { count: number; sum: number } };
