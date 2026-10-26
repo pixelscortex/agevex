@@ -26,7 +26,10 @@ export async function prepareDecisions(
   if (schema) assertFormSchema(schema);
 
   const run = row.runId ? await ctx.db.get("runs", row.runId) : null;
-  const allowed = run?.settings[row.agent]?.askUser ?? !row.rootAssignmentId;
+
+  const allowed =
+    run?.settings?.find((entry) => entry.agent === row.agent)?.settings.askUser ??
+    !row.rootAssignmentId;
 
   for (const saved of args.messages) {
     if (saved.message?.role !== "assistant" || !Array.isArray(saved.message.content)) continue;
