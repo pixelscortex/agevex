@@ -11,6 +11,10 @@ Pass the mounted component, provider, scope and host `authorize` callback to
 `defineSandbox`. For background jobs, supply lazy `refs` to the host’s exported
 `wake`, `poll`, `settle` and `cleanup` functions from `sandbox.internalFunctions()`.
 
+`daytona(component, { apiKey })` accepts a string or a getter such as
+`() => process.env.DAYTONA_API_KEY!`; a getter runs at each Daytona call, never at
+construction. Omit `apiKey` to keep the SDK's call-time `DAYTONA_API_KEY` fallback.
+
 Wire `sandbox.slot()` into `registerAgent({ sandbox: sandbox.slot(), ... })` and
 opt individual agents in with `sandbox: true`. Use
 `onComplete: sandboxCompletion(() => runtime)` to deliver terminal jobs to the

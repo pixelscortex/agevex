@@ -17,15 +17,15 @@ import {
   buildUpload,
   buildDownload,
 } from "./daytona-files.js";
-import { Daytona, type ComponentApi, type DaytonaOptions } from "@daytona/convex";
+import { type ComponentApi } from "@daytona/convex";
+import { bindCredentials, type DaytonaSettings } from "./daytona-context.js";
 import { LIMITS, bounded, integer } from "../shared/limits.js";
 import { type SandboxProvider } from "./types.js";
 
-export type DaytonaSandboxOptions = DaytonaOptions & {
+/** `apiKey` may be a getter, called at each Daytona call and never at construction. */
+export type DaytonaSandboxOptions = DaytonaSettings & {
   autoStopInterval?: number;
   autoArchiveInterval?: number;
-  snapshot?: string;
-  target?: string;
 };
 
 /**
@@ -63,8 +63,12 @@ export function daytona(
 
   if (opts.target !== undefined) bounded(opts.target, LIMITS.identityChars, "TARGET");
 
-  const client = new Daytona(component, opts);
-  const runtime = { client, opts, autoStopInterval, autoArchiveInterval };
+  const runtime = {
+    ...bindCredentials(component, opts),
+    opts,
+    autoStopInterval,
+    autoArchiveInterval,
+  };
 
   return {
     id: "daytona",

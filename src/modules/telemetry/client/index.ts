@@ -9,6 +9,7 @@ import { validateOptions } from "./attribution.js";
 import type { TelemetryOptions, TurnTelemetry } from "./types.js";
 
 export { braintrust, langfuse, type Exporter } from "./exporters.js";
+export type { Credential } from "./credential.js";
 export { LIMITS } from "./limits.js";
 export type { Attribute, AttributeValue, OtlpPayload, Sanitize, Span } from "./otlp.js";
 

@@ -28,8 +28,8 @@ export const runtime = registerAgent(components.agevex, {
     exporters: [
       langfuse({
         baseUrl: process.env.LANGFUSE_BASE_URL!,
-        publicKey: process.env.LANGFUSE_PUBLIC_KEY!,
-        secretKey: process.env.LANGFUSE_SECRET_KEY!,
+        publicKey: () => process.env.LANGFUSE_PUBLIC_KEY!,
+        secretKey: () => process.env.LANGFUSE_SECRET_KEY!,
       }),
     ],
   }),
@@ -52,6 +52,13 @@ export const {
 Core supplies server-derived facts and an opaque turn key. Each key owns an
 isolated buffer, flushed in `finally` with cancellation/deadline propagation.
 For Braintrust, use `braintrust({ apiKey, projectId })` instead of Langfuse.
+
+Keys (`publicKey`, `secretKey`, `apiKey`) take a string or a getter
+(`() => string | Promise<string>`). A getter is called at each export, never at
+construction, so hosts that forbid reading env at module load can pass
+`() => process.env.X!`. Literal keys are validated when you construct the
+exporter; a getter's value is validated when it resolves, and an empty or
+oversized one sends nothing (exports fail open).
 
 ## Direct AI SDK calls
 
@@ -106,14 +113,14 @@ Generated from the current exported TypeScript signatures in [the module entry](
 
 Telemetry contracts are exported from `agevex/telemetry`. `Telemetry` is the AI SDK integration type from `ai`.
 
-| Name                | Arguments                                                             | Returns         | Errors / failure behavior                                 |
-| ------------------- | --------------------------------------------------------------------- | --------------- | --------------------------------------------------------- |
-| `telemetry`         | `options: TelemetryOptions`                                           | `TurnTelemetry` | Invalid options throw.                                    |
-| `telemetry.slot`    | `options: TelemetryOptions`                                           | `TelemetrySlot` | Invalid options throw; managed flush fails open.          |
-| `braintrust`        | `options: { apiKey: string; projectId: string }`                      | `Exporter`      | Invalid credentials/project id throw; export fails open.  |
-| `langfuse`          | `options: { baseUrl: string; publicKey: string; secretKey: string; }` | `Exporter`      | Invalid credentials or base URL throw; export fails open. |
-| `trace.integration` | `facts: Facts`                                                        | `Telemetry`     | Invalid facts throw; oversized facts export as digests.   |
-| `trace.flush`       | `signal?: AbortSignal`                                                | `Promise<void>` | Export errors/timeouts are swallowed; no retries.         |
+| Name                | Arguments                                                                     | Returns         | Errors / failure behavior                                 |
+| ------------------- | ----------------------------------------------------------------------------- | --------------- | --------------------------------------------------------- |
+| `telemetry`         | `options: TelemetryOptions`                                                   | `TurnTelemetry` | Invalid options throw.                                    |
+| `telemetry.slot`    | `options: TelemetryOptions`                                                   | `TelemetrySlot` | Invalid options throw; managed flush fails open.          |
+| `braintrust`        | `options: { apiKey: Credential; projectId: string }`                          | `Exporter`      | Invalid credentials/project id throw; export fails open.  |
+| `langfuse`          | `options: { baseUrl: string; publicKey: Credential; secretKey: Credential; }` | `Exporter`      | Invalid credentials or base URL throw; export fails open. |
+| `trace.integration` | `facts: Facts`                                                                | `Telemetry`     | Invalid facts throw; oversized facts export as digests.   |
+| `trace.flush`       | `signal?: AbortSignal`                                                        | `Promise<void>` | Export errors/timeouts are swallowed; no retries.         |
 
 {/* GENERATED_API_END */}
 

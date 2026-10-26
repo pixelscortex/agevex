@@ -19,7 +19,11 @@ bun add @daytona/convex@2.1.0
 ```
 
 Set `DAYTONA_API_KEY` in the host deployment environment. Mount Daytona with
-its declared environment binding:
+its declared environment binding. To supply the key from host code instead, pass
+`daytona(components.daytona, { apiKey: () => process.env.DAYTONA_API_KEY! })`:
+a string or a getter returning a string or promise, called at each Daytona call
+and never at construction. An empty resolved key fails that call with
+`SANDBOX_DAYTONA_KEY_REQUIRED`.
 
 ```ts title="convex/convex.config.ts"
 import { defineApp } from "convex/server";
@@ -147,7 +151,7 @@ using its `agevexScope` label / `userKey`; forgetting is not provider cleanup.
 
 Generated from the current exported TypeScript signatures in [the module entry](https://github.com/pixelscortex/agevex/blob/HEAD/src/modules/sandbox/client/index.ts). TypeScript does not encode thrown errors; the error column describes implementation behavior.
 
-`SandboxClient = ReturnType<typeof defineSandbox>`. `SandboxCall` accepts a full core `ToolContext`. For `daytona`, `ComponentApi` is the Daytona component type from `@daytona/convex`; its local `DaytonaSandboxOptions` extends the dependency type `DaytonaOptions` with optional `snapshot`, `target`, `autoStopInterval` and `autoArchiveInterval`.
+`SandboxClient = ReturnType<typeof defineSandbox>`. `SandboxCall` accepts a full core `ToolContext`. For `daytona`, `ComponentApi` is the Daytona component type from `@daytona/convex`; its local `DaytonaSandboxOptions` extends the dependency type `DaytonaOptions` with optional `snapshot`, `target`, `autoStopInterval` and `autoArchiveInterval`, and widens `apiKey` to `string | (() => string | Promise<string>)`.
 
 | Name                        | Arguments                                                                                                                                                                                                                            | Returns                                                                                                                                                                                                                                                                                                                      | Errors / failure behavior                                                           |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |

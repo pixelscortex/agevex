@@ -129,6 +129,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
 }
 
 export { daytona } from "./daytona.js";
+export type { Credential } from "./credential.js";
 export { LIMITS, HARD_LIMITS } from "../shared/limits.js";
 export type { SandboxLimits } from "../shared/limits.js";
 export type * from "./types.js";
