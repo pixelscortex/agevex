@@ -1,0 +1,63 @@
+dist/modules/sandbox/client/daytona-write.d.ts
+  s_13555e3b41e1bf::t_e98f60749baf5f 1-18
+dist/modules/sandbox/client/daytona-write.js
+  s_13555e3b41e1bf::t_fee9d0c79929e1 1-149
+dist/modules/sandbox/client/daytona.js
+  s_13555e3b41e1bf::t_adaa12bec81ab5 10,54-57
+dist/modules/sandbox/client/index.d.ts
+  s_13555e3b41e1bf::t_bad2cd1576fe70 635,674-684,686-687
+dist/modules/sandbox/client/index.js
+  s_13555e3b41e1bf::t_30211c78e78681 18,72-95,105,117
+dist/modules/sandbox/client/types.d.ts
+  s_13555e3b41e1bf::t_6c98665078d593 84-94,136-158,193-194
+dist/modules/sandbox/client/write.d.ts
+  s_13555e3b41e1bf::t_f3f62bca7157d5 1-6
+dist/modules/sandbox/client/write.js
+  s_13555e3b41e1bf::t_9221d4f5351f2d 1-151
+dist/modules/sandbox/shared/limits.d.ts
+  s_13555e3b41e1bf::t_c63d4b3ee8c29d 18-20
+dist/modules/sandbox/shared/limits.js
+  s_13555e3b41e1bf::t_c5f2fa80a1af89 23-29
+dist/modules/sandbox/shared/write.d.ts
+  s_13555e3b41e1bf::t_9b910ca6924f82 1-14
+dist/modules/sandbox/shared/write.js
+  s_13555e3b41e1bf::t_f22f798a31abae 1-36
+dist/testing/sandbox.d.ts
+  s_13555e3b41e1bf::t_4a14e67144cf35 10-11
+dist/testing/sandbox.js
+  s_13555e3b41e1bf::t_1fa34c3ae462dc 1-3,28,32-83,114
+src/modules/sandbox/README.md
+  s_13555e3b41e1bf::t_117e292e6e257d 4,28-86
+src/modules/sandbox/client/daytona-write.ts
+  s_13555e3b41e1bf::t_191fedd733d1fc 1-189
+src/modules/sandbox/client/daytona.ts
+  s_13555e3b41e1bf::t_e5a7311a62882f 21-26,93-96
+src/modules/sandbox/client/index.ts
+  s_13555e3b41e1bf::t_e7cdd7330a6fa1 37,111-135,146,159-160
+src/modules/sandbox/client/types.ts
+  s_13555e3b41e1bf::t_a9091354503781 86-114,154-168,206-207
+src/modules/sandbox/client/write.ts
+  s_13555e3b41e1bf::t_466796fbdef517 1-250
+src/modules/sandbox/shared/limits.ts
+  s_13555e3b41e1bf::t_fd2bb9b7aece08 23-29
+src/modules/sandbox/shared/write.ts
+  s_13555e3b41e1bf::t_dfa092ad955abe 1-45
+src/testing/sandbox.ts
+  s_13555e3b41e1bf::t_3d457a7bcfb2f9 7-13,18-19,70,76-145,186
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "637f049d05c084fda0d5d6dbcf9f0279c0e21d6a",
+  "prompts": {},
+  "sessions": {
+    "s_13555e3b41e1bf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a178ec-a85f-7010-84b7-17696a613ddc",
+        "model": "unknown"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
