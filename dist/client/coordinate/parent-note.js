@@ -3,7 +3,7 @@
  * derives the immediate parent, caps admission and replays exact receipt ids.
  * Native save, queue publication and receipt all share this host transaction.
  */
-import { parentNoteFits } from "../../component/subagents/parent-notes.js";
+import { parentNoteFits } from "../../component/subagents/parent_notes.js";
 import { fingerprint, opaqueKey } from "../keys.js";
 import { saveTrackedMessage } from "../native-saves.js";
 /** Report progress using trusted persisted identities and the host delivery policy. */
@@ -19,7 +19,7 @@ export async function messageParent(rt, ctx, args) {
         key: await opaqueKey("parent-note", args.turnToken, args.toolCallId),
         fingerprint: await fingerprint(args.text),
     };
-    const target = await ctx.runQuery(rt.component.subagents["parent-notes"].parentNoteContext, input);
+    const target = await ctx.runQuery(rt.component.subagents.parent_notes.parentNoteContext, input);
     if (target.kind === "denied")
         return { status: "denied", code: target.code };
     if (target.kind === "replay")
@@ -51,7 +51,7 @@ export async function messageParent(rt, ctx, args) {
         agentName: target.agent,
         userId: target.subject,
     });
-    return ctx.runMutation(rt.component.subagents["parent-notes"].messageParent, {
+    return ctx.runMutation(rt.component.subagents.parent_notes.messageParent, {
         ...input,
         messageId,
     });

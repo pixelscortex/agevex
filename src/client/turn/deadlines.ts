@@ -4,7 +4,7 @@
 // through to AI SDK, preserving native saves and exact usage/approval ids.
 import { gateway, wrapLanguageModel, type LanguageModel, type Tool, type ToolSet } from "ai";
 import type { LanguageModelV4 } from "@ai-sdk/provider";
-import { RUN_LIMITS } from "../../component/run-settings.js";
+import { RUN_LIMITS } from "../../component/run_settings.js";
 import type { Generation } from "./context.js";
 import { providerEvidence } from "./provider-evidence.js";
 

@@ -4,7 +4,7 @@ import { approvalKey, callKey, keyString } from "../approvals.js";
 import { firstReady } from "./inbox.js";
 import { disarmRecovery } from "./recovery.js";
 import { disarmSlice } from "./boundaries.js";
-import { saveProposal } from "./decision-proposals.js";
+import { saveProposal } from "./decision_proposals.js";
 /** Decided approvals still need native results from continuation generation. */
 export function awaitingApprovalResults(row) {
     return !!row.approvals?.requests.some((request) => request.resolved);

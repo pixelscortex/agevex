@@ -9,7 +9,7 @@
  */
 import type { WithoutSystemFields } from "convex/server";
 import { getConvexSize } from "convex/values";
-import { assertSettingsSnapshot, RUN_LIMITS } from "../run-settings.js";
+import { assertSettingsSnapshot, RUN_LIMITS } from "../run_settings.js";
 import type { Doc } from "../_generated/dataModel.js";
 
 /** The fresh budget for one accepted send. `models` is the thread's model

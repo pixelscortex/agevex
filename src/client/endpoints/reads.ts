@@ -27,7 +27,7 @@ import { ConvexError, getConvexSize, v, type Validator } from "convex/values";
 import { LIMITS } from "../../component/limits.js";
 import { assertFact } from "../../component/facts.js";
 import { activity, subagentRun, vPaginationResult } from "../../component/schema.js";
-import { runTree, TREE_LIMITS } from "../../component/run-tree-values.js";
+import { runTree, TREE_LIMITS } from "../../component/run_tree_values.js";
 import type { ManagedAgent } from "../types.js";
 import { ownedThread, type EndpointContext } from "./access.js";
 

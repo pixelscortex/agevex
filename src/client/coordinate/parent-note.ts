@@ -3,7 +3,7 @@
  * derives the immediate parent, caps admission and replays exact receipt ids.
  * Native save, queue publication and receipt all share this host transaction.
  */
-import { parentNoteFits } from "../../component/subagents/parent-notes.js";
+import { parentNoteFits } from "../../component/subagents/parent_notes.js";
 import { fingerprint, opaqueKey } from "../keys.js";
 import { saveTrackedMessage } from "../native-saves.js";
 import type { CoordinatorCtx, RuntimeContext } from "../registration/context.js";
@@ -28,10 +28,7 @@ export async function messageParent(
     fingerprint: await fingerprint(args.text),
   };
 
-  const target = await ctx.runQuery(
-    rt.component.subagents["parent-notes"].parentNoteContext,
-    input,
-  );
+  const target = await ctx.runQuery(rt.component.subagents.parent_notes.parentNoteContext, input);
 
   if (target.kind === "denied") return { status: "denied" as const, code: target.code };
 
@@ -67,7 +64,7 @@ export async function messageParent(
     userId: target.subject,
   });
 
-  return ctx.runMutation(rt.component.subagents["parent-notes"].messageParent, {
+  return ctx.runMutation(rt.component.subagents.parent_notes.messageParent, {
     ...input,
     messageId,
   });

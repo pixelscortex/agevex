@@ -3,7 +3,7 @@ import { laneManager, startLoop } from "../workflows/lanes.js";
 import { firstReady } from "./inbox.js";
 import { runById } from "../subagents/runs.js";
 import { settleIdleParent } from "../subagents/settle.js";
-import { closeRootRun } from "./run-lifecycle.js";
+import { closeRootRun } from "./run_lifecycle.js";
 import { armRecovery, cancelIfPending, disarmRecovery, needsRecovery, nextRecoveryDelay, } from "./recovery.js";
 /** Whether this child currently has an open question to its parent. An asking
  * child is paused (not stuck): nothing may claim or ring it until the answer

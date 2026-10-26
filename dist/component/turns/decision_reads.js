@@ -3,7 +3,7 @@ import { ConvexError, v } from "convex/values";
 import { query } from "../_generated/server.js";
 import { approvalKey, keyString } from "../approvals.js";
 import { findReceipt } from "../receipts/records.js";
-import { proposal } from "./decision-proposals.js";
+import { proposal } from "./decision_proposals.js";
 import { DECISION_LIMITS, decisionBytes } from "../../shared/decisions.js";
 import { oversizedAskItem } from "../../shared/ask-values.js";
 export const pendingItem = v.object({

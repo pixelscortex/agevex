@@ -13,7 +13,7 @@
 
 import { createFunctionHandle, getFunctionAddress } from "convex/server";
 import { ConvexError } from "convex/values";
-import { sliceDeadlineMs } from "../../component/run-settings.js";
+import { sliceDeadlineMs } from "../../component/run_settings.js";
 import { LIMITS } from "../../component/limits.js";
 import { askUserTools, type AskUserSave } from "../../shared/tool-markers.js";
 import { deferredToolNames } from "../registration/graph.js";

@@ -83,7 +83,7 @@ function withToolHooks(rt, gen, name, declared) {
     return {
         ...declared,
         execute: async function (input, options) {
-            const approved = (await turn.rawCtx.runQuery(rt.component.turns["decision-reads"].effective, {
+            const approved = (await turn.rawCtx.runQuery(rt.component.turns.decision_reads.effective, {
                 assignmentId: turn.args.assignmentId,
                 toolCallId: options.toolCallId,
             }));

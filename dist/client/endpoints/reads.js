@@ -12,7 +12,7 @@ import { ConvexError, getConvexSize, v } from "convex/values";
 import { LIMITS } from "../../component/limits.js";
 import { assertFact } from "../../component/facts.js";
 import { activity, subagentRun, vPaginationResult } from "../../component/schema.js";
-import { runTree, TREE_LIMITS } from "../../component/run-tree-values.js";
+import { runTree, TREE_LIMITS } from "../../component/run_tree_values.js";
 import { ownedThread } from "./access.js";
 const uiMessage = v.object({
     origin: v.union(v.literal("user"), v.literal("result"), v.literal("note"), v.literal("continue")),

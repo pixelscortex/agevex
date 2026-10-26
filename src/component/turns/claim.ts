@@ -23,7 +23,7 @@ import {
   sliceWatchdogMs,
   turnStepLimit,
   type ResolvedRunSettings,
-} from "../run-settings.js";
+} from "../run_settings.js";
 import { LIMITS, readyRowLimit } from "../limits.js";
 import { claimNotes, noteHandles } from "../hooks/notes.js";
 import { firstReady } from "./inbox.js";

@@ -11,11 +11,11 @@
  */
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { settingsSnapshot } from "./run-settings.js";
+import { settingsSnapshot } from "./run_settings.js";
 import { modelOverrides } from "./models.js";
 import { limitsValidator } from "./limits.js";
 import { textConfig, textJob, textBoundary, storedSummary } from "./text/values.js";
-import { storedProposal } from "./turns/decision-proposals.js";
+import { storedProposal } from "./turns/decision_proposals.js";
 export const turnOrigin = v.union(v.literal("user"), v.literal("subagent_result"));
 export const turnStatus = v.union(v.literal("queued"), v.literal("running"), v.literal("idle"), v.literal("recovery_required"));
 export const errorCode = v.union(v.null(), v.literal("BUDGET_EXCEEDED"), v.literal("HOOK_FAILED"), v.literal("GENERATION_FAILED"), v.literal("RUN_TIMEOUT"), v.literal("SLICE_LIMIT"), v.literal("APPROVAL_LIMIT"), v.literal("CLEANUP_FAILED"), v.literal("AUTHORIZATION_DENIED"), v.literal("EXECUTION_AMBIGUOUS"));

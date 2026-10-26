@@ -6,7 +6,7 @@
  */
 import type { Doc } from "./_generated/dataModel.js";
 import type { MutationCtx } from "./_generated/server.js";
-import type { ClaimDeliveriesArgs, DeliveryResultArgs, DeliveryCompleteArgs, RetrySinksArgs } from "./charge-contracts.js";
+import type { ClaimDeliveriesArgs, DeliveryResultArgs, DeliveryCompleteArgs, RetrySinksArgs } from "./charge_contracts.js";
 type Delivery = Doc<"deliveries">;
 type DeliveryEvent = Required<Delivery["event"]> & Pick<Delivery, "key" | "attribution" | "provider">;
 /**

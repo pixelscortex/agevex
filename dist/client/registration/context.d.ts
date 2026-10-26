@@ -1,7 +1,7 @@
 import type { GenericActionCtx, GenericDataModel, GenericMutationCtx } from "convex/server";
 import type { ComponentApi } from "../../component/_generated/component.js";
 import { type Limits } from "../../component/limits.js";
-import { type SettingsSnapshot } from "../../component/run-settings.js";
+import { type SettingsSnapshot } from "../../component/run_settings.js";
 import type { AgentEvent, Registration } from "../types.js";
 import { type Graph } from "./graph.js";
 /** Mutation context the coordinator runs with; also what native saves accept. */

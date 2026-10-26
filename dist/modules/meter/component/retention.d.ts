@@ -1,5 +1,5 @@
 import type { MutationCtx } from "./_generated/server.js";
-import type { PruneArgs } from "./charge-contracts.js";
+import type { PruneArgs } from "./charge_contracts.js";
 /**
  * Host-driven retention. Deletes settled charges whose sinks all acknowledged
  * (index by_terminal, no scan of live rows) created before `before`, with

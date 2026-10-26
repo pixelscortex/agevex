@@ -1,5 +1,5 @@
 import { getConvexSize } from "convex/values";
-import { assertSettingsSnapshot, RUN_LIMITS } from "../run-settings.js";
+import { assertSettingsSnapshot, RUN_LIMITS } from "../run_settings.js";
 /** The fresh budget for one accepted send. `models` is the thread's model
  * policy at acceptance, snapshotted so later sends cannot change a live run. */
 export function newRun(models, settings = [], metadata = {}) {

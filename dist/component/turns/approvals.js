@@ -4,7 +4,7 @@ import { LIMITS } from "../limits.js";
 import { approvalKey, saveResponses } from "../approvals.js";
 import { armPurge, findReceipt, newDoneReceipt } from "../receipts/records.js";
 import { canonicalJson, decisionValidator, assertJson, validateAnswer, } from "../../shared/decisions.js";
-import { readPending, readProposal } from "./decision-reads.js";
+import { readPending, readProposal } from "./decision_reads.js";
 import { wake } from "./wake.js";
 /** `replayed` is true when an identical retry was served from the response
  * receipt, so a host can tell a first decision from a replay (e.g. to record

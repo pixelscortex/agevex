@@ -1,6 +1,6 @@
 import { groupMembers, isSettled } from "./runs.js";
 import { settleIdleParent } from "./settle.js";
-import { closeRootRun } from "../turns/run-lifecycle.js";
+import { closeRootRun } from "../turns/run_lifecycle.js";
 /** Readiness belongs to one sealed cohort, never a prefix of historical runs.
  * One representative is sufficient for indexed discovery; release marks every
  * member together. Membership is immutable after continueTurn/finish seals it.

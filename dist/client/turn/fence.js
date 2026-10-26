@@ -12,7 +12,7 @@
 // usage capture, the post-step snapshot, `continueAfterToolCalls`) use `Turn.rawCtx`.
 import { createFunctionHandle, getFunctionAddress } from "convex/server";
 import { ConvexError } from "convex/values";
-import { sliceDeadlineMs } from "../../component/run-settings.js";
+import { sliceDeadlineMs } from "../../component/run_settings.js";
 import { LIMITS } from "../../component/limits.js";
 import { askUserTools } from "../../shared/tool-markers.js";
 import { deferredToolNames } from "../registration/graph.js";

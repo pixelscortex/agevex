@@ -1,7 +1,7 @@
 /** Return one charge with bounded delivery state; callers authorize in the host client. */
 export declare const get: import("convex/server").RegisteredQuery<"public", {
     key: string;
-}, Promise<import("./charge-records.js").Outcome | null>>;
+}, Promise<import("./charge_records.js").Outcome | null>>;
 /** Admit or replay an immutable charge key and update its aggregate/outbox state. */
 export declare const create: import("convex/server").RegisteredMutation<"public", {
     reason?: "NO_COST" | "DECODE_FAILED" | "INVALID_COST" | "OVER_CAP" | "PROVIDER_NOT_REGISTERED" | "PROFILE_NOT_REGISTERED" | "THREAD_CAPACITY" | undefined;
@@ -53,7 +53,7 @@ export declare const update: import("convex/server").RegisteredMutation<"public"
     operation: "settle" | "correct";
     nanos: number;
     operationKey: string;
-}, Promise<import("./charge-records.js").Outcome>>;
+}, Promise<import("./charge_records.js").Outcome>>;
 /** Attach provider evidence identity and schedule its bounded lookup window. */
 export declare const attach: import("convex/server").RegisteredMutation<"public", {
     key: string;
@@ -65,7 +65,7 @@ export declare const attach: import("convex/server").RegisteredMutation<"public"
     requestId: string;
     lookupMs: number;
     operationKey: string;
-}, Promise<import("./charge-records.js").Outcome>>;
+}, Promise<import("./charge_records.js").Outcome>>;
 /** One-shot deadline for unresolved lookup evidence. */
 export declare const expire: import("convex/server").RegisteredMutation<"internal", {
     id: import("convex/values").GenericId<"charges">;

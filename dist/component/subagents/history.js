@@ -12,7 +12,7 @@ import { subagentRun, vPaginationResult } from "../schema.js";
 import { assignmentByThread } from "../turns/assignments.js";
 import { delegationPage } from "./views.js";
 import { requestTree } from "./tree.js";
-import { runTree as treeValue } from "../run-tree-values.js";
+import { runTree as treeValue } from "../run_tree_values.js";
 /** The root thread's delegation history, newest first. */
 export const delegations = query({
     args: { threadId: v.string(), subject: v.string(), paginationOpts: paginationOptsValidator },

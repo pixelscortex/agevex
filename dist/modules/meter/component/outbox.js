@@ -1,5 +1,5 @@
 import { LIMITS } from "../shared/limits.js";
-import { billable, isTerminal } from "./charge-records.js";
+import { billable, isTerminal } from "./charge_records.js";
 import { enqueueDrain } from "./jobs.js";
 /** Build one small outbox row at admission; event identity is frozen until acknowledgement. */
 function newDelivery(row, sink, event) {

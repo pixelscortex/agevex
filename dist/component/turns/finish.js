@@ -18,7 +18,7 @@ import { disarmRecovery } from "./recovery.js";
 import { disarmSlice } from "./boundaries.js";
 import { completeTextTurn } from "../text/jobs.js";
 import { wake } from "./wake.js";
-import { endRootTurn } from "./run-lifecycle.js";
+import { endRootTurn } from "./run_lifecycle.js";
 /** End the running turn `turnToken`: success idles the thread and wakes
  * queued work; a failure code is deferred behind the settlement fence
  * (children) or parks the thread in recovery_required. Either way the slice

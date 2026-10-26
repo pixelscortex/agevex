@@ -12,7 +12,7 @@ import { createFunctionHandle, mutationGeneric, } from "convex/server";
 import { v } from "convex/values";
 import { assertFact } from "../../component/facts.js";
 import { LIMITS } from "../../component/limits.js";
-import { taskPreview } from "../../component/run-tree-values.js";
+import { taskPreview } from "../../component/run_tree_values.js";
 import { modelOverrides, validModelOverrides } from "../../component/models.js";
 import { receipt } from "../../component/schema.js";
 import { savedMessageRef } from "../native-saves.js";

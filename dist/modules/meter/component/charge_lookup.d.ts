@@ -1,33 +1,12 @@
-/**
- * Amount transitions, authoritative settlement and correction replay.
- * The registered update mutation invokes this handler after wire validation.
- * Each change patches the charge, replaces its existing aggregate projections,
- * prepares sinks, then snapshots the result in the immutable operation ledger.
- */
-import type { Doc } from "./_generated/dataModel.js";
 import type { MutationCtx } from "./_generated/server.js";
-import type { UpdateArgs } from "./charge-contracts.js";
-import { type Outcome } from "./charge-records.js";
-import { type Jobs } from "./jobs.js";
-/** Advance only amount/state revisions, updating projections before preparing sink events. */
-export declare function change(ctx: MutationCtx, row: Doc<"charges">, patch: Partial<Doc<"charges">>, config: Jobs): Promise<{
-    terminal: boolean;
-    sinkState: {
-        pending?: {
-            status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
-            source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
-            externalId: string;
-            revision: number;
-            nanos: number;
-            totalNanos: number;
-        } | undefined;
-        estimates?: boolean | undefined;
-        deliveredNanos?: number | undefined;
-        deliveredStatus?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
-        deliveredSource?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
-        name: string;
-        revision: number;
-    }[];
+import type { Doc } from "./_generated/dataModel.js";
+import type { Jobs } from "./jobs.js";
+import type { AttachArgs, ExpireArgs, LookupResultArgs } from "./charge_contracts.js";
+import { type Outcome } from "./charge_records.js";
+/** Attach one immutable provider request, then admit lookup and its independent deadline. */
+export declare function attachCharge(ctx: MutationCtx, args: AttachArgs): Promise<Outcome>;
+/** Shared admission for attach and the run sweep. The stored window is never reset. */
+export declare function startLookup(ctx: MutationCtx, row: Doc<"charges">, requestId: string, lookupMs: number, jobs: Jobs): Promise<{
     _id: import("convex/values").GenericId<"charges">;
     _creationTime: number;
     reason?: "NO_COST" | "DECODE_FAILED" | "INVALID_COST" | "OVER_CAP" | "PROVIDER_NOT_REGISTERED" | "PROFILE_NOT_REGISTERED" | "THREAD_CAPACITY" | undefined;
@@ -120,7 +99,26 @@ export declare function change(ctx: MutationCtx, row: Doc<"charges">, patch: Par
         };
     }[];
     revision: number;
+    sinkState: {
+        pending?: {
+            status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+            source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
+            externalId: string;
+            revision: number;
+            nanos: number;
+            totalNanos: number;
+        } | undefined;
+        estimates?: boolean | undefined;
+        deliveredNanos?: number | undefined;
+        deliveredStatus?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+        deliveredSource?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
+        name: string;
+        revision: number;
+    }[];
+    terminal: boolean;
     breakdowns: ("thread.model" | "thread.provider" | "subject.agent" | "subject.model" | "subject.provider")[];
 }>;
-/** Replay a stable operation or apply the same settlement/correction precedence fences. */
-export declare function updateCharge(ctx: MutationCtx, args: UpdateArgs): Promise<Outcome>;
+/** Finish unresolved evidence while retaining the last estimate at its recorded one-shot deadline. */
+export declare function expireCharge(ctx: MutationCtx, { id }: ExpireArgs): Promise<void>;
+/** Retain late evidence but fence duplicate empty callbacks before scheduling another lookup. */
+export declare function recordLookupResult(ctx: MutationCtx, args: LookupResultArgs): Promise<null>;

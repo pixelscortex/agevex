@@ -13,7 +13,7 @@ export async function effectiveInput(ep, ctx, row, approvalId, decision) {
             assertJson(decision.reason);
         return {};
     }
-    const call = await ctx.runQuery(ep.component.turns["decision-reads"].detail, {
+    const call = await ctx.runQuery(ep.component.turns.decision_reads.detail, {
         assignmentId: row.assignmentId,
         subject: row.subject,
         id: approvalId,

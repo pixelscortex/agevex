@@ -1,7 +1,7 @@
 import { Agent as NativeAgent, type AgentComponent, type Config } from "@convex-dev/agent";
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import type { Instructions, LanguageModel, StopCondition, ToolSet } from "ai";
-import type { RunSettings } from "../component/run-settings.js";
+import type { RunSettings } from "../component/run_settings.js";
 import type { AgentHooks, SideAgent, ManagedAgent } from "./types.js";
 type AgentOptions<Tools extends ToolSet> = Omit<Config, "languageModel"> & {
     name: string;

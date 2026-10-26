@@ -3,7 +3,7 @@
 // Native Agent 0.7.7 index.ts:545-579 / client/streamText.ts:213 pass prepareStep
 // through to AI SDK, preserving native saves and exact usage/approval ids.
 import { gateway, wrapLanguageModel } from "ai";
-import { RUN_LIMITS } from "../../component/run-settings.js";
+import { RUN_LIMITS } from "../../component/run_settings.js";
 import { providerEvidence } from "./provider-evidence.js";
 /** Provider-only deadline, covering the entire stream, and a tool-call cap. */
 export function boundedModel(gen, model) {

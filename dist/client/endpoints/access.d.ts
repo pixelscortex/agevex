@@ -1,6 +1,6 @@
 import type { GenericDataModel, GenericMutationCtx, GenericQueryCtx } from "convex/server";
 import type { ComponentApi } from "../../component/_generated/component.js";
-import type { SettingsSnapshot } from "../../component/run-settings.js";
+import type { SettingsSnapshot } from "../../component/run_settings.js";
 import { type Limits } from "../../component/limits.js";
 import type { AgentEvent, ManagedAgent, Registration } from "../types.js";
 /** What every endpoint builder needs, resolved once per `authorizedEndpoints` call. */

@@ -14,7 +14,7 @@
 import { mutation, query, internalAction, internalMutation, } from "../_generated/server.js";
 import { groupMembers, isSettled, runById, appendEvent } from "./runs.js";
 import { wake } from "../turns/wake.js";
-import { closeRootRun } from "../turns/run-lifecycle.js";
+import { closeRootRun } from "../turns/run_lifecycle.js";
 import { markGroupReady, releaseReadyCohort } from "./groups.js";
 import { v } from "convex/values";
 import { internal } from "../_generated/api.js";

@@ -18,7 +18,7 @@ import { mutation, query } from "../_generated/server.js";
 import { denialCode } from "../schema.js";
 import { LIMITS } from "../limits.js";
 import { assertFunctionHandle, assertName } from "../facts.js";
-import { taskPreview } from "../run-tree-values.js";
+import { taskPreview } from "../run_tree_values.js";
 import { approvalKey } from "../approvals.js";
 import { assertRunMetadata, groupMembers, newSubagentRun, runById } from "./runs.js";
 import { messageRef, recordRefs } from "../hooks/refs.js";

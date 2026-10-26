@@ -15,7 +15,7 @@ import {
   assertSettingsSnapshot,
   resolveRunSettings,
   type SettingsSnapshot,
-} from "../../component/run-settings.js";
+} from "../../component/run_settings.js";
 import { assertTextOptions } from "../text/options.js";
 import type { AgentEvent, Registration } from "../types.js";
 import { deferredToolNames, resolveGraph, type Graph } from "./graph.js";

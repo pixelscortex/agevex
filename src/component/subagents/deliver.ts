@@ -21,7 +21,7 @@ import {
 import type { Doc } from "../_generated/dataModel.js";
 import { groupMembers, isSettled, runById, appendEvent } from "./runs.js";
 import { wake } from "../turns/wake.js";
-import { closeRootRun } from "../turns/run-lifecycle.js";
+import { closeRootRun } from "../turns/run_lifecycle.js";
 import { markGroupReady, releaseReadyCohort } from "./groups.js";
 import type { FunctionReference } from "convex/server";
 import { v } from "convex/values";

@@ -25,7 +25,7 @@ import {
   type Decision,
   type JsonSchema,
 } from "../../shared/decisions.js";
-import { readPending, readProposal } from "./decision-reads.js";
+import { readPending, readProposal } from "./decision_reads.js";
 import { wake } from "./wake.js";
 
 /** `replayed` is true when an identical retry was served from the response

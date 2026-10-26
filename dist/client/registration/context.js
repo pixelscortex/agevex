@@ -8,7 +8,7 @@
 // helpers they share: best-effort `observe` and the lazy coordinator reference.
 // Touches no tables.
 import { LIMITS, resolveLimits } from "../../component/limits.js";
-import { assertSettingsSnapshot, resolveRunSettings, } from "../../component/run-settings.js";
+import { assertSettingsSnapshot, resolveRunSettings, } from "../../component/run_settings.js";
 import { assertTextOptions } from "../text/options.js";
 import { deferredToolNames, resolveGraph } from "./graph.js";
 /**

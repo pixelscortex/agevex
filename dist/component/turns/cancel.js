@@ -5,7 +5,7 @@ import { childLane, rootLane } from "../workflows/lanes.js";
 import { readyRows } from "./inbox.js";
 import { cancelIfPending } from "./recovery.js";
 import { LIMITS, readyRowLimit } from "../limits.js";
-import { RUN_LIMITS } from "../run-settings.js";
+import { RUN_LIMITS } from "../run_settings.js";
 import { v } from "convex/values";
 /** Cancel the root thread owned by `subject` and all its live descendants.
  * Returns the affected native threads so the host can abort their streams. */

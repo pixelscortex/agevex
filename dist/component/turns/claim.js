@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { internal } from "../_generated/api.js";
 import { scope, turnOrigin as vTurnOrigin } from "../schema.js";
-import { runSettings, resolveRunSettings, sliceWatchdogMs, turnStepLimit, } from "../run-settings.js";
+import { runSettings, resolveRunSettings, sliceWatchdogMs, turnStepLimit, } from "../run_settings.js";
 import { LIMITS, readyRowLimit } from "../limits.js";
 import { claimNotes, noteHandles } from "../hooks/notes.js";
 import { firstReady } from "./inbox.js";

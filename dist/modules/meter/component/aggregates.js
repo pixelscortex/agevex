@@ -7,7 +7,7 @@
 import { DirectAggregate } from "@convex-dev/aggregate";
 import { components } from "./_generated/api.js";
 import { LIMITS } from "../shared/limits.js";
-import { usageProjections } from "./usage-projections.js";
+import { usageProjections } from "./usage_projections.js";
 export const byThread = new DirectAggregate(components.costByThread);
 export const bySubject = new DirectAggregate(components.costBySubject);
 export const groups = ["estimate", "settled", "unknown"];

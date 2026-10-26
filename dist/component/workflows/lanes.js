@@ -18,7 +18,7 @@
 import { WorkflowManager } from "@convex-dev/workflow";
 import { components, internal } from "../_generated/api.js";
 import { internalMutation } from "../_generated/server.js";
-import { RUN_LIMITS } from "../run-settings.js";
+import { RUN_LIMITS } from "../run_settings.js";
 import { LIMITS } from "../limits.js";
 import { v } from "convex/values";
 import { vResultValidator } from "@convex-dev/workpool";
