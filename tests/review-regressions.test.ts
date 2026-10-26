@@ -819,15 +819,13 @@ it.each(["routing", "approval"])(
         componentsGeneric().agevex.agevexTest.queuedWork as unknown as FunctionReference<"query">,
       );
 
-    // Every queued/current root budget carries a full 64-agent settings map,
+    // Every queued/current root budget carries a full 64-agent settings array,
     // alongside the max model map. Atomic cancel must still fit its old 8 MiB
     // test budget; repeated child references must not reread each large run.
-    const settings = Object.fromEntries(
-      Array.from({ length: 64 }, (_, index) => [
-        String(index).padEnd(128, "x"),
-        resolveRunSettings(),
-      ]),
-    );
+    const settings = Array.from({ length: 64 }, (_, index) => ({
+      agent: String(index).padEnd(100, "x"),
+      settings: resolveRunSettings(),
+    }));
 
     await t.mutation(
       componentsGeneric().agevex.agevexTest

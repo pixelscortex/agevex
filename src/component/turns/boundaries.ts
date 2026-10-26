@@ -93,7 +93,8 @@ export async function admitNextSlice(
 
   if (!run || run.cancelled) return null;
 
-  const settings = run.settings[row.agent] ?? resolveRunSettings();
+  const settings =
+    run.settings?.find((entry) => entry.agent === row.agent)?.settings ?? resolveRunSettings();
 
   if ((row.modelSteps ?? 0) >= settings.stepsPerTurn) {
     await finishTurn(ctx, {

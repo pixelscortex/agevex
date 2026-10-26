@@ -9,7 +9,7 @@
 import type { GenericDataModel, GenericMutationCtx, GenericQueryCtx } from "convex/server";
 import type { ComponentApi } from "../../component/_generated/component.js";
 import { assertFact } from "../../component/facts.js";
-import type { ResolvedRunSettings } from "../../component/run-settings.js";
+import type { SettingsSnapshot } from "../../component/run-settings.js";
 import { resolveLimits, type Limits } from "../../component/limits.js";
 import type { AgentEvent, ManagedAgent, Registration } from "../types.js";
 
@@ -18,7 +18,7 @@ export type EndpointContext = {
   component: ComponentApi;
   config: Registration;
   limits: Limits;
-  settings: Record<string, ResolvedRunSettings>;
+  settings: SettingsSnapshot;
   /** Every agent in the registered graph, by name: roots, children and side agents. */
   managedAgents: Map<string, ManagedAgent>;
 };
@@ -46,7 +46,7 @@ export type ThreadOperation =
 export function createEndpointContext(
   component: ComponentApi,
   config: Registration,
-  settings: Record<string, ResolvedRunSettings>,
+  settings: SettingsSnapshot,
 ): EndpointContext {
   const limits = resolveLimits(config.limits);
   const managedAgents = new Map<string, ManagedAgent>();

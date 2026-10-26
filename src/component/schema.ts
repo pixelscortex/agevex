@@ -29,6 +29,7 @@ export const errorCode = v.union(
   v.literal("BUDGET_EXCEEDED"),
   v.literal("HOOK_FAILED"),
   v.literal("GENERATION_FAILED"),
+  v.literal("RUN_TIMEOUT"),
   v.literal("SLICE_LIMIT"),
   v.literal("APPROVAL_LIMIT"),
   v.literal("CLEANUP_FAILED"),
@@ -343,7 +344,7 @@ export default defineSchema({
   // the same launch/hop budget. Results are ready independently of siblings.
   runs: defineTable({
     // Read by claim/watchdog and betweenSlices. Children inherit this same run id.
-    settings: settingsSnapshot,
+    settings: v.optional(settingsSnapshot),
     // Run snapshot shared by every root/descendant/result turn. A beforeTurn
     // hook may choose its agent model at run start; later turns only read it.
     // Read at claim, never replaced by a subsequent send's thread policy.

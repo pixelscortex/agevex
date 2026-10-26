@@ -71,8 +71,6 @@ export async function acceptSend(ctx: MutationCtx, args: ObjectType<typeof accep
 
   if (duplicate) return duplicate;
 
-  await assertLaneConfiguration(ctx, args.limits);
-
   let row = await assignmentByThread(ctx, args.threadId);
 
   if (!row) {
@@ -105,7 +103,7 @@ export async function acceptSend(ctx: MutationCtx, args: ObjectType<typeof accep
 
   const runId = await ctx.db.insert(
     "runs",
-    newRun(models, args.settings ?? { [args.agent]: resolveRunSettings() }),
+    newRun(models, args.settings ?? [{ agent: args.agent, settings: resolveRunSettings() }]),
   );
 
   await ctx.db.insert("inbox", {
@@ -212,19 +210,3 @@ export const activity = query({
     return activityView(row);
   },
 });
-
-/** A component mount owns one pool pair, even across independent registrations.
- * One indexed assignment read (<=32 KiB) pins capacity without a new table.
- * Refusal rolls back the native prompt save in the accepting transaction. */
-async function assertLaneConfiguration(
-  ctx: MutationCtx,
-  limits: ObjectType<typeof limitsValidator.fields>,
-) {
-  const first = await ctx.db.query("assignments").withIndex("by_thread").first();
-
-  if (
-    first &&
-    (first.limits.rootLane !== limits.rootLane || first.limits.childLane !== limits.childLane)
-  )
-    throw new Error("LANE_CONFIGURATION_CONFLICT");
-}

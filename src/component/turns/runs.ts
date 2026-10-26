@@ -16,7 +16,7 @@ import type { Doc } from "../_generated/dataModel.js";
  * policy at acceptance, snapshotted so later sends cannot change a live run. */
 export function newRun(
   models: Doc<"runs">["models"],
-  settings: Doc<"runs">["settings"],
+  settings: Doc<"runs">["settings"] = [],
 ): WithoutSystemFields<Doc<"runs">> {
   assertSettingsSnapshot(settings);
 

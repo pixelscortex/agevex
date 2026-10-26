@@ -51,13 +51,23 @@ export async function generateTurn(rt: RuntimeContext, turn: Turn): Promise<Turn
 
     return await completeGeneration(rt, gen, result, reason);
   } catch {
+    const timedOut = gen.fence.controller.signal.reason?.message === "RUN_TIMEOUT";
+
     return {
-      errorCode: state.hookFailed ? "HOOK_FAILED" : state.hookBlocked ? null : "GENERATION_FAILED",
+      errorCode: state.hookFailed
+        ? "HOOK_FAILED"
+        : state.hookBlocked
+          ? null
+          : timedOut
+            ? "RUN_TIMEOUT"
+            : "GENERATION_FAILED",
       childError: state.hookFailed
         ? "HOOK_FAILED"
         : state.hookBlocked
           ? "EMPTY_RESULT"
-          : "GENERATION_FAILED",
+          : timedOut
+            ? "RUN_TIMEOUT"
+            : "GENERATION_FAILED",
     };
   } finally {
     gen.fence.stop();

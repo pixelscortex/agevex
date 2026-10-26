@@ -136,6 +136,6 @@ it("aborts a non-finishing provider at 90 seconds and does not retry", async () 
 
   expect(await alice.query(api.agents.activity, { threadId: receipt.threadId })).toMatchObject({
     turnStatus: "recovery_required",
-    errorCode: "GENERATION_FAILED",
+    errorCode: "RUN_TIMEOUT",
   });
 });

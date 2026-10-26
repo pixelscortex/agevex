@@ -14,7 +14,7 @@ import { LIMITS, resolveLimits, type Limits } from "../../component/limits.js";
 import {
   assertSettingsSnapshot,
   resolveRunSettings,
-  type ResolvedRunSettings,
+  type SettingsSnapshot,
 } from "../../component/run-settings.js";
 import type { AgentEvent, Registration } from "../types.js";
 import { deferredToolNames, resolveGraph, type Graph } from "./graph.js";
@@ -32,7 +32,7 @@ export type RuntimeContext = {
   /** Host limits merged over `LIMITS` and validated. */
   limits: Limits;
   graph: Graph;
-  settings: Record<string, ResolvedRunSettings>;
+  settings: SettingsSnapshot;
   /** Stable index per agent name (sorted), used by per-agent model routing. */
   agentIndexes: Map<string, number>;
   /** Whether any agent has side agents, so native saves must be captured for review deltas. */
@@ -51,17 +51,15 @@ export function createRuntimeContext(component: ComponentApi, config: Registrati
   const limits = resolveLimits(config.limits);
   const graph = resolveGraph(config);
 
-  const settings = Object.fromEntries(
-    [...graph.byName].map(([name, agent]) => {
-      const resolved = resolveRunSettings(agent.run);
+  const settings = [...graph.byName].map(([name, agent]) => {
+    const resolved = resolveRunSettings(agent.run);
 
-      // Retain the existing host default while allowing an explicit per-agent
-      // step count. Resolve the raw run object first so malformed JS fails too.
-      if (agent.run?.stepsPerTurn === undefined) resolved.stepsPerTurn = limits.slicesPerTurn;
+    // Retain the existing host default while allowing an explicit per-agent
+    // step count. Resolve the raw run object first so malformed JS fails too.
+    if (agent.run?.stepsPerTurn === undefined) resolved.stepsPerTurn = limits.slicesPerTurn;
 
-      return [name, resolved];
-    }),
-  );
+    return { agent: name, settings: resolved };
+  });
 
   assertSettingsSnapshot(settings);
   assertSlots(config);

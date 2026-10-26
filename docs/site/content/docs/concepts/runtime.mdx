@@ -101,20 +101,24 @@ const reviewer = new Agent(native, {
 `stream` uses native `streamText` with deltas; `generate` uses native
 `generateText` without deltas. Both save native messages, usage, tool calls
 and approval pauses. Each model step remains one non-retried action/slice;
-finish, approval, question or delegation can end the turn earlier. Provider
+finish, approval, question or delegation can end the turn earlier. 32k output tokens may require a longer model timeout. Run `runTurn` in the
+default Convex runtime, never `"use node"` (ten-minute action ceiling). Provider
 output limits may be smaller. Direct native calls remain unmanaged.
 
 Registration validates individual bounds and the combined action budget:
-`modelTimeoutMs + 16 * toolTimeoutMs + 30_000 <= 1_800_000`. The watchdog uses
-this same budget, starting at claim. At most sixteen tool calls are accepted per
+`modelTimeoutMs + 16 * toolTimeoutMs + 60_000 <= 1_800_000`.
+The client slice deadline is capped at five minutes; the server watchdog starts
+at claim and allows a further 30 seconds for clean `RUN_TIMEOUT` finalization. At most sixteen tool calls are accepted per
 slice; local tools execute serially. Model time excludes tools. Tool timeouts
 abort the slice, signal cooperative tools and stop waiting for uncooperative
 ones. External effects can still finish; late managed writes are fenced and
 unknown paid outcomes are never automatically retried.
 
-Each accepted request snapshots the resolved per-agent map on its root `runs`
+Approval-resumed executions do not count toward the new-call cap.
+
+Each accepted request snapshots the resolved per-agent array on its root `runs`
 row. Children and result turns read that same run id, so registration changes
-apply only to newly accepted requests. The map fits 15 KiB, reserving 1 KiB for
+apply only to newly accepted requests. The array fits 15 KiB, reserving 1 KiB for
 model overrides, counters and native row metadata within the 16 KiB run envelope.
 The existing `limits.slicesPerTurn` supplies the default when `run.stepsPerTurn`
 is omitted; an explicit host slice override also caps the Workflow turn.
@@ -125,6 +129,6 @@ is omitted; an explicit host slice override also caps the Workflow turn.
 uses the existing two Workflow/Workpool lanes. The defaults are 2 roots and 4
 children, with positive integer maxima of 4 each (8 total platform slots).
 One mounted component owns one shared pair of pools. Registrations on that
-mount must agree: acceptance refuses conflicting capacity with
-`LANE_CONFIGURATION_CONFLICT`. Sleeping workflows use no action slots;
+mount must agree. Lane bounds are validated at registration; sends do not
+compare against historical assignments. Sleeping workflows use no action slots;
 per-agent run settings do not create additional pools.

@@ -115,7 +115,7 @@ it.each(["stream", "generate"] as const)(
 );
 
 it.each(["stream", "generate"] as const)(
-  "generate and stream preserve approval pauses (%s)",
+  "approval resumes leave all sixteen new tool calls available (%s)",
   async (mode) => {
     const t = setup();
 
@@ -123,7 +123,15 @@ it.each(["stream", "generate"] as const)(
     fixture.approval = true;
 
     fixture.steps.Main = (n) =>
-      n === 0 ? call("echo", { text: "approved effect" }) : text("done");
+      n === 0
+        ? Array.from({ length: 16 }, () => call("echo", { text: "approved effect" })).flat()
+        : n === 1
+          ? Array.from({ length: 16 }, () => call("managed", {})).flat()
+          : text("done");
+
+    const execute = vi.fn(async () => "done");
+
+    fixture.toolWork = execute;
 
     const receipt = await open(t);
 
@@ -136,23 +144,24 @@ it.each(["stream", "generate"] as const)(
 
     const content = message?.message?.content;
 
-    const approval = Array.isArray(content)
-      ? content.find((p) => p.type === "tool-approval-request")
-      : undefined;
+    const approvals = Array.isArray(content)
+      ? content.filter((p) => p.type === "tool-approval-request")
+      : [];
 
-    expect(approval?.type).toBe("tool-approval-request");
+    expect(approvals).toHaveLength(16);
     expect(fixture.effects).toEqual([]);
 
-    if (!approval || approval.type !== "tool-approval-request") throw new Error("missing approval");
-
-    await owner(t).mutation(api.agents.respond, {
-      threadId: receipt.threadId,
-      approvalId: approval.approvalId,
-      approved: true,
-    });
+    for (const approval of approvals) {
+      await owner(t).mutation(api.agents.respond, {
+        threadId: receipt.threadId,
+        approvalId: approval.approvalId,
+        approved: true,
+      });
+    }
 
     await drain(t);
-    expect(fixture.effects).toEqual(["approved effect"]);
+    expect(fixture.effects).toEqual(Array(16).fill("approved effect"));
+    expect(execute).toHaveBeenCalledTimes(16);
     expect((await transcript(t, receipt.threadId)).page.some((m) => m.text === "done")).toBe(true);
   },
 );
@@ -255,7 +264,7 @@ it.each(["stream", "generate"] as const)(
     await drain(t);
     expect(effects).toBe(1);
     expect(fixture.calls).toHaveLength(1);
-    expect(await activity(t, receipt.threadId)).toMatchObject({ errorCode: "GENERATION_FAILED" });
+    expect(await activity(t, receipt.threadId)).toMatchObject({ errorCode: "RUN_TIMEOUT" });
     release();
     await toolDone;
     await t.finishInProgressScheduledFunctions();
@@ -292,7 +301,7 @@ it.each(["stream", "generate"] as const)(
     const receipt = await open(t);
 
     await drain(t);
-    expect(await activity(t, receipt.threadId)).toMatchObject({ errorCode: "GENERATION_FAILED" });
+    expect(await activity(t, receipt.threadId)).toMatchObject({ errorCode: "RUN_TIMEOUT" });
     release();
     await t.finishInProgressScheduledFunctions();
 
@@ -304,7 +313,7 @@ it.each(["stream", "generate"] as const)(
   },
 );
 
-it("lane overrides respect shared capacity", async () => {
+it("updated lane registration admits new sends without consulting stale assignment limits", async () => {
   const t = setup();
   const accepted = await open(t);
 
@@ -321,11 +330,11 @@ it("lane overrides respect shared capacity", async () => {
     }
   )._handler;
 
-  await expect(
-    owner(t).mutation((ctx) =>
-      handler(ctx, { agent: "Main", prompt: "conflict", requestKey: "conflict" }),
-    ),
-  ).rejects.toThrow("LANE_CONFIGURATION_CONFLICT");
+  const updated = await owner(t).mutation((ctx) =>
+    handler(ctx, { agent: "Main", prompt: "conflict", requestKey: "conflict" }),
+  );
+
+  expect(updated).toMatchObject({ status: "accepted" });
 
   await drain(t);
   expect(await activity(t, accepted.threadId)).toMatchObject({ errorCode: null });
@@ -469,12 +478,10 @@ it.each(["stream", "generate"] as const)(
 it("a maximum-size 64-agent snapshot and model map fit the enforced run envelope", async () => {
   const t = setup();
 
-  const settings = Object.fromEntries(
-    Array.from({ length: 64 }, (_, index) => [
-      String(index).padEnd(128, "x"),
-      resolveRunSettings(),
-    ]),
-  );
+  const settings = Array.from({ length: 64 }, (_, index) => ({
+    agent: String(index).padEnd(100, "x"),
+    settings: resolveRunSettings(),
+  }));
 
   const accepted = await t
     .mutation(components.agevex.turns.send.accept, {
@@ -540,7 +547,7 @@ it("valid hard output and combined deadline bounds are accepted without extra mo
     mode: "generate",
     maxOutputTokens: 32_768,
     modelTimeoutMs: 1_008,
-    toolTimeoutMs: 110_562,
+    toolTimeoutMs: 108_000,
     stepsPerTurn: 1,
   };
 
@@ -549,5 +556,61 @@ it("valid hard output and combined deadline bounds are accepted without extra mo
   await drain(t);
   expect(fixture.calls).toHaveLength(1);
   expect(fixture.calls[0].args.maxOutputTokens).toBe(32_768);
+  expect(await activity(t, receipt.threadId)).toMatchObject({ errorCode: null });
+});
+
+it("a send accepts non-ASCII agent names and claims their snapshotted policy", async () => {
+  const t = setup();
+  const settings = resolveRunSettings({ maxOutputTokens: 123 });
+
+  const receipt = requireReceipt(
+    await t.mutation(components.agevex.turns.send.accept, {
+      subject: "alice",
+      agent: "Rédacteur",
+      threadId: "unicode-agent",
+      requestKey: "unicode",
+      fingerprint: "unicode",
+      promptMessageId: "prompt",
+      runTurn: "unused",
+      limits: (await import("../src/component/limits.js")).resolveLimits(),
+      settings: [{ agent: "Rédacteur", settings }],
+    }),
+  );
+
+  const claimed = await t.mutation(components.agevex.turns.slices.claim, {
+    assignmentId: receipt.assignmentId,
+    turnToken: receipt.assignmentId + ":0",
+  });
+
+  expect(claimed?.agent).toBe("Rédacteur");
+  expect(claimed?.settings).toEqual(settings);
+
+  await t.mutation(components.agevex.turns.cancel.cancel, {
+    assignmentId: receipt.assignmentId,
+    subject: "alice",
+  });
+
+  await drain(t);
+});
+
+it("a run without settings uses defaults through all slices", async () => {
+  const t = setup();
+
+  fixture.steps.Main = (n) => (n === 0 ? call("managed", {}) : text("done"));
+  const receipt = await open(t);
+
+  await t.mutation(
+    componentsGeneric().agevex.agevexTest
+      .fillRunSettings as unknown as FunctionReference<"mutation">,
+    {},
+  );
+
+  await drain(t);
+  expect(fixture.calls).toHaveLength(2);
+
+  expect(
+    fixture.calls.every((c) => c.args.maxOutputTokens === RUN_LIMITS.maxOutputTokens.default),
+  ).toBe(true);
+
   expect(await activity(t, receipt.threadId)).toMatchObject({ errorCode: null });
 });

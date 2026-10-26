@@ -1,4 +1,4 @@
-// Resolved per-agent run policy. Runs snapshot this map at acceptance; children
+// Resolved per-agent run policy. Runs snapshot this array at acceptance; children
 // share the root run id, so no descendant copies or registration lookups occur.
 import { getConvexSize, v, type Infer } from "convex/values";
 import { HOST_LIMITS, LIMITS, PLATFORM } from "./limits.js";
@@ -11,6 +11,8 @@ export const RUN_LIMITS = {
   stepsPerTurn: { default: 16, min: 1, max: 64 },
   toolsPerSlice: 16,
   persistenceMs: 30_000,
+  sliceDeadlineMs: 300_000,
+  watchdogMarginMs: 30_000,
   metadataBytes: 16 << 10,
   // Native id/time envelope plus growth of bounded counters and JSON masks.
   nativeEnvelopeBytes: 256,
@@ -36,7 +38,8 @@ export const runSettings = v.object({
 export type ResolvedRunSettings = Infer<typeof runSettings>;
 
 /** Bounded name-to-policy snapshot stored only on the existing root runs row. */
-export const settingsSnapshot = v.record(v.string(), runSettings);
+export const settingsSnapshot = v.array(v.object({ agent: v.string(), settings: runSettings }));
+export type SettingsSnapshot = Infer<typeof settingsSnapshot>;
 
 /** Validate before any work is accepted, including the platform action ceiling. */
 export function resolveRunSettings(input: RunSettings = {}): ResolvedRunSettings {
@@ -73,29 +76,42 @@ export function resolveRunSettings(input: RunSettings = {}): ResolvedRunSettings
       throw new Error("INVALID_RUN_SETTINGS");
   }
 
-  if (sliceWatchdogMs(result) > PLATFORM.convexActionMs)
+  if (
+    result.modelTimeoutMs +
+      RUN_LIMITS.toolsPerSlice * result.toolTimeoutMs +
+      RUN_LIMITS.persistenceMs +
+      RUN_LIMITS.watchdogMarginMs >
+    PLATFORM.convexActionMs
+  )
     throw new Error("RUN_DEADLINE_EXCEEDS_ACTION_LIMIT");
 
   return result;
 }
 
-/** One model call, at most sixteen serial tools, and bounded persistence time. */
-export function sliceWatchdogMs(settings: ResolvedRunSettings): number {
-  return (
+/** Bound a slice even when many slow tools are allowed. Phase deadlines still
+ * apply independently; the five-minute cap prevents a default 26-minute wait. */
+export function sliceDeadlineMs(settings: ResolvedRunSettings): number {
+  return Math.min(
+    RUN_LIMITS.sliceDeadlineMs,
     settings.modelTimeoutMs +
-    RUN_LIMITS.toolsPerSlice * settings.toolTimeoutMs +
-    RUN_LIMITS.persistenceMs
+      RUN_LIMITS.toolsPerSlice * settings.toolTimeoutMs +
+      RUN_LIMITS.persistenceMs,
   );
 }
 
+/** The server waits beyond the client fence so timeout finalization can commit. */
+export function sliceWatchdogMs(settings: ResolvedRunSettings): number {
+  return sliceDeadlineMs(settings) + RUN_LIMITS.watchdogMarginMs;
+}
+
 /** Bound both Convex and JSON bytes, including multi-byte names and escaping. */
-export function assertSettingsSnapshot(settings: Record<string, ResolvedRunSettings>): void {
+export function assertSettingsSnapshot(settings: SettingsSnapshot): void {
   if (
-    Object.keys(settings).length > LIMITS.agents ||
+    settings.length > LIMITS.agents ||
     getConvexSize(settings) > RUN_LIMITS.settingsBytes ||
     new TextEncoder().encode(JSON.stringify(settings)).byteLength > RUN_LIMITS.settingsBytes
   )
     throw new Error("RUN_SETTINGS_TOO_LARGE");
 
-  for (const value of Object.values(settings)) resolveRunSettings(value);
+  for (const value of settings) resolveRunSettings(value.settings);
 }

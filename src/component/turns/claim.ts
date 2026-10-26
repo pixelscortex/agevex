@@ -108,7 +108,9 @@ export async function claimSlice(ctx: MutationCtx, args: ClaimArgs): Promise<Cla
 
   await flushNotes(ctx, row, first, noteAnchor, args.notes);
   const budget = row.runId ? await ctx.db.get("runs", row.runId) : null;
-  const settings = budget?.settings[row.agent] ?? resolveRunSettings();
+
+  const settings =
+    budget?.settings?.find((entry) => entry.agent === row.agent)?.settings ?? resolveRunSettings();
 
   if (!first && (row.modelSteps ?? 0) >= settings.stepsPerTurn) return null;
 

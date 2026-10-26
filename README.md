@@ -31,9 +31,14 @@ Set `run` on each `new Agent(native, options)`:
 Defaults are streaming, 4,096 tokens, separate 90-second model/tool deadlines,
 and 16 steps (one model call per action). Bounds are 1–32,768 tokens,
 1,000–300,000 ms per deadline and 1–64 steps. The combined watchdog budget
-`modelTimeoutMs + 16 * toolTimeoutMs + 30_000` must fit 30 minutes.
+`modelTimeoutMs + 16 * toolTimeoutMs + 60_000` must fit 30 minutes.
 Native generate saves messages, usage, tools and approvals without deltas.
-At most 16 tools execute serially per slice; timeouts fence late managed writes
+Run `runTurn` in the default Convex runtime, never a `"use node"` module
+(the Node action limit is ten minutes). 32k output tokens may require a longer
+model timeout. The client slice has a five-minute cap and the server watchdog
+allows another 30 seconds for clean timeout finalization.
+At most 16 new model tool calls execute serially per slice; approval resumes
+do not consume that allowance; timeouts fence late managed writes
 and never retry unknown effects. Settings are fixed at request acceptance and
 shared by children; registration changes affect new runs.
 

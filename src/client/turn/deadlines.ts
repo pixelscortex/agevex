@@ -65,8 +65,6 @@ export function boundedModel(gen: Generation, model: LanguageModel): LanguageMod
  * aborts the whole slice, leaving paid receipts unknown instead of retryable.
  */
 export function boundToolDeadlines(gen: Generation, tools: ToolSet): ToolSet {
-  let calls = 0;
-
   for (const [name, declared] of Object.entries(tools)) {
     if (!declared.execute) continue;
 
@@ -77,11 +75,8 @@ export function boundToolDeadlines(gen: Generation, tools: ToolSet): ToolSet {
       execute: async function (input, options) {
         await gen.fence.assertActive();
 
-        if (++calls > RUN_LIMITS.toolsPerSlice) {
-          gen.fence.controller.abort(new Error("TOOL_CALL_LIMIT"));
-          throw new Error("TOOL_CALL_LIMIT");
-        }
-
+        // Only newly emitted model calls count toward the cap above. Native
+        // approval resumes execute before that step and must not consume it.
         const stop = gen.fence.deadline(gen.turn.claimed.settings.toolTimeoutMs);
 
         try {

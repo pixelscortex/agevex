@@ -137,9 +137,10 @@ export const runMetadata = internalQueryGeneric({
 /** Fill the <=118-run cancellation fixture with maximum-size accepted settings.
  * Read+patch <=118*16 KiB twice (<4 MiB), no messages or transcript scans. */
 export const fillRunSettings = internalMutationGeneric({
-  args: { settings: settingsSnapshot },
+  args: { settings: v.optional(settingsSnapshot) },
   handler: async (ctx, { settings }) => {
-    assertSettingsSnapshot(settings);
+    if (settings) assertSettingsSnapshot(settings);
+
     const rows = await ctx.db.query("runs").take(RUN_LIMITS.cancelBudgets);
 
     for (const row of rows) await ctx.db.patch(row._id, { settings });

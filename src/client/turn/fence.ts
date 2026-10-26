@@ -13,7 +13,7 @@
 
 import { createFunctionHandle, getFunctionAddress } from "convex/server";
 import { ConvexError } from "convex/values";
-import { sliceWatchdogMs } from "../../component/run-settings.js";
+import { sliceDeadlineMs } from "../../component/run-settings.js";
 import { LIMITS } from "../../component/limits.js";
 import { deferredToolNames } from "../registration/graph.js";
 import type { RunnerCtx, RuntimeContext } from "../registration/context.js";
@@ -74,7 +74,7 @@ export function startTurnFence(rt: RuntimeContext, turn: Turn): TurnFence {
     state.fencedOut = true;
   });
 
-  deadline(sliceWatchdogMs(turn.claimed.settings));
+  deadline(sliceDeadlineMs(turn.claimed.settings));
 
   const poll = setInterval(() => {
     void turn.rawCtx
