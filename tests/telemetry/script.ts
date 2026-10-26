@@ -16,15 +16,18 @@ export const facts: Facts = {
   agent: "Researcher",
   turnKey: "turn",
 };
+
 const usage: LanguageModelV4Usage = {
   inputTokens: { total: 7, noCache: 7, cacheRead: 0, cacheWrite: 0 },
   outputTokens: { total: 3, text: 3, reasoning: 0 },
 };
+
 function response(parts: LanguageModelV4StreamPart[]) {
   return {
     stream: new ReadableStream<LanguageModelV4StreamPart>({
       start(controller) {
         for (const part of parts) controller.enqueue(part);
+
         controller.close();
       },
     }),
@@ -72,6 +75,7 @@ export async function scripted(
       ]),
     ],
   });
+
   const result = streamText({
     model,
     prompt: options.input ?? "private prompt",
@@ -83,6 +87,7 @@ export async function scripted(
         inputSchema: z.object({ query: z.string() }),
         execute: () => {
           if (options.toolFails) throw new Error("private tool error");
+
           return "private tool output";
         },
       }),
@@ -93,6 +98,8 @@ export async function scripted(
       recordOutputs: options.recordOutputs,
     },
   });
+
   await result.consumeStream();
+
   return result.text;
 }

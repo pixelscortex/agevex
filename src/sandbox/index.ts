@@ -72,6 +72,7 @@ export function sandboxCompletion(
     // keep it ahead of the log tail so truncation can only cut old output.
     const header = event.code ? `[${event.code}]\n` : "";
     const log = header + tail(event.logTail ?? "", LIMITS.completionLogChars - header.length);
+
     await target.sandboxComplete(ctx, {
       subject: event.subject,
       threadId: event.threadId,
@@ -100,6 +101,7 @@ export function defineSandbox(options: SandboxOptions) {
 /** Export this action from a host "use node" file to opt into the 512 MiB runtime. */
 export function sandboxNodeExport(options: SandboxOptions) {
   const sandbox = sandboxRuntime(options, true);
+
   return internalActionGeneric({
     args: { threadId: v.string(), path: v.string() },
     handler: (ctx, args): Promise<SandboxExportResult> => sandbox.export(ctx, args),
@@ -116,28 +118,38 @@ export function sandboxNodeExport(options: SandboxOptions) {
 function isForbidden(error: unknown) {
   if (error instanceof ConvexError) {
     const data = error.data as unknown;
+
     return data === "FORBIDDEN" || (data as { code?: unknown } | undefined)?.code === "FORBIDDEN";
   }
+
   return error instanceof Error && /^(SANDBOX_)?FORBIDDEN\b/.test(error.message);
 }
 
 function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
   const limits = resolveLimits(options.limits);
   const { component, provider } = options;
+
   bounded(provider.id, LIMITS.providerChars, "PROVIDER");
+
   if (!["thread", "run", "subject"].includes(options.scope))
     throw new Error("SANDBOX_INVALID_SCOPE");
+
   if (typeof options.authorize !== "function") throw new Error("SANDBOX_AUTHORIZATION_REQUIRED");
+
   const deadlines = new WeakMap<SandboxContext, number>();
 
   function remaining(ctx: SandboxContext) {
     let deadline = deadlines.get(ctx);
+
     if (deadline === undefined) {
       deadline = Date.now() + LIMITS.actionBudgetMs;
       deadlines.set(ctx, deadline);
     }
+
     const ms = deadline - Date.now();
+
     if (ms <= 0) throw new Error("SANDBOX_ACTION_DEADLINE");
+
     return ms;
   }
 
@@ -149,6 +161,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
   ): Promise<T> {
     const ms = Math.min(remaining(ctx), budgetMs ?? LIMITS.actionBudgetMs);
     let timer: ReturnType<typeof setTimeout> | undefined;
+
     try {
       return await Promise.race([
         invoke(),
@@ -168,6 +181,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
     location: Parameters<typeof provider.cancelBackground>[2],
   ) {
     let timer: ReturnType<typeof setTimeout> | undefined;
+
     try {
       await Promise.race([
         provider.cancelBackground(ctx, jobId, location),
@@ -178,6 +192,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
           );
         }),
       ]);
+
       return true;
     } catch {
       return false;
@@ -189,12 +204,14 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
   function facts(tc: SandboxFacts) {
     for (const key of ["subject", "threadId", "runId"] as const)
       bounded(tc[key], LIMITS.identityChars, key);
+
     return { subject: tc.subject, threadId: tc.threadId, runId: tc.runId };
   }
 
   /** Stable subject-isolated key; request bodies and model arguments are never part of binding. */
   async function scopeKey(tc: SandboxFacts) {
     const trusted = facts(tc);
+
     // Subject is part of every key. Sharing a thread/run identifier across
     // tenants can never attach one tenant to another tenant's sandbox.
     return fingerprint([
@@ -213,9 +230,12 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
     request: SandboxAuthorization,
   ) {
     const principal = await options.authorize(ctx, request);
+
     bounded(principal.subject, LIMITS.identityChars, "SUBJECT");
+
     if (request.subject !== undefined && principal.subject !== request.subject)
       throw new Error("SANDBOX_FORBIDDEN");
+
     return principal;
   }
 
@@ -250,22 +270,30 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
     remaining(tc.ctx);
     const trusted = facts(tc);
     const key = await scopeKey(tc);
+
     await authorize(tc.ctx, { operation: "use", scopeKey: key, ...trusted });
+
     const reservation = await tc.ctx.runMutation(component.state.reserve, {
       scopeKey: key,
       provider: provider.id,
       ttl: limits.ttl,
       ...(opts.existingOnly ? { existingOnly: true } : {}),
     });
+
     if (reservation.status === "running" || reservation.status === "unknown")
       throw new Error(`SANDBOX_${reservation.status.toUpperCase()}`);
+
     if (!reservation.claim) throw new Error("SANDBOX_INVALID_RESERVATION");
+
     const claim = reservation.claim;
     let sandboxId = reservation.status === "existing" ? reservation.sandboxId : undefined;
+
     try {
       if (!sandboxId) {
         const created = await within(tc.ctx, () => provider.create(tc.ctx, { scopeKey: key }));
+
         sandboxId = bounded(created.sandboxId, LIMITS.identityChars, "ID");
+
         // This MUST commit before resume/wait: a cold-start timeout must not
         // lose the only identity of the paid resource and its filesystem.
         if (
@@ -277,12 +305,15 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
           }))
         )
           throw new Error("SANDBOX_STALE");
+
         await observe(tc.ctx, sandboxId, "create", "observed", tc);
       }
+
       tc.signal.throwIfAborted();
       await within(tc.ctx, () => provider.resume(tc.ctx, sandboxId!));
       tc.signal.throwIfAborted();
       await authorize(tc.ctx, { operation: "use", scopeKey: key, ...trusted });
+
       if (
         !(await tc.ctx.runMutation(component.state.save, {
           scopeKey: key,
@@ -292,7 +323,9 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
         }))
       )
         throw new Error("SANDBOX_STALE");
+
       await observe(tc.ctx, sandboxId, "resume", "observed", tc);
+
       return { sandboxId, scopeKey: key, claim };
     } catch (error) {
       await tc.ctx.runMutation(component.state.save, {
@@ -301,6 +334,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
         ...(sandboxId ? { sandboxId } : {}),
         state: "unknown",
       });
+
       await observe(tc.ctx, sandboxId, sandboxId ? "resume" : "create", "unknown", tc);
       throw error;
     }
@@ -309,6 +343,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
   async function exec(tc: SandboxCall, input: { command: string }) {
     bounded(input.command, LIMITS.commandChars, "COMMAND");
     const binding = await prepare(tc);
+
     // Leave execKillMarginS of the shared budget for the provider to kill the
     // command's process group after its timeout; without it a command that
     // times out exactly at the action deadline is cut off un-killed.
@@ -319,22 +354,30 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
           LIMITS.millisecondsPerSecond,
       ),
     );
+
     if (timeoutS < 1) throw new Error("SANDBOX_ACTION_DEADLINE");
+
     tc.signal.throwIfAborted();
+
     try {
       const result = await within(tc.ctx, () =>
         provider.exec(tc.ctx, binding.sandboxId, input.command, { timeoutS, signal: tc.signal }),
       );
+
       if (!Number.isSafeInteger(result.exitCode)) throw new Error("SANDBOX_INVALID_EXIT_CODE");
+
       tc.signal.throwIfAborted();
       // stdout and stderr share the allowance so even all-four-byte Unicode
       // fits core's receipt. Prefer diagnostic stderr when both overflow.
       const stderr = tail(result.stderr, limits.outputChars);
+
       const stdout =
         limits.outputChars > stderr.length
           ? tail(result.stdout, limits.outputChars - stderr.length)
           : "";
+
       await observe(tc.ctx, binding.sandboxId, "exec", "observed", tc);
+
       return {
         status: "done" as const,
         exitCode: result.exitCode,
@@ -347,6 +390,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
       };
     } catch {
       await observe(tc.ctx, binding.sandboxId, "exec", "unknown", tc);
+
       return { status: "unknown" as const };
     }
   }
@@ -355,28 +399,37 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
   async function readFile(tc: SandboxCall, input: { path: string }) {
     bounded(input.path, LIMITS.pathChars, "PATH");
     const { sandboxId } = await prepare(tc);
+
     const content = await within(tc.ctx, () =>
       provider.readFile(tc.ctx, sandboxId, input.path, {
         maxBytes: limits.fileReadChars * LIMITS.utf8BytesPerChar,
       }),
     );
+
     tc.signal.throwIfAborted();
+
     return { content: tail(content, limits.fileReadChars) };
   }
 
   async function writeFile(tc: SandboxCall, input: { path: string; content: string }) {
     bounded(input.path, LIMITS.pathChars, "PATH");
+
     if (typeof input.content !== "string" || input.content.length > limits.writeChars)
       throw new Error("SANDBOX_WRITE_TOO_LARGE");
+
     const { sandboxId } = await prepare(tc);
+
     tc.signal.throwIfAborted();
+
     try {
       await within(tc.ctx, () => provider.writeFile(tc.ctx, sandboxId, input.path, input.content));
       tc.signal.throwIfAborted();
       await observe(tc.ctx, sandboxId, "write", "observed", tc);
+
       return { status: "done" as const };
     } catch {
       await observe(tc.ctx, sandboxId, "write", "unknown", tc);
+
       return { status: "unknown" as const };
     }
   }
@@ -385,10 +438,13 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
   async function list(tc: SandboxCall, input: { path: string }) {
     bounded(input.path, LIMITS.pathChars, "PATH");
     const { sandboxId } = await prepare(tc);
+
     const entries = await within(tc.ctx, () =>
       provider.listFiles(tc.ctx, sandboxId, input.path, { limit: limits.listEntries }),
     );
+
     tc.signal.throwIfAborted();
+
     return {
       entries: entries.slice(0, limits.listEntries).map((entry) => ({
         name: bounded(entry.name, LIMITS.pathChars, "FILENAME"),
@@ -402,8 +458,11 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
 
   async function background(tc: SandboxCall, input: { command: string }) {
     bounded(input.command, LIMITS.commandChars, "COMMAND");
+
     if (!options.refs) throw new Error("SANDBOX_REFS_REQUIRED");
+
     const { sandboxId, scopeKey: key } = await prepare(tc);
+
     const admitted = await tc.ctx.runMutation(component.state.reserveJob, {
       scopeKey: key,
       ...facts(tc),
@@ -413,9 +472,12 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
       jobTimeoutMs: limits.jobTimeoutMs,
       maximum: limits.jobsPerSandbox,
     });
+
     const admission = { jobId: admitted.jobId, claim: admitted.claim };
+
     try {
       tc.signal.throwIfAborted();
+
       const launched = await within(tc.ctx, () =>
         provider.startBackground(tc.ctx, sandboxId, input.command, {
           jobId: admitted.providerJobId,
@@ -423,6 +485,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
           directory: admitted.directory,
         }),
       );
+
       if (
         !(await tc.ctx.runMutation(component.state.attachJob, {
           ...admission,
@@ -430,10 +493,13 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
         }))
       )
         throw new Error("SANDBOX_STALE_JOB");
+
       await observe(tc.ctx, sandboxId, "background", "observed", tc);
+
       return { status: "running" as const, jobId: admitted.jobId };
     } catch {
       const cancelled = await kill(tc.ctx, admitted.providerJobId, admitted);
+
       try {
         // An uncertain cancellation keeps the persisted deadline watchdog.
         // It can kill again, but can never replay the original launch.
@@ -444,7 +510,9 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
         // within its deadline. Its failure cannot replace an uncertain paid
         // launch with TOOL_FAILED or discard the only reconciliation id.
       }
+
       await observe(tc.ctx, sandboxId, "background", "unknown", tc);
+
       return { status: "unknown" as const, jobId: admitted.jobId };
     }
   }
@@ -463,23 +531,30 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
       // Validate attribution before core constructs a receipt scope, rather
       // than waiting until the effect body after admission has already written.
       facts(bind(tc));
+
       return bounded(tc.toolCallId, LIMITS.identityChars, "TOOL_CALL_ID");
     };
+
     const path = z
       .string()
       .min(1)
       .max(LIMITS.pathChars)
       .refine((value) => !value.includes("\0"));
+
     const command = z
       .string()
       .min(1)
       .max(LIMITS.commandChars)
       .refine((value) => !value.includes("\0"));
+
     const readContext = (opts: ToolExecutionOptions<unknown>) => {
       const tc = context ?? (opts.context as ToolContext | undefined);
+
       if (!tc?.ctx || !tc.signal) throw new Error("MANAGED_TOOL_CONTEXT_REQUIRED");
+
       return bind({ ...tc, toolCallId: opts.toolCallId });
     };
+
     return {
       sandbox_exec: defineOnceTool({
         name: "sandbox_exec",
@@ -556,15 +631,20 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
    */
   async function remove(ctx: SandboxContext, key: string, expiredOnly: boolean) {
     await authorize(ctx, { operation: "delete", scopeKey: key });
+
     if (!hasBudget(ctx, LIMITS.deleteMinBudgetMs)) {
       if (!expiredOnly) throw new Error("SANDBOX_ACTION_DEADLINE");
+
       return "deferred" as const;
     }
+
     const binding = await ctx.runMutation(component.state.claimDelete, {
       scopeKey: key,
       expiredOnly,
     });
+
     if (!binding) return "done" as const;
+
     try {
       await within(ctx, () => provider.delete(ctx, binding.sandboxId));
       await ctx.runMutation(component.state.save, { scopeKey: key, ...binding, state: "deleted" });
@@ -573,6 +653,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
       await ctx.runMutation(component.state.save, { scopeKey: key, ...binding, state: "unknown" });
       await observe(ctx, binding.sandboxId, "delete", "unknown");
     }
+
     return "done" as const;
   }
 
@@ -590,10 +671,15 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
       returns: v.null(),
       handler: async (ctx, args: PollArgs): Promise<null> => {
         if (!options.refs) throw new Error("SANDBOX_REFS_REQUIRED");
+
         const known = await ctx.runQuery(component.state.getJob, args);
+
         if (!known || !["starting", "running"].includes(known.state)) return null;
+
         const job = await ctx.runMutation(component.state.claimPoll, args);
+
         if (!job) return null;
+
         try {
           await authorize(ctx, { operation: "poll", ...facts(known), scopeKey: known.scopeKey });
         } catch (error) {
@@ -609,39 +695,50 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
           // unknown without a kill.
           if (!isForbidden(error)) {
             await ctx.runMutation(component.state.again, { jobId: known._id, claim: job.claim });
+
             return null;
           }
+
           await ctx.runMutation(component.state.finishJob, {
             jobId: known._id,
             claim: job.claim,
             state: "unknown",
           });
+
           return null;
         }
+
         await ctx.scheduler.runAfter(0, options.refs.poll(), {
           jobId: known._id,
           claim: job.claim,
         });
+
         return null;
       },
     });
+
     const poll = internalActionGeneric({
       args: { jobId: v.string(), claim: v.string() },
       returns: v.null(),
       handler: async (ctx, args: PollActionArgs): Promise<null> => {
         if (!options.refs) throw new Error("SANDBOX_REFS_REQUIRED");
+
         const job = await ctx.runQuery(component.state.getJob, { jobId: args.jobId });
+
         // Superseded (a later claim took over) or already terminal.
         if (!job || !["starting", "running"].includes(job.state) || job.claim !== args.claim)
           return null;
+
         let outcome;
         let killed: boolean | undefined;
+
         try {
           if (job.deadline <= Date.now() || job.state === "starting" || !job.providerJobId) {
             // Even an unacknowledged launch has a pre-persisted location.
             // Kill is a bounded best effort; failure remains unknown and
             // never starts a second scheduler chain or retries paid work.
             killed = await kill(ctx, job.providerJobId!, job);
+
             outcome = {
               state: "unknown" as const,
               ...(job.deadline <= Date.now() ? { code: "SANDBOX_JOB_DEADLINE" as const } : {}),
@@ -653,6 +750,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
               Math.max(1, job.deadline - Date.now()),
             );
           }
+
           if (
             !["running", "done", "failed", "unknown"].includes(outcome.state) ||
             (outcome.exitCode !== undefined && !Number.isSafeInteger(outcome.exitCode)) ||
@@ -664,10 +762,13 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
           // off the watchdog while its paid process group is still running.
           outcome = { state: "running" as const };
         }
+
         if (Date.now() >= job.deadline && outcome.state === "running")
           outcome = { state: "unknown" as const, code: "SANDBOX_JOB_DEADLINE" as const };
+
         if (outcome.state === "unknown") {
           killed ??= await kill(ctx, job.providerJobId!, job);
+
           // Before the deadline, retry an uncertain kill with the same bounded
           // backoff. At the deadline, one bounded final attempt ends the chain
           // even if the provider never acknowledges cancellation.
@@ -675,6 +776,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
           else if (Date.now() >= job.deadline)
             outcome = { ...outcome, code: "SANDBOX_JOB_DEADLINE" as const };
         }
+
         if (outcome.state === "running")
           await ctx.runMutation(component.state.again, { jobId: job._id, claim: job.claim });
         else {
@@ -688,6 +790,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
               ? {}
               : { logTail: tail(outcome.logTail, limits.outputChars) }),
           };
+
           try {
             await ctx.runMutation(options.refs.settle(), completion);
           } catch (error) {
@@ -698,6 +801,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
               await ctx.runMutation(component.state.again, { jobId: job._id, claim: job.claim });
               throw error;
             }
+
             // A permanently failing host callback cannot keep a scheduler
             // chain alive forever. Its mutation has rolled back; retain an
             // honest unknown outcome, cancel the watchdog and let the host
@@ -710,9 +814,11 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
             });
           }
         }
+
         return null;
       },
     });
+
     const settle = internalMutationGeneric({
       args: {
         jobId: v.string(),
@@ -725,13 +831,18 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
       returns: v.null(),
       handler: async (ctx, args: SettleArgs): Promise<null> => {
         const job = await ctx.runQuery(component.state.getJob, { jobId: args.jobId });
+
         if (!job) return null;
+
         await authorize(ctx, { operation: "poll", ...facts(job), scopeKey: job.scopeKey });
         const event = await ctx.runMutation(component.state.finishJob, args);
+
         if (event) await options.onComplete?.(ctx, event as SandboxJobEvent);
+
         return null;
       },
     });
+
     const cleanup = internalActionGeneric({
       args: {},
       returns: v.null(),
@@ -745,16 +856,20 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
         // the loop stops when a delete would not fit and reschedules itself:
         // every pass settles at least its first row, so the chain is finite.
         let deferred = false;
+
         for (const row of rows)
           if ((await remove(ctx, row.scopeKey, true)) === "deferred") {
             deferred = true;
             break;
           }
+
         if ((deferred || rows.length === limits.cleanupBatch) && options.refs)
           await ctx.scheduler.runAfter(0, options.refs.cleanup(), {});
+
         return null;
       },
     });
+
     return { wake, poll, settle, cleanup };
   }
 
@@ -771,8 +886,11 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
     async job(ctx: SandboxContext, input: PollArgs) {
       bounded(input.jobId, LIMITS.identityChars, "JOB_ID");
       const job = await ctx.runQuery(component.state.getJob, input);
+
       if (!job) return null;
+
       await authorize(ctx, { operation: "poll", ...facts(job), scopeKey: job.scopeKey });
+
       return {
         jobId: job._id,
         scopeKey: job.scopeKey,
@@ -787,7 +905,9 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
     /** Schedule a finite TTL sweep on demand; mounting alone creates no timer. */
     async cleanup(ctx: SandboxContext) {
       await authorize(ctx, { operation: "cleanup" });
+
       if (!options.refs) throw new Error("SANDBOX_REFS_REQUIRED");
+
       return ctx.scheduler.runAfter(0, options.refs.cleanup(), {});
     },
     /**
@@ -799,28 +919,36 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
      */
     async forget(ctx: SandboxContext, input: SandboxFacts): Promise<boolean> {
       const key = await scopeKey(input);
+
       await authorize(ctx, { operation: "forget", ...facts(input), scopeKey: key });
+
       return ctx.runMutation(component.state.forget, { scopeKey: key });
     },
     /** Explicit host deletion. Automatic provider deletion is always disabled. */
     async delete(tc: SandboxCall) {
       const key = await scopeKey(tc);
+
       await authorize(tc.ctx, { operation: "delete", ...facts(tc), scopeKey: key });
       await remove(tc.ctx, key, false);
     },
     /** Stop preserves the sandbox identity and filesystem for the next use. */
     async stop(tc: SandboxCall) {
       const key = await scopeKey(tc);
+
       await authorize(tc.ctx, { operation: "stop", ...facts(tc), scopeKey: key });
       const row = await tc.ctx.runQuery(component.state.get, { scopeKey: key });
+
       if (!row?.sandboxId) throw new Error("SANDBOX_NOT_FOUND");
+
       try {
         await within(tc.ctx, () => provider.stop(tc.ctx, row.sandboxId!));
+
         await tc.ctx.runMutation(component.state.save, {
           scopeKey: key,
           claim: row.claim,
           state: "stopped",
         });
+
         await observe(tc.ctx, row.sandboxId, "stop", "observed", tc);
       } catch (error) {
         await tc.ctx.runMutation(component.state.save, {
@@ -828,6 +956,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
           claim: row.claim,
           state: "unknown",
         });
+
         await observe(tc.ctx, row.sandboxId, "stop", "unknown", tc);
         throw error;
       }
@@ -836,27 +965,36 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
     async export(ctx: SandboxContext, input: SandboxExportArgs): Promise<SandboxExportResult> {
       bounded(input.threadId, LIMITS.identityChars, "THREAD");
       bounded(input.path, LIMITS.pathChars, "PATH");
+
       if (!options.agent) throw new Error("SANDBOX_AGENT_REQUIRED");
+
       const principal = await authorize(ctx, { operation: "export", threadId: input.threadId });
+
       if (options.scope === "run" && !options.resolveThread)
         throw new Error("SANDBOX_THREAD_RESOLVER_REQUIRED");
+
       const trusted = options.resolveThread
         ? await options.resolveThread(ctx, input.threadId)
         : { subject: principal.subject, threadId: input.threadId, runId: input.threadId };
+
       if (trusted.subject !== principal.subject || trusted.threadId !== input.threadId)
         throw new Error("SANDBOX_FORBIDDEN");
+
       const key = await scopeKey(trusted);
       const row = await ctx.runQuery(component.state.get, { scopeKey: key });
+
       // A deleted scope has no files left to export. prepare() would reserve a
       // fresh sandbox for it, paying for an empty VM and then failing the read.
       if (!row?.sandboxId || row.state === "deleted" || row.state === "deleting")
         throw new Error("SANDBOX_NOT_FOUND");
+
       const tc: SandboxCall = {
         ...trusted,
         ctx,
         signal: new AbortController().signal,
         toolCallId: "export",
       };
+
       // Download from the id prepare resolved, not the row read above.
       // existingOnly makes the reservation itself refuse a scope deleted (or
       // freed) after the check above, inside its own transaction.
@@ -867,9 +1005,11 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
       const hash = sha256.create();
       const chunks: Uint8Array[] = [];
       let bytes = 0;
+
       for (;;) {
         const maxBytes = Math.min(LIMITS.exportChunkBytes, maximum - bytes + 1);
         let chunk: Uint8Array;
+
         try {
           chunk = await within(ctx, () =>
             provider.download(ctx, sandboxId, input.path, {
@@ -878,26 +1018,34 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
               totalSizeLimit: maximum,
             }),
           );
+
           if (bytes + chunk.byteLength > maximum) throw new Error("SANDBOX_EXPORT_TOO_LARGE");
         } catch (error) {
           if (!(error instanceof Error) || error.message !== "SANDBOX_EXPORT_TOO_LARGE")
             throw error;
+
           chunks.length = 0;
+
           if (!nodeExport && options.nodeExport)
             return within(ctx, () => ctx.runAction(options.nodeExport!, input));
+
           throw new Error(
             nodeExport
               ? "SANDBOX_EXPORT_TOO_LARGE: exceeds exportBytesNode (64 MiB hard maximum)"
               : "SANDBOX_EXPORT_TOO_LARGE: register sandboxNodeExport() in a use node file via nodeExport",
           );
         }
+
         if (chunk.byteLength > maxBytes) throw new Error("SANDBOX_EXPORT_WINDOW_TOO_LARGE");
+
         bytes += chunk.byteLength;
         hash.update(chunk);
         // Keep the provider-owned window; copying here needlessly duplicates it.
         chunks.push(chunk);
+
         if (chunk.byteLength < maxBytes) break;
       }
+
       remaining(ctx);
       const digest = bytesToHex(hash.digest());
       // Agent storeFile (0.7.7 src/vercel/client/files.ts:58-158) dedupes and
@@ -910,12 +1058,17 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
       // Node: 4 * 64 MiB =256 MiB plus <=512 KiB window, leaving ~255 MiB of
       // 512 MiB. The incremental hasher is constant space; no extra file copy.
       const blob = new Blob(chunks as BlobPart[], { type: "application/octet-stream" });
+
       chunks.length = 0;
+
       const stored = await storeFile(ctx, options.agent, blob, {
         filename: input.path.split("/").pop(),
       });
+
       if (stored.file.hash !== digest) throw new Error("SANDBOX_EXPORT_HASH_MISMATCH");
+
       await observe(ctx, sandboxId, "export", "observed", trusted);
+
       return {
         fileId: stored.file.fileId,
         storageId: stored.file.storageId,

@@ -36,8 +36,10 @@ async function threadPage(
   const namespace = axis === "agent" ? ["thread", root] : ["thread", root, axis];
   let after = cursor;
   const page = [];
+
   for (let index = 0; index <= maxGroups; index++) {
     const labels: string[] = [];
+
     for (const state of groups) {
       const item = await tree.min(ctx, {
         namespace: [...namespace, state],
@@ -48,15 +50,21 @@ async function threadPage(
             ? undefined
             : { lower: { key: [after, LIMITS.maxTimestamp] as Key, inclusive: false } },
       });
+
       if (item) labels.push(item.key[0]);
     }
+
     labels.sort();
     const label = labels[0];
+
     if (label === undefined) return { page, cursor: null as string | null };
+
     if (index === maxGroups) return { page, cursor: after ?? null };
+
     page.push({ key: label, ...(await summary(ctx, tree, namespace, { prefix: [label] })) });
     after = label;
   }
+
   return { page, cursor: null as string | null };
 }
 
@@ -75,14 +83,19 @@ export const threadCost = query({
   },
   handler: async (ctx, { threadId, maxGroups, cursors, breakdowns }) => {
     const enabled = resolveBreakdowns(breakdowns);
+
     text(threadId, "THREAD");
     integer(maxGroups, LIMITS.maxGroups, "GROUPS");
+
     if (!maxGroups) throw new Error("INVALID_GROUPS");
+
     // Empty labels are valid cursors for missing attribution, unlike user labels.
     for (const cursor of Object.values(cursors ?? {}))
       if (cursor !== undefined && cursor !== "") text(cursor, "CURSOR");
+
     for (const axis of ["model", "provider"] as const)
       if (cursors?.[axis] !== undefined) requireBreakdown(enabled, `thread.${axis}`);
+
     return {
       // Over-capacity charges are counted here (never zero), not in the pages.
       ...combine(
@@ -104,7 +117,9 @@ export const cost = query({
   args: { subject: v.string(), runId: v.optional(v.string()) },
   handler: async (ctx, { subject, runId }) => {
     text(subject, "SUBJECT");
+
     if (runId) text(runId, "RUN");
+
     // Both are unbounded reads of ONE owned namespace: on a lazy root that is
     // the root plus <=5 children per call, independent of how many charges exist.
     return runId
@@ -126,33 +141,45 @@ export const breakdown = query({
   },
   handler: async (ctx, args) => {
     const enabled = resolveBreakdowns(args.breakdowns);
+
     if (args.by !== "day") requireBreakdown(enabled, `subject.${args.by}`);
+
     text(args.subject, "SUBJECT");
     integer(args.from, LIMITS.maxTimestamp, "FROM");
     integer(args.to, LIMITS.maxTimestamp, "TO");
     integer(args.maxGroups, LIMITS.maxGroups, "GROUPS");
     integer(args.maxDays, LIMITS.maxDays, "DAYS");
+
     if (!args.maxGroups || !args.maxDays || args.to <= args.from) throw new Error("INVALID_RANGE");
+
     const from = Math.floor(args.from / LIMITS.dayMs);
     const to = Math.ceil(args.to / LIMITS.dayMs);
+
     // Day granularity is explicit: silently widening a timestamp range would bill
     // events the caller did not ask for. Both endpoints must be UTC midnight.
     if (args.from % LIMITS.dayMs || args.to % LIMITS.dayMs)
       throw new Error("DAY_BOUNDARIES_REQUIRED");
+
     if (args.cursor) text(args.cursor, "CURSOR");
+
     const page = [];
+
     if (args.by === "day") {
       if (to - from > args.maxDays) throw new Error("RANGE_TOO_LARGE");
+
       for (let day = from; day < to; day++) {
         page.push({
           key: String(day),
           ...(await summary(ctx, bySubject, ["subject", args.subject], { eq: ["", day] })),
         });
       }
+
       return { page, cursor: null as string | null };
     }
+
     const axis: Axis = args.by;
     let after = args.cursor;
+
     // At the hard maximum: 4 groups * (3 seeks + 4 summary reads), plus
     // 3 final seeks =31 aggregate queries. Subject trees are not count-capped;
     // at the design depth D=24 (LIMITS.subjectTreeDepth) upstream
@@ -164,6 +191,7 @@ export const breakdown = query({
     // pagination, and a cursor lets hosts enumerate arbitrary cardinalities.
     for (let index = 0; index <= args.maxGroups; index++) {
       const labels: string[] = [];
+
       for (const state of groups) {
         const item = await bySubject.min(ctx, {
           namespace: ["axis", args.subject, axis, state],
@@ -174,12 +202,17 @@ export const breakdown = query({
                   lower: { key: [after, LIMITS.maxTimestamp] as Key, inclusive: false },
                 },
         });
+
         if (item) labels.push(item.key[0]);
       }
+
       labels.sort();
       const label = labels[0];
+
       if (label === undefined) return { page, cursor: null as string | null };
+
       if (index === args.maxGroups) return { page, cursor: after ?? null };
+
       page.push({
         key: label,
         ...(await summary(ctx, bySubject, ["axis", args.subject, axis], {
@@ -187,8 +220,10 @@ export const breakdown = query({
           upper: { key: [label, to], inclusive: false },
         })),
       });
+
       after = label;
     }
+
     return { page, cursor: null as string | null };
   },
 });

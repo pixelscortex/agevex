@@ -6,6 +6,7 @@ import { integer, LIMITS, text } from "./limits.js";
 /** Full SHA-256 hex of a label, for ids too long to store as labels. */
 export async function hashLabel(value: string) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
@@ -13,6 +14,7 @@ export async function hashLabel(value: string) {
 export function openRouterCost(providerMetadata: unknown): number | undefined {
   const metadata = providerMetadata as { openrouter?: { usage?: { cost?: unknown } } } | null;
   const cost = metadata?.openrouter?.usage?.cost;
+
   return typeof cost === "number" && Number.isFinite(cost) && cost >= 0 ? cost : undefined;
 }
 
@@ -34,13 +36,16 @@ export async function observeProviderOutcome<T>(options: {
     }
   }
   let result: T;
+
   try {
     result = await options.invoke();
   } catch (error) {
     await observe(() => options.onFailure?.(error));
     throw error;
   }
+
   await observe(() => options.onSuccess(result));
+
   return result;
 }
 
@@ -66,16 +71,20 @@ export function usageHandlerFor(
 ): UsageHandler {
   return async (ctx, args) => {
     if (!args.threadId) throw new Error("USAGE_THREAD_REQUIRED");
+
     const { messageId, step, ...attribution } = options.identity(args);
+
     text(messageId, "MESSAGE");
     integer(step, LIMITS.maxQuantity, "STEP");
     const key = JSON.stringify([args.threadId, messageId, step]);
+
     const scoped = meter.scope(ctx, {
       ...attribution,
       threadId: args.threadId,
       ...(args.agentName ? { agent: args.agentName } : {}),
       model: args.model,
     });
+
     await scoped.record(options.provider ?? args.provider, {
       key,
       usage: args.usage,

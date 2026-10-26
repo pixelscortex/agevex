@@ -7,16 +7,20 @@ import type { Registration } from "../src/client/types.js";
 import type { AgentComponent } from "@convex-dev/agent";
 
 declare const component: AgentComponent;
+
 const tools = {
   echo: tool({ inputSchema: z.object({ text: z.string() }), execute: ({ text }) => text }),
 };
+
 declare const native: NativeAgent<object, typeof tools>;
+
 const additive = new Agent(component, {
   name: "additive",
   languageModel: mockModel(),
   tools,
   subagents: [],
 });
+
 const custom = new Agent<{ organization: string }, typeof tools>(component, {
   name: "custom",
   languageModel: mockModel(),
@@ -39,17 +43,20 @@ export type CustomFidelity = Assert<
 >;
 // @ts-expect-error A host action context cannot manufacture required custom context.
 const unsupported: Agent<object> = custom;
+
 void unsupported;
 declare const agevex: ComponentApi;
 declare const policy: Omit<Registration, "agents">;
 registerAgent(agevex, { ...policy, agents: [additive] });
 // @ts-expect-error Managed turns cannot synthesize organization context.
 registerAgent(agevex, { ...policy, agents: [custom] });
+
 const gateway = new Agent(component, {
   name: "gateway",
   languageModel: "openai/gpt-4o",
   subagents: [],
 });
+
 void gateway;
 export type DefaultGenerateFidelity = Assert<
   Equal<NativeAgent["generateText"], typeof gateway.generateText>

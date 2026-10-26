@@ -5,6 +5,10 @@
  * its slot as soon as delegation is queued, so children can always progress.
  * Platform ceilings are documentation as well as a constraint on our defaults;
  * payloads stay in Agent storage rather than consuming the Workflow journal.
+ * Contents: PLATFORM facts, HOST_LIMITS (defaults + hard maxima a host may
+ * override), the full cancel budget arithmetic, LIMITS (fixed bounds) and
+ * `resolveLimits`, which the client calls at registration. A resolved copy is
+ * stored on every assignment row (`row.limits`).
  */
 import { v } from "convex/values";
 
@@ -85,8 +89,8 @@ export const HOST_LIMITS = {
  * Subagent rows stay <=4 KiB: names/subjects/groups <=200 UTF-16 units,
  * hashed tool-call dedup keys, ids, counters and <=4 small events. Assignments
  * allow <=32 KiB: the original <=8 KiB (16 approval/deferred-call keys),
- * <=4 KiB exact message references, <=6 KiB side-review boundaries, <=3 KiB
- * private hook error, two prompt ids and scalar counters. The original 32 KiB
+ * <=4 KiB exact message references, <=6 KiB side-review boundaries, two
+ * prompt ids and scalar counters. The original 32 KiB
  * envelope remains conservative after removing the <=10 KiB control-id replay
  * list. Notes have their own bounded queue N; each raw row stays <=17 KiB
  * and is read only by separate per-assignment cleanup transactions (<864 KiB including ownership).
@@ -96,7 +100,7 @@ export const HOST_LIMITS = {
  *
  * Other proportional paths: claim drains <=152 consecutive ready rows,
  * including <=50 ready joins from its run. Notes additionally read one exact
- * anchor and one native merge-head batch (hooks.ts); no history is scanned. Each
+ * anchor and one native merge-head batch (hooks/notes.ts); no history is scanned. Each
  * join uses an indexed ready representative and <=15 cohort metadata rows;
  * admission/send/attach handle one item. Membership sealing reads/patches
  * <=50 launch rows. Descendant/settlement fences use indexed existence probes,
@@ -124,7 +128,6 @@ export const LIMITS = {
   fileMetadataBytes: 4 << 10,
   taskRepairs: 1,
   taskPromptLength: 16_000,
-  hookErrorLength: 1_000,
   agents: 64,
   sideAgents: 8,
   cadence: 1_000_000,
@@ -152,10 +155,12 @@ export const LIMITS = {
   queueLength: HOST_LIMITS.queueLength.default,
   messageLength: 16_000,
   requestKeyLength: 200,
+  // At least 2: subagents/runs.ts `runTimes` reads the terminal and delivery
+  // events, which are always the newest two entries of the ring.
   runEvents: 4,
   maxDelegationPage: 50,
   // Bound approval coordination metadata even when native approval ids are huge:
-  // requests store SHA-256 keys; resolved contains only their array offsets.
+  // requests store SHA-256 keys and a per-request resolved flag, never payloads.
   approvalsPerPause: 16,
   nativeCallIdLength: 1 << 20,
   nativeEnvelopeBytes: 4 << 10,
@@ -197,14 +202,14 @@ export const LIMITS = {
 
 /** Only these policy bounds are tunable; internal safety/platform facts are not. */
 export const limitsValidator = v.object({
-  // resolveLimits fills every optional policy field at registration; version-1
-  // replay fixtures may omit newer policy fields without changing journal steps.
-  attachmentBytes: v.optional(v.number()),
-  continuesPerRun: v.optional(v.number()),
-  sideRunsPerRun: v.optional(v.number()),
+  // resolveLimits fills every policy field at registration, so a stored row
+  // always carries the complete resolved set and readers never fall back.
+  attachmentBytes: v.number(),
+  continuesPerRun: v.number(),
+  sideRunsPerRun: v.number(),
   notesPending: v.number(),
-  maxDepth: v.optional(v.number()),
-  messagesPerChild: v.optional(v.number()),
+  maxDepth: v.number(),
+  messagesPerChild: v.number(),
   rootLane: v.number(),
   childLane: v.number(),
   runLaunches: v.number(),
@@ -226,16 +231,21 @@ export function resolveLimits(overrides: Partial<Limits> = {}): Limits {
       value <= 0
     )
       throw new Error("INVALID_LIMITS: expected positive integer host bounds");
+
     const maximum = HOST_LIMITS[key as keyof Limits].max;
+
     if (value > maximum) throw new Error(`INVALID_LIMITS: ${key} exceeds maximum ${maximum}`);
   }
+
   const merged = Object.fromEntries(
     Object.keys(limitsValidator.fields).map((key) => [
       key,
       overrides[key as keyof Limits] ?? LIMITS[key as keyof Limits],
     ]),
   ) as Limits;
+
   if (merged.rootLane + merged.childLane > PLATFORM.scheduledConcurrency)
     throw new Error("INVALID_LIMITS: lanes exceed scheduled concurrency");
+
   return merged;
 }

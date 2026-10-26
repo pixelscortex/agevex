@@ -7,6 +7,7 @@ import { manager } from "./workflows.js";
 import { LIMITS, bounded, integer } from "../limits.js";
 
 const fence = { artifactId: v.id("artifacts"), attempt: v.number(), claim: v.string() };
+
 function validateFence(args: { attempt: number; claim: string }) {
   integer(args.attempt, LIMITS.maxAttempts, LIMITS.initialAttempt);
   bounded(args.claim);
@@ -20,17 +21,22 @@ function addUsage(
   next: Doc<"artifacts">["usage"],
 ): Doc<"artifacts">["usage"] {
   if (!next) return before;
+
   if (!before) return next;
+
   const sum = (x?: number, y?: number) =>
     x === undefined && y === undefined ? undefined : (x ?? 0) + (y ?? 0);
+
   const merged = {
     inputTokens: sum(before.inputTokens, next.inputTokens),
     outputTokens: sum(before.outputTokens, next.outputTokens),
     credits: sum(before.credits, next.credits),
   };
+
   return Object.fromEntries(Object.entries(merged).filter(([, value]) => value !== undefined));
 }
 const retryable = new Set(["PROVIDER_UNAVAILABLE", "OBJECT_UNAVAILABLE", "CHECKSUM_FAILED"]);
+
 /**
  * Start (or restart) the one Workflow for this exact attempt and claim. Only
  * ids cross the boundary. The lease does NOT start here: a job waiting in the
@@ -104,14 +110,19 @@ export const admit = mutation({
     bounded(args.version);
     bounded(args.optionsHash, LIMITS.hashBytes);
     bounded(args.threadId);
+
     if (args.subject !== undefined) bounded(args.subject);
+
     bounded(args.worker, LIMITS.urlBytes);
+
     if (args.onComplete) bounded(args.onComplete, LIMITS.callbackBytes);
+
     const dispatchArgs = {
       threadId: args.threadId,
       ...(args.subject === undefined ? {} : { subject: args.subject }),
       worker: args.worker,
     };
+
     /**
      * Append the caller's handle (a repeat of a stored handle is a no-op) for
      * any admission that will be followed by a completion: run, wait and
@@ -119,17 +130,23 @@ export const admit = mutation({
      */
     const callbacks = (existing: string[] | undefined) => {
       const stored = existing ?? [];
+
       if (!args.onComplete) return { list: stored, outcome: undefined };
+
       if (stored.includes(args.onComplete)) return { list: stored, outcome: "stored" as const };
+
       if (stored.length >= LIMITS.callbacksPerArtifact)
         return { list: stored, outcome: "dropped" as const };
+
       return { list: [...stored, args.onComplete], outcome: "stored" as const };
     };
+
     const result = (
       artifactId: Id<"artifacts">,
       action: "run" | "wait",
       outcome: "stored" | "dropped" | undefined,
     ) => ({ artifactId, action, ...(outcome ? { callback: outcome } : {}) });
+
     const row = await ctx.db
       .query("artifacts")
       .withIndex("by_identity", (q) =>
@@ -140,23 +157,31 @@ export const admit = mutation({
           .eq("optionsHash", args.optionsHash),
       )
       .unique();
+
     if (row) {
       const expired = row.leaseUntil <= Date.now();
+
       if (row.status === "pending" && expired) {
         const claim = crypto.randomUUID();
         const kept = callbacks(row.callbacks);
+
         await ctx.db.patch("artifacts", row._id, {
           claim,
           leaseUntil: Date.now() + LIMITS.queueMs,
           callbacks: kept.list.length ? kept.list : undefined,
         });
+
         await dispatch(ctx, row._id, row.attempt, claim, dispatchArgs);
+
         return result(row._id, "run", kept.outcome);
       }
+
       if (row.status === "running" && expired) {
         await ctx.db.patch("artifacts", row._id, { status: "unknown" });
+
         return { artifactId: row._id, action: "reuse" };
       }
+
       if (
         row.status === "failed" &&
         row.failure &&
@@ -166,6 +191,7 @@ export const admit = mutation({
         const claim = crypto.randomUUID();
         const attempt = row.attempt + 1;
         const kept = callbacks(row.callbacks);
+
         await ctx.db.patch("artifacts", row._id, {
           status: "pending",
           attempt,
@@ -174,21 +200,29 @@ export const admit = mutation({
           failure: undefined,
           callbacks: kept.list.length ? kept.list : undefined,
         });
+
         await dispatch(ctx, row._id, attempt, claim, dispatchArgs);
+
         return result(row._id, "run", kept.outcome);
       }
+
       if (row.status === "pending" || row.status === "running") {
         // Waiting on a live dispatch: the caller is notified when it completes.
         const kept = callbacks(row.callbacks);
+
         if (kept.list.length !== (row.callbacks?.length ?? 0))
           await ctx.db.patch("artifacts", row._id, { callbacks: kept.list });
+
         return result(row._id, "wait", kept.outcome);
       }
+
       // Already terminal: no completion will follow, so nothing is stored.
       return { artifactId: row._id, action: "reuse" };
     }
+
     const claim = crypto.randomUUID();
     const attempt = LIMITS.initialAttempt;
+
     const artifactId = await ctx.db.insert("artifacts", {
       fileId: args.fileId,
       backend: args.backend,
@@ -200,7 +234,9 @@ export const admit = mutation({
       leaseUntil: Date.now() + LIMITS.queueMs,
       ...(args.onComplete ? { callbacks: [args.onComplete] } : {}),
     });
+
     await dispatch(ctx, artifactId, attempt, claim, dispatchArgs);
+
     return result(artifactId, "run", args.onComplete ? "stored" : undefined);
   },
 });
@@ -218,6 +254,7 @@ export const reject = mutation({
     bounded(args.backend);
     bounded(args.version);
     bounded(args.optionsHash, LIMITS.hashBytes);
+
     const row = await ctx.db
       .query("artifacts")
       .withIndex("by_identity", (q) =>
@@ -228,7 +265,9 @@ export const reject = mutation({
           .eq("optionsHash", args.optionsHash),
       )
       .unique();
+
     if (row) return row._id;
+
     return ctx.db.insert("artifacts", {
       fileId: args.fileId,
       backend: args.backend,
@@ -253,6 +292,7 @@ export const lookup = query({
     bounded(args.backend);
     bounded(args.version);
     bounded(args.optionsHash, LIMITS.hashBytes);
+
     return ctx.db
       .query("artifacts")
       .withIndex("by_identity", (q) =>
@@ -276,13 +316,17 @@ export const start = mutation({
   handler: async (ctx, args) => {
     validateFence(args);
     const row = await ctx.db.get("artifacts", args.artifactId);
+
     if (!current(row, args) || row?.status !== "pending") return false;
+
     await ctx.db.patch("artifacts", row._id, {
       status: "running",
       leaseUntil: Date.now() + LIMITS.leaseMs,
     });
+
     // One-shot expiry check for this started attempt; it never reschedules.
     await ctx.scheduler.runAfter(LIMITS.leaseMs, internal.artifacts.expire, args);
+
     return true;
   },
 });
@@ -298,7 +342,9 @@ export const complete = mutation({
   handler: async (ctx, args) => {
     validateFence(args);
     const row = await ctx.db.get("artifacts", args.artifactId);
+
     if (!row || !current(row, args)) return false;
+
     if (args.usage)
       for (const value of Object.values(args.usage))
         if (
@@ -306,23 +352,31 @@ export const complete = mutation({
           (!Number.isFinite(value) || value < 0 || value > Number.MAX_SAFE_INTEGER)
         )
           throw new Error("INVALID_EXTRACT_ARGUMENT");
+
     const usage = addUsage(row.usage, args.usage);
+
     // Paid usage survives a purge/expiry, but content and status do not. This
     // is accounting for the original attempt, never permission to publish it.
     if (row.status === "released" || row.status === "unknown") {
       if (usage) await ctx.db.patch("artifacts", row._id, { usage });
+
       return false;
     }
+
     if (row.status !== "running") return false;
+
     if (args.unknown || row.leaseUntil <= Date.now()) {
       await ctx.db.patch("artifacts", row._id, {
         status: "unknown",
         ...(usage ? { usage } : {}),
       });
+
       return false;
     }
+
     if (args.failure) {
       if (args.summary || args.payloadStorageId) throw new Error("INVALID_EXTRACT_ARGUMENT");
+
       await ctx.db.patch("artifacts", row._id, {
         status: "failed",
         failure: args.failure,
@@ -330,11 +384,15 @@ export const complete = mutation({
       });
     } else {
       if (!args.summary || !args.payloadStorageId) throw new Error("INVALID_EXTRACT_ARGUMENT");
+
       bounded(args.payloadStorageId);
       integer(args.summary.textBytes, LIMITS.node.payloadBytes);
       integer(args.summary.pages, LIMITS.totalPages);
+
       if (args.summary.preview) bounded(args.summary.preview, LIMITS.summaryBytes);
+
       if (args.summary.language) bounded(args.summary.language);
+
       await ctx.db.patch("artifacts", row._id, {
         status: "ready",
         summary: args.summary,
@@ -342,6 +400,7 @@ export const complete = mutation({
         ...(usage ? { usage } : {}),
       });
     }
+
     return true;
   },
 });
@@ -360,20 +419,26 @@ export const purge = mutation({
   args: { fileId: v.string(), after: v.number() },
   handler: async (ctx, args) => {
     bounded(args.fileId);
+
     const rows = await ctx.db
       .query("artifacts")
       .withIndex("by_file", (q) => q.eq("fileId", args.fileId).gte("_creationTime", args.after))
       .take(LIMITS.purgeBatch + 1);
+
     const storageIds: string[] = [];
+
     for (const row of rows.slice(0, LIMITS.purgeBatch)) {
       if (row.status === "released") continue;
+
       if (row.payloadStorageId) storageIds.push(row.payloadStorageId);
+
       await ctx.db.patch("artifacts", row._id, {
         status: "released",
         payloadStorageId: undefined,
         summary: undefined,
       });
     }
+
     return {
       storageIds,
       // Every row of the page, released or not: `purge` still has to clean the
@@ -394,7 +459,9 @@ export const abandon = internalMutation({
     validateFence(args);
     const id = ctx.db.normalizeId("artifacts", args.artifactId);
     const row = id ? await ctx.db.get("artifacts", id) : null;
+
     if (!row || !current(row, args)) return { owned: false, callbacks: [] };
+
     // The owning dispatch takes every stored handle exactly once, atomically
     // clearing the list; a stale dispatch takes none and clears nothing.
     await ctx.db.patch("artifacts", row._id, {
@@ -406,6 +473,7 @@ export const abandon = internalMutation({
       ...(row.status === "pending" ? { leaseUntil: Date.now() } : {}),
       callbacks: undefined,
     });
+
     return { owned: true, callbacks: row.callbacks ?? [] };
   },
 });
@@ -414,8 +482,10 @@ export const expire = internalMutation({
   handler: async (ctx, args) => {
     validateFence(args);
     const row = await ctx.db.get("artifacts", args.artifactId);
+
     if (row && current(row, args) && row.leaseUntil <= Date.now() && row.status === "running")
       await ctx.db.patch("artifacts", row._id, { status: "unknown" });
+
     return null;
   },
 });

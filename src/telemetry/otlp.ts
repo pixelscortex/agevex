@@ -35,11 +35,16 @@ export function markTruncated(attributes: Attribute[]): void {
 export function attributeWriter(sanitize?: Sanitize) {
   return (attributes: Attribute[], key: string, input: unknown): void => {
     if (input === undefined) return;
+
     try {
       let value = boundedValue(input);
+
       if (sanitize) value = boundedValue(sanitize(value, key));
+
       if (value === undefined) return;
+
       let encoded: AttributeValue;
+
       if (typeof value === "boolean") encoded = { boolValue: value };
       else if (typeof value === "number")
         encoded = Number.isSafeInteger(value)
@@ -49,21 +54,29 @@ export function attributeWriter(sanitize?: Sanitize) {
         const text = typeof value === "string" ? value : JSON.stringify(value);
         // Count the JSON form as well: a NUL character expands to six ASCII bytes.
         let bounded = truncate(text, LIMITS.maxValueBytes);
+
         if (bytes(JSON.stringify(bounded)) > LIMITS.maxValueBytes) bounded = TRUNCATED;
+
         encoded = { stringValue: bounded };
       }
+
       const previous = attributes.findIndex((entry) => entry.key === key);
       const next = attributes.filter((entry) => entry.key !== key);
       const entry = { key, value: encoded };
+
       next.push(entry);
+
       // Reserve the truncation marker before admitting any value. It must remain
       // possible to explain discarded content even when this span is at the ceiling.
       if (bytes(JSON.stringify([...next, marker])) > LIMITS.maxAttributeBytes) {
         markTruncated(attributes);
+
         return;
       }
+
       if (previous >= 0) attributes[previous] = entry;
       else attributes.push(entry);
+
       if (JSON.stringify(encoded).includes(TRUNCATED)) markTruncated(attributes);
     } catch {
       // A throwing getter/sanitizer must neither leak the raw value nor fail paid work.
@@ -86,9 +99,11 @@ export function payload(spans: Span[]): OtlpPayload {
 /** WebCrypto is available in Convex V8; no Buffer, node:crypto or global OTel SDK. */
 export async function hash(value: string, length: number): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+
   const hex = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0"))
     .join("")
     .slice(0, length);
+
   // OTLP disallows the all-zero identifier, even though a SHA-256 prefix hitting
   // it is extraordinarily unlikely. Keep that edge case deterministic too.
   return /^0+$/.test(hex) ? hex.slice(0, -1) + "1" : hex;

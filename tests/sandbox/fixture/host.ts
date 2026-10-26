@@ -31,6 +31,7 @@ const components = componentsGeneric() as unknown as {
   agevex: CoreApi;
   agent: AgentComponent;
 };
+
 const ref = <T extends "action" | "mutation", A extends Record<string, Value>>(name: string) =>
   makeFunctionReference<T, A, null>(`host:${name}`) as unknown as FunctionReference<
     T,
@@ -38,6 +39,7 @@ const ref = <T extends "action" | "mutation", A extends Record<string, Value>>(n
     A,
     null
   >;
+
 export const state = {
   fake: fakeSandboxProvider(),
   scope: "thread" as "thread" | "run" | "subject",
@@ -89,22 +91,27 @@ export function config(): SandboxOptions {
         throw state.deniedAsConvexError
           ? new ConvexError(state.deniedWith)
           : new Error(state.deniedWith);
+
       if (request.operation === "use" && state.beforeUse) {
         const hook = state.beforeUse;
+
         state.beforeUse = undefined;
         await hook(_ctx as SandboxContext);
       }
+
       return { subject: request.subject ?? "owner" };
     },
     resolveThread: async (_ctx, threadId) =>
       state.resolver ?? { subject: "owner", threadId, runId: "run" },
     onComplete: async (ctx, event: SandboxJobEvent) => {
       await ctx.db.insert("events", { value: event });
+
       if (state.callbackFails) throw new Error("HOST_CALLBACK_FAILED");
     },
     usage: {
       record: async (_ctx, event) => {
         if (state.usageFails) throw new Error("HOST_USAGE_FAILED");
+
         state.usage.push(event);
       },
     },
@@ -113,12 +120,15 @@ export function config(): SandboxOptions {
 
 export function runtime() {
   const sandbox = defineSandbox(config());
+
   state.instance = sandbox;
   const functions = sandbox.internalFunctions();
+
   // Registered functions keep their handler; wrap it to model an action that
   // dies before it does anything (after the scheduler already consumed it).
   const real = (functions.poll as unknown as { _handler: (ctx: unknown, args: unknown) => unknown })
     ._handler;
+
   const poll = internalActionGeneric({
     args: { jobId: v.string(), claim: v.string() },
     handler: async (ctx, args) => {
@@ -126,9 +136,11 @@ export function runtime() {
         state.crashPolls--;
         throw new Error("poll action died");
       }
+
       return real(ctx, args) as Promise<null>;
     },
   });
+
   return { ...functions, poll };
 }
 
@@ -143,6 +155,7 @@ export const invoke = internalActionGeneric({
   },
   handler: async (ctx, args): Promise<Value> => {
     const sandbox = state.instance!;
+
     const tc: ToolContext = {
       ctx,
       subject: args.subject ?? "owner",
@@ -154,14 +167,17 @@ export const invoke = internalActionGeneric({
       toolCallId: args.key ?? crypto.randomUUID(),
       signal: new AbortController().signal,
     };
+
     switch (args.op) {
       case "prepare":
         return sandbox.prepare(tc);
       case "stop":
         await sandbox.stop(tc);
+
         return null;
       case "delete":
         await sandbox.delete(tc);
+
         return null;
       case "export":
         return sandbox.export(ctx, { threadId: tc.threadId, path: args.input.path });
@@ -169,20 +185,25 @@ export const invoke = internalActionGeneric({
         return sandbox.forget(ctx, args.input);
       case "cleanup":
         await sandbox.cleanup(ctx);
+
         return null;
       case "job":
         return sandbox.job(ctx, { jobId: args.input.jobId });
       default: {
         const tools = sandbox.tools(tc);
         const declared = tools[args.op as keyof typeof tools] as Tool;
+
         if (!declared) throw new Error("UNKNOWN_TEST_TOOL");
+
         const seed = componentsGeneric()["agevex"]["sandboxFixture"]["seed"] as FunctionReference<
           "mutation",
           "internal",
           Record<string, never>,
           string
         >;
+
         const assignmentId = await ctx.runMutation(seed, {});
+
         const bound = bindOnceTool(
           declared,
           components.agevex,
@@ -191,6 +212,7 @@ export const invoke = internalActionGeneric({
           { assignmentId, executionId: "execution", cancellationEpoch: 0 },
           540_000,
         );
+
         return (await bound.execute!(args.input, {
           toolCallId: tc.toolCallId,
           messages: [],

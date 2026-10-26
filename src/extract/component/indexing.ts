@@ -7,9 +7,12 @@ import { bounded, integer, LIMITS } from "../limits.js";
 
 type RagApi = ConstructorParameters<typeof RAG>[0];
 const fence = { indexId: v.id("indexes"), claim: v.string() };
+
 const active = (row: Doc<"indexes">, claim: string) =>
   row.claim === claim && (row.status === "cleaning" || row.status === "running");
+
 const expired = (row: Doc<"indexes">) => row.leaseUntil <= Date.now();
+
 const byTarget = (ctx: { db: any }, artifactId: string, namespace: string) =>
   ctx.db
     .query("indexes")
@@ -49,10 +52,13 @@ export const admit = mutation({
     bounded(args.key);
     const leaseMs = integer(args.leaseMs ?? LIMITS.indexLeaseMs, LIMITS.indexLeaseMs, 1);
     const artifact = await ctx.db.get("artifacts", args.artifactId);
+
     if (artifact?.status !== "ready") throw new Error("EXTRACT_NOT_READY");
+
     const row = await byTarget(ctx, args.artifactId, args.namespace);
     const claim = crypto.randomUUID();
     const leaseUntil = Date.now() + leaseMs;
+
     if (!row) {
       const indexId = await ctx.db.insert("indexes", {
         artifactId: args.artifactId,
@@ -62,25 +68,33 @@ export const admit = mutation({
         claim,
         leaseUntil,
       });
+
       await ctx.scheduler.runAfter(leaseMs, internal.indexing.expire, { indexId, claim });
+
       return { action: "run" as const, indexId, claim, entryId: undefined };
     }
+
     if (row.status === "cleaning" || row.status === "running") {
       if (!expired(row)) return { action: "wait" as const, indexId: row._id, entryId: row.entryId };
+
       // The timer may not have run yet. Lazy expiry and recovery are atomic:
       // no old writer can pass this row's claim check after this transaction.
       await ctx.db.patch("indexes", row._id, { status: "unknown" });
     } else if (row.status === "ready" && row.key === args.key) {
       return { action: "reuse" as const, indexId: row._id, entryId: row.entryId };
     }
+
     if (args.automatic) return { action: "skip" as const, indexId: row._id, entryId: row.entryId };
+
     await ctx.db.patch("indexes", row._id, {
       status: "cleaning",
       claim,
       leaseUntil,
       key: args.key,
     });
+
     await ctx.scheduler.runAfter(leaseMs, internal.indexing.expire, { indexId: row._id, claim });
+
     return { action: "run" as const, indexId: row._id, claim, entryId: row.entryId };
   },
 });
@@ -92,6 +106,7 @@ export const lookup = query({
   handler: async (ctx, args) => {
     bounded(args.namespace);
     const row = await byTarget(ctx, args.artifactId, args.namespace);
+
     return row
       ? {
           indexId: row._id,
@@ -116,8 +131,11 @@ export const release = mutation({
   handler: async (ctx, args) => {
     bounded(args.namespace);
     const row = await byTarget(ctx, args.artifactId, args.namespace);
+
     if (!row) return null;
+
     if (row.status !== "released") await ctx.db.patch("indexes", row._id, { status: "released" });
+
     return { indexId: row._id, entryId: row.entryId ?? null };
   },
 });
@@ -132,15 +150,20 @@ export const purgeBatch = mutation({
   args: { artifactId: v.id("artifacts"), limit: v.number() },
   handler: async (ctx, args) => {
     const limit = integer(args.limit, LIMITS.purgeBatch, 1);
+
     const rows = await ctx.db
       .query("indexes")
       .withIndex("by_artifact_namespace", (q) => q.eq("artifactId", args.artifactId))
       .take(limit + 1);
+
     const entries: { indexId: Id<"indexes">; entryId: string | null }[] = [];
+
     for (const row of rows.slice(0, limit)) {
       if (row.status !== "released") await ctx.db.patch("indexes", row._id, { status: "released" });
+
       entries.push({ indexId: row._id, entryId: row.entryId ?? null });
     }
+
     return { entries, more: rows.length > limit };
   },
 });
@@ -150,8 +173,10 @@ export const forget = mutation({
   args: { indexId: v.id("indexes"), entryId: v.union(v.string(), v.null()) },
   handler: async (ctx, args) => {
     const row = await ctx.db.get("indexes", args.indexId);
+
     if (row?.status === "released" && (row.entryId ?? null) === args.entryId)
       await ctx.db.delete("indexes", row._id);
+
     return null;
   },
 });
@@ -180,6 +205,7 @@ export const start = mutation({
     bounded(args.contentHash, LIMITS.hashBytes);
     const row = await ctx.db.get("indexes", args.indexId);
     const artifact = row && (await ctx.db.get("artifacts", row.artifactId));
+
     if (
       !row ||
       artifact?.status !== "ready" ||
@@ -188,6 +214,7 @@ export const start = mutation({
       expired(row)
     )
       throw new Error("EXTRACT_INDEX_FENCED");
+
     const result = await ctx.runMutation(args.add as unknown as RagApi["entries"]["add"], {
       entry: {
         namespaceId: args.namespaceId,
@@ -198,7 +225,9 @@ export const start = mutation({
         metadata: { artifactId: artifact._id, fileId: artifact.fileId },
       },
     });
+
     await ctx.db.patch("indexes", row._id, { status: "running", entryId: result.entryId });
+
     return result.entryId;
   },
 });
@@ -231,28 +260,38 @@ export const insert = mutation({
     integer(args.startOrder, LIMITS.indexChunks);
     integer(args.chunks.length, LIMITS.ragBatch, 1);
     integer(args.startOrder + args.chunks.length, LIMITS.indexChunks);
+
     for (const chunk of args.chunks) {
       bounded(chunk.content.text, LIMITS.chunkBytes);
       bounded(chunk.searchableText, LIMITS.chunkBytes);
+
       if (
         !LIMITS.embeddingDimensions.includes(chunk.embedding.length as never) ||
         chunk.embedding.some((value) => !Number.isFinite(value))
       )
         throw new Error("INVALID_EXTRACT_ARGUMENT");
     }
+
     const row = await ctx.db.get("indexes", args.indexId);
+
     if (!row || !active(row, args.claim)) return false;
+
     if (expired(row)) {
       await ctx.db.patch("indexes", row._id, { status: "unknown" });
+
       return false;
     }
+
     const artifact = await ctx.db.get("artifacts", row.artifactId);
+
     if (artifact?.status !== "ready" || row.status !== "running" || !row.entryId) return false;
+
     await ctx.runMutation(args.insert as unknown as RagApi["chunks"]["insert"], {
       entryId: row.entryId,
       startOrder: args.startOrder,
       chunks: args.chunks,
     });
+
     return true;
   },
 });
@@ -262,19 +301,29 @@ export const complete = mutation({
   args: { ...fence, promote: v.optional(v.string()) },
   handler: async (ctx, args) => {
     bounded(args.claim);
+
     if (args.promote) bounded(args.promote, LIMITS.urlBytes);
+
     const row = await ctx.db.get("indexes", args.indexId);
+
     if (!row || !active(row, args.claim)) return false;
+
     if (expired(row)) {
       await ctx.db.patch("indexes", row._id, { status: "unknown" });
+
       return false;
     }
+
     if (!args.promote) {
       await ctx.db.patch("indexes", row._id, { status: "failed" });
+
       return true;
     }
+
     const artifact = await ctx.db.get("artifacts", row.artifactId);
+
     if (artifact?.status !== "ready" || row.status !== "running" || !row.entryId) return false;
+
     // The native key is scoped to this artifact and namespace, and the
     // preceding entry was deleted by exact id. Its promote scan therefore sees
     // at most our single pending entry, never a history of retries or other
@@ -282,7 +331,9 @@ export const complete = mutation({
     await ctx.runMutation(args.promote as unknown as RagApi["entries"]["promoteToReady"], {
       entryId: row.entryId,
     });
+
     await ctx.db.patch("indexes", row._id, { status: "ready" });
+
     return true;
   },
 });
@@ -293,8 +344,10 @@ export const expire = internalMutation({
   handler: async (ctx, args) => {
     bounded(args.claim);
     const row = await ctx.db.get("indexes", args.indexId);
+
     if (row && active(row, args.claim) && expired(row))
       await ctx.db.patch("indexes", row._id, { status: "unknown" });
+
     return null;
   },
 });

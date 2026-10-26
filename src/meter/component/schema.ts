@@ -46,12 +46,14 @@ export const reason = v.union(
   v.literal("PROFILE_NOT_REGISTERED"),
   v.literal("THREAD_CAPACITY"),
 );
+
 const sinkFields = {
   name: v.string(),
   deliveredNanos: v.optional(v.number()),
   revision: v.number(),
   pending: v.optional(event),
 };
+
 /** Stored on the charge: only what changes with the charge's own amount. */
 export const sinkState = v.array(v.object(sinkFields));
 /** Returned to callers: retry state joined from the charge's <=4 `deliveries` rows. */

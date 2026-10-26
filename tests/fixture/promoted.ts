@@ -16,7 +16,9 @@ const runtime = registerAgent(components.agevex, {
   },
   authorize: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
+
     if (!identity) throw new Error("UNAUTHENTICATED");
+
     return { subject: identity.subject };
   },
   authorizeExecution: async (_ctx, scope) => {

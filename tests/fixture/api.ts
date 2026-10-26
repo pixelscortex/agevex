@@ -17,6 +17,7 @@ import type {
 } from "convex/server";
 import type { ComponentApi as AgentComponentApi } from "@convex-dev/agent/_generated/component.js";
 import type { ComponentApi } from "../../src/component/_generated/component.js";
+import type { Doc } from "../../src/component/_generated/dataModel.js";
 import type {
   activity,
   cancel,
@@ -88,3 +89,16 @@ export const components = generatedComponents as unknown as {
   agent: AgentComponentApi<"agent">;
   agevex: ComponentApi<"agevex">;
 };
+
+/** The whole agevex assignment row, read through the test-only bridge
+ * (`src/testing/bridge.ts`) for white-box assertions. */
+export const rawAssignment = (
+  generatedComponents as unknown as {
+    agevex: { agevexTest: { assignment: unknown } };
+  }
+).agevex.agevexTest.assignment as FunctionReference<
+  "query",
+  "internal",
+  { assignmentId: string },
+  Doc<"assignments"> | null
+>;

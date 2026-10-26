@@ -1,4 +1,5 @@
 const MiB = 2 ** 20;
+
 /**
  * Hard ceilings keep provider bodies out of rows and every tool response bounded.
  *
@@ -98,12 +99,14 @@ export type ExtractLimits = {
 export function integer(value: number, max: number, min = 0): number {
   if (!Number.isSafeInteger(value) || value < min || value > max)
     throw new Error("INVALID_EXTRACT_ARGUMENT");
+
   return value;
 }
 export const utf8 = (text: string) => new TextEncoder().encode(text);
 export function bounded(value: string, max: number = LIMITS.identifierBytes): string {
   if (typeof value !== "string" || !value.length || utf8(value).length > max)
     throw new Error("INVALID_EXTRACT_ARGUMENT");
+
   return value;
 }
 /**
@@ -117,6 +120,7 @@ export function resolveLimits(
   node = false,
 ): ExtractLimits {
   const max = node ? LIMITS.node : LIMITS;
+
   return {
     maxBytes: {
       document: integer(
@@ -135,6 +139,8 @@ export function resolveLimits(
 export function sliceText(text: string, max: number): string {
   const bytes = utf8(text);
   let end = Math.min(max, bytes.length);
+
   while (end > 0 && end < bytes.length && (bytes[end] & 0xc0) === 0x80) end--;
+
   return new TextDecoder().decode(bytes.subarray(0, end));
 }

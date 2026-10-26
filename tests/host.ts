@@ -40,6 +40,7 @@ import {
 import { components } from "./fixture/api.js";
 
 type OfferedCall = { agent: "Main" | "Researcher"; tools: string[] };
+
 const toolNames = (tools: unknown): string[] =>
   Array.isArray(tools) ? tools.map((entry) => (entry as { name?: string }).name ?? "?") : [];
 
@@ -118,10 +119,12 @@ export const state = {
 
 const model = mockModel({ content: [{ type: "text", text: "DEMO deterministic native reply" }] });
 const original = model.doStream.bind(model);
+
 const toolModel = scriptedModel([
   [{ type: "tool-call", toolCallId: "demo-tool", toolName: "echo", input: '{"text":"echoed"}' }],
   [{ type: "text", text: "MUST NOT RUN A SECOND STEP" }],
 ]);
+
 /**
  * Delegation reply, built per call so `state.delegateAgent`/`state.delegateTask`
  * are read at emission time rather than frozen at module load. A fanout above
@@ -144,21 +147,28 @@ const delegateReply = () =>
     })),
     [{ type: "text", text: "Main acknowledged the queued delegation." }],
   ]);
+
 /** The managed delegation tool is offered to this model call? */
 const offersDelegation = (tools: unknown) => toolNames(tools).includes("agevex_delegate");
+
 model.doStream = async (args) => {
   state.calls.push(args);
   state.modelStarted?.();
   state.offers.push({ agent: "Main", tools: toolNames(args.tools) });
+
   if (state.delayMs > 0) await new Promise((resolve) => setTimeout(resolve, state.delayMs));
+
   if (state.hang)
     await new Promise<never>((_resolve, reject) => {
       args.abortSignal?.addEventListener("abort", () => reject(new Error("aborted demo")), {
         once: true,
       });
     });
+
   if (state.gate) await state.gate;
+
   if (state.fail) throw new Error("private provider error must not leak");
+
   if (state.nestedAfterCancel)
     return scriptedModel([
       [
@@ -170,6 +180,7 @@ model.doStream = async (args) => {
         },
       ],
     ]).doStream(args);
+
   if (state.once && state.calls.length <= 2)
     return scriptedModel([
       [
@@ -181,6 +192,7 @@ model.doStream = async (args) => {
         },
       ],
     ]).doStream(args);
+
   if (state.approval && state.calls.length === 1)
     return scriptedModel([
       Array.from({ length: state.approvalCount }, (_, i) => ({
@@ -190,6 +202,7 @@ model.doStream = async (args) => {
         input: '{"text":"echoed"}',
       })),
     ]).doStream(args);
+
   if (state.deferred && state.calls.length === 1)
     return scriptedModel([
       Array.from({ length: state.deferredCount }, (_, i) => ({
@@ -199,7 +212,9 @@ model.doStream = async (args) => {
         input: JSON.stringify({ question: state.deferredQuestion }),
       })),
     ]).doStream(args);
+
   if (state.tools && state.calls.length === 1) return toolModel.doStream(args);
+
   const prompt = JSON.stringify(
     args.prompt
       .filter(
@@ -209,12 +224,16 @@ model.doStream = async (args) => {
       )
       .slice(-1),
   );
+
   const rounds = state.roundsByPrompt.get(prompt) ?? 0;
+
   if (state.delegate && rounds < state.delegationRounds && offersDelegation(args.tools)) {
     state.delegatedRounds++;
     state.roundsByPrompt.set(prompt, rounds + 1);
+
     return delegateReply().doStream(args);
   }
+
   return original(args);
 };
 
@@ -225,17 +244,23 @@ const childReply = () =>
     modelId: "DEMO-not-a-real-model",
     content: [{ type: "text", text: state.childText }],
   });
+
 const childModel = mockModel({
   provider: "agevex-local-demo",
   modelId: "DEMO-not-a-real-model",
   content: [{ type: "text", text: "RESEARCHER deterministic native result" }],
 });
+
 childModel.doStream = async (args) => {
   state.offers.push({ agent: "Researcher", tools: toolNames(args.tools) });
+
   if (state.childDelayMs > 0)
     await new Promise((resolve) => setTimeout(resolve, state.childDelayMs));
+
   if (state.childGate) await state.childGate;
+
   if (state.childFail) throw new Error("private child provider error must not leak");
+
   if (
     state.childDeferred &&
     state.offers.filter((offer) => offer.agent === "Researcher").length === 1
@@ -250,6 +275,7 @@ childModel.doStream = async (args) => {
         },
       ],
     ]).doStream(args);
+
   if (
     (state.childApproval || state.childToolSlices > 0) &&
     JSON.stringify(args.prompt).includes("keep slicing") &&
@@ -266,6 +292,7 @@ childModel.doStream = async (args) => {
         },
       ],
     ]).doStream(args);
+
   return childReply().doStream(args);
 };
 
@@ -274,6 +301,7 @@ export const researcher = new Agent(components.agent, {
   languageModel: childModel,
   subagents: [],
 });
+
 // Opt-in fixture tools preserve the tool-less child promised by existing tests.
 Object.defineProperty(researcher, "declaredTools", {
   get: () =>
@@ -288,6 +316,7 @@ Object.defineProperty(researcher, "declaredTools", {
         }
       : {},
 });
+
 export const main = new Agent(components.agent, {
   name: "Main",
   languageModel: model,
@@ -297,19 +326,23 @@ export const main = new Agent(components.agent, {
       inputSchema: z.object({}),
       execute: async (ctx, _input, options) => {
         state.nestedStarted = true;
+
         if (state.nestedGate) await state.nestedGate;
+
         try {
           await ctx.runAction(makeFunctionReference<"action">("agents:nestedAction"), {});
         } catch (error) {
           state.nestedErrors.push(error);
           state.nestedSignals.push(options.abortSignal?.aborted ?? false);
         }
+
         try {
           await ctx.runMutation(makeFunctionReference<"mutation">("agents:nestedMutation"), {});
         } catch (error) {
           state.nestedErrors.push(error);
           state.nestedSignals.push(options.abortSignal?.aborted ?? false);
         }
+
         return null;
       },
     }),
@@ -318,19 +351,23 @@ export const main = new Agent(components.agent, {
       input: z.object({}),
       run: async (_input, tc) => {
         state.nestedStarted = true;
+
         if (state.nestedGate) await state.nestedGate;
+
         try {
           await tc.ctx.runAction(makeFunctionReference<"action">("agents:nestedAction"), {});
         } catch (error) {
           state.nestedErrors.push(error);
           state.nestedSignals.push(tc.signal.aborted);
         }
+
         try {
           await tc.ctx.runMutation(makeFunctionReference<"mutation">("agents:nestedMutation"), {});
         } catch (error) {
           state.nestedErrors.push(error);
           state.nestedSignals.push(tc.signal.aborted);
         }
+
         return null;
       },
     }),
@@ -341,6 +378,7 @@ export const main = new Agent(components.agent, {
       run: (input, tc) => {
         state.onceCalls++;
         state.onceContext = tc;
+
         return { saved: input.text };
       },
     }),
@@ -349,7 +387,9 @@ export const main = new Agent(components.agent, {
       needsApproval: () => state.approval,
       execute: async ({ text }) => {
         state.echoStarted = true;
+
         if (state.echoGate) await state.echoGate;
+
         return text;
       },
     }),
@@ -367,11 +407,15 @@ const runTurnRef = makeFunctionReference<"action", TurnArgs, null>(
 const overrideModel = (id: string) => {
   const override = mockModel({ content: [{ type: "text", text: `model ${id}` }] });
   const native = override.doStream.bind(override);
+
   override.doStream = async (args) => {
     state.overrideCalls.push(id);
+
     if (state.overrideTools && state.overrideCalls.length === 1) return toolModel.doStream(args);
+
     return native(args);
   };
+
   return override;
 };
 
@@ -396,40 +440,53 @@ export function fixtureRuntime(limits?: Registration["limits"]) {
     authorize: async (ctx, scope) => {
       if (scope.operation === "delegate" || scope.operation === "deliver") {
         if (scope.operation === "delegate" && state.denyDelegate) throw new Error("DENIED");
+
         if (scope.operation === "deliver" && state.denyDeliver) throw new Error("DENIED");
+
         if (!ALLOWED_BACKGROUND_SUBJECTS.has(scope.subject)) throw new Error("FORBIDDEN");
+
         if (scope.operation === "delegate" && scope.childAgent !== "Researcher")
           throw new Error("FORBIDDEN");
+
         return { subject: scope.subject };
       }
+
       const identity = await ctx.auth.getUserIdentity();
+
       if (!identity) throw new Error("UNAUTHENTICATED");
+
       return { subject: identity.subject };
     },
     authorizeExecution: async (_ctx, scope) => {
       if (state.revoke || scope.subject !== "alice") throw new Error("REVOKED");
+
       if (scope.child && state.revokeChild) throw new Error("REVOKED_CHILD");
     },
     observe: async (_ctx, event) => {
       if (state.observerFails) throw new Error("observer failure");
+
       state.events.push(event);
     },
   });
 }
 const runtime = fixtureRuntime();
+
 export const nestedAction: RegisteredAction<"internal", {}, null> = internalActionGeneric({
   handler: async () => {
     state.nestedCalls++;
+
     return null;
   },
 });
 export const nestedMutation: RegisteredMutation<"internal", {}, null> = internalMutationGeneric({
   handler: async () => {
     state.nestedCalls++;
+
     return null;
   },
 });
 const { runTurn, coordinate } = runtime.internalFunctions();
+
 export { runTurn, coordinate };
 export const { open, send, respond, answer, cancel, messages, streams, activity, delegations } =
   runtime.authorizedEndpoints();

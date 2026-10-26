@@ -1,3 +1,13 @@
+/**
+ * Fixed-size keys for native ids, and the native approval-response save.
+ *
+ * Native approval ids and tool-call ids can be near 1 MiB, so coordination
+ * rows store their SHA-256 (`callKey` bytes, `approvalKey` hex) instead.
+ * `saveResponses` writes approval responses and cancellation's
+ * "execution-denied" tool results in Agent 0.7.7's exact native protocol.
+ * Used by turns/ (pause.ts, approvals.ts), subagents/launch.ts (dedup keys) and
+ * cancellation/cleanup.ts. Reads and writes no agevex table.
+ */
 import type { FunctionHandle } from "convex/server";
 import type { MessageDoc } from "@convex-dev/agent";
 import type { MutationCtx } from "./_generated/server.js";
@@ -39,10 +49,12 @@ export async function saveResponses(
       })),
     ],
   };
+
   // Cleanup sends one response/result pair at a time. Reserve native envelope
   // space too, then check the actual returned document before committing.
   if (deniedCalls.length && getConvexSize(message) + 4096 > LIMITS.cleanupMessageBytes)
     throw new Error("CLEANUP_MESSAGE_TOO_LARGE");
+
   const saved = (await ctx.runMutation(target.addMessages as FunctionHandle<"mutation">, {
     threadId: target.threadId,
     agentName: target.agent,
@@ -50,10 +62,12 @@ export async function saveResponses(
     failPendingSteps: false,
     messages: [{ message }],
   })) as { messages: MessageDoc[] };
+
   if (
     deniedCalls.length &&
     saved.messages.some((doc) => getConvexSize(doc) > LIMITS.cleanupMessageBytes)
   )
     throw new Error("CLEANUP_MESSAGE_TOO_LARGE");
+
   return saved.messages[0]._id;
 }

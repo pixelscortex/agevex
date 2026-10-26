@@ -29,6 +29,7 @@ import type { ActionCtx } from "../../src/extract/types.js";
 const hostModules = import.meta.glob("./fixture/**/*.ts");
 const modules = import.meta.glob("../../src/extract/component/**/*.ts");
 const mounts = componentsGeneric();
+
 export const component = mounts.extract as unknown as ComponentApi;
 export const agentComponent = mounts.agent as unknown as AgentComponent;
 export const worker = makeFunctionReference<"action", WorkerArgs, null>(
@@ -39,15 +40,19 @@ export const storageMetadata = makeFunctionReference<
   { storageId: string },
   { size: number } | null
 >("host:storageMetadata") as unknown as ExtractOptions["storageMetadata"];
+
 const missingWorker = makeFunctionReference<"action", WorkerArgs, null>(
   "host:missing",
 ) as unknown as FunctionReference<"action", "internal", WorkerArgs, null>;
+
 const nodeWorker = makeFunctionReference<"action", WorkerArgs, null>(
   "host:nodeExecute",
 ) as unknown as NonNullable<ExtractOptions["node"]>["execute"];
+
 const nodeRead = makeFunctionReference<"action", NodeReadArgs, unknown>(
   "host:nodeRead",
 ) as unknown as NonNullable<ExtractOptions["node"]>["read"];
+
 export function setup(
   input: {
     /** Register the opt-in Node worker/reader (extractNodeExport) as options.node. */
@@ -71,6 +76,7 @@ export function setup(
     brokenWorker: false,
     events: [] as unknown[],
   };
+
   const backend: ExtractBackend = {
     id: "fake",
     version: "1",
@@ -78,12 +84,15 @@ export function setup(
     run: async ({ bytes }) => {
       state.calls++;
       await state.gate;
+
       if (state.thrown) throw new Error("SECRET_PROVIDER_BODY");
+
       return (
         state.result ?? { ok: true, doc: { kind: "text", text: await (await bytes()).text() } }
       );
     },
   };
+
   const options: ExtractOptions = {
     agent: agentComponent,
     get worker() {
@@ -104,6 +113,7 @@ export function setup(
     usage: {
       record: async (_ctx, event) => {
         state.events.push(event);
+
         if (state.usageFails) throw new Error("HOST_USAGE_UNAVAILABLE");
       },
     },
@@ -111,8 +121,10 @@ export function setup(
     ...(input.autoIndex ? { autoIndex: true } : {}),
     ...(input.node ? { node: { execute: nodeWorker, read: nodeRead } } : {}),
   };
+
   const extract = defineExtract(component, options);
   const nodeExports = input.node ? extractNodeExport(component, options) : undefined;
+
   const t = convexTest({
     schema: defineSchema({}),
     transactionLimits: true,
@@ -126,7 +138,9 @@ export function setup(
           returns: v.null(),
           handler: async (ctx, args) => {
             const row = await ctx.runQuery(component.artifacts.get, args);
+
             state.completions.push(row?.status ?? "missing");
+
             return null;
           },
         }),
@@ -144,13 +158,16 @@ export function setup(
           returns: v.null(),
           handler: async (ctx, args) => {
             const row = await ctx.runQuery(component.artifacts.get, args);
+
             state.completions.push(`waiter:${row?.status ?? "missing"}`);
+
             return null;
           },
         }),
       }),
     },
   });
+
   agent.register(t);
   t.registerComponent("extract", schema, modules);
   workflow.register(t, "extract/workflow");
@@ -160,12 +177,17 @@ export function setup(
     const fileId = await t.action(
       async (ctx) => (await storeFile(ctx, agentComponent, blob, { filename })).file.fileId,
     );
+
     state.attachments.set(fileId, "owner");
+
     return fileId;
   };
+
   const upload = (text = "hello extracted world", type = "text/plain") =>
     uploadBlob(new Blob([text], { type }));
+
   const action = <T>(fn: (ctx: ActionCtx) => Promise<T>) => t.action(fn);
+
   return { t, extract, state, upload, uploadBlob, action };
 }
 export { mockModel };

@@ -6,7 +6,7 @@
       "steps": [
         {
           "kind": "function",
-          "name": "queue:next",
+          "name": "turns/loop:next",
           "functionType": "mutation",
           "args": {
             "assignmentId": "$assignment"
@@ -18,7 +18,7 @@
         },
         {
           "kind": "workflow",
-          "name": "workflows:rootTurn",
+          "name": "workflows/lanes:rootTurn",
           "args": {
             "assignmentId": "$assignment",
             "executionId": "$assignment:0",
@@ -31,7 +31,7 @@
         },
         {
           "kind": "function",
-          "name": "queue:next",
+          "name": "turns/loop:next",
           "functionType": "mutation",
           "args": {
             "assignmentId": "$assignment"
@@ -68,7 +68,7 @@
         },
         {
           "kind": "function",
-          "name": "queue:betweenSlices",
+          "name": "turns/slices:betweenSlices",
           "functionType": "mutation",
           "args": {
             "assignmentId": "$assignment",
@@ -89,7 +89,7 @@
       "steps": [
         {
           "kind": "function",
-          "name": "queue:next",
+          "name": "turns/loop:next",
           "functionType": "mutation",
           "args": {
             "assignmentId": "$assignment"
@@ -101,7 +101,7 @@
         },
         {
           "kind": "workflow",
-          "name": "workflows:rootTurn",
+          "name": "workflows/lanes:rootTurn",
           "args": {
             "assignmentId": "$assignment",
             "executionId": "$assignment:0",
@@ -114,7 +114,7 @@
         },
         {
           "kind": "function",
-          "name": "queue:next",
+          "name": "turns/loop:next",
           "functionType": "mutation",
           "args": {
             "assignmentId": "$assignment"
@@ -135,7 +135,7 @@
         },
         {
           "kind": "function",
-          "name": "queue:next",
+          "name": "turns/loop:next",
           "functionType": "mutation",
           "args": {
             "assignmentId": "$assignment"
@@ -147,7 +147,7 @@
         },
         {
           "kind": "workflow",
-          "name": "workflows:rootTurn",
+          "name": "workflows/lanes:rootTurn",
           "args": {
             "assignmentId": "$assignment",
             "executionId": "$assignment:1",
@@ -160,7 +160,7 @@
         },
         {
           "kind": "function",
-          "name": "queue:next",
+          "name": "turns/loop:next",
           "functionType": "mutation",
           "args": {
             "assignmentId": "$assignment"
@@ -197,7 +197,7 @@
         },
         {
           "kind": "function",
-          "name": "queue:betweenSlices",
+          "name": "turns/slices:betweenSlices",
           "functionType": "mutation",
           "args": {
             "assignmentId": "$assignment",
@@ -230,7 +230,7 @@
         },
         {
           "kind": "function",
-          "name": "queue:betweenSlices",
+          "name": "turns/slices:betweenSlices",
           "functionType": "mutation",
           "args": {
             "assignmentId": "$assignment",
@@ -251,7 +251,7 @@
       "steps": [
         {
           "kind": "function",
-          "name": "queue:next",
+          "name": "turns/loop:next",
           "functionType": "mutation",
           "args": {
             "assignmentId": "$assignment"
@@ -263,7 +263,7 @@
         },
         {
           "kind": "workflow",
-          "name": "workflows:childTurn",
+          "name": "workflows/lanes:childTurn",
           "args": {
             "assignmentId": "$assignment",
             "executionId": "$assignment:0",
@@ -276,7 +276,7 @@
         },
         {
           "kind": "function",
-          "name": "queue:next",
+          "name": "turns/loop:next",
           "functionType": "mutation",
           "args": {
             "assignmentId": "$assignment"
@@ -313,7 +313,7 @@
         },
         {
           "kind": "function",
-          "name": "queue:betweenSlices",
+          "name": "turns/slices:betweenSlices",
           "functionType": "mutation",
           "args": {
             "assignmentId": "$assignment",

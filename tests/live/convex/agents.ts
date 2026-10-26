@@ -49,6 +49,7 @@ export const live = {
 };
 export const modelId = LIVE_MODELS[0];
 const maxUsd = Number(process.env.OPENROUTER_LIVE_MAX_USD ?? LIVE_LIMITS.maxUsd);
+
 const provider = createOpenAI({
   apiKey: process.env.OPENROUTER_API_KEY ?? "skipped",
   baseURL: "https://openrouter.ai/api/v1",
@@ -56,8 +57,10 @@ const provider = createOpenAI({
   fetch: async (url, init) => {
     // Settle prior response accounting before admitting another paid request.
     await Promise.all(live.evidence);
+
     if (++live.requests > LIVE_LIMITS.requests || live.usd >= maxUsd)
       throw new Error("LIVE_COST_CAP");
+
     // @openrouter/ai-sdk-provider 3.1.0 exposes models?: string[] in
     // src/types/index.ts:12 and serializes it beside model in src/chat/index.ts:148.
     // Send that same wire option through our existing OpenAI-compatible adapter:
@@ -67,6 +70,7 @@ const provider = createOpenAI({
     // tool choice mandatory. Bound batching with host hooks below instead of
     // asking free endpoints for unsupported parallel_tool_calls.
     const body = JSON.parse(String(init?.body));
+
     const response = await fetch(url, {
       ...init,
       body: JSON.stringify({
@@ -75,6 +79,7 @@ const provider = createOpenAI({
         provider: { ...body.provider, require_parameters: true },
       }),
     });
+
     const outcome: (typeof live.responses)[number] = {
       scenario: live.scenario,
       status: response.status,
@@ -85,7 +90,9 @@ const provider = createOpenAI({
       tools: [] as string[],
       finishReasons: [] as string[],
     };
+
     live.responses.push(outcome);
+
     // Read a clone for the provider's authoritative routed model and cost.
     // Never log request headers or a provider error body containing credentials.
     const evidence = response
@@ -94,6 +101,7 @@ const provider = createOpenAI({
       .then((body) => {
         for (const line of body.trim().startsWith("{") ? [`data: ${body}`] : body.split("\n")) {
           if (!line.startsWith("data: ") || line === "data: [DONE]") continue;
+
           try {
             const chunk = JSON.parse(line.slice(6)) as {
               error?: { code?: string | number; message?: string };
@@ -104,33 +112,41 @@ const provider = createOpenAI({
                 delta?: { tool_calls?: { function?: { name?: string } }[] };
               }[];
             };
+
             // Keep only small response metadata, never headers, provider error
             // bodies, generated text or tool arguments that could hold secrets.
             for (const choice of chunk.choices ?? []) {
               if (choice.finish_reason && outcome.finishReasons.length < LIVE_LIMITS.requests)
                 outcome.finishReasons.push(choice.finish_reason);
+
               for (const tool of choice.delta?.tool_calls ?? [])
                 if (tool.function?.name && outcome.tools.length < LIVE_LIMITS.requests)
                   outcome.tools.push(tool.function.name);
             }
+
             if (response.status >= 400 && chunk.error) {
               outcome.errorCode = chunk.error.code;
+
               outcome.errorMessage = chunk.error.message
                 ?.replaceAll(process.env.OPENROUTER_API_KEY ?? "skipped", "[REDACTED]")
                 .slice(0, 500);
             }
+
             if (chunk.model) {
               outcome.model = chunk.model;
               live.models.add(chunk.model);
             }
+
             if (typeof chunk.usage?.prompt_tokens === "number") {
               live.inputTokens += chunk.usage.prompt_tokens - outcome.inputTokens;
               outcome.inputTokens = chunk.usage.prompt_tokens;
             }
+
             if (typeof chunk.usage?.completion_tokens === "number") {
               live.outputTokens += chunk.usage.completion_tokens - outcome.outputTokens;
               outcome.outputTokens = chunk.usage.completion_tokens;
             }
+
             if (typeof chunk.usage?.cost === "number") {
               live.costReported = true;
               live.usd += chunk.usage.cost - (outcome.usd ?? 0);
@@ -141,11 +157,15 @@ const provider = createOpenAI({
           }
         }
       });
+
     live.evidence.push(evidence);
+
     return response;
   },
 });
+
 export const taskModel = provider.chat(modelId);
+
 const handle = (key: string): MeterChargeBackend => ({
   key,
   attach: async () => {},
@@ -153,11 +173,13 @@ const handle = (key: string): MeterChargeBackend => ({
   settle: async () => {},
   get: async () => null,
 });
+
 export const fakeUsage: UsageSlot = {
   scope: (_ctx, facts) => ({
     estimate: async (_provider, args) => handle(args.key),
     record: async (provider, args) => {
       live.charges.push({ facts, provider, key: args.key, usage: args.usage });
+
       return handle(args.key);
     },
   }),
@@ -166,9 +188,11 @@ const native = componentsGeneric().agent as unknown as NativeComponent<"agent">;
 const agevex = componentsGeneric().agevex as unknown as ComponentApi<"agevex">;
 const rootModel = provider.chat(modelId);
 const rootStream = rootModel.doStream.bind(rootModel);
+
 rootModel.doStream = (args) => {
   const call = live.rootCalls++;
   const delegates = (live.depth && call === 0) || (live.delegation && call < 2);
+
   // Force exactly two real tool invocations in the collaboration scenario.
   // Choosing a tool is host policy supported by the native model interface;
   // the runtime still validates, creates, runs and verifies every child.
@@ -197,10 +221,13 @@ rootModel.doStream = (args) => {
     toolChoice: delegates ? { type: "tool", toolName: "agevex_delegate" } : { type: "none" },
   });
 };
+
 const childModel = provider.chat(modelId);
 const childStream = childModel.doStream.bind(childModel);
+
 childModel.doStream = (args) => {
   live.childCalls++;
+
   // This scenario requires a terminal Researcher answer. Withhold the tool
   // inventory as well as setting toolChoice:none: some free routes otherwise
   // emit a blocking ask_parent call despite that provider setting.
@@ -211,46 +238,57 @@ childModel.doStream = (args) => {
     toolChoice: { type: "none" },
   });
 };
+
 // A forced tool choice may return several calls. Use F1's host policy to admit
 // one per turn instead of requesting unsupported parallel_tool_calls=false.
 // At most LIVE_LIMITS.requests live turns add thread ids; each turn clears its
 // own entry before generation. Native calls, launches and results remain real.
 const delegatedThreads = new Set<string>();
+
 const oneDelegatePerTurn: AgentHooks = {
   beforeTurn: (hc) => {
     delegatedThreads.delete(hc.threadId);
   },
   beforeDelegate: (hc) => {
     if (delegatedThreads.has(hc.threadId)) return { block: "one live delegation per turn" };
+
     delegatedThreads.add(hc.threadId);
   },
 };
+
 const child = new Agent(native, {
   name: "Researcher",
   languageModel: childModel,
   subagents: [],
   instructions: "Answer the task in one short sentence. Do not call tools.",
 });
+
 const reviewerModel = provider.chat(modelId);
 const reviewerStream = reviewerModel.doStream.bind(reviewerModel);
+
 reviewerModel.doStream = (args) => {
   live.reviewerCalls++;
+
   return reviewerStream({
     ...args,
     maxOutputTokens: LIVE_LIMITS.outputTokens,
     toolChoice: { type: "none" },
   });
 };
+
 const reviewer = new Agent(native, {
   name: "Reviewer",
   languageModel: reviewerModel,
   subagents: [],
   instructions: "Review the task in one short sentence. Do not call tools.",
 });
+
 const builderModel = provider.chat(modelId);
 const builderStream = builderModel.doStream.bind(builderModel);
+
 builderModel.doStream = (args) => {
   const call = live.builderCalls++;
+
   return builderStream({
     ...args,
     maxOutputTokens: LIVE_LIMITS.outputTokens,
@@ -277,6 +315,7 @@ builderModel.doStream = (args) => {
     toolChoice: call === 0 ? { type: "tool", toolName: "agevex_delegate" } : { type: "none" },
   });
 };
+
 const builder = new Agent(native, {
   name: "Builder",
   languageModel: builderModel,
@@ -285,6 +324,7 @@ const builder = new Agent(native, {
   instructions:
     "First delegate one very short task to Reviewer. When its result arrives, reply in one short sentence. Never delegate to any other agent.",
 });
+
 const main = new Agent(native, {
   name: "Main",
   languageModel: rootModel,
@@ -293,27 +333,33 @@ const main = new Agent(native, {
   instructions:
     "For a depth-two task delegate exactly once to Builder, then give a short final answer after its result. For other tasks use Researcher when required to delegate. Use a very short factual task. After the second Researcher result, reply in one short sentence. Never delegate to any other agent.",
 });
+
 const criticModel = provider.chat(modelId);
 const criticStream = criticModel.doStream.bind(criticModel);
+
 criticModel.doStream = (args) => {
   live.criticCalls++;
+
   return criticStream({
     ...args,
     maxOutputTokens: LIVE_LIMITS.outputTokens,
     toolChoice: { type: "none" },
   });
 };
+
 const critic = new Agent(native, {
   name: "Critic",
   languageModel: criticModel,
   instructions: "Give one short useful review note. Do not return NONE. Do not call tools.",
 });
+
 const watched = new Agent(native, {
   name: "Watched",
   languageModel: rootModel,
   sideAgents: [{ agent: critic, every: { turns: 1 }, sees: "delta" }],
   instructions: "Answer in one short sentence.",
 });
+
 const runtime = registerAgent(agevex, {
   agents: [main, watched],
   usage: fakeUsage,
@@ -332,16 +378,21 @@ const runtime = registerAgent(agevex, {
   authorize: async (ctx, scope) => {
     if (scope.operation === "delegate" || scope.operation === "deliver") {
       if (scope.subject !== "live-owner") throw new Error("FORBIDDEN");
+
       return { subject: scope.subject };
     }
+
     const user = await ctx.auth.getUserIdentity();
+
     if (user?.subject !== "live-owner") throw new Error("FORBIDDEN");
+
     return { subject: user.subject };
   },
   authorizeExecution: async (_ctx, scope) => {
     if (scope.subject !== "live-owner") throw new Error("FORBIDDEN");
   },
 });
+
 export const { runTurn, coordinate } = runtime.internalFunctions();
 export const { open, send, cancel, messages, streams, activity, delegations, runTree } =
   runtime.authorizedEndpoints();

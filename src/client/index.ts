@@ -1,3 +1,9 @@
+// Public entry point of the `agevex` package (`.` export).
+//
+// Re-exports the managed `Agent`, `registerAgent`, the reserved tool names, the
+// slot contracts, `defineOnceTool`, structured tasks and the public types. The
+// implementation is organised by concept; see `client/README.md` for the map.
+
 export { Agent } from "./agent.js";
 export {
   DELEGATE_TOOL_NAME,
@@ -29,10 +35,10 @@ export type {
 export { LIMITS, PLATFORM } from "../component/limits.js";
 export type { Limits } from "../component/limits.js";
 export { defineOnceTool } from "./once.js";
-export type { NoteArgs } from "./hooks.js";
+export type { NoteArgs } from "./host/notes.js";
 export type { ToolContext, ScopedMeter, MeterCharge } from "./once.js";
 
-export type { OriginMessage } from "./endpoints.js";
+export type { OriginMessage } from "./endpoints/index.js";
 export type {
   SlotFacts,
   SlotActionCtx,

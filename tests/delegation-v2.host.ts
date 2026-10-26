@@ -46,12 +46,16 @@ export const delegate = (agent: string, extra: object = {}) =>
 export const text = (value: string): LanguageModelV4Content[] => [{ type: "text", text: value }];
 function model(agent: string) {
   const result = mockModel();
+
   result.doStream = async (args) => {
     const index = v2.calls.filter((entry) => entry.agent === agent).length;
+
     v2.calls.push({ agent, args });
     const content = (await v2.steps[agent]?.(index, args)) ?? text(`${agent} result ${index}`);
+
     return scriptedModel([content]).doStream(args);
   };
+
   return result;
 }
 export const reviewer = new Agent(components.agent, {
@@ -92,10 +96,14 @@ export function registration(limits?: Registration["limits"], preclaimFailure = 
     authorize: async (ctx, scope) => {
       if (scope.operation === "delegate" || scope.operation === "deliver") {
         if (scope.subject !== "alice") throw new Error("FORBIDDEN");
+
         return { subject: scope.subject };
       }
+
       const identity = await ctx.auth.getUserIdentity();
+
       if (!identity) throw new Error("FORBIDDEN");
+
       return { subject: identity.subject };
     },
     authorizeExecution: async (_ctx, scope) => {
@@ -104,6 +112,7 @@ export function registration(limits?: Registration["limits"], preclaimFailure = 
   });
 }
 const runtime = registration();
+
 export const { open, send, cancel, respond, answer, messages, activity, delegations, runTree } =
   runtime.authorizedEndpoints();
 export const { runTurn, coordinate } = runtime.internalFunctions();

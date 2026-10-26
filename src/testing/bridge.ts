@@ -1,5 +1,12 @@
-// Test-only forwarding preserves Convex's real nested component boundary.
-// A childComponent reference addresses one component level, not a slash path.
+// Test-only bridge mounted into the component as `agevexTest` by `agevex/test`
+// (`src/test.ts`); never part of the production component.
+//
+// `read` / `write` forward a call one component level down (Workflow, Workpool),
+// preserving Convex's real nested component boundary: a childComponent reference
+// addresses one component level, not a slash path. The remaining queries and
+// mutations are bounded white-box inspections and fixtures that tests use to
+// observe component tables (assignments, inbox, runs, receipts) directly.
+
 import {
   componentsGeneric,
   internalMutationGeneric,
@@ -8,7 +15,10 @@ import {
 } from "convex/server";
 import { v } from "convex/values";
 import { LIMITS } from "../component/limits.js";
+
 const args = { lane: v.string(), module: v.string(), name: v.string(), args: v.any() };
+
+/** Forward one query to `components[lane][module][name]` of this component. */
 export const read = internalQueryGeneric({
   args,
   handler: (ctx, a) =>
@@ -17,6 +27,8 @@ export const read = internalQueryGeneric({
       a.args,
     ),
 });
+
+/** Forward one mutation to `components[lane][module][name]` of this component. */
 export const write = internalMutationGeneric({
   args,
   handler: (ctx, a) =>
@@ -31,8 +43,9 @@ export const recoveryJobs = internalQueryGeneric({
   args: {},
   handler: async (ctx) => {
     const jobs = (await ctx.db.system.query("_scheduled_functions").collect()).filter(
-      (job) => job.name === "queue:reconcile",
+      (job) => job.name === "turns/loop:reconcile",
     );
+
     return {
       total: jobs.length,
       pending: jobs.filter((job) => job.state.kind === "pending" || job.state.kind === "inProgress")
@@ -56,6 +69,17 @@ export const receiptCount = internalQueryGeneric({
   handler: async (ctx) => (await ctx.db.query("receipts").take(LIMITS.purgeBatch + 1)).length,
 });
 
+/** White-box tests read the whole coordination row; turns.slices.execution returns
+ * only the projection the runtime reads. */
+export const assignment = internalQueryGeneric({
+  args: { assignmentId: v.string() },
+  handler: async (ctx, { assignmentId }) => {
+    const id = ctx.db.normalizeId("assignments", assignmentId);
+
+    return id ? await ctx.db.get(id) : null;
+  },
+});
+
 /** Inspect the exact child result recorded on one run, without native history. */
 export const childResultMessageId = internalQueryGeneric({
   args: { runId: v.string() },
@@ -75,7 +99,6 @@ export const fillHookMetadata = internalMutationGeneric({
   returns: v.null(),
   handler: async (ctx, { assignmentId }) => {
     await ctx.db.patch("assignments", assignmentId, {
-      contextSequence: LIMITS.contextMessages,
       contextMessages: Array.from({ length: LIMITS.contextMessages }, (_, order) => ({
         id: crypto.randomUUID(),
         order,
@@ -89,10 +112,9 @@ export const fillHookMetadata = internalMutationGeneric({
         at: Date.now(),
         boundary: turn,
       })),
-      hookError: "\uFFFF".repeat(LIMITS.hookErrorLength),
       completedTurns: LIMITS.turnsPerLoop,
-      logicalPromptMessageId: crypto.randomUUID(),
     });
+
     return null;
   },
 });

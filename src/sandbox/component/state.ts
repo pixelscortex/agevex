@@ -7,6 +7,7 @@ import { HARD_LIMITS, LIMITS, bounded, integer } from "../limits.js";
 /** Unique indexed lookup; writers cap each row below sandboxRowBytes. */
 async function sandbox(ctx: Pick<QueryCtx, "db">, scopeKey: string) {
   bounded(scopeKey, LIMITS.scopeKeyChars, "SCOPE");
+
   return ctx.db
     .query("sandboxes")
     .withIndex("by_scope", (q) => q.eq("scopeKey", scopeKey))
@@ -36,17 +37,20 @@ export const reserve = mutation({
     integer(args.ttl, HARD_LIMITS.ttl, "TTL");
     const row = await sandbox(ctx, args.scopeKey);
     const now = Date.now();
+
     if (
       args.existingOnly &&
       (!row || !row.sandboxId || row.state === "deleted" || row.state === "deleting")
     )
       throw new Error("SANDBOX_NOT_FOUND");
+
     if (row && row.state === "deleted") {
       // A deleted sandbox is gone for good, so the scope is simply free again.
       // A new claim fences every action of the old binding (save/finish all
       // compare it), and the stale sandboxId must not survive into the new one.
       const claim = crypto.randomUUID();
       const leaseUntil = now + LIMITS.actionBudgetMs;
+
       await ctx.db.patch(row._id, {
         provider: args.provider,
         sandboxId: undefined,
@@ -57,15 +61,20 @@ export const reserve = mutation({
         leaseUntil,
         cleanupAt: Math.max(now + args.ttl, leaseUntil),
       });
+
       return { status: "claimed" as const, claim };
     }
+
     if (row) {
       if (row.provider !== args.provider) throw new Error("SANDBOX_PROVIDER_CONFLICT");
+
       // Only an in-flight delete blocks use: its outcome is not known yet.
       if (row.state === "deleting") throw new Error("SANDBOX_DELETING");
+
       if (!row.sandboxId) {
         if (row.leaseUntil <= now && row.state === "creating")
           await ctx.db.patch(row._id, { state: "unknown" });
+
         return {
           status:
             row.leaseUntil > now && row.state === "creating"
@@ -73,17 +82,22 @@ export const reserve = mutation({
               : ("unknown" as const),
         };
       }
+
       const leaseUntil = now + LIMITS.actionBudgetMs;
+
       await ctx.db.patch(row._id, {
         lastUsedAt: now,
         leaseUntil,
         ttl: args.ttl,
         cleanupAt: Math.max(now + args.ttl, leaseUntil),
       });
+
       return { status: "existing" as const, sandboxId: row.sandboxId, claim: row.claim };
     }
+
     const claim = crypto.randomUUID();
     const leaseUntil = now + LIMITS.actionBudgetMs;
+
     const fields = {
       ...args,
       state: "creating" as const,
@@ -92,8 +106,10 @@ export const reserve = mutation({
       leaseUntil,
       cleanupAt: Math.max(now + args.ttl, leaseUntil),
     };
+
     checkSize(fields, LIMITS.sandboxRowBytes);
     await ctx.db.insert("sandboxes", fields);
+
     return { status: "claimed" as const, claim };
   },
 });
@@ -109,10 +125,14 @@ export const forget = mutation({
   returns: v.boolean(),
   handler: async (ctx, args) => {
     const row = await sandbox(ctx, args.scopeKey);
+
     if (!row || row.sandboxId) return false;
+
     if (row.state !== "unknown" && !(row.state === "creating" && row.leaseUntil <= Date.now()))
       return false;
+
     await ctx.db.delete(row._id);
+
     return true;
   },
 });
@@ -134,12 +154,18 @@ export const save = mutation({
   returns: v.boolean(),
   handler: async (ctx, args) => {
     bounded(args.claim, LIMITS.claimChars, "CLAIM");
+
     if (args.sandboxId !== undefined) bounded(args.sandboxId, LIMITS.identityChars, "ID");
+
     const row = await sandbox(ctx, args.scopeKey);
+
     if (!row || row.claim !== args.claim || row.state === "deleted") return false;
+
     if (row.state === "deleting" && args.state !== "deleted" && args.state !== "unknown")
       return false;
+
     if (row.sandboxId && args.sandboxId && row.sandboxId !== args.sandboxId) return false;
+
     await ctx.db.patch(row._id, {
       state: args.state,
       ...(args.sandboxId ? { sandboxId: args.sandboxId } : {}),
@@ -147,6 +173,7 @@ export const save = mutation({
         ? { cleanupAt: undefined }
         : {}),
     });
+
     return true;
   },
 });
@@ -161,6 +188,7 @@ async function hasJobs(ctx: Pick<QueryCtx, "db">, scopeKey: string) {
         .first()
     )
       return true;
+
   return false;
 }
 
@@ -169,6 +197,7 @@ export const expired = query({
   args: { limit: v.number() },
   handler: async (ctx, args) => {
     integer(args.limit, HARD_LIMITS.cleanupBatch, "BATCH");
+
     // Hard maximum: 64 * 8 KiB =512 KiB, <=64 docs and one index query.
     // Undefined deadlines are excluded, so failed deletes are never retried.
     return ctx.db
@@ -183,7 +212,9 @@ export const claimDelete = mutation({
   args: { scopeKey: v.string(), expiredOnly: v.boolean() },
   handler: async (ctx, args) => {
     const row = await sandbox(ctx, args.scopeKey);
+
     if (!row || row.state === "deleted" || row.state === "deleting") return null;
+
     if (
       args.expiredOnly &&
       (row.cleanupAt === undefined ||
@@ -191,22 +222,29 @@ export const claimDelete = mutation({
         row.lastUsedAt + row.ttl > Date.now())
     )
       return null;
+
     if (!row.sandboxId) {
       // An abandoned create has no identity we can safely delete. Retain its
       // reservation for reconciliation, but remove it from the sweep index;
       // a full batch of unknown creates must not schedule itself forever.
       if (row.leaseUntil <= Date.now())
         await ctx.db.patch(row._id, { state: "unknown", cleanupAt: undefined });
+
       return null;
     }
+
     if (await hasJobs(ctx, args.scopeKey)) {
       // A live job protects its filesystem. Removing its idle deadline keeps
       // cleanup finite; job settlement rearms it in the same transaction.
       await ctx.db.patch(row._id, { cleanupAt: undefined });
+
       return null;
     }
+
     const claim = crypto.randomUUID();
+
     await ctx.db.patch(row._id, { claim, state: "deleting", cleanupAt: undefined });
+
     return { sandboxId: row.sandboxId, claim };
   },
 });
@@ -231,19 +269,25 @@ export const reserveJob = mutation({
   },
   handler: async (ctx, args) => {
     const row = await sandbox(ctx, args.scopeKey);
+
     if (!row?.sandboxId || row.state !== "ready") throw new Error("SANDBOX_NOT_READY");
+
     for (const field of ["subject", "threadId", "runId"] as const)
       bounded(args[field], LIMITS.identityChars, field);
+
     bounded(args.pollHandle, LIMITS.handleChars, "HANDLE");
     integer(args.maximum, HARD_LIMITS.jobsPerSandbox, "JOBS");
     integer(args.jobTimeoutMs, HARD_LIMITS.jobTimeoutMs, "JOB_TIMEOUT");
     integer(args.pollMinMs, HARD_LIMITS.pollMinMs, "POLL_MIN");
     integer(args.pollMaxMs, HARD_LIMITS.pollMaxMs, "POLL_MAX");
+
     if (args.pollMinMs > args.pollMaxMs) throw new Error("SANDBOX_INVALID_POLL_RANGE");
+
     // At most 2 * 64 * 64 KiB =8 MiB read, <=128 docs, two index
     // queries; plus one 8 KiB sandbox and <=3 small scheduler records. Only
     // active jobs are read. At most one job and one sandbox are written.
     let active = 0;
+
     for (const state of ["starting", "running"] as const)
       active += (
         await ctx.db
@@ -251,10 +295,13 @@ export const reserveJob = mutation({
           .withIndex("by_scope_state", (q) => q.eq("scopeKey", args.scopeKey).eq("state", state))
           .take(args.maximum)
       ).length;
+
     if (active >= args.maximum) throw new Error("SANDBOX_JOB_LIMIT");
+
     const { maximum: _maximum, jobTimeoutMs, ...fields } = args;
     const now = Date.now();
     const leaseUntil = Math.min(now + LIMITS.actionBudgetMs, now + jobTimeoutMs);
+
     const job = {
       ...fields,
       providerJobId: crypto.randomUUID(),
@@ -266,16 +313,20 @@ export const reserveJob = mutation({
       claim: crypto.randomUUID(),
       leaseUntil,
     };
+
     checkSize(job, LIMITS.jobRowBytes);
     const jobId = await ctx.db.insert("jobs", job);
+
     const wakeId = await ctx.scheduler.runAt(
       leaseUntil,
       args.pollHandle as FunctionHandle<"mutation">,
       { jobId },
     );
+
     await ctx.db.patch(jobId, { wakeId });
     // No TTL deletion can race the still-unacknowledged provider launch.
     await ctx.db.patch(row._id, { cleanupAt: undefined });
+
     return {
       jobId,
       claim: job.claim,
@@ -292,19 +343,24 @@ export const attachJob = mutation({
     bounded(args.claim, LIMITS.claimChars, "CLAIM");
     bounded(args.providerJobId, LIMITS.identityChars, "JOB_ID");
     const row = await ctx.db.get(args.jobId);
+
     if (!row || row.state !== "starting" || row.claim !== args.claim) return false;
+
     await cancelWake(ctx, row);
+
     const wakeId = await ctx.scheduler.runAt(
       Math.min(Date.now() + row.pollMinMs, row.deadline),
       row.pollHandle as FunctionHandle<"mutation">,
       { jobId: row._id },
     );
+
     await ctx.db.patch(row._id, {
       providerJobId: args.providerJobId,
       state: "running",
       leaseUntil: 0,
       wakeId,
     });
+
     return true;
   },
 });
@@ -329,6 +385,7 @@ async function terminate(
   checkSize({ ...row, ...result }, LIMITS.jobRowBytes);
   await ctx.db.patch(row._id, { ...result, wakeId: undefined });
   const owner = await sandbox(ctx, row.scopeKey);
+
   if (
     owner &&
     owner.state !== "deleted" &&
@@ -338,6 +395,7 @@ async function terminate(
     await ctx.db.patch(owner._id, {
       cleanupAt: Math.max(owner.lastUsedAt + owner.ttl, owner.leaseUntil),
     });
+
   return {
     type: "sandbox.job.completed" as const,
     jobId: row._id,
@@ -356,8 +414,11 @@ export const claimPoll = mutation({
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.jobId);
     const now = Date.now();
+
     if (!row || !["starting", "running"].includes(row.state) || row.leaseUntil > now) return null;
+
     const late = row.lateAttempts ?? 0;
+
     if (now >= row.deadline && late >= LIMITS.lateAttemptsMax) {
       // Two attempts claimed at or after the deadline never settled (their
       // actions died or hung). Each ran the kill and the normal notify path;
@@ -365,10 +426,13 @@ export const claimPoll = mutation({
       // retried, readable via job(). This is the only path (besides revoked
       // authority) that skips the host callback, and it bounds the chain.
       await terminate(ctx, row, { state: "unknown", code: "SANDBOX_JOB_DEADLINE" });
+
       return null;
     }
+
     await cancelWake(ctx, row);
     const claim = crypto.randomUUID();
+
     // The lease starts no earlier than now, so it is always in the future: a
     // deadline already behind us must not produce a lease (and wake) in the
     // past. It covers the action, the separate bounded kill, and the settle.
@@ -376,6 +440,7 @@ export const claimPoll = mutation({
       Math.max(Math.min(now + LIMITS.actionBudgetMs, row.deadline), now) +
       LIMITS.backgroundKillBudgetMs +
       LIMITS.backgroundLeaseMarginMs;
+
     // A hard action timeout still leaves one wake to report an unknown launch
     // or continue safe status polling; it never replays the command.
     const wakeId = await ctx.scheduler.runAt(
@@ -383,12 +448,14 @@ export const claimPoll = mutation({
       row.pollHandle as FunctionHandle<"mutation">,
       { jobId: row._id },
     );
+
     await ctx.db.patch(row._id, {
       claim,
       leaseUntil,
       wakeId,
       ...(now >= row.deadline ? { lateAttempts: late + 1 } : {}),
     });
+
     return { ...row, claim };
   },
 });
@@ -399,16 +466,21 @@ export const again = mutation({
   handler: async (ctx, args) => {
     bounded(args.claim, LIMITS.claimChars, "CLAIM");
     const row = await ctx.db.get(args.jobId);
+
     if (!row || !["starting", "running"].includes(row.state) || row.claim !== args.claim)
       return null;
+
     await cancelWake(ctx, row);
     const delayMs = Math.min(row.delayMs * LIMITS.backoffFactor, row.pollMaxMs);
+
     const wakeId = await ctx.scheduler.runAt(
       Math.min(Date.now() + delayMs, row.deadline),
       row.pollHandle as FunctionHandle<"mutation">,
       { jobId: row._id },
     );
+
     await ctx.db.patch(row._id, { delayMs, leaseUntil: 0, wakeId });
+
     return null;
   },
 });
@@ -426,13 +498,18 @@ export const finishJob = mutation({
   handler: async (ctx, args) => {
     bounded(args.claim, LIMITS.claimChars, "CLAIM");
     const row = await ctx.db.get(args.jobId);
+
     if (!row || !["starting", "running"].includes(row.state) || row.claim !== args.claim)
       return null;
+
     if (args.exitCode !== undefined && !Number.isSafeInteger(args.exitCode))
       throw new Error("SANDBOX_INVALID_EXIT_CODE");
+
     if (args.logTail && args.logTail.length > HARD_LIMITS.outputChars)
       throw new Error("SANDBOX_OUTPUT_TOO_LARGE");
+
     const { jobId: _jobId, claim: _claim, ...result } = args;
+
     return terminate(ctx, row, result);
   },
 });

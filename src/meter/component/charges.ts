@@ -23,6 +23,7 @@ import {
 import { LIMITS, integer, text, chargeKey } from "../limits.js";
 
 const pool = new Workpool(components.workpool, { maxParallelism: LIMITS.maxParallelism });
+
 type Jobs = Infer<typeof jobs>;
 /** Workpool's runtime supports function handles; its enqueueAction type only names references.
  * src/client/index.ts:576-579 passes a function:// handle through unchanged. */
@@ -34,6 +35,7 @@ type Delivery = Doc<"deliveries">;
 
 async function find(ctx: Pick<QueryCtx, "db">, key: string) {
   chargeKey(key);
+
   return await ctx.db
     .query("charges")
     .withIndex("by_key", (q) => q.eq("key", key))
@@ -41,7 +43,9 @@ async function find(ctx: Pick<QueryCtx, "db">, key: string) {
 }
 function validateJobs(config: Jobs) {
   integer(config.maxAttempts, LIMITS.maxAttempts, "ATTEMPTS");
+
   if (!config.maxAttempts) throw new Error("INVALID_ATTEMPTS");
+
   // Function handles are opaque Convex strings, bounded separately from labels.
   for (const handle of [config.lookup, config.deliver])
     if (handle) text(handle, "HANDLE", LIMITS.maxKeyBytes);
@@ -76,8 +80,11 @@ function isTerminal(row: Doc<"charges">) {
 
 async function stale(ctx: MutationCtx, row: Doc<"charges">, operation: string, revision: number) {
   if (row.lastStale?.operation === operation && row.lastStale.revision === revision) return row;
+
   const lastStale = { operation, revision };
+
   await ctx.db.patch(row._id, { lastStale });
+
   return { ...row, lastStale };
 }
 
@@ -88,14 +95,17 @@ type Outcome = Omit<Doc<"charges">, "operations" | "terminal" | "sinkState"> & {
  * bounded index read), so failures never have to rewrite the large charge row. */
 async function outcome(ctx: Pick<QueryCtx, "db">, row: Doc<"charges">): Promise<Outcome> {
   const { operations: _operations, terminal: _terminal, ...result } = row;
+
   const pending = await ctx.db
     .query("deliveries")
     .withIndex("by_key", (q) => q.eq("key", row.key))
     .take(LIMITS.maxSinks);
+
   return {
     ...result,
     sinkState: row.sinkState.map((sink) => {
       const delivery = pending.find((entry) => entry.sink === sink.name);
+
       return { ...sink, attempts: delivery?.attempts ?? 0, failed: delivery?.failed ?? false };
     }),
   };
@@ -117,7 +127,9 @@ async function enqueueDrain(
   crashes = 0,
 ) {
   if (!config.deliver) return;
+
   const claim = crypto.randomUUID();
+
   await pool.enqueueAction(
     ctx,
     actionHandle<DeliveryJob>(config.deliver),
@@ -140,10 +152,13 @@ function backoff(attempts: number) {
 async function prepareSinks(ctx: MutationCtx, row: Doc<"charges">, config: Jobs, changed = false) {
   const sinkState = row.sinkState.map((sink) => ({ ...sink }));
   const due: string[] = [];
+
   if (billable(row) && row.nanos !== undefined)
     for (const sink of sinkState) {
       if (sink.pending || sink.deliveredNanos === row.nanos) continue;
+
       sink.revision++;
+
       sink.pending = {
         externalId:
           sink.deliveredNanos === undefined
@@ -153,6 +168,7 @@ async function prepareSinks(ctx: MutationCtx, row: Doc<"charges">, config: Jobs,
         nanos: row.nanos - (sink.deliveredNanos ?? 0),
         totalNanos: row.nanos,
       };
+
       await ctx.db.insert("deliveries", {
         sink: sink.name,
         key: row.key,
@@ -164,14 +180,19 @@ async function prepareSinks(ctx: MutationCtx, row: Doc<"charges">, config: Jobs,
         failed: false,
         dueAt: Date.now(),
       });
+
       due.push(sink.name);
     }
+
   const next = { ...row, sinkState };
   const terminal = isTerminal(next);
+
   if (changed || due.length || terminal !== row.terminal)
     await ctx.db.patch(row._id, { sinkState, terminal });
+
   for (const sink of due)
     await enqueueDrain(ctx, sink, config, Date.now() + LIMITS.deliveryWindowMs);
+
   return { ...next, terminal };
 }
 
@@ -179,6 +200,7 @@ export const get = query({
   args: { key: v.string() },
   handler: async (ctx, { key }) => {
     const row = await find(ctx, key);
+
     return row && (await outcome(ctx, row));
   },
 });
@@ -202,27 +224,41 @@ export const create = mutation({
   },
   handler: async (ctx, args): Promise<null> => {
     const enabledBreakdowns = resolveBreakdowns(args.breakdowns);
+
     text(args.key, "KEY", LIMITS.maxKeyBytes);
     text(args.provider, "PROVIDER");
+
     for (const value of Object.values(args.attribution))
       if (value !== undefined) text(value, "ATTRIBUTION");
+
     if (args.profile) text(args.profile, "PROFILE");
+
     if (args.quantity !== undefined) integer(args.quantity, LIMITS.maxQuantity, "QUANTITY");
+
     if (args.credits !== undefined) integer(args.credits, LIMITS.maxQuantity, "CREDITS");
+
     if (args.nanos !== undefined)
       integer(
         args.nanos,
         args.reason === "OVER_CAP" ? LIMITS.maxBilledNanos : LIMITS.maxChargeNanos,
         "NANOS",
       );
+
     integer(args.maxThreadCharges, LIMITS.maxThreadCharges, "THREAD_CHARGES");
+
     if (!args.maxThreadCharges) throw new Error("INVALID_THREAD_CHARGES");
+
     if (args.reason && args.status !== "unknown") throw new Error("INVALID_REASON");
+
     validateJobs(args.jobs);
+
     if (args.sinks.length > LIMITS.maxSinks || new Set(args.sinks).size !== args.sinks.length)
       throw new Error("INVALID_SINKS");
+
     for (const sink of args.sinks) text(sink, "SINK");
+
     const existing = await find(ctx, args.key);
+
     if (existing) {
       // The component-wide key is immutable. Replays return the latest charge,
       // but cannot move another subject's charge or attach a different provider.
@@ -230,6 +266,7 @@ export const create = mutation({
         ...Object.keys(existing.attribution),
         ...Object.keys(args.attribution),
       ]);
+
       if (
         existing.provider !== args.provider ||
         [...names].some(
@@ -239,13 +276,16 @@ export const create = mutation({
         )
       )
         throw new Error("KEY_CONFLICT");
+
       if (
         args.source === "estimate" &&
         (existing.status === "settled" || existing.status === "unknown")
       )
         await stale(ctx, existing, "estimate", 0);
+
       return null;
     }
+
     // No deployment-wide capacity: the only count read is this ROOT THREAD's
     // own trees (3 unbounded counts, root + <=5 children each on a lazy root).
     // It serializes charge creation within one root thread, never across
@@ -254,6 +294,7 @@ export const create = mutation({
     // admitting unmetered work.
     const root = rootOf(args.attribution);
     const full = root !== undefined && (await threadCount(ctx, root)) >= args.maxThreadCharges;
+
     const id = await ctx.db.insert("charges", {
       key: args.key,
       attribution: args.attribution,
@@ -271,9 +312,12 @@ export const create = mutation({
       revision: 0,
       operations: [],
     });
+
     const row = (await ctx.db.get(id))!;
+
     await updateAggregates(ctx, row);
     await prepareSinks(ctx, row, args.jobs);
+
     return null;
   },
 });
@@ -288,16 +332,21 @@ async function change(
   // sink acknowledgements do not change the amount represented by that revision.
   patch = { ...patch, revision: row.revision + 1 };
   const next = { ...row, ...patch };
+
   await ctx.db.patch(row._id, patch);
+
   if (row.nanos !== next.nanos || row.status !== next.status || row.source !== next.source)
     await updateAggregates(ctx, next, row);
+
   return await prepareSinks(ctx, next, config);
 }
 
 function replay(row: Doc<"charges">, key: string) {
   text(key, "OPERATION_KEY", LIMITS.maxKeyBytes);
   const receipt = row.operations.find((entry) => entry.key === key);
+
   if (receipt) return receipt.outcome;
+
   // Never evict a receipt: a delayed replay of an evicted key would become a
   // new correction and could raise an estimate again. At 32 distinct keys the
   // charge fails closed for new operations, while every old key stays replayable.
@@ -310,7 +359,9 @@ function replay(row: Doc<"charges">, key: string) {
 
 async function remember(ctx: MutationCtx, row: Doc<"charges">, key: string): Promise<Outcome> {
   const result = await outcome(ctx, row);
+
   await ctx.db.patch(row._id, { operations: [...row.operations, { key, outcome: result }] });
+
   return result;
 }
 
@@ -330,13 +381,21 @@ export const update = mutation({
     // Above the per-charge cap the amount is kept but becomes unknown, exactly
     // as at creation: recording never throws on an unpriceable business amount.
     const over = args.nanos > LIMITS.maxChargeNanos;
+
     if (args.quantity !== undefined) integer(args.quantity, LIMITS.maxQuantity, "QUANTITY");
+
     if (args.credits !== undefined) integer(args.credits, LIMITS.maxQuantity, "CREDITS");
+
     const row = await find(ctx, args.key);
+
     if (!row) throw new Error("CHARGE_NOT_FOUND");
+
     const previous = replay(row, args.operationKey);
+
     if (previous) return previous;
+
     const save = (next: Doc<"charges">) => remember(ctx, next, args.operationKey);
+
     // Authoritative results always outrank estimates, including concurrent
     // corrections. Settled amounts are immutable even for another settlement.
     if (
@@ -346,8 +405,10 @@ export const update = mutation({
       row.credits === args.credits
     )
       return await save(row);
+
     if (row.status === "settled")
       return await save(await stale(ctx, row, args.operation, row.revision));
+
     if (args.operation === "correct") {
       if (
         row.status === "unknown" ||
@@ -355,11 +416,14 @@ export const update = mutation({
       ) {
         const expired =
           row.status === "unknown" ? row : await change(ctx, row, { status: "unknown" }, args.jobs);
+
         return await save(await stale(ctx, expired, args.operation, row.revision));
       }
+
       if (row.nanos === args.nanos && row.quantity === args.quantity && row.status === "corrected")
         return await save(row);
     }
+
     return await save(
       await change(
         ctx,
@@ -391,21 +455,31 @@ export const attach = mutation({
     text(args.requestId, "REQUEST_ID");
     validateJobs(args.jobs);
     integer(args.lookupMs, LIMITS.maxLookupMs, "LOOKUP_WINDOW");
+
     if (!args.lookupMs) throw new Error("INVALID_LOOKUP_WINDOW");
+
     const row = await find(ctx, args.key);
+
     if (!row) throw new Error("CHARGE_NOT_FOUND");
+
     const previous = replay(row, args.operationKey);
+
     if (previous) return previous;
+
     if (row.providerRequestId) {
       if (row.providerRequestId !== args.requestId) throw new Error("REQUEST_ID_CONFLICT");
+
       return await remember(ctx, row, args.operationKey);
     }
+
     const until = args.jobs.lookup && !resolved(row) ? Date.now() + args.lookupMs : undefined;
+
     await ctx.db.patch(row._id, {
       providerRequestId: args.requestId,
       lookupUntil: until,
       lookupAttempt: until ? 0 : undefined,
     });
+
     if (until && args.jobs.lookup) {
       await pool.enqueueAction(
         ctx,
@@ -420,10 +494,12 @@ export const attach = mutation({
         },
         { retry: false },
       );
+
       // A separate one-shot deadline survives a crashed lookup worker. It does
       // no provider work, and reads the exact recorded id rather than scanning.
       await ctx.scheduler.runAt(until, internal.charges.expire, { id: row._id });
     }
+
     return await remember(
       ctx,
       {
@@ -441,6 +517,7 @@ export const expire = internalMutation({
   args: { id: v.id("charges") },
   handler: async (ctx, { id }) => {
     const row = await ctx.db.get(id);
+
     if (row?.lookupUntil && Date.now() >= row.lookupUntil && !resolved(row))
       await change(ctx, row, { status: "unknown" }, { maxAttempts: LIMITS.maxAttempts });
   },
@@ -452,6 +529,7 @@ export const lookupResult = mutation({
     validateJobs(args.jobs);
     integer(args.attempt, LIMITS.maxAttempts, "ATTEMPT");
     const row = await find(ctx, args.key);
+
     if (
       !row ||
       row.status === "settled" ||
@@ -460,6 +538,7 @@ export const lookupResult = mutation({
       row.providerRequestId !== args.requestId
     )
       return null;
+
     // A real response already in flight may arrive after expiry. Do not start
     // new provider work then, but retain that evidence rather than losing it.
     if (args.nanos !== undefined) {
@@ -467,7 +546,9 @@ export const lookupResult = mutation({
       // (and billed, source "lookup") as unknown/OVER_CAP, never discarded.
       integer(args.nanos, LIMITS.maxBilledNanos, "NANOS");
       const over = args.nanos > LIMITS.maxChargeNanos;
+
       if (args.credits !== undefined) integer(args.credits, LIMITS.maxQuantity, "CREDITS");
+
       await change(
         ctx,
         row,
@@ -488,11 +569,14 @@ export const lookupResult = mutation({
     } else if (args.attempt + 1 < args.jobs.maxAttempts && args.jobs.lookup) {
       // Duplicate callbacks cannot admit another retry chain.
       await ctx.db.patch(row._id, { lookupAttempt: args.attempt + 1 });
+
       const delay = Math.min(
         LIMITS.maxBackoffMs,
         LIMITS.backoffMs * LIMITS.backoffBase ** args.attempt,
       );
+
       const { nanos: _nanos, credits: _credits, ...job } = args;
+
       await pool.enqueueAction(
         ctx,
         actionHandle<Infer<ReturnType<typeof v.object<typeof lookupJob>>>>(args.jobs.lookup),
@@ -502,6 +586,7 @@ export const lookupResult = mutation({
     } else {
       await ctx.db.patch(row._id, { lookupAttempt: args.attempt + 1 });
     }
+
     return null;
   },
 });
@@ -529,13 +614,18 @@ export const claimDeliveries = mutation({
     validateJobs(args.jobs);
     text(args.sink, "SINK");
     text(args.claim, "CLAIM");
+
     const marker = await ctx.db
       .query("claims")
       .withIndex("by_claim", (q) => q.eq("claim", args.claim))
       .unique();
+
     if (!marker) await ctx.db.insert("claims", { claim: args.claim });
+
     const rows = await dueRows(ctx, args.sink);
+
     for (const row of rows) await ctx.db.patch(row._id, { claim: args.claim });
+
     return rows.map((row) => ({
       ...row.event,
       key: row.key,
@@ -561,12 +651,15 @@ async function failRows(
 ) {
   const now = Date.now();
   const retries = new Map<string, { sink: string; dueAt: number }>();
+
   for (const row of rows) {
     const free = result.rateLimited && result.retryAfterMs !== undefined && !row.limited;
     const attempts = row.attempts + (free ? 0 : 1);
     const failed = attempts >= config.maxAttempts;
+
     const dueAt =
       now + (free ? result.retryAfterMs! : Math.max(result.retryAfterMs ?? 0, backoff(attempts)));
+
     await ctx.db.patch(row._id, {
       attempts,
       failed,
@@ -574,8 +667,10 @@ async function failRows(
       claim: undefined,
       dueAt,
     });
+
     if (!failed) retries.set(`${row.sink}\u0000${dueAt}`, { sink: row.sink, dueAt });
   }
+
   for (const { sink, dueAt } of retries.values()) await enqueueDrain(ctx, sink, config, dueAt);
 }
 
@@ -584,13 +679,17 @@ async function acknowledge(ctx: MutationCtx, row: Delivery, config: Jobs) {
   await ctx.db.delete(row._id);
   const charge = await find(ctx, row.key);
   const sink = charge?.sinkState.find((entry) => entry.name === row.sink);
+
   if (!charge || !sink?.pending || sink.pending.externalId !== row.event.externalId) return;
+
   const totalNanos = sink.pending.totalNanos;
+
   const sinkState = charge.sinkState.map((entry) =>
     entry.name === row.sink
       ? { name: entry.name, revision: entry.revision, deliveredNanos: totalNanos }
       : entry,
   );
+
   // May enqueue the next signed delta if the amount changed during delivery.
   await prepareSinks(ctx, { ...charge, sinkState }, config, true);
 }
@@ -613,21 +712,30 @@ export const deliveryResult = mutation({
   },
   handler: async (ctx, args): Promise<null> => {
     validateJobs(args.jobs);
+
     if (args.keys.length > LIMITS.ackBatch) throw new Error("INVALID_KEYS");
+
     if (args.retryAfterMs !== undefined)
       integer(args.retryAfterMs, LIMITS.maxLookupMs, "RETRY_AFTER");
+
     const failures: Delivery[] = [];
+
     for (const key of args.keys) {
       chargeKey(key);
+
       const row = await ctx.db
         .query("deliveries")
         .withIndex("by_key", (q) => q.eq("key", key).eq("sink", args.sink))
         .unique();
+
       if (!row || row.claim !== args.claim) continue;
+
       if (args.ok) await acknowledge(ctx, row, args.jobs);
       else failures.push(row);
     }
+
     await failRows(ctx, failures, args, args.jobs);
+
     return null;
   },
 });
@@ -649,13 +757,17 @@ export const deliveryComplete = internalMutation({
       .query("claims")
       .withIndex("by_claim", (q) => q.eq("claim", context.claim))
       .unique();
+
     if (marker) await ctx.db.delete(marker._id);
+
     if (result.kind === "success") return null;
+
     if (marker) {
       const rows = await ctx.db
         .query("deliveries")
         .withIndex("by_claim", (q) => q.eq("claim", context.claim))
         .take(LIMITS.sinkBatch);
+
       await failRows(ctx, rows, { rateLimited: false }, context.jobs);
     } else if (context.crashes + 1 < context.jobs.maxAttempts)
       await enqueueDrain(
@@ -671,6 +783,7 @@ export const deliveryComplete = internalMutation({
     // attempt, so rows still reach `failed` instead of staying due forever.
     else
       await failRows(ctx, await dueRows(ctx, context.sink), { rateLimited: false }, context.jobs);
+
     return null;
   },
 });
@@ -680,23 +793,30 @@ export const retrySinks = mutation({
   handler: async (ctx, args): Promise<null> => {
     validateJobs(args.jobs);
     const row = await find(ctx, args.key);
+
     if (!row) throw new Error("CHARGE_NOT_FOUND");
+
     for (const sink of row.sinkState) {
       if (!sink.pending) continue;
+
       const delivery = await ctx.db
         .query("deliveries")
         .withIndex("by_key", (q) => q.eq("key", row.key).eq("sink", sink.name))
         .unique();
+
       // An in-flight job keeps its claim; resetting it would resend the batch.
       if (!delivery || delivery.claim !== undefined) continue;
+
       await ctx.db.patch(delivery._id, {
         attempts: 0,
         failed: false,
         limited: false,
         dueAt: Date.now(),
       });
+
       await enqueueDrain(ctx, sink.name, args.jobs, Date.now());
     }
+
     return null;
   },
 });
@@ -722,14 +842,19 @@ export const prune = mutation({
   handler: async (ctx, { before, limit = LIMITS.pruneLimit, minAgeMs }) => {
     integer(before, LIMITS.maxTimestamp, "BEFORE");
     integer(minAgeMs, LIMITS.pruneMinAgeMs, "MIN_AGE");
+
     // Guard: pruning lowers run and subject totals, so a cutoff inside an
     // active run or budget window would re-admit spend. Hosts may lower it.
     if (before > Date.now() - minAgeMs) throw new Error("PRUNE_TOO_RECENT");
+
     integer(limit, LIMITS.maxPruneLimit, "LIMIT");
+
     if (!limit) throw new Error("INVALID_LIMIT");
+
     let deleted = 0;
     let docs = 0;
     let bytes = 0;
+
     while (true) {
       // Re-query after each delete: reads observe this transaction's deletes,
       // so the next eligible row is always the first one. <=501 index queries.
@@ -737,15 +862,19 @@ export const prune = mutation({
         .query("charges")
         .withIndex("by_terminal", (q) => q.eq("terminal", true).lt("_creationTime", before))
         .first();
+
       if (!row) return { deleted, more: false };
+
       const nodes = deleteCost(row);
       const cost = getDocumentSize(row) + nodes * LIMITS.nodeBytes;
+
       if (
         deleted === limit ||
         docs + nodes + 1 > LIMITS.pruneReadDocs ||
         bytes + cost > LIMITS.pruneReadBytes
       )
         return { deleted, more: true };
+
       docs += nodes + 1;
       bytes += cost;
       await deleteAggregates(ctx, row);

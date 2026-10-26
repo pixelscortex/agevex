@@ -22,6 +22,7 @@ export const LIMITS = {
 
 export const TRUNCATED = "[truncated]";
 const encoder = new TextEncoder();
+
 export const bytes = (value: string) => encoder.encode(value).byteLength;
 
 /** Iterate only the retained prefix, without allocating an encoding of a huge input. */
@@ -29,15 +30,20 @@ export function truncate(value: string, maximum: number): string {
   let size = 0;
   let prefix = "";
   const available = maximum - bytes(TRUNCATED);
+
   for (const character of value) {
     size += bytes(character);
+
     if (size > available) {
       // Small values may fit without reserving room for the marker.
       if (value.length <= maximum && bytes(value) <= maximum) return value;
+
       return prefix + TRUNCATED;
     }
+
     prefix += character;
   }
+
   return prefix;
 }
 
@@ -54,38 +60,55 @@ export function validateString(value: string, name: string, maximum: number): vo
 export function boundedValue(value: unknown): unknown {
   let nodes = 0;
   const seen = new WeakSet<object>();
+
   const visit = (item: unknown, depth: number): unknown => {
     if (++nodes > LIMITS.maxValueNodes || depth > LIMITS.maxValueDepth) return TRUNCATED;
+
     if (typeof item === "string") return truncate(item, LIMITS.maxValueBytes);
+
     if (typeof item === "number") return Number.isFinite(item) ? item : undefined;
+
     if (typeof item === "boolean" || item === null) return item;
+
     if (typeof item !== "object") return undefined;
+
     if (seen.has(item)) return TRUNCATED;
+
     seen.add(item);
+
     if (Array.isArray(item)) {
       const result: unknown[] = [];
+
       for (const entry of item) {
         if (nodes >= LIMITS.maxValueNodes) {
           result.push(TRUNCATED);
           break;
         }
+
         result.push(visit(entry, depth + 1));
       }
+
       return result;
     }
+
     const result: Record<string, unknown> = Object.create(null);
+
     for (const key in item) {
       if (!Object.prototype.hasOwnProperty.call(item, key)) continue;
+
       if (nodes >= LIMITS.maxValueNodes) {
         result[TRUNCATED] = true;
         break;
       }
+
       result[truncate(key, LIMITS.maxValueBytes)] = visit(
         (item as Record<string, unknown>)[key],
         depth + 1,
       );
     }
+
     return result;
   };
+
   return visit(value, 0);
 }

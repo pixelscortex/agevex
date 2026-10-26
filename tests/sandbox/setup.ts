@@ -12,6 +12,7 @@ import { fakeSandboxProvider } from "../../src/testing/sandbox.js";
 import type { SandboxLimits } from "../../src/sandbox/limits.js";
 
 const modules = import.meta.glob(["./fixture/**/*.ts"]);
+
 export const api = anyApi as unknown as ApiFromModules<{ host: typeof host }>;
 export function setup(
   scope: typeof state.scope = "thread",
@@ -31,6 +32,7 @@ export function setup(
   state.usage = [];
   state.resolver = undefined;
   state.nodeExport = false;
+
   // Every sandbox scenario, including hard-max admissions and sweeps, runs
   // with convex-test's actual transaction byte/doc/query limits enabled.
   const t = convexTest({
@@ -41,16 +43,21 @@ export function setup(
       "./fixture/host.ts": async () => ({ ...(await import("./fixture/host.js")), ...runtime() }),
       "./fixture/node.ts": async () => {
         const node = await import("./fixture/node.js");
+
         return { ...node, exportFile: sandboxNodeExport(config()) };
       },
     },
   });
+
   agent.register(t);
+
   t.registerComponent("agevex", core.schema, {
     ...core.modules,
     "./component/sandboxFixture.ts": () => import("./fixture/seed.js"),
   });
+
   const component = sandbox.register(t);
+
   return { t, component, fake };
 }
 export { state };

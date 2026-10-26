@@ -32,6 +32,7 @@ const components = componentsGeneric() as unknown as {
   agevex: CoreApi;
   sandbox: SandboxApi;
 };
+
 type Args = Parameters<ReturnType<typeof mockModel>["doStream"]>[0];
 type Step = (n: number, args: Args) => LanguageModelV4Content[] | Promise<LanguageModelV4Content[]>;
 
@@ -62,32 +63,40 @@ export function reset(fake = fakeSandboxProvider(), scope: typeof fixture.scope 
 
 function model(name: string) {
   const model = mockModel();
+
   model.doStream = async (args) => {
     const n = fixture.calls.filter((entry) => entry.agent === name).length;
+
     fixture.calls.push({ agent: name, args });
+
     return scriptedModel([
       (await fixture.steps[name]?.(n, args)) ?? text(`${name} answer ${n}`),
     ]).doStream(args);
   };
+
   return model;
 }
+
 const builder = new Agent(components.agent, {
   name: "Builder",
   languageModel: model("Builder"),
   sandbox: true,
 });
+
 const main = new Agent(components.agent, {
   name: "Main",
   languageModel: model("Main"),
   subagents: [builder],
   sandbox: true,
 });
+
 // A root that has NOT opted in: only its delegated child has.
 const lead = new Agent(components.agent, {
   name: "Lead",
   languageModel: model("Lead"),
   subagents: [builder],
 });
+
 // No `sandbox: true`: the slot is registered, but this agent must not see it.
 const plain = new Agent(components.agent, { name: "Plain", languageModel: model("Plain") });
 
@@ -102,10 +111,12 @@ const hostRef = <Type extends "action" | "mutation", Args extends Record<string,
   >;
 
 const people = ["alice", "bob"];
+
 /** The wiring a host writes; `current` lets tests reach the sandbox and runtime. */
 function build() {
   // eslint-disable-next-line prefer-const -- the sandbox's thunk reads it lazily
   let runtime: ReturnType<typeof registerAgent>;
+
   const sandbox = defineSandbox({
     component: components.sandbox,
     provider: fixture.fake.provider,
@@ -123,15 +134,20 @@ function build() {
       // poll and cleanup calls run without a user and carry trusted facts.
       if (request.operation === "export") {
         const user = await ctx.auth.getUserIdentity();
+
         if (!user) throw new Error("FORBIDDEN");
+
         return { subject: user.subject };
       }
+
       if (request.subject !== undefined && !people.includes(request.subject))
         throw new Error("FORBIDDEN");
+
       return { subject: request.subject ?? "system" };
     },
     onComplete: sandboxCompletion(() => runtime),
   });
+
   runtime = registerAgent(components.agevex, {
     agents: [main, plain, lead],
     sandbox: sandbox.slot(),
@@ -146,24 +162,31 @@ function build() {
         scope.operation === "sandbox"
       ) {
         if (!people.includes(scope.subject)) throw new Error("FORBIDDEN");
+
         return { subject: scope.subject };
       }
+
       const user = await ctx.auth.getUserIdentity();
+
       if (!user) throw new Error("FORBIDDEN");
+
       return { subject: user.subject };
     },
     authorizeExecution: async (_ctx, scope) => {
       if (!people.includes(scope.subject)) throw new Error("FORBIDDEN");
     },
   });
+
   return { sandbox, runtime };
 }
 let current: ReturnType<typeof build> | undefined;
+
 export const wiring = () => (current ??= build());
 
 export function exports() {
   const { sandbox, runtime } = wiring();
   const functions = sandbox.internalFunctions();
+
   return {
     ...runtime.internalFunctions(),
     ...runtime.authorizedEndpoints(),

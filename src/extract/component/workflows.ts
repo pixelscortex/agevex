@@ -26,6 +26,7 @@ export const extract = manager
   .handler(async (step, args): Promise<null> => {
     if (args.version !== LIMITS.workflowVersion)
       throw new Error("UNKNOWN_EXTRACT_WORKFLOW_VERSION");
+
     // Workflow 0.4.10 src/client/step.ts:213 resolves function handles;
     // Convex 1.47 src/server/components/paths.ts:28 accepts existing handles.
     // Persist only ids here: payload JSON never enters its 1 MiB journal rows.
@@ -40,6 +41,7 @@ export const extract = manager
       },
       { retry: false, name: "extract" },
     );
+
     return null;
   });
 export const done = internalMutation({
@@ -72,6 +74,7 @@ export const done = internalMutation({
     // callback from cancelling the other callers', the `abandon` clear, the
     // status patch above and the workflow cleanup below.
     let failed = 0;
+
     for (const onComplete of callbacks) {
       try {
         await ctx.runMutation(onComplete as FunctionHandle<"mutation">, {
@@ -81,10 +84,13 @@ export const done = internalMutation({
         failed++;
       }
     }
+
     // Count only: handles and errors can carry host data.
     if (failed)
       console.error(`extract: ${failed} of ${callbacks.length} completion callbacks failed`);
+
     await manager.cleanup(ctx, args.workflowId as import("@convex-dev/workflow").WorkflowId);
+
     return null;
   },
 });

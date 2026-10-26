@@ -11,6 +11,7 @@ import {
 import schema from "./fixture/schema.js";
 
 const modules = import.meta.glob("./fixture/**/*.ts");
+
 export const allBreakdowns: NonNullable<MeterOptions["breakdowns"]> = [
   "thread.model",
   "thread.provider",
@@ -34,7 +35,9 @@ export function setup(
       "./fixture/host.ts": async (): Promise<object> => host(meter.internalFunctions(), component),
     },
   });
+
   const component = register(t);
+
   const meter = defineMeter(component, {
     providers: {
       openrouter: inline(),
@@ -53,6 +56,7 @@ export function setup(
     },
     ...overrides,
   });
+
   // Name the component type: inferring it would print the private Exposed alias.
   return { t, meter, component: component as ComponentApi };
 }
