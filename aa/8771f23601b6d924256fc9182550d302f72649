@@ -1,0 +1,23 @@
+src/client/text/options.ts
+  s_d863bd773ba186::t_5a481fcb80c1b7 6,12-14,38-42
+src/client/text/task.ts
+  s_d863bd773ba186::t_a345c8280b67f0 127,161-163
+tests/text.test.ts
+  s_d863bd773ba186::t_411961216ae275 11,446-486
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "aa8771f23601b6d924256fc9182550d302f72649",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
