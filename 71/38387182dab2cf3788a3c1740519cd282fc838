@@ -1,0 +1,78 @@
+dist/modules/meter/client/scope.js
+  h_51b7a781d7f2c3 43,76
+dist/modules/meter/client/sinks.d.ts
+  h_51b7a781d7f2c3 31
+dist/modules/meter/client/sinks.js
+  h_51b7a781d7f2c3 106-107,153
+dist/modules/meter/client/types.d.ts
+  h_51b7a781d7f2c3 56-58,64-67
+dist/modules/meter/client/workers.js
+  h_51b7a781d7f2c3 67
+dist/modules/meter/component/charge-contracts.d.ts
+  h_51b7a781d7f2c3 41-44,83-92
+dist/modules/meter/component/charge-contracts.js
+  h_51b7a781d7f2c3 26
+dist/modules/meter/component/charge-creation.js
+  h_51b7a781d7f2c3 33-34,37,76
+dist/modules/meter/component/charge-lookup.d.ts
+  h_51b7a781d7f2c3 82-83,89,91-92,104-105,111,113-114
+dist/modules/meter/component/charge-records.d.ts
+  h_51b7a781d7f2c3 83-84,90,92-93,105-106,112,114-115,126-127,129,209-210,216,218-219,231-232,238,240-241,295-296,302,304-305
+dist/modules/meter/component/charge-records.js
+  h_51b7a781d7f2c3 18-19,21,23-25
+dist/modules/meter/component/charge-updates.d.ts
+  h_51b7a781d7f2c3 17-18,24,26-27,103-104,110,112-113
+dist/modules/meter/component/charges.d.ts
+  h_51b7a781d7f2c3 38-41,97-99,104,110-111
+dist/modules/meter/component/delivery.d.ts
+  h_51b7a781d7f2c3 11,14-16
+dist/modules/meter/component/delivery.js
+  h_51b7a781d7f2c3 5-9,19-21,40-41,83-85,87-93,95
+dist/modules/meter/component/outbox.d.ts
+  h_51b7a781d7f2c3 17-18,24,26-27,103-104,110,112-113
+dist/modules/meter/component/outbox.js
+  h_51b7a781d7f2c3 20-29,36,38,48-50
+dist/modules/meter/component/schema.d.ts
+  h_51b7a781d7f2c3 32-33,43-45,48,51-52,58,60-61,66-67,73,75-76,81,83-84,87-88,98-101,105-106,112,114-115,122-123,129,131-132,141,143-144,147-148,158-161,234-235,241,243-244,256-257,263,265-266,275-276,282,284-285,290-291,297,299-300,305,307-308,311-312,322-325,366-367,373,375-376,423-424,430,432-433,480-481,487,489-490,500-501,507,509-510,517-518,524,526-527,536,538-539,542-543,553-556,665,673-674,700-701,711-713,739
+dist/modules/meter/component/schema.js
+  h_51b7a781d7f2c3 29-32,38-40,42-43,47,99
+dist/modules/meter/test.d.ts
+  h_51b7a781d7f2c3 86-87,93,95-96,108-109,115,117-118,127-128,134,136-137,142-143,149,151-152,157,159-160,163-164,174-177,218-219,225,227-228,275-276,282,284-285,332-333,339,341-342,352-353,359,361-362,369-370,376,378-379,388,390-391,394-395,405-408,518-519,545-546,556-558,584
+package.json
+  h_51b7a781d7f2c3 140-143
+src/modules/meter/API.md
+  h_51b7a781d7f2c3 30-38,110,267-303,314,316-322,346-374,414
+src/modules/meter/README.md
+  h_51b7a781d7f2c3 41-54,128
+src/modules/meter/client/scope.ts
+  h_51b7a781d7f2c3 71,114
+src/modules/meter/client/sinks.ts
+  h_51b7a781d7f2c3 147-148,199,209
+src/modules/meter/client/types.ts
+  h_51b7a781d7f2c3 45-47,51-57
+src/modules/meter/client/workers.ts
+  h_51b7a781d7f2c3 79
+src/modules/meter/component/charge-contracts.ts
+  h_51b7a781d7f2c3 27
+src/modules/meter/component/charge-creation.ts
+  h_51b7a781d7f2c3 51-54,57,112
+src/modules/meter/component/charge-records.ts
+  h_51b7a781d7f2c3 28-29,31,34-36
+src/modules/meter/component/delivery.ts
+  h_51b7a781d7f2c3 21-29,43-45,70-71,125-127,131-137,141
+src/modules/meter/component/outbox.ts
+  h_51b7a781d7f2c3 34-46,59,61,73-75
+src/modules/meter/component/schema.ts
+  h_51b7a781d7f2c3 62-65,80-82,84-85,90,148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7138387182dab2cf3788a3c1740519cd282fc838",
+  "prompts": {},
+  "humans": {
+    "h_51b7a781d7f2c3": {
+      "author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
