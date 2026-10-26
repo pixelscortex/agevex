@@ -1,0 +1,35 @@
+bun.lock
+  s_f18b702b2b5c89::t_6389556f883c79 44-46
+package.json
+  s_f18b702b2b5c89::t_e83f829f6a3cd2 140-143
+patches/convex-test@0.0.61.patch
+  s_f18b702b2b5c89::t_64540de64f409e 1-48
+tests/meter/bounds.test.ts
+  s_d863bd773ba186::t_ab733145adaeb9 8-13
+tests/meter/usage-v2.test.ts
+  s_d863bd773ba186::t_12fb89ec78e9d8 9-12,220-223,225-227,229-236,238-239,241,243,245-255
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "243ceffa39c0378a07eb79b653c01f010cff067f",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_f18b702b2b5c89": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1787a-db32-7aa3-ba2b-f35d8edcf9d6",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
