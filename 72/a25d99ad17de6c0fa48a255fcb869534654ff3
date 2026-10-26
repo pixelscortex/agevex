@@ -1,0 +1,151 @@
+README.md
+  s_72a70db9c7b16a::t_018d9ebd93be28 549-579,594,722,725-726,728,879-891
+docs/site/content/docs/concepts/receipts.mdx
+  s_72a70db9c7b16a::t_91be1f45012961 46,53-83,87,89-90
+docs/site/content/docs/concepts/runtime.mdx
+  s_72a70db9c7b16a::t_bb98bf3fcb02cd 49-65
+docs/site/content/docs/modules/tools.mdx
+  s_72a70db9c7b16a::t_03ec0471046439 116-122
+docs/site/content/docs/tools/ask-user.mdx
+  s_72a70db9c7b16a::t_a479d3e1dd8979 3,30-31,41,46-49,55-85
+docs/site/content/docs/tools/continue-budget.mdx
+  s_72a70db9c7b16a::t_9348332508b17d 39,47,69,93
+docs/site/public/r/ask-user.json
+  s_ee17065f76bd31::t_96439b612c99c1 5,14,19
+docs/site/public/r/continue-budget.json
+  s_ee17065f76bd31::t_13c519e825d1a0 14,26,31
+docs/site/public/r/registry.json
+  s_ee17065f76bd31::t_5f7a3586da1574 68,74,93
+docs/site/registry.json
+  s_ee17065f76bd31::t_2aa2ee860e2461 68,74,93
+src/client/agent.ts
+  s_f2bee927529728::t_9edfbfab92b6be 39-40,71-72,90
+src/client/endpoints/access.ts
+  s_72a70db9c7b16a::t_af61f4920f8b4a 28
+src/client/endpoints/controls.ts
+  s_72a70db9c7b16a::t_d3f28100abdd17 10-11,20,30-31,41,50
+src/client/endpoints/decisions.ts
+  s_f2bee927529728::t_688408d2acb18b 1-61
+src/client/endpoints/index.ts
+  s_72a70db9c7b16a::t_cf7278026b03a2 15,45
+src/client/endpoints/pending.ts
+  s_f2bee927529728::t_45e8fb494d9d3b 1-58
+src/client/index.ts
+  s_72a70db9c7b16a::t_c029ad204e42c8 63-64
+src/client/once.ts
+  s_72a70db9c7b16a::t_b5218886c00718 43,60
+src/client/registration/context.ts
+  s_72a70db9c7b16a::t_669e253682c466 57-60
+src/client/registration/graph.ts
+  s_72a70db9c7b16a::t_d60f117e27f0c4 58,60-61,72,105
+src/client/turn/fence.ts
+  s_72a70db9c7b16a::t_60108134094845 243-244,278-290
+src/client/turn/tools.ts
+  s_72a70db9c7b16a::t_4fac1eed509e28 11,61-67,107-114,127-130,161-163,178-186
+src/client/types.ts
+  s_72a70db9c7b16a::t_d5a0d7dccea003 96,288
+src/component/_generated/api.ts
+  s_72a70db9c7b16a::t_2b3fbfc8c4a51b 28,63
+src/component/_generated/component.ts
+  s_72a70db9c7b16a::t_6ca04543cb7928 25,66
+src/component/run-settings.ts
+  s_72a70db9c7b16a::t_c710459bb8541f 28,48,62-64
+src/component/schema.ts
+  s_72a70db9c7b16a::t_41fa755427a44a 299-300
+src/component/turns/approvals.ts
+  s_d863bd773ba186::t_b23bf00a8a1cc1 20-28,47-50,88-89,102,120-121,128-132,141-147,171,177,182-188,210-218,223,254,270,290-291,305,310-351
+src/component/turns/decision-reads.ts
+  s_f2bee927529728::t_11affbc693569e 1-207
+src/component/turns/decision-save.ts
+  s_ee17065f76bd31::t_0902769aef7c0f 1-101
+src/component/turns/write.ts
+  s_ee17065f76bd31::t_ca48e7ed5bc86a 22,45-46,74-75,87-88
+src/modules/tools/README.md
+  s_72a70db9c7b16a::t_e0eb30cc45b44d 16-19,21
+src/modules/tools/registry/ask-user/askUser.ts
+  s_72a70db9c7b16a::t_428538f39e9593 6,15-17,19-28
+src/modules/tools/registry/continue-budget/continueBudget.ts
+  s_ee17065f76bd31::t_0ac3dde3779b1d 32-34,40
+src/modules/tools/registry/continue-budget/continueBudgetState.ts
+  s_72a70db9c7b16a::t_891fbde7e039e1 40
+src/shared/decisions.ts
+  s_d863bd773ba186::t_2ae26713a37071 1-249
+tests/bounded-reads.test.ts
+  s_72a70db9c7b16a::t_ec7c45acfbc9f1 358,369,376,415-417,478,528-534,540-544,564-569,627-631,670,770,833,860,915,977,1156,1568,1620,1645,1731,1792-1814
+tests/decisions-bounds.fixture.ts
+  s_72a70db9c7b16a::t_2933777dd3f1e2 1-135
+tests/deferred-answers.test.ts
+  s_fed1b8b814d0ca::t_08023fc2052218 55,69,83,95,102,125,144,168,179,184,186,191,205,224,238,248,313,393,402,419,427,430-431,442-443,457,488
+tests/delegation-v2.test.ts
+  s_72a70db9c7b16a::t_ccd1d42608a16a 3206,3211,3342
+tests/hooks.test.ts
+  s_72a70db9c7b16a::t_ac8802439f95a3 1885
+tests/registration.test.ts
+  s_72a70db9c7b16a::t_51f53260de47eb 53,60-62,147
+tests/review-regressions.test.ts
+  s_72a70db9c7b16a::t_cabc79eca3a8ae 176,1691
+tests/run-settings.test.ts
+  s_72a70db9c7b16a::t_6964d026052e8c 151
+tests/text.test.ts
+  s_72a70db9c7b16a::t_9a36b67a0b632f 589
+tests/tools/ask-user.test.ts
+  s_72a70db9c7b16a::t_3c4b6ada9de1cb 48,69,76
+tests/tools/continue-budget.test.ts
+  s_72a70db9c7b16a::t_e41ceb192a8e93 74,115,194-198,250,618,733
+tests/tools/decisions-bounds.test.ts
+  s_fed1b8b814d0ca::t_a8e604521c0b71 1-109
+tests/tools/decisions-v2.test.ts
+  s_d863bd773ba186::t_efa0dea44b4dc0 1-371
+tests/tools/fixture/host.ts
+  s_72a70db9c7b16a::t_1ac4f5799e3d75 6,8,24,42-44,75-79,88-98,102,106,109-111,114-130,135-144,150-167,169-170,172,174,176,178-195,228,241,300-317
+tests/tools/setup.ts
+  s_72a70db9c7b16a::t_4548ddff9a1bc7 24-28,39-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "72a25d99ad17de6c0fa48a255fcb869534654ff3",
+  "prompts": {},
+  "sessions": {
+    "s_72a70db9c7b16a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17828-8d73-7233-aa7a-c892cf2cf47a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_ee17065f76bd31": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17835-0ab8-7670-b927-5b318beb82ba",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_f2bee927529728": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aa7ba3bd-e143-4965-834d-2729a8d50279",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_fed1b8b814d0ca": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17828-6caa-78f2-8a5e-1e483933da1c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
