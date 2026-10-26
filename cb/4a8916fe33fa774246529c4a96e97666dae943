@@ -1,0 +1,21 @@
+src/component/turns/claim.ts
+  s_d863bd773ba186::t_aad7cac2502cab 124-127,129,163-190
+tests/message-ids.test.ts
+  s_d863bd773ba186::t_882ace024f42a3 4,567-628
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cb4a8916fe33fa774246529c4a96e97666dae943",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
