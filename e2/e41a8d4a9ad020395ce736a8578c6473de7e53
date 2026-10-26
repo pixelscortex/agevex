@@ -1,0 +1,20 @@
+src/component/turns/decision-save.ts
+  s_d863bd773ba186::t_064417f5ccb033 30-32
+  s_d863bd773ba186::t_0faf6eae2c8212 29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e2e41a8d4a9ad020395ce736a8578c6473de7e53",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
