@@ -1,0 +1,49 @@
+src/modules/telemetry/client/enabled.ts
+  s_d863bd773ba186::t_1aee15a9a70c43 1-38,40-46,53
+  s_d863bd773ba186::t_44e61e18232b3a 39,47-52
+README.md
+  s_d863bd773ba186::t_20c2265162cee9 895-898
+  s_d863bd773ba186::t_31d7aa6a530983 863
+tests/telemetry/telemetry.test.ts
+  s_d863bd773ba186::t_e4e318cd2f8f86 841
+  s_d863bd773ba186::t_0b04bef1f77901 734-840,842-874
+src/modules/telemetry/client/credential.ts
+  s_d863bd773ba186::t_16c5317bea8cf1 2,12-14,17,21-35,38
+tests/telemetry/slots.test.ts
+  s_d863bd773ba186::t_86023e104cf5c3 248-253
+  s_d863bd773ba186::t_9274ccfb668175 171-247,254-256
+docs/site/content/docs/modules/telemetry.mdx
+  s_d863bd773ba186::t_6e125c2d3ef334 56-71,79-83,135,137-144
+docs/site/scripts/generate-api-reference.ts
+  s_d863bd773ba186::t_b79453c96405cf 96-97,99-102,224
+src/modules/telemetry/README.md
+  s_d863bd773ba186::t_0664e3e8789afb 15-28,50-51
+src/modules/telemetry/client/attribution.ts
+  s_d863bd773ba186::t_b31dbb166065d6 6,20-21
+src/modules/telemetry/client/exporters.ts
+  s_d863bd773ba186::t_e41598d7b21453 6-13,81-83,85,89-92,96,109-111,113,124-149,155-159,164-167,169-172,174-181
+src/modules/telemetry/client/index.ts
+  s_d863bd773ba186::t_098d022eee56a8 12-13
+src/modules/telemetry/client/integration.ts
+  s_d863bd773ba186::t_b62325547bf237 13-18,20-21,29-34
+src/modules/telemetry/client/turn.ts
+  s_d863bd773ba186::t_d095eb792c9c88 7,20-22,42,46-53
+src/modules/telemetry/client/types.ts
+  s_d863bd773ba186::t_97ae76c3220c62 7,20-21,62-65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2c2fbfcdb2589e162ed4bde613f101f32192c9ad",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
