@@ -1,0 +1,50 @@
+tests/replay-authorization.test.ts
+  s_7a2fce70025c2b::t_e20da39dfeb464 172
+  s_1cce10078cb971::t_d8e36fb717c4b5 2-5,7,9-12,22-25,46-100,102,104-107,109-110,112,114,119-120,122,124,126,128-129,134,136-147,151,153,157-171,173-179,184,186-190,197-198,203,205,207,210,212,214,216-217,223-225,227-230,233-236,241,243-263,266-271,273-300,302-327
+README.md
+  s_1cce10078cb971::t_84ea7c5a0e7678 619-627,630,632,635-641
+docs/site/content/docs/concepts/receipts.mdx
+  s_1cce10078cb971::t_8f99318fb45cab 42-51,54,56,59-68
+docs/site/content/docs/concepts/runtime.mdx
+  s_1cce10078cb971::t_0d56f300cc605f 40-48,51,53,56-64
+src/client/endpoints/access.ts
+  s_1cce10078cb971::t_6879e3b8a7bdc9 6-7,89,142
+src/client/endpoints/requests.ts
+  s_1cce10078cb971::t_6cd58e37928c29 4-9,26,70,77,111-112,119,121,123-124,126-143,217-218,222-224,232-233,284,286,291-293,307-308
+src/client/types.ts
+  s_1cce10078cb971::t_698b34221a5943 78-81,96-97,382,387-408
+src/component/turns/send.ts
+  s_1cce10078cb971::t_5423386b5eb7cc 157-158
+tests/fixture/admission.schema.ts
+  s_1cce10078cb971::t_afa122a16df43d 1-8
+tests/fixture/admission.ts
+  s_1cce10078cb971::t_f9232906a270e2 1-9
+tests/host.ts
+  s_1cce10078cb971::t_ce2fc4ac00d153 80-82,474,477-483
+tests/setup.ts
+  s_1cce10078cb971::t_f296a346566bf5 3-9,161,191-193,226
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "23f6a39aab03b3075c353d327cd8aeafdfab40ae",
+  "prompts": {},
+  "sessions": {
+    "s_1cce10078cb971": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17899-a8b8-7160-84f1-aa790c0a6f18",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_7a2fce70025c2b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1788c-d795-7370-9356-dfc7f2cfd2e0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
