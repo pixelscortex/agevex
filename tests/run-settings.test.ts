@@ -206,6 +206,8 @@ it.each([1, 3, 64])(
     expect(fixture.effects).toHaveLength(stepsPerTurn);
     expect(await activity(t, receipt.threadId)).toMatchObject({ errorCode: "SLICE_LIMIT" });
   },
+  // The 64-step case drives 64 real Workflow slices; give it room on a loaded machine.
+  30_000,
 );
 
 it.each(["stream", "generate"] as const)(
