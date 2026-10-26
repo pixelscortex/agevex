@@ -79,6 +79,17 @@ own validated defaults, hard ceilings and combined action budget.
 | `modelIdLength`          | 200           | 200           |
 | `modelAllowlist`         | 100           | 100           |
 
+Subjects and agent names are at most `nameLength` UTF-16 units, and every
+stored function handle at most `functionHandleBytes` UTF-8 bytes (real Convex
+handles are about 60–100). Sends, delegations and native writes beyond them
+fail with `INVALID_SUBJECT`, `INVALID_AGENT` or `INVALID_FUNCTION_HANDLE`
+before anything is saved. With every field at its cap, an assignment stays
+under its 34 KiB envelope.
+
+`slicesPerTurn` and `stepsPerTurn` also bound approval resumes, which keep the
+turn's step count; see
+[approvals and the step allowance](/docs/concepts/runtime#approvals-and-the-step-allowance).
+
 Policy rows can be lowered even when their default equals their maximum;
 non-policy rows are fixed. `PLATFORM` adds
 an 8 MiB journal, an 800 KiB step, 10 and 30 minute actions, 8 scheduled slots.

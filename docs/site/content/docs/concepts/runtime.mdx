@@ -164,6 +164,16 @@ growth within the 16 KiB run envelope.
 The existing `limits.slicesPerTurn` supplies the default when `run.stepsPerTurn`
 is omitted; an explicit host slice override also caps the Workflow turn.
 
+### Approvals and the step allowance
+
+An approval resume continues the same logical turn: it keeps the steps already
+spent and does not grant new ones. If the turn's last allowed step requests
+approval, approving it ends the turn with `SLICE_LIMIT` and the thread enters
+`recovery_required`. The approved tool does not run. An `afterTurn`
+continuation staged after the last allowed step is dropped the same way, before
+it is saved. When agents use approvals, set `stepsPerTurn` (and any host
+`slicesPerTurn`) with headroom above the steps you expect before a pause.
+
 ## Usage and budget boundaries
 
 Optional usage is recorded after every saved model step and app observation.

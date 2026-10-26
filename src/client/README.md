@@ -68,6 +68,10 @@ row per step bounds the list by run `stepsPerTurn` and any non-default host
 Prompt/cap/resume metadata brings the reservation to 3 KiB within the 34 KiB
 assignment envelope. New user/queued/child work and a staged `afterTurn`
 continuation start fresh lists; approval resumes retain the list and step count.
+So approving a call requested on the turn's last allowed step ends the turn with
+`SLICE_LIMIT` (`recovery_required`) before the approved tool runs, and a staged
+`afterTurn` continuation past the limit is dropped unsaved. Give `stepsPerTurn`
+(and any host `slicesPerTurn`) headroom when tools need approval.
 
 `ToolContext.promptMessageId?: string` comes from the trusted component claim,
 never tool input. It identifies the user request or child's task that started
