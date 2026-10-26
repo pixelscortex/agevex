@@ -6,6 +6,7 @@
     "runtime",
     "background-text",
     "delegation",
+    "message-parent",
     "receipts",
     "hooks",
     "slots",

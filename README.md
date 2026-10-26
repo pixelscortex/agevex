@@ -334,9 +334,19 @@ into one parent continuation. Every workflow carries a version argument;
 step order is protected by replay fixtures.
 
 A user prompt starts one run. Its turns and child results share a budget of
-12 launches / 24 hops (launches, delivered results, questions and follow-ups). Result turns may
-call `agevex_delegate` again. Over budget returns
-`{ status: "denied", code: "RUN_BUDGET" }`. A root admits at most
+12 launches / 24 hops (launches, delivered results, notes, questions, answers and
+follow-ups). Each launch reserves its result's hop; each question reserves its
+answer hop. Notes, questions and follow-ups cannot spend those reserved hops.
+Final results and joined groups always enter the ready queue, even above
+`queueLength`. The queue limit applies to messages: user sends, parent notes,
+questions and child follow-ups are refused at capacity (`QUEUE_FULL` for user
+sends, `QUEUE_LIMIT` for component enqueues). Answers and approval continuations
+retain their control allowance. Messages are refused until the queue drains
+below its limit. Launch admission also caps outstanding result work per assignment
+at `runLaunches` across user requests: pending results, unreleased join members
+and queued result rows. A joined row replaces its members; claim frees this
+capacity. Reaching this separate bound returns `RUN_BUDGET`. Result turns may call
+`agevex_delegate` again. A root admits at most
 5 active descendants by default and 4000 characters per delegated task.
 
 Failures are sanitized and never automatically replayed. Ambiguous execution
@@ -548,6 +558,19 @@ runs return typed denials. Each child accepts 4 follow-ups by default (maximum
 task-length bound. Asking children remain cancellable; one inbox slot is
 reserved for their answer.
 
+Children also receive `agevex_message_parent({ text })` to report progress and
+keep working. It returns `{ status: "accepted", messageId }` or a typed denial.
+Notes wake a sleeping parent, including in wait-all groups, at its next safe
+turn without bypassing approval or deferred calls. Inbox commit order is FIFO:
+accepted notes precede that child's final result, and consecutive work may
+share a turn. Identical tool-call retries replay without another save or wake.
+Text fits 2 KiB encoded; each child can send 4 notes by default (8 maximum,
+`limits.parentNotesPerChild`), at least 5 seconds apart. Each fresh note spends
+one hop and one ready queue slot. Size, rate, count, hop and queue denials save
+nothing. Finished/cancelled children cannot send; committed notes remain in
+history. Woken turns record usage through the usual slot. `runtime.note` stays
+passive and does not wake a turn.
+
 R1: The inbox holds ready work in FIFO order; claims coalesce consecutive head rows.
 R2: `ask_parent` denies `ASK_WITH_CHILDREN` while any descendant is non-terminal.
 R3: Runs settle after the last turn ends, descendants settle, and the inbox empties.
@@ -607,8 +630,10 @@ A fresh `send` can start new work after cancellation. External effects already
 accepted by a provider still depend on that provider's abort behavior.
 
 At the hard maximum of 15 descendants, cancel covers 16 assignments, up to
-1,632 ready rows and 384 pending notes. Its read bound is 12,680 KiB of
-16,384 KiB (22.6% headroom), including routing owner reads and patches.
+2,432 ready rows (`16 × (100 messages + 50 results + 2 control rows)`) and
+384 pending notes. Cancel deduplicates up to 168 request budgets. Its conservative
+read bound is 15,560 KiB of 16,384 KiB, including routing ownership and staged
+continuations; native message bodies are cleaned separately.
 
 Pending native tool approvals block generation and leave the inbox row
 waiting, avoiding Agent 0.7.7's automatic denial on a new generation.

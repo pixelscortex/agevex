@@ -326,7 +326,11 @@ it("runs Main -> Researcher -> Main and reports only persisted state", async () 
   expect(
     state.offers
       .filter((o) => o.agent === "Researcher")
-      .every((o) => JSON.stringify(o.tools) === JSON.stringify(["agevex_ask_parent"])),
+      .every(
+        (o) =>
+          JSON.stringify(o.tools) ===
+          JSON.stringify(["agevex_ask_parent", "agevex_message_parent"]),
+      ),
   ).toBe(true);
 });
 

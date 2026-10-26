@@ -183,7 +183,12 @@ it("registration rejects depth three, cycles and all reserved tools while sharin
   expect(() => registerAgent(components.agevex, policy)).toThrow("SUBAGENT_DEPTH");
   expect(() => registration({ maxDepth: 1 })).toThrow("SUBAGENT_DEPTH");
 
-  for (const toolName of ["agevex_delegate", "agevex_message_child", "agevex_ask_parent"]) {
+  for (const toolName of [
+    "agevex_delegate",
+    "agevex_message_child",
+    "agevex_ask_parent",
+    "agevex_message_parent",
+  ]) {
     const reserved = new Agent(components.agent, {
       name: "Reserved",
       languageModel: mockModel(),
@@ -421,9 +426,10 @@ it("managed tool names are offered only on parents and children where they are m
     "agevex_ask_parent",
     "agevex_delegate",
     "agevex_message_child",
+    "agevex_message_parent",
   ]);
 
-  expect(names("Reviewer")).toEqual(["agevex_ask_parent"]);
+  expect(names("Reviewer")).toEqual(["agevex_ask_parent", "agevex_message_parent"]);
 });
 
 async function manualRoot(t: Test, requestKey = "manual") {
@@ -550,6 +556,303 @@ async function complete(t: Test, child: Awaited<ReturnType<typeof launch>>, resu
     errorCode: null,
   });
 }
+
+it("child follow-ups fill the message queue and all four grandchild results still deliver", async () => {
+  const t = setup({ runHops: 34, messagesPerChild: 8 });
+  const root = await manualRoot(t);
+  const child = await launch(t, root, "Builder", { task: "bounded task" });
+  const grandchildren = [];
+
+  for (let index = 0; index < 4; index++)
+    grandchildren.push(await launch(t, child, "Reviewer", { wait: "each", task: "bounded task" }));
+
+  // Manually claimed turns keep both parents busy without advancing scheduler
+  // lanes. Every operation still uses the real native-save coordinator.
+  for (let round = 0; round < 4; round++) {
+    vi.setSystemTime(Date.now() + LIMITS.parentNoteIntervalMs);
+
+    for (const grandchild of grandchildren)
+      expect(
+        await t.mutation(api.agents.coordinate, {
+          op: "message_parent",
+          assignmentId: grandchild.assignmentId,
+          turnToken: grandchild.turnToken,
+          toolCallId: crypto.randomUUID(),
+          text: `progress ${round}`,
+        }),
+      ).toMatchObject({ status: "accepted" });
+  }
+
+  for (let index = 0; index < 4; index++)
+    expect(
+      await t.mutation(api.agents.coordinate, {
+        op: "message",
+        assignmentId: root.assignmentId,
+        turnToken: root.turnToken,
+        runId: child.runId,
+        text: `fills message queue ${index}`,
+      }),
+    ).toMatchObject({ status: "accepted" });
+
+  expect(
+    await t.mutation(api.agents.coordinate, {
+      op: "message",
+      assignmentId: root.assignmentId,
+      turnToken: root.turnToken,
+      runId: child.runId,
+      text: "ordinary message overflow",
+    }),
+  ).toMatchObject({ status: "denied", code: "QUEUE_LIMIT" });
+
+  for (const [index, grandchild] of grandchildren.entries())
+    await complete(t, grandchild, `grandchild final ${index}`);
+
+  expect(await t.query(rawAssignment, { assignmentId: child.assignmentId })).toMatchObject({
+    queuedMessages: 24,
+  });
+
+  const history = await owner(t).query(api.agents.messages, {
+    threadId: child.threadId,
+    paginationOpts: { cursor: null, numItems: 100 },
+  });
+
+  expect(history.page.filter((row) => row.origin === "result")).toHaveLength(4);
+  expect(JSON.stringify(history)).not.toContain("ordinary message overflow");
+
+  const runs = await owner(t).query(api.agents.delegations, {
+    threadId: root.threadId,
+    paginationOpts: { cursor: null, numItems: 20 },
+  });
+
+  expect(
+    runs.page.filter((run) => run.agent === "Reviewer").map((run) => run.deliveryStatus),
+  ).toEqual(Array(4).fill("accepted"));
+
+  await owner(t).mutation(api.agents.cancel, { threadId: root.threadId });
+  await drain(t);
+});
+
+it("four questions cannot crowd out any of five results in a length-four root queue", async () => {
+  const t = setup({ queueLength: 4 });
+  const root = await manualRoot(t);
+  const children = [];
+
+  for (let index = 0; index < 5; index++)
+    children.push(await launch(t, root, "Reviewer", { task: "bounded task" }));
+
+  for (const [index, child] of children.slice(0, 4).entries()) {
+    expect(
+      await t.mutation(api.agents.coordinate, {
+        op: "ask",
+        assignmentId: child.assignmentId,
+        turnToken: child.turnToken,
+        question: `would crowd a result ${index}?`,
+      }),
+    ).toMatchObject({ status: "accepted" });
+  }
+
+  expect(
+    await t.mutation(api.agents.coordinate, {
+      op: "ask",
+      assignmentId: children[4].assignmentId,
+      turnToken: children[4].turnToken,
+      question: "fifth question is full",
+    }),
+  ).toMatchObject({ status: "denied", code: "QUEUE_LIMIT" });
+
+  for (const child of children.slice(0, 4))
+    expect(
+      await t.mutation(api.agents.coordinate, {
+        op: "message",
+        assignmentId: root.assignmentId,
+        turnToken: root.turnToken,
+        runId: child.runId,
+        text: "answer while question is queued",
+      }),
+    ).toMatchObject({ status: "accepted" });
+
+  // The mid-turn answer is still ready work on the child. Consume it before
+  // reporting that child's final outcome, just as its next real turn would.
+  for (const child of children.slice(0, 4)) {
+    await t.mutation(components.agevex.turns.slices.finish, {
+      assignmentId: child.assignmentId,
+      turnToken: child.turnToken,
+      errorCode: null,
+    });
+
+    const row = (await t.query(rawAssignment, { assignmentId: child.assignmentId }))!;
+
+    child.turnToken = row.turnToken!;
+
+    await t.mutation(components.agevex.turns.slices.claim, {
+      assignmentId: child.assignmentId,
+      turnToken: child.turnToken,
+    });
+  }
+
+  for (const [index, child] of children.entries())
+    await complete(t, child, `questioner final ${index}`);
+
+  const history = await owner(t).query(api.agents.messages, {
+    threadId: root.threadId,
+    paginationOpts: { cursor: null, numItems: 100 },
+  });
+
+  expect(history.page.filter((row) => row.origin === "result")).toHaveLength(5);
+  expect(JSON.stringify(history)).not.toContain("fifth question is full");
+
+  const runs = await owner(t).query(api.agents.delegations, {
+    threadId: root.threadId,
+    paginationOpts: { cursor: null, numItems: 20 },
+  });
+
+  expect(runs.page.map((run) => run.deliveryStatus)).toEqual(Array(5).fill("accepted"));
+  await owner(t).mutation(api.agents.cancel, { threadId: root.threadId });
+  await drain(t);
+});
+
+it("twenty user prompts fill the queue and its child result delivers beyond that limit", async () => {
+  const t = setup();
+  const root = await manualRoot(t);
+  const child = await launch(t, root, "Reviewer", { task: "bounded task" });
+
+  for (let index = 0; index <= 20; index++)
+    expect(
+      await owner(t).mutation(api.agents.send, {
+        threadId: root.threadId,
+        text: `user backlog ${index}`,
+        requestKey: `backlog-${index}`,
+      }),
+    ).toMatchObject(
+      index < 20 ? { status: "accepted" } : { status: "rejected", code: "QUEUE_FULL" },
+    );
+
+  const parent = (await t.query(rawAssignment, { assignmentId: root.assignmentId }))!;
+
+  // Acceptance also enforces the rule for callers using the component send
+  // endpoint directly (including open's shared acceptance path).
+  await expect(
+    t.mutation(components.agevex.turns.send.accept, {
+      subject: parent.subject,
+      agent: parent.agent,
+      threadId: root.threadId,
+      requestKey: "direct-overflow",
+      fingerprint: "direct-overflow",
+      promptMessageId: parent.promptMessageId!,
+      runTurn: parent.runTurn,
+      limits: parent.limits,
+    }),
+  ).rejects.toThrow("QUEUE_LIMIT");
+
+  await complete(t, child, "child result survives user backlog");
+
+  expect(await t.query(rawAssignment, { assignmentId: root.assignmentId })).toMatchObject({
+    queuedMessages: 21,
+  });
+
+  const history = await owner(t).query(api.agents.messages, {
+    threadId: root.threadId,
+    paginationOpts: { cursor: null, numItems: 100 },
+  });
+
+  expect(history.page.filter((row) => row.origin === "result")).toHaveLength(1);
+  expect(JSON.stringify(history)).toContain("child result survives user backlog");
+  expect(JSON.stringify(history)).not.toContain("user backlog 20");
+
+  expect(
+    (
+      await owner(t).query(api.agents.delegations, {
+        threadId: root.threadId,
+        paginationOpts: { cursor: null, numItems: 20 },
+      })
+    ).page[0].deliveryStatus,
+  ).toBe("accepted");
+
+  await owner(t).mutation(api.agents.cancel, { threadId: root.threadId });
+  await drain(t);
+});
+
+it("both results deliver beyond a full queue beside a reserved approval head", async () => {
+  const t = setup({ queueLength: 1 });
+  const root = await manualRoot(t);
+  const first = await launch(t, root, "Reviewer", { task: "first result" });
+  const second = await launch(t, root, "Reviewer", { task: "second result" });
+
+  await t.run(async (ctx) =>
+    ctx.runMutation(components.agevex.turns.slices.write, {
+      assignmentId: root.assignmentId,
+      executionId: root.turnToken,
+      cancellationEpoch: 0,
+      handle: await createFunctionHandle(components.agent.messages.addMessages),
+      nativeMessages: {
+        getMessages: await createFunctionHandle(components.agent.messages.getMessagesByIds),
+        finalizeMessage: await createFunctionHandle(components.agent.messages.finalizeMessage),
+      },
+      deferredTools: [],
+      args: {
+        threadId: root.threadId,
+        agentName: "Main",
+        failPendingSteps: false,
+        messages: [
+          {
+            message: {
+              role: "assistant",
+              content: [
+                { type: "tool-call", toolCallId: "resume", toolName: "askHuman", input: {} },
+                {
+                  type: "tool-approval-request",
+                  approvalId: "resume-approval",
+                  toolCallId: "resume",
+                },
+              ],
+            },
+          },
+        ],
+      },
+    }),
+  );
+
+  await owner(t).mutation(api.agents.respond, {
+    threadId: root.threadId,
+    approvalId: "resume-approval",
+    decision: { kind: "reject" },
+  });
+
+  await complete(t, first, "fits beside reserved approval head");
+  const resultMessageId = await nativeSave(t, second, "Reviewer", "wait for queue capacity");
+
+  await t.mutation(api.agents.coordinate, {
+    op: "settle",
+    assignmentId: second.assignmentId,
+    turnToken: second.turnToken,
+    runId: second.runId,
+    resultMessageId,
+    errorCode: null,
+  });
+
+  await t.mutation(api.agents.coordinate, {
+    op: "notify",
+    runId: second.runId,
+    deliveryToken: second.deliveryToken,
+  });
+
+  const parent = (await t.query(rawAssignment, { assignmentId: root.assignmentId }))!;
+
+  expect(parent).toMatchObject({ turnStatus: "queued", queuedMessages: 2 });
+  expect(parent.inboxId).toBe(parent.approvals!.inboxId);
+
+  expect(
+    (
+      await owner(t).query(api.agents.messages, {
+        threadId: root.threadId,
+        paginationOpts: { cursor: null, numItems: 20 },
+      })
+    ).page.filter((row) => row.origin === "result"),
+  ).toHaveLength(2);
+
+  await owner(t).mutation(api.agents.cancel, { threadId: root.threadId });
+  await drain(t);
+});
 
 // R2 removes held results: a child must finish its descendants before asking.
 it("ask_parent denies ASK_WITH_CHILDREN until Reviewer settles, then answers resume Builder", async () => {
@@ -903,12 +1206,12 @@ it("cancel at all maxima fences live loop → turn → Workpool dispatch chains 
   for (let i = 1; i < HOST_LIMITS.activeChildrenPerRoot.max; i++)
     descendants.push(await launch(t, parent, "Reviewer"));
 
-  for (const child of descendants) {
+  for (const child of [...descendants].reverse()) {
     expect(
       await t.mutation(api.agents.coordinate, {
         op: "message",
-        assignmentId: root.assignmentId,
-        turnToken: root.turnToken,
+        assignmentId: child === parent ? root.assignmentId : parent.assignmentId,
+        turnToken: child === parent ? root.turnToken : parent.turnToken,
         runId: child.runId,
         text: "resume through the real dispatch",
       }),
@@ -1149,9 +1452,9 @@ it("the 15-descendant cap includes grandchildren and cancel fences maximum queue
   ).toMatchObject({ status: "denied", code: "ACTIVE_LIMIT" });
 
   expect(await tree(t, root.threadId)).toHaveLength(HOST_LIMITS.activeChildrenPerRoot.max);
-  // All maxima are configured: 15 launches +83 parent messages +2 questions
-  // spend the entire 100-hop budget. Per-child messages remain capped at eight.
-  const followups = HOST_LIMITS.runHops.max - HOST_LIMITS.activeChildrenPerRoot.max - 2;
+  // Reserve 15 final results and two eventual answers as well as the
+  // 15 launches +66 messages +two questions: all 100 hops are committed.
+  const followups = HOST_LIMITS.runHops.max - 2 * HOST_LIMITS.activeChildrenPerRoot.max - 4;
 
   for (let i = 0; i < followups; i++) {
     const child = descendants[1 + Math.floor(i / 8)];
@@ -1159,8 +1462,8 @@ it("the 15-descendant cap includes grandchildren and cancel fences maximum queue
     expect(
       await t.mutation(api.agents.coordinate, {
         op: "message",
-        assignmentId: root.assignmentId,
-        turnToken: root.turnToken,
+        assignmentId: parent.assignmentId,
+        turnToken: parent.turnToken,
         runId: child.runId,
         text: "😀".repeat(HOST_LIMITS.taskLength.max / 2),
       }),
@@ -1181,9 +1484,9 @@ it("the 15-descendant cap includes grandchildren and cancel fences maximum queue
   expect(
     await t.mutation(api.agents.coordinate, {
       op: "message",
-      assignmentId: root.assignmentId,
-      turnToken: root.turnToken,
-      runId: descendants[descendants.length - 2].runId,
+      assignmentId: parent.assignmentId,
+      turnToken: parent.turnToken,
+      runId: descendants[descendants.length - 3].runId,
       text: "budget exhausted",
     }),
   ).toMatchObject({ status: "denied", code: "RUN_BUDGET" });
@@ -1581,19 +1884,19 @@ it("a valid native assistant message outside the recorded turn cannot impersonat
   await drain(t);
 });
 
-it("a joined group needs one queue slot and resumes after a full inbox without retrying native delivery", async () => {
+it("a joined group releases beyond a full message queue without retrying native delivery", async () => {
   const t = setup({ ...maxima, queueLength: 1 });
   const root = await manualRoot(t);
   const children = [];
-
-  for (let i = 0; i < 3; i++)
-    children.push(await launch(t, root, "Reviewer", { group: "small queue", wait: "all" }));
 
   await owner(t).mutation(api.agents.send, {
     threadId: root.threadId,
     text: "occupy the only slot",
     requestKey: "only-slot",
   });
+
+  for (let i = 0; i < 3; i++)
+    children.push(await launch(t, root, "Reviewer", { group: "small queue", wait: "all" }));
 
   for (const [i, child] of children.entries()) {
     const resultMessageId = await nativeSave(t, child, "Reviewer", `joined result ${i}`);
@@ -1632,6 +1935,10 @@ it("a joined group needs one queue slot and resumes after a full inbox without r
   let current = (await t.query(rawAssignment, {
     assignmentId: root.assignmentId,
   }))!;
+
+  // The user head is reserved, and the joined row is already ready behind
+  // it. Queue capacity cannot defer the join until the next claim.
+  expect(current.queuedMessages).toBe(1);
 
   await t.mutation(components.agevex.turns.slices.claim, {
     assignmentId: root.assignmentId,
@@ -1740,8 +2047,8 @@ it("cancel bounds every descendant inbox across fourteen independent maximum-lau
     }
   }
 
-  // 1 parent launch +49 grandchild launches +49 results +1 question =100
-  // hops in EACH of the fourteen budgets, rather than one shared counter.
+  // Each old budget has 50 launches +49 results +one reserved parent result.
+  // A new question also needs its answer and must not consume that last hop.
   for (const parent of parents.slice(0, -1))
     expect(
       await t.mutation(api.agents.coordinate, {
@@ -1750,9 +2057,19 @@ it("cancel bounds every descendant inbox across fourteen independent maximum-lau
         turnToken: parent.turnToken,
         question: "one final hop",
       }),
-    ).toMatchObject({ status: "accepted" });
+    ).toMatchObject({ status: "denied", code: "RUN_BUDGET" });
 
-  for (let i = parents.length - 1; i < HOST_LIMITS.queueLength.max; i++)
+  // The fresh fifteenth budget can still exercise open-question cancellation.
+  expect(
+    await t.mutation(api.agents.coordinate, {
+      op: "ask",
+      assignmentId: parents[parents.length - 1].assignmentId,
+      turnToken: parents[parents.length - 1].turnToken,
+      question: "fresh budget question",
+    }),
+  ).toMatchObject({ status: "accepted" });
+
+  for (let i = 1; i < HOST_LIMITS.queueLength.max; i++)
     await owner(t).mutation(api.agents.send, {
       threadId: root.threadId,
       text: "full backlog",
@@ -1843,13 +2160,13 @@ it("cancelled groups cannot hide a fresh run's deferred join behind their archiv
     turnToken: root.turnToken,
   });
 
-  const child = await launch(t, root, "Reviewer", { group: "fresh", wait: "all" });
-
   await owner(t).mutation(api.agents.send, {
     threadId: root.threadId,
     text: "fill queue",
     requestKey: "fill-fresh",
   });
+
+  const child = await launch(t, root, "Reviewer", { group: "fresh", wait: "all" });
 
   await t.mutation(components.agevex.subagents.settle.settle, {
     assignmentId: child.assignmentId,
@@ -2362,6 +2679,12 @@ it("fifteen older unreleased group members cannot hide a ready group in the same
   const root = await manualRoot(t);
   const old: Awaited<ReturnType<typeof launch>>[] = [];
 
+  await owner(t).mutation(api.agents.send, {
+    threadId: root.threadId,
+    text: "occupy the only slot",
+    requestKey: "history-full",
+  });
+
   for (let i = 0; i < HOST_LIMITS.activeChildrenPerRoot.max; i++)
     old.push(await launch(t, root, "Reviewer", { group: "older incomplete cohort", wait: "all" }));
 
@@ -2399,12 +2722,6 @@ it("fifteen older unreleased group members cannot hide a ready group in the same
   const fresh = await launch(t, root, "Reviewer", {
     group: "ready beyond the old prefix",
     wait: "all",
-  });
-
-  await owner(t).mutation(api.agents.send, {
-    threadId: root.threadId,
-    text: "occupy the only slot",
-    requestKey: "history-full",
   });
 
   await complete(t, fresh, "the ready group beyond fifteen historical rows");
@@ -2787,9 +3104,10 @@ it.each(
 );
 
 it.each(["each", "all"] as const)(
-  "a two-hop Main → Builder → Reviewer run settles every idle ancestor with wait=%s",
+  "a four-hop Main → Builder → Reviewer run settles every idle ancestor with wait=%s",
   async (wait) => {
-    const t = setup({ runHops: 2 });
+    // Two launches and their two final results each own a hop.
+    const t = setup({ runHops: 4 });
 
     v2.steps.Main = (n) => (n === 0 ? [delegate("Builder")] : text("Main finished"));
 
@@ -2910,12 +3228,13 @@ it.each([1, HOST_LIMITS.queueLength.max])(
       failed.push(run.runId);
     }
 
-    // All active slots and the root queue are filled at host maxima. The real
-    // inbox contains the counter plus one reserved head per queued assignment.
+    // Fill all active slots. A length-one root cannot open another user budget
+    // while any result is owed; larger queues retain independent budgets. The
+    // real inbox contains the counter plus one reserved head per assignment.
     const live = [];
 
     for (let i = 0; i < HOST_LIMITS.activeChildrenPerRoot.max; i++) {
-      if (i) {
+      if (i && queueLength > 1) {
         await t.mutation(components.agevex.turns.slices.finish, {
           assignmentId: root.assignmentId,
           turnToken: root.turnToken,
@@ -2965,12 +3284,21 @@ it.each([1, HOST_LIMITS.queueLength.max])(
       });
     }
 
+    const rootBacklog = (await t.query(rawAssignment, { assignmentId: root.assignmentId }))!
+      .queuedMessages;
+
+    const available = Math.max(0, queueLength - rootBacklog);
+
     for (let n = 0; n < queueLength; n++)
-      await owner(t).mutation(api.agents.send, {
-        threadId: root.threadId,
-        text: "root backlog",
-        requestKey: "backlog-" + n,
-      });
+      expect(
+        await owner(t).mutation(api.agents.send, {
+          threadId: root.threadId,
+          text: "root backlog",
+          requestKey: "backlog-" + n,
+        }),
+      ).toMatchObject(
+        n < available ? { status: "accepted" } : { status: "rejected", code: "QUEUE_FULL" },
+      );
 
     const inbox = (await queuedWork()).inbox;
 

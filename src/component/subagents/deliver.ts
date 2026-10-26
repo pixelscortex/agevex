@@ -91,7 +91,7 @@ export async function applyDelivery(ctx: MutationCtx, args: Delivery) {
 
   if (run.join) await deliverJoinMember(ctx, run, parent, root, args);
   else if (args.deliveryStatus === "accepted" && args.parentMessageId)
-    await enqueueResult(ctx, run, parent, root, args.parentMessageId);
+    await enqueueResult(ctx, run, parent, args.parentMessageId);
   else await wake(ctx, parent);
 
   return null;
@@ -161,16 +161,13 @@ async function deliverJoinMember(
 }
 
 /** An ordinary accepted result becomes one ready "result" row on the parent,
- * refused when the parent's ready queue is full. */
+ * regardless of the message queue limit: a launch already owes its result. */
 async function enqueueResult(
   ctx: MutationCtx,
   run: Doc<"subagentRuns">,
   parent: Doc<"assignments">,
-  root: Doc<"assignments">,
   parentMessageId: string,
 ) {
-  if (parent.queuedMessages >= root.limits.queueLength) throw new Error("QUEUE_LIMIT");
-
   await ctx.db.insert("inbox", {
     assignmentId: parent._id,
     messageId: parentMessageId,

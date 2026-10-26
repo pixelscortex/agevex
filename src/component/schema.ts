@@ -65,6 +65,12 @@ export const denialCode = v.union(
   v.literal("GROUP_CONFLICT"),
   v.literal("CHILD_FINISHED"),
   v.literal("MESSAGE_LIMIT"),
+  v.literal("MESSAGE_TOO_LARGE"),
+  v.literal("MESSAGE_EMPTY"),
+  v.literal("SIDE_RUN"),
+  v.literal("MESSAGE_RATE_LIMIT"),
+  v.literal("KEY_CONFLICT"),
+  v.literal("NO_PARENT"),
   v.literal("ASK_PENDING"),
   v.literal("ASK_WITH_CHILDREN"),
   v.literal("QUEUE_LIMIT"),
@@ -455,6 +461,10 @@ export default defineSchema({
     questionMessageId: v.optional(v.string()),
     // Read by interaction admission against limits.messagesPerChild.
     messagesReceived: v.number(),
+    // Read by parent-note admission; accepted notes alone spend this lifetime cap.
+    parentNotesSent: v.number(),
+    // Read by parent-note admission for the minimum interval; retries replay first.
+    lastParentNoteAt: v.optional(v.number()),
     childAssignmentId: v.optional(v.id("assignments")),
     childThreadId: v.optional(v.string()),
     // Recorded with native final saves, cleared on every new turn claim, and
@@ -497,7 +507,14 @@ export default defineSchema({
     .index("by_run", ["runId"])
     .index("by_root_sequence", ["rootAssignmentId", "sequence"])
     .index("by_root_status", ["rootAssignmentId", "status"])
-    .index("by_parent_delivery", ["actorAssignmentId", "side", "deliveryStatus"])
+    // Launch admission also pins the epoch to bound outstanding result work
+    // across request budgets without reading cancelled delivery history.
+    .index("by_parent_delivery", [
+      "actorAssignmentId",
+      "side",
+      "deliveryStatus",
+      "rootCancellationEpoch",
+    ])
     // Every reader pins actor, epoch and one join state: settlementBlocked
     // (open/sealed/ready), releaseGroups (ready [+ run]), sealGroups (open + run).
     .index("by_join", ["actorAssignmentId", "rootCancellationEpoch", "join", "parentRunId"])

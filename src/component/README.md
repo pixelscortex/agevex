@@ -40,6 +40,29 @@ cap (`sliceLimit`). `cancel` (`turns/cancel.ts`) fences the root and every
 live descendant in one transaction. `reconcile` re-rings a loop whose ping
 was lost.
 
+## Message queues and owed results
+
+Final results and wait-"all" joined releases always enter the ready queue, even
+above `queueLength`. User sends/open follow-ups, `message_parent` notes, questions
+and child follow-ups require `queuedMessages < queueLength`. Answers and approval
+continuations retain their control allowance. Launches reserve final-result hops;
+questions reserve answer hops. Ordinary messages cannot spend either reservation.
+
+`runLaunches` bounds launches per request and outstanding result work per assignment
+across requests. Launch admission counts pending deliveries, unreleased join members
+and ready result rows. Delivery replaces a pending result; a joined row replaces its
+members; claim removes rows. Only launch increases this total. The current-epoch
+`by_parent_delivery` range excludes cancelled history. This separate bound is needed
+because a root can accept new requests while older children still owe results.
+
+An assignment has at most `queueLength + runLaunches + 2` ready rows, including
+one answer and the reserved head or approval continuation. At all hard maxima,
+cancel covers `16 × 152 = 2,432` ready rows and 384 passive notes. It deduplicates
+at most `100 + 50 + 3 + 15 = 168` request budgets. Combining assignment state
+updates keeps the conservative read/write bounds at 15,560/11,356 KiB, below
+16 MiB; native bodies are never read by cancel. Claim consumes at most 152 rows
+including its head. The complete arithmetic is in `limits.ts`.
+
 ## Background text state and budgets
 
 No tables are added. Root `assignments` carry:
@@ -126,6 +149,9 @@ the definition, the schema and helpers used across folders and by the client.
 | `workflows/lanes.ts`      | Registered: root/child `Turn`/`Loop`/`Done`; lane managers and `startLoop`.                         |
 | `workflows/worker.ts`     | Registered: `dispatch`, one non-retried paid slice.                                                 |
 
+`subagents/parent-notes.ts` exposes `parentNoteContext` and `messageParent` for
+live-fenced progress admission and atomic native note/receipt publication.
+
 ## Tables
 
 | Table          | Written by                                                                                                                                                                                                                                                                                              | Notes                                           |
@@ -165,8 +191,12 @@ What each table and field holds:
 - `receipts`: one shared `(scope, key)` ledger for request acceptance and tools;
   input fingerprint, claim fence, lease, status, bounded result and TTL. Request
   results retain the original inbox position for typed duplicate receipts.
+  Parent-progress receipts retain only the exact native message id and input
+  hash, read before fresh-note caps to replay without another save or wake.
 - `subagentRuns`: child linkage, verified native result reference, root epoch,
   delivery capability, bounded transition history and the side-run marker.
+  `parentNotesSent` and `lastParentNoteAt` are read by progress admission for
+  the lifetime count and five-second rate caps. Bodies remain in native Agent.
   `by_result_message` supplies page-local result origins without reading history.
   That marker excludes side runs from the settlement fence and routes their
   replies to passive notes without spending model delegation hops.
