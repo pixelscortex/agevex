@@ -11,8 +11,8 @@ import { type DataModelFromSchemaDefinition } from "convex/server";
  */
 export declare const todoTables: {
     agevexTodos: import("convex/server").TableDefinition<import("convex/values").VObject<{
-        threadId: string;
         subject: string;
+        threadId: string;
         todos: {
             id: string;
             done: boolean;
@@ -34,14 +34,14 @@ export declare const todoTables: {
             text: import("convex/values").VString<string, "required">;
             done: import("convex/values").VBoolean<boolean, "required">;
         }, "required", "id" | "done" | "text">, "required">;
-    }, "required", "threadId" | "subject" | "todos">, {
+    }, "required", "subject" | "threadId" | "todos">, {
         by_owner_thread: ["subject", "threadId", "_creationTime"];
     }, {}, {}>;
 };
 declare const schema: import("convex/server").SchemaDefinition<{
     agevexTodos: import("convex/server").TableDefinition<import("convex/values").VObject<{
-        threadId: string;
         subject: string;
+        threadId: string;
         todos: {
             id: string;
             done: boolean;
@@ -63,7 +63,7 @@ declare const schema: import("convex/server").SchemaDefinition<{
             text: import("convex/values").VString<string, "required">;
             done: import("convex/values").VBoolean<boolean, "required">;
         }, "required", "id" | "done" | "text">, "required">;
-    }, "required", "threadId" | "subject" | "todos">, {
+    }, "required", "subject" | "threadId" | "todos">, {
         by_owner_thread: ["subject", "threadId", "_creationTime"];
     }, {}, {}>;
 }, true>;

@@ -11,6 +11,10 @@ export { fingerprint } from "./keys.js";
 import { scopedMeter } from "./slots.js";
 export { noopMeter } from "./slots.js";
 const ONCE = Symbol("agevex.once");
+/** Editing is a host capability explicitly granted by defineOnceTool's config. */
+export function editableApproval(declared) {
+    return !!declared[ONCE]?.approval?.editable;
+}
 /**
  * Opt a tool into the shared receipts ledger. Unknown outcomes are visible to
  * the model and never silently retried. Only repeatSafe permits reclaiming an
@@ -20,6 +24,7 @@ export function defineOnceTool(config) {
     return Object.assign(tool({
         description: config.description ?? config.name,
         inputSchema: config.input,
+        ...(config.approval ? { needsApproval: true } : {}),
         execute: async () => {
             throw new Error("MANAGED_TOOL_CONTEXT_REQUIRED");
         },

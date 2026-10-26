@@ -5,6 +5,7 @@
 // `ownedScope` enforces ownership and the persisted root/child role. Ordinary
 // endpoints use `ownedThread` to run host policy between those checks. `send`
 // supplies its request key and enforces ownership before its receipt lookup.
+import { ConvexError } from "convex/values";
 import { assertFact } from "../../component/facts.js";
 import { resolveLimits } from "../../component/limits.js";
 /**
@@ -42,7 +43,7 @@ export function createEndpointContext(component, config, settings) {
 export function rootAgent(ep, name) {
     const found = ep.config.agents.find((a) => a.name === name);
     if (!found)
-        throw new Error("UNKNOWN_AGENT");
+        throw new ConvexError({ code: "UNKNOWN_AGENT" });
     return found;
 }
 /**
@@ -54,14 +55,14 @@ export async function threadScope(ep, ctx, threadId) {
     assertFact(threadId, "threadId");
     const row = await ctx.runQuery(ep.component.turns.send.assignment, { threadId });
     if (!row)
-        throw new Error("FORBIDDEN");
+        throw new ConvexError({ code: "FORBIDDEN" });
     return row;
 }
 /** Enforce ownership and the persisted root/child role after host authorization. */
 export function ownedScope(ep, row, subject, operation) {
     assertFact(subject, "subject");
     if (subject !== row.subject)
-        throw new Error("FORBIDDEN");
+        throw new ConvexError({ code: "FORBIDDEN" });
     // Ownership permits reading a child's transcript and resolving its recorded
     // approvals. Child turns belong to the coordinator's bounded delegation and
     // settlement path; accepting a public send could start another child turn
@@ -77,10 +78,10 @@ export function ownedScope(ep, row, subject, operation) {
         operation !== "respond" &&
         operation !== "answer" &&
         row.root === false)
-        throw new Error("FORBIDDEN");
+        throw new ConvexError({ code: "FORBIDDEN" });
     const native = ep.managedAgents.get(row.agent);
     if (!native)
-        throw new Error("UNKNOWN_AGENT");
+        throw new ConvexError({ code: "UNKNOWN_AGENT" });
     return { ...row, native };
 }
 /** Authorize ordinary thread operations; send separately includes its request key. */

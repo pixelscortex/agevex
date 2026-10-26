@@ -10,6 +10,13 @@ export declare const writeArgs: {
     nativeStream: import("convex/values").VString<string | undefined, "optional">;
     trackUsage: import("convex/values").VBoolean<boolean | undefined, "optional">;
     deferredTools: import("convex/values").VArray<string[] | undefined, import("convex/values").VString<string, "required">, "optional">;
+    askUserTools: import("convex/values").VRecord<Record<string, {
+        answerSchema?: any;
+    }> | undefined, import("convex/values").VString<string, "required">, import("convex/values").VObject<{
+        answerSchema?: any;
+    }, {
+        answerSchema: import("convex/values").VAny<any, "optional", string>;
+    }, "required", "answerSchema" | `answerSchema.${string}`>, "optional", string>;
     nativeMessages: import("convex/values").VObject<{
         getMessages: string;
         finalizeMessage: string;

@@ -27,7 +27,9 @@ export const continueInput = z.strictObject({
  *
  * This only requests consent. It neither changes a budget nor bypasses core's
  * run limits. The native approval (answered through core `respond`) is the
- * consent record; denial never executes the tool. The host applies its own
+ * consent record; denial never executes the tool. Core respond accepts
+ * decision: { kind: "approve", edit?: { input } } or { kind: "reject", reason? };
+ * host consent wrappers must check decision.kind and response.replayed. The host applies its own
  * budget policy afterwards (see `resumeAfterBudgetStop`).
  */
 export function createContinueBudgetTool() {
@@ -43,9 +45,9 @@ export function createContinueBudgetTool() {
             return { approved: true, reason: input.reason };
         },
     });
+    approval.needsApproval = true;
     approval.description =
         "Ask the user for explicit permission to spend more before the budget runs out. Approval is consent only; the host changes its budget policy separately.";
-    approval.needsApproval = true;
     return approval;
 }
 /** Model-facing consent statement placed at the start of the fresh request. */

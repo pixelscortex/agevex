@@ -76,6 +76,7 @@ export declare const fillRunSettings: import("convex/server").RegisteredMutation
     settings?: {
         agent: string;
         settings: {
+            askUser?: boolean | undefined;
             mode: "stream" | "generate";
             maxOutputTokens: number;
             modelTimeoutMs: number;

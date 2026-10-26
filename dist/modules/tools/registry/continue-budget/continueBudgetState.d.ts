@@ -1,6 +1,6 @@
 /**
  * Record explicit consent. Call it from the host mutation that ALSO calls core
- * `respond({ approved: true })`, with the thread's current `activity.runId`, so
+ * `respond({ decision: { kind: "approve" } })`, with the thread's current `activity.runId`, so
  * both commit or neither does. The run id binds the consent to the run that was
  * active when the user approved: an approval from one run can never unlock the
  * stop of another. Call it ONLY when `respond` returned `replayed: false`: a
@@ -12,8 +12,8 @@
  */
 export declare const record: import("convex/server").RegisteredMutation<"internal", {
     runId: string;
-    threadId: string;
     subject: string;
+    threadId: string;
     approvalId: string;
 }, Promise<null>>;
 /**
@@ -27,8 +27,8 @@ export declare const record: import("convex/server").RegisteredMutation<"interna
  */
 export declare const consume: import("convex/server").RegisteredMutation<"internal", {
     runId: string;
-    threadId: string;
     subject: string;
+    threadId: string;
     approvalId: string;
 }, Promise<boolean>>;
 /**
@@ -43,8 +43,8 @@ export declare const consume: import("convex/server").RegisteredMutation<"intern
  * `done: false` when more remain. Nothing reschedules itself.
  */
 export declare const cleanup: import("convex/server").RegisteredMutation<"internal", {
-    threadId: string;
     subject: string;
+    threadId: string;
 }, Promise<{
     deleted: number;
     done: boolean;

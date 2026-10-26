@@ -55,9 +55,10 @@ export function deferredToolNames(agent: ManagedAgent): string[] {
  *
  * Rejected explicitly rather than tolerated: an unknown or name-only subagent
  * entry, a duplicate name bound to two different agents, a cycle, depth greater
- * than the host's maxDepth, a child that is also a public root, and any host
+ * than the host's maxDepth, and any host
  * tool colliding with a reserved managed collaboration name. A child object does not need to be
- * listed in `Registration.agents`, so a shared definition stays non-public.
+ * listed in `Registration.agents`. Explicitly listing a shared object exposes it
+ * as a root too; assignment role, never registration names, gates interactions.
  */
 export function resolveGraph(config: Registration): Graph {
   const graph: Graph = { byName: new Map(), children: new Map(), edges: new Map() };
@@ -68,7 +69,7 @@ export function resolveGraph(config: Registration): Graph {
   const maxDepth = resolveLimits(config.limits).maxDepth;
 
   function visit(agent: ManagedAgent, depth: number, path: Set<ManagedAgent>) {
-    assertAgentFits(graph, roots, maxDepth, agent, depth, path);
+    assertAgentFits(graph, maxDepth, agent, depth, path);
 
     graph.byName.set(agent.name, agent);
 
@@ -101,12 +102,11 @@ export function resolveGraph(config: Registration): Graph {
  * Reject one visited agent that cannot join the graph at this position.
  *
  * Checked before the agent is recorded, in a fixed order so the thrown code is
- * deterministic: shape, sandbox opt-in, name fact, cycle, depth, root reuse,
+ * deterministic: shape, sandbox opt-in, name fact, cycle, depth,
  * duplicate name, reserved tool names.
  */
 function assertAgentFits(
   graph: Graph,
-  roots: ReadonlySet<string>,
   maxDepth: number,
   agent: ManagedAgent,
   depth: number,
@@ -122,8 +122,6 @@ function assertAgentFits(
   if (path.has(agent)) throw new Error("SUBAGENT_CYCLE");
 
   if (depth > maxDepth) throw new Error("SUBAGENT_DEPTH");
-
-  if (depth && roots.has(agent.name)) throw new Error("ROOT_AS_CHILD");
 
   const existing = graph.byName.get(agent.name);
 

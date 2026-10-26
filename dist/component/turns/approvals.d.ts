@@ -1,5 +1,6 @@
 import { type MutationCtx } from "../_generated/server.js";
 import type { Id } from "../_generated/dataModel.js";
+import { type Decision } from "../../shared/decisions.js";
 /** `replayed` is true when an identical retry was served from the response
  * receipt, so a host can tell a first decision from a replay (e.g. to record
  * single-use consent only once). */
@@ -18,8 +19,8 @@ export declare function respondToApproval(ctx: MutationCtx, args: {
     assignmentId: Id<"assignments">;
     subject: string;
     approvalId: string;
-    approved: boolean;
-    reason?: string;
+    decision: Decision;
+    effectiveInput?: unknown;
     addMessages: string;
 }): Promise<{
     messageId: string;
@@ -37,7 +38,7 @@ export declare function answerDeferredCall(ctx: MutationCtx, args: {
     assignmentId: Id<"assignments">;
     subject: string;
     toolCallId: string;
-    text: string;
+    value: unknown;
 }): Promise<{
     messageId: string;
     replayed: boolean;
@@ -47,12 +48,20 @@ export declare function answerDeferredCall(ctx: MutationCtx, args: {
  * See `respondToApproval`.
  */
 export declare const respond: import("convex/server").RegisteredMutation<"public", {
-    reason?: string | undefined;
-    assignmentId: import("convex/values").GenericId<"assignments">;
+    effectiveInput?: any;
     subject: string;
     addMessages: string;
+    assignmentId: import("convex/values").GenericId<"assignments">;
     approvalId: string;
-    approved: boolean;
+    decision: {
+        reason?: string | undefined;
+        kind: "reject";
+    } | {
+        edit?: {
+            input: any;
+        } | undefined;
+        kind: "approve";
+    };
 }, Promise<{
     messageId: string;
     replayed: boolean;
@@ -60,9 +69,9 @@ export declare const respond: import("convex/server").RegisteredMutation<"public
 /** Save a deferred native result and release its continuation atomically.
  * See `answerDeferredCall` for the read budget. */
 export declare const answer: import("convex/server").RegisteredMutation<"public", {
-    text: string;
-    assignmentId: import("convex/values").GenericId<"assignments">;
+    value: any;
     subject: string;
+    assignmentId: import("convex/values").GenericId<"assignments">;
     toolCallId: string;
 }, Promise<{
     messageId: string;

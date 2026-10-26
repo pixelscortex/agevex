@@ -4,7 +4,7 @@ export declare function titleEndpoint(ep: EndpointContext): import("convex/serve
     threadId: string;
 }, Promise<{
     text: string | null;
-    source: "user" | "auto" | null;
+    source: "auto" | "user" | null;
     version: number;
 }>>;
 /** Repeated identical renames replay once; conflicting versions never overwrite. */

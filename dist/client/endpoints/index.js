@@ -8,6 +8,7 @@
 // `activity`, `runTree`, `delegations`). Every endpoint authorizes through the host
 // `authorize` contract before touching component state.
 import { createEndpointContext } from "./access.js";
+import { pendingApprovalsEndpoint } from "./pending.js";
 import { answerEndpoint, cancelEndpoint, respondEndpoint } from "./controls.js";
 import { activityEndpoint, delegationsEndpoint, messagesEndpoint, runTreeEndpoint, streamsEndpoint, } from "./reads.js";
 import { titleEndpoint, renameEndpoint, summaryEndpoint, summarizeEndpoint } from "./text.js";
@@ -23,6 +24,7 @@ export function authorizedEndpoints(component, config, settings) {
         open: openEndpoint(ep),
         send: sendEndpoint(ep),
         respond: respondEndpoint(ep),
+        pendingApprovals: pendingApprovalsEndpoint(ep),
         answer: answerEndpoint(ep),
         cancel: cancelEndpoint(ep),
         messages: messagesEndpoint(ep),

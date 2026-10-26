@@ -13,6 +13,7 @@
 import type { MessageDoc } from "@convex-dev/agent";
 import type { MutationCtx } from "../_generated/server.js";
 import type { Doc } from "../_generated/dataModel.js";
+import type { AskUserMetadata } from "../../shared/tool-markers.js";
 type PauseRequest = NonNullable<Doc<"assignments">["approvals"]>["requests"][number];
 /** The requests one native save opened, the first message that holds one, and
  * the raw count (duplicates included) that decides whether the turn pauses. */
@@ -33,9 +34,9 @@ export declare function countPauseRequests(messages: {
  * response. Mutates `row.approvals` so later steps see the remainder. */
 export declare function retireConsumedApprovals(ctx: MutationCtx, row: Doc<"assignments">, messages: MessageDoc[]): Promise<void>;
 /** Collect the approval requests, then the deferred calls, that a native save
- * opened. Pure apart from hashing; throws if a deferred call's id/name could
- * not fit in one bounded cancellation cleanup document. */
-export declare function collectPause(messages: MessageDoc[], deferredTools: Set<string>): Promise<Pause>;
+ * opened, saving their compact proposals in the same transaction. Throws if a
+ * deferred call's id/name cannot fit in one bounded cleanup document. */
+export declare function collectPause(ctx: MutationCtx, messages: MessageDoc[], deferredTools: Set<string>, askTools?: Record<string, AskUserMetadata>): Promise<Pause>;
 /** Suspend the running turn on the requests just recorded: close the slice,
  * insert the continuation row at the head of the ready FIFO, and commit
  * `approvalBlocked` with the request hashes and native handles. */

@@ -17,6 +17,8 @@ export class Agent extends NativeBase {
     name;
     /** Default model for tool-free background text tasks. */
     textModel;
+    /** Captured in the run snapshot; default resolves from the persisted assignment role. */
+    askUser;
     run;
     sandbox;
     subagents;
@@ -33,6 +35,7 @@ export class Agent extends NativeBase {
         super(component, options);
         this.name = options.name;
         this.textModel = options.languageModel;
+        this.askUser = options.askUser;
         this.run = options.run;
         this.sandbox = options.sandbox ?? false;
         this.subagents = options.subagents ?? [];

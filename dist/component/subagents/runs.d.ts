@@ -19,30 +19,29 @@ export declare function runById(ctx: QueryCtx | MutationCtx, runId: string): Pro
     join?: "open" | "sealed" | "ready" | "joined" | undefined;
     startedAt?: number | undefined;
     side?: boolean | undefined;
-    childThreadId?: string | undefined;
-    resultMessageId?: string | undefined;
     group?: string | undefined;
     questionMessageId?: string | undefined;
     childAssignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
+    childThreadId?: string | undefined;
     childResultMessageId?: string | undefined;
     lastTurnResult?: {
         messageId?: string | undefined;
         errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
     } | undefined;
+    resultMessageId?: string | undefined;
     resultSequence?: number | undefined;
     events: {
-        phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
-        at: number;
         errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
+        at: number;
+        phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
     }[];
     status: "failed" | "running" | "completed" | "queued" | "asking";
     agent: string;
     sequence: number;
     runId: string;
     errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
-    deliveryStatus: "failed" | "pending" | "accepted" | "blocked";
-    createdAt: number;
     rootAssignmentId: import("convex/values").GenericId<"assignments">;
+    deliveryStatus: "failed" | "pending" | "accepted" | "blocked";
     rootCancellationEpoch: number;
     parentRunId: import("convex/values").GenericId<"runs">;
     dedupKey: string;
@@ -53,6 +52,7 @@ export declare function runById(ctx: QueryCtx | MutationCtx, runId: string): Pro
     actorAgent: string;
     deliveryToken: string;
     coordinateHandle: string;
+    createdAt: number;
 } | null>;
 /** True once a run reached a terminal status. Delivery may still be pending. */
 export declare function isSettled(status: SubagentRun["status"]): status is "failed" | "completed";
@@ -60,9 +60,9 @@ export declare function isSettled(status: SubagentRun["status"]): status is "fai
  * run row stays inside its <=4 KiB envelope (limits.ts cancel budget). Every
  * writer of `events` goes through here (reserve's first "queued" aside). */
 export declare function appendEvent(events: SubagentRun["events"], phase: SubagentRun["events"][number]["phase"], at: number, errorCode: SubagentRun["errorCode"]): {
-    phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
-    at: number;
     errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
+    at: number;
+    phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
 }[];
 /** The public `finishedAt` / `deliveryAt` of a run, derived from its event
  * ring rather than stored a second time.
@@ -94,30 +94,29 @@ export declare function groupMembers(ctx: QueryCtx | MutationCtx, cohort: {
     join?: "open" | "sealed" | "ready" | "joined" | undefined;
     startedAt?: number | undefined;
     side?: boolean | undefined;
-    childThreadId?: string | undefined;
-    resultMessageId?: string | undefined;
     group?: string | undefined;
     questionMessageId?: string | undefined;
     childAssignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
+    childThreadId?: string | undefined;
     childResultMessageId?: string | undefined;
     lastTurnResult?: {
         messageId?: string | undefined;
         errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
     } | undefined;
+    resultMessageId?: string | undefined;
     resultSequence?: number | undefined;
     events: {
-        phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
-        at: number;
         errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
+        at: number;
+        phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
     }[];
     status: "failed" | "running" | "completed" | "queued" | "asking";
     agent: string;
     sequence: number;
     runId: string;
     errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
-    deliveryStatus: "failed" | "pending" | "accepted" | "blocked";
-    createdAt: number;
     rootAssignmentId: import("convex/values").GenericId<"assignments">;
+    deliveryStatus: "failed" | "pending" | "accepted" | "blocked";
     rootCancellationEpoch: number;
     parentRunId: import("convex/values").GenericId<"runs">;
     dedupKey: string;
@@ -128,6 +127,7 @@ export declare function groupMembers(ctx: QueryCtx | MutationCtx, cohort: {
     actorAgent: string;
     deliveryToken: string;
     coordinateHandle: string;
+    createdAt: number;
 }[]>;
 /** The queued row `subagents.launch.reserve` inserts once admission passed. The
  * native child thread does not exist yet; `attach` adds the child linkage.

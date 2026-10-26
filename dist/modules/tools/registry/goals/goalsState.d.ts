@@ -1,14 +1,14 @@
 /** Read only this owner/thread goal when goal_check runs; no transcript or history scan. */
 export declare const check: import("convex/server").RegisteredQuery<"internal", {
-    threadId: string;
     subject: string;
+    threadId: string;
 }, Promise<{
     goal: string | null;
 }>>;
 /** Validate and replace the thread goal atomically; the indexed read fences concurrent inserts. */
 export declare const set: import("convex/server").RegisteredMutation<"internal", {
-    threadId: string;
     subject: string;
+    threadId: string;
     goal: string;
 }, Promise<{
     goal: string;

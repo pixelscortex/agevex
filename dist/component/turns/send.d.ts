@@ -71,6 +71,7 @@ export declare const acceptArgs: {
     settings: import("convex/values").VArray<{
         agent: string;
         settings: {
+            askUser?: boolean | undefined;
             mode: "stream" | "generate";
             maxOutputTokens: number;
             modelTimeoutMs: number;
@@ -80,6 +81,7 @@ export declare const acceptArgs: {
     }[] | undefined, import("convex/values").VObject<{
         agent: string;
         settings: {
+            askUser?: boolean | undefined;
             mode: "stream" | "generate";
             maxOutputTokens: number;
             modelTimeoutMs: number;
@@ -89,19 +91,21 @@ export declare const acceptArgs: {
     }, {
         agent: import("convex/values").VString<string, "required">;
         settings: import("convex/values").VObject<{
+            askUser?: boolean | undefined;
             mode: "stream" | "generate";
             maxOutputTokens: number;
             modelTimeoutMs: number;
             toolTimeoutMs: number;
             stepsPerTurn: number;
         }, {
+            askUser: import("convex/values").VBoolean<boolean | undefined, "optional">;
             mode: import("convex/values").VUnion<"stream" | "generate", [import("convex/values").VLiteral<"stream", "required">, import("convex/values").VLiteral<"generate", "required">], "required", never>;
             maxOutputTokens: import("convex/values").VFloat64<number, "required">;
             modelTimeoutMs: import("convex/values").VFloat64<number, "required">;
             toolTimeoutMs: import("convex/values").VFloat64<number, "required">;
             stepsPerTurn: import("convex/values").VFloat64<number, "required">;
-        }, "required", "mode" | "maxOutputTokens" | "modelTimeoutMs" | "toolTimeoutMs" | "stepsPerTurn">;
-    }, "required", "agent" | "settings" | "settings.mode" | "settings.maxOutputTokens" | "settings.modelTimeoutMs" | "settings.toolTimeoutMs" | "settings.stepsPerTurn">, "optional">;
+        }, "required", "askUser" | "mode" | "maxOutputTokens" | "modelTimeoutMs" | "toolTimeoutMs" | "stepsPerTurn">;
+    }, "required", "agent" | "settings" | "settings.askUser" | "settings.mode" | "settings.maxOutputTokens" | "settings.modelTimeoutMs" | "settings.toolTimeoutMs" | "settings.stepsPerTurn">, "optional">;
     textConfig: import("convex/values").VObject<{
         everyTurns?: number | undefined;
         worker: string;
@@ -177,8 +181,8 @@ export declare const lookupReceipt: import("convex/server").RegisteredQuery<"pub
  * write would commit an orphan prompt rather than rolling the transaction back.
  */
 export declare const admission: import("convex/server").RegisteredQuery<"public", {
-    threadId: string;
     subject: string;
+    threadId: string;
 }, Promise<{
     status: "rejected";
     code: "CANCELLED" | "RECOVERY_REQUIRED";
@@ -201,6 +205,7 @@ export declare const accept: import("convex/server").RegisteredMutation<"public"
     settings?: {
         agent: string;
         settings: {
+            askUser?: boolean | undefined;
             mode: "stream" | "generate";
             maxOutputTokens: number;
             modelTimeoutMs: number;
@@ -225,8 +230,6 @@ export declare const accept: import("convex/server").RegisteredMutation<"public"
     } | undefined;
     trackContext?: boolean | undefined;
     agent: string;
-    threadId: string;
-    subject: string;
     limits: {
         attachmentBytes: number;
         continuesPerRun: number;
@@ -244,6 +247,8 @@ export declare const accept: import("convex/server").RegisteredMutation<"public"
         slicesPerTurn: number;
         leaseMs: number;
     };
+    subject: string;
+    threadId: string;
     runTurn: string;
     promptMessageId: string;
     fingerprint: string;
@@ -267,8 +272,8 @@ export declare const accept: import("convex/server").RegisteredMutation<"public"
 }>>;
 /** The thread's public status for its owner. */
 export declare const activity: import("convex/server").RegisteredQuery<"public", {
-    threadId: string;
     subject: string;
+    threadId: string;
 }, Promise<{
     assignmentId: import("convex/values").GenericId<"assignments">;
     threadId: string;

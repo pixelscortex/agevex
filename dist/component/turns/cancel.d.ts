@@ -12,8 +12,8 @@ export declare function cancelRoot(ctx: MutationCtx, args: {
 /** Cancel sets fences before canceling Workflow, which cannot abort actions.
  * See `cancelRoot`. */
 export declare const cancel: import("convex/server").RegisteredMutation<"public", {
-    assignmentId: import("convex/values").GenericId<"assignments">;
     subject: string;
+    assignmentId: import("convex/values").GenericId<"assignments">;
 }, Promise<{
     threadId: string;
     agent: string;

@@ -51,8 +51,8 @@ export declare const cleanupBatch: import("convex/server").RegisteredMutation<"i
 /** The only stale write allowed: close this execution/epoch's own placeholder. */
 export declare const close: import("convex/server").RegisteredMutation<"internal", {
     epoch: number;
-    assignmentId: import("convex/values").GenericId<"assignments">;
     messageId: string;
     executionId: string;
+    assignmentId: import("convex/values").GenericId<"assignments">;
 }, Promise<null>>;
 export {};

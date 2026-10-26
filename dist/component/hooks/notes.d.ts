@@ -525,9 +525,9 @@ export declare const addNote: import("convex/server").RegisteredMutation<"public
 export declare const beforeTurnNote: import("convex/server").RegisteredMutation<"public", {
     from: string;
     text: string;
-    assignmentId: import("convex/values").GenericId<"assignments">;
     getMessages: string;
     addMessages: string;
+    assignmentId: import("convex/values").GenericId<"assignments">;
 }, Promise<void>>;
 /** Delete a cancelled epoch's unsaved note bodies; one finite job per
  * assignment, scheduled by turns.cancel.cancel. */

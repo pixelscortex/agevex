@@ -52,7 +52,7 @@ export declare const routing: import("convex/server").RegisteredQuery<"public", 
 } | null>>;
 /** The routing owner finished its decision: release routing ownership. */
 export declare const completeRouting: import("convex/server").RegisteredMutation<"public", {
-    assignmentId: import("convex/values").GenericId<"assignments">;
     executionId: string;
+    assignmentId: import("convex/values").GenericId<"assignments">;
     agentIndex: number;
 }, Promise<null>>;

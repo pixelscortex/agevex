@@ -23,6 +23,7 @@ export declare const vClaim: import("convex/values").VObject<{
     modelId?: string | undefined;
     agent: string;
     settings: {
+        askUser?: boolean | undefined;
         mode: "stream" | "generate";
         maxOutputTokens: number;
         modelTimeoutMs: number;
@@ -30,21 +31,21 @@ export declare const vClaim: import("convex/values").VObject<{
         stepsPerTurn: number;
     };
     runId: string;
-    assignmentId: string;
-    threadId: string;
-    subject: string;
     turn: number;
+    subject: string;
+    threadId: string;
     cancellationEpoch: number;
     promptMessageId: string;
     turnOrigin: "user" | "subagent_result";
+    assignmentId: string;
     isTurnStart: boolean;
     isRunStart: boolean;
     subagent: {
         agent: string;
         runId: string;
         subject: string;
-        childThreadId: string;
         rootAssignmentId: string;
+        childThreadId: string;
         actorAgent: string;
         deliveryToken: string;
         rootAgent: string;
@@ -55,18 +56,20 @@ export declare const vClaim: import("convex/values").VObject<{
     runId: import("convex/values").VString<string, "required">;
     modelId: import("convex/values").VString<string | undefined, "optional">;
     settings: import("convex/values").VObject<{
+        askUser?: boolean | undefined;
         mode: "stream" | "generate";
         maxOutputTokens: number;
         modelTimeoutMs: number;
         toolTimeoutMs: number;
         stepsPerTurn: number;
     }, {
+        askUser: import("convex/values").VBoolean<boolean | undefined, "optional">;
         mode: import("convex/values").VUnion<"stream" | "generate", [import("convex/values").VLiteral<"stream", "required">, import("convex/values").VLiteral<"generate", "required">], "required", never>;
         maxOutputTokens: import("convex/values").VFloat64<number, "required">;
         modelTimeoutMs: import("convex/values").VFloat64<number, "required">;
         toolTimeoutMs: import("convex/values").VFloat64<number, "required">;
         stepsPerTurn: import("convex/values").VFloat64<number, "required">;
-    }, "required", "mode" | "maxOutputTokens" | "modelTimeoutMs" | "toolTimeoutMs" | "stepsPerTurn">;
+    }, "required", "askUser" | "mode" | "maxOutputTokens" | "modelTimeoutMs" | "toolTimeoutMs" | "stepsPerTurn">;
     isTurnStart: import("convex/values").VBoolean<boolean, "required">;
     isRunStart: import("convex/values").VBoolean<boolean, "required">;
     turn: import("convex/values").VFloat64<number, "required">;
@@ -76,8 +79,8 @@ export declare const vClaim: import("convex/values").VObject<{
         agent: string;
         runId: string;
         subject: string;
-        childThreadId: string;
         rootAssignmentId: string;
+        childThreadId: string;
         actorAgent: string;
         deliveryToken: string;
         rootAgent: string;
@@ -86,8 +89,8 @@ export declare const vClaim: import("convex/values").VObject<{
         agent: string;
         runId: string;
         subject: string;
-        childThreadId: string;
         rootAssignmentId: string;
+        childThreadId: string;
         actorAgent: string;
         deliveryToken: string;
         rootAgent: string;
@@ -102,12 +105,12 @@ export declare const vClaim: import("convex/values").VObject<{
         rootThreadId: import("convex/values").VString<string, "required">;
         childThreadId: import("convex/values").VString<string, "required">;
         deliveryToken: import("convex/values").VString<string, "required">;
-    }, "required", "agent" | "runId" | "subject" | "childThreadId" | "rootAssignmentId" | "actorAgent" | "deliveryToken" | "rootAgent" | "rootThreadId">], "required", "agent" | "runId" | "subject" | "childThreadId" | "rootAssignmentId" | "actorAgent" | "deliveryToken" | "rootAgent" | "rootThreadId">;
+    }, "required", "agent" | "runId" | "subject" | "rootAssignmentId" | "childThreadId" | "actorAgent" | "deliveryToken" | "rootAgent" | "rootThreadId">], "required", "agent" | "runId" | "subject" | "rootAssignmentId" | "childThreadId" | "actorAgent" | "deliveryToken" | "rootAgent" | "rootThreadId">;
     assignmentId: import("convex/values").VString<string, "required">;
     threadId: import("convex/values").VString<string, "required">;
     subject: import("convex/values").VString<string, "required">;
     agent: import("convex/values").VString<string, "required">;
-}, "required", "agent" | "settings" | "settings.mode" | "settings.maxOutputTokens" | "settings.modelTimeoutMs" | "settings.toolTimeoutMs" | "settings.stepsPerTurn" | "runId" | "assignmentId" | "threadId" | "subject" | "turn" | "cancellationEpoch" | "promptMessageId" | "turnOrigin" | "modelId" | "isTurnStart" | "isRunStart" | "subagent" | "subagent.agent" | "subagent.runId" | "subagent.subject" | "subagent.childThreadId" | "subagent.rootAssignmentId" | "subagent.actorAgent" | "subagent.deliveryToken" | "subagent.rootAgent" | "subagent.rootThreadId">;
+}, "required", "agent" | "settings" | "settings.askUser" | "settings.mode" | "settings.maxOutputTokens" | "settings.modelTimeoutMs" | "settings.toolTimeoutMs" | "settings.stepsPerTurn" | "runId" | "turn" | "subject" | "threadId" | "cancellationEpoch" | "promptMessageId" | "turnOrigin" | "assignmentId" | "modelId" | "isTurnStart" | "isRunStart" | "subagent" | "subagent.agent" | "subagent.runId" | "subagent.subject" | "subagent.rootAssignmentId" | "subagent.childThreadId" | "subagent.actorAgent" | "subagent.deliveryToken" | "subagent.rootAgent" | "subagent.rootThreadId">;
 type ClaimArgs = {
     assignmentId: Id<"assignments">;
     turnToken: string;

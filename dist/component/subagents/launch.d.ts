@@ -131,8 +131,8 @@ export declare const attachArgs: {
 export declare function attachChild(ctx: MutationCtx, args: ObjectType<typeof attachArgs>): Promise<null>;
 /** Trusted root context for a running turn that wants to delegate. */
 export declare const delegateContext: import("convex/server").RegisteredQuery<"public", {
-    assignmentId: import("convex/values").GenericId<"assignments">;
     turnToken: string;
+    assignmentId: import("convex/values").GenericId<"assignments">;
 }, Promise<{
     rootAssignmentId: import("convex/values").GenericId<"assignments">;
     rootThreadId: string;
@@ -147,11 +147,11 @@ export declare const reserve: import("convex/server").RegisteredMutation<"public
     group?: string | undefined;
     wait?: "each" | "all" | undefined;
     agent: string;
-    assignmentId: import("convex/values").GenericId<"assignments">;
     turnToken: string;
+    assignmentId: import("convex/values").GenericId<"assignments">;
+    toolCallId: string;
     payloadFingerprint: string;
     coordinateHandle: string;
-    toolCallId: string;
 }, Promise<{
     kind: "denied";
     code: "STALE_TURN";
@@ -202,7 +202,7 @@ export declare const attach: import("convex/server").RegisteredMutation<"public"
     } | undefined;
     trackContext?: boolean | undefined;
     runId: string;
-    childThreadId: string;
     promptMessageId: string;
+    childThreadId: string;
 }, Promise<null>>;
 export {};

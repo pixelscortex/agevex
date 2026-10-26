@@ -22,6 +22,7 @@ export const RUN_LIMITS = {
 };
 /** Policy returned by claim and consumed by generation and its watchdog. */
 export const runSettings = v.object({
+    askUser: v.optional(v.boolean()),
     mode: v.union(v.literal("stream"), v.literal("generate")),
     maxOutputTokens: v.number(),
     modelTimeoutMs: v.number(),
@@ -35,6 +36,7 @@ export function resolveRunSettings(input = {}) {
     if (!input || typeof input !== "object" || Array.isArray(input))
         throw new Error("INVALID_RUN_SETTINGS");
     const result = {
+        ...(input.askUser !== undefined ? { askUser: input.askUser } : {}),
         mode: input.mode === undefined ? "stream" : input.mode,
         maxOutputTokens: input.maxOutputTokens === undefined
             ? RUN_LIMITS.maxOutputTokens.default
@@ -43,6 +45,8 @@ export function resolveRunSettings(input = {}) {
         toolTimeoutMs: input.toolTimeoutMs === undefined ? RUN_LIMITS.toolTimeoutMs.default : input.toolTimeoutMs,
         stepsPerTurn: input.stepsPerTurn === undefined ? RUN_LIMITS.stepsPerTurn.default : input.stepsPerTurn,
     };
+    if (input.askUser !== undefined && typeof input.askUser !== "boolean")
+        throw new Error("INVALID_ASK_USER_POLICY");
     if (result.mode !== "stream" && result.mode !== "generate")
         throw new Error("INVALID_RUN_SETTINGS");
     for (const key of [

@@ -8,8 +8,8 @@ export declare const snapshot: import("convex/values").VObject<{
     modelId?: string | undefined;
     agent: string;
     runId: import("convex/values").GenericId<"runs">;
-    threadId: string;
     subject: string;
+    threadId: string;
     refs: {
         order: number;
         bytes: number;
@@ -51,7 +51,7 @@ export declare const snapshot: import("convex/values").VObject<{
         stepOrder: import("convex/values").VFloat64<number, "required">;
         sequence: import("convex/values").VFloat64<number, "required">;
     }, "optional", "order" | "id" | "stepOrder" | "sequence">;
-}, "required", "agent" | "runId" | "through" | "through.order" | "through.id" | "through.stepOrder" | "through.sequence" | "threadId" | "subject" | "modelId" | "refs" | "previous">;
+}, "required", "agent" | "runId" | "through" | "through.order" | "through.id" | "through.stepOrder" | "through.sequence" | "subject" | "threadId" | "modelId" | "refs" | "previous">;
 /** Cheap preflight before task preparation; dispatch repeats it atomically. */
 export declare const active: import("convex/server").RegisteredQuery<"public", {
     kind: "title" | "summary";
@@ -119,7 +119,7 @@ export declare const view: import("convex/server").RegisteredQuery<"public", {
     assignmentId: import("convex/values").GenericId<"assignments">;
 }, Promise<{
     version: number;
-    source: "user" | "auto" | null;
+    source: "auto" | "user" | null;
     summary: {
         text: string;
         through: {

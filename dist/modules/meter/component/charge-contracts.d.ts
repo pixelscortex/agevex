@@ -62,7 +62,7 @@ export declare const createArgs: import("convex/values").VObject<{
         model: import("convex/values").VString<string | undefined, "optional">;
         purpose: import("convex/values").VUnion<"agent" | "title" | "summary" | "tool" | "hook" | undefined, [import("convex/values").VLiteral<"agent", "required">, import("convex/values").VLiteral<"hook", "required">, import("convex/values").VLiteral<"tool", "required">, import("convex/values").VLiteral<"title", "required">, import("convex/values").VLiteral<"summary", "required">], "optional", never>;
         nodeId: import("convex/values").VString<string | undefined, "optional">;
-    }, "required", "agent" | "runId" | "threadId" | "subject" | "model" | "rootThreadId" | "purpose" | "nodeId">;
+    }, "required", "agent" | "runId" | "subject" | "threadId" | "model" | "rootThreadId" | "purpose" | "nodeId">;
     provider: import("convex/values").VString<string, "required">;
     breakdowns: import("convex/values").VArray<("thread.model" | "thread.provider" | "subject.agent" | "subject.model" | "subject.provider")[], import("convex/values").VUnion<"thread.model" | "thread.provider" | "subject.agent" | "subject.model" | "subject.provider", [import("convex/values").VLiteral<"thread.model", "required">, import("convex/values").VLiteral<"thread.provider", "required">, import("convex/values").VLiteral<"subject.agent", "required">, import("convex/values").VLiteral<"subject.model", "required">, import("convex/values").VLiteral<"subject.provider", "required">], "required", never>, "required">;
     profile: import("convex/values").VString<string | undefined, "optional">;
@@ -100,7 +100,7 @@ export declare const createArgs: import("convex/values").VObject<{
         deliver: import("convex/values").VString<string | undefined, "optional">;
         maxAttempts: import("convex/values").VFloat64<number, "required">;
     }, "required", "maxAttempts" | "deliver" | "lookup">;
-}, "required", "status" | "key" | "reason" | "provider" | "source" | "jobs" | "attribution" | "requestId" | "credits" | "nanos" | "breakdowns" | "profile" | "quantity" | "tokens" | "attribution.agent" | "attribution.runId" | "attribution.threadId" | "attribution.subject" | "attribution.model" | "attribution.rootThreadId" | "attribution.purpose" | "attribution.nodeId" | "tokens.inputTokens" | "tokens.outputTokens" | "maxThreadCharges" | "sinks" | "jobs.maxAttempts" | "jobs.deliver" | "jobs.lookup">;
+}, "required", "status" | "key" | "reason" | "provider" | "source" | "jobs" | "attribution" | "requestId" | "credits" | "nanos" | "breakdowns" | "profile" | "quantity" | "tokens" | "attribution.agent" | "attribution.runId" | "attribution.subject" | "attribution.threadId" | "attribution.model" | "attribution.rootThreadId" | "attribution.purpose" | "attribution.nodeId" | "tokens.inputTokens" | "tokens.outputTokens" | "maxThreadCharges" | "sinks" | "jobs.maxAttempts" | "jobs.deliver" | "jobs.lookup">;
 export type CreateArgs = Infer<typeof createArgs>;
 /** Existing update arguments shared by its registration and transaction handler. */
 export declare const updateArgs: import("convex/values").VObject<{

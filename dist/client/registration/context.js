@@ -23,7 +23,10 @@ export function createRuntimeContext(component, config) {
     const limits = resolveLimits(config.limits);
     const graph = resolveGraph(config);
     const settings = [...graph.byName].map(([name, agent]) => {
-        const resolved = resolveRunSettings(agent.run);
+        const resolved = resolveRunSettings({
+            ...agent.run,
+            ...(agent.askUser !== undefined ? { askUser: agent.askUser } : {}),
+        });
         // Retain the existing host default while allowing an explicit per-agent
         // step count. Resolve the raw run object first so malformed JS fails too.
         if (agent.run?.stepsPerTurn === undefined)

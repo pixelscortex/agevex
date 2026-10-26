@@ -1,7 +1,7 @@
 /** Internal only: callers must originate in core's authorized ToolContext. */
 export declare const read: import("convex/server").RegisteredQuery<"internal", {
-    threadId: string;
     subject: string;
+    threadId: string;
 }, Promise<{
     todos: {
         id: string;
@@ -11,8 +11,8 @@ export declare const read: import("convex/server").RegisteredQuery<"internal", {
 }>>;
 /** Replace the bounded list inside core's fenced tool mutation; indexed lookup serializes first writes. */
 export declare const write: import("convex/server").RegisteredMutation<"internal", {
-    threadId: string;
     subject: string;
+    threadId: string;
     todos: {
         id: string;
         done: boolean;

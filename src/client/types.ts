@@ -98,6 +98,7 @@ export type AuthorizationScope =
   | { operation: "sandbox"; agent: string; threadId: string; subject: string; runId: string }
   | {
       operation:
+        | "pendingApprovals"
         | "title"
         | "rename"
         | "summary"
@@ -288,6 +289,7 @@ export type CoordinateResult =
 export type ManagedAgent = {
   name: string;
   textModel?: Extract<LanguageModel, string | LanguageModelV4>;
+  askUser?: boolean;
   run?: RunSettings;
   sandbox?: boolean;
   hooks?: AgentHooks;

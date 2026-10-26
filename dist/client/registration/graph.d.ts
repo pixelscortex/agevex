@@ -23,8 +23,9 @@ export declare function deferredToolNames(agent: ManagedAgent): string[];
  *
  * Rejected explicitly rather than tolerated: an unknown or name-only subagent
  * entry, a duplicate name bound to two different agents, a cycle, depth greater
- * than the host's maxDepth, a child that is also a public root, and any host
+ * than the host's maxDepth, and any host
  * tool colliding with a reserved managed collaboration name. A child object does not need to be
- * listed in `Registration.agents`, so a shared definition stays non-public.
+ * listed in `Registration.agents`. Explicitly listing a shared object exposes it
+ * as a root too; assignment role, never registration names, gates interactions.
  */
 export declare function resolveGraph(config: Registration): Graph;

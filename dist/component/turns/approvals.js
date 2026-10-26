@@ -3,6 +3,8 @@ import { mutation } from "../_generated/server.js";
 import { LIMITS } from "../limits.js";
 import { approvalKey, saveResponses } from "../approvals.js";
 import { armPurge, findReceipt, newDoneReceipt } from "../receipts/records.js";
+import { canonicalJson, decisionValidator, assertJson, validateAnswer, } from "../../shared/decisions.js";
+import { readPending } from "./decision-reads.js";
 import { wake } from "./wake.js";
 /** `replayed` is true when an identical retry was served from the response
  * receipt, so a host can tell a first decision from a replay (e.g. to record
@@ -17,6 +19,10 @@ export const vResponseResult = v.object({ messageId: v.string(), replayed: v.boo
  * adds one expiry-head read and one receipt write of the same bound: <256 KiB
  * total additional I/O, independent of the <=16 calls in a pause. Together with
  * answer's <13 MiB native/readiness budget below, this remains <13.25 MiB.
+ * Edited host responses additionally read <=2*32 KiB assignments, <=2*32 KiB
+ * exact proposals and <=2*64 KiB receipts; the <=33 KiB effective-input receipt
+ * includes one bounded call id, input and hashes. Even overcounting these reads
+ * and writes together keeps the response path below 13.8 MiB <16 MiB.
  */
 async function responseReceipt(ctx, scope, threadId, callId, payload) {
     const key = await approvalKey(JSON.stringify([threadId, callId]));
@@ -30,7 +36,7 @@ async function saveResponseReceipt(ctx, receipt, messageId) {
     // Keep the same result bound and seven-day purge lifecycle as tool/request
     // receipts. The saved native message remains the only copy of the payload.
     if (getConvexSize(messageId) > LIMITS.receiptResultBytes)
-        throw new Error("RESULT_TOO_LARGE");
+        throw new ConvexError({ code: "RESULT_TOO_LARGE" });
     await armPurge(ctx);
     await ctx.db.insert("receipts", newDoneReceipt({ ...receipt, result: messageId }));
 }
@@ -42,7 +48,7 @@ export async function respondToApproval(ctx, args) {
     const row = await ctx.db.get("assignments", args.assignmentId);
     if (!row || row.subject !== args.subject)
         throw new ConvexError({ code: "FORBIDDEN" });
-    const receipt = await responseReceipt(ctx, "respond", row.threadId, args.approvalId, JSON.stringify([args.approved, args.reason ?? null]));
+    const receipt = await responseReceipt(ctx, "respond", row.threadId, args.approvalId, canonicalJson(args.decision));
     if (receipt.messageId !== undefined)
         return { messageId: receipt.messageId, replayed: true };
     const approvals = row.approvals;
@@ -53,16 +59,26 @@ export async function respondToApproval(ctx, args) {
         throw new ConvexError({ code: "APPROVAL_NOT_FOUND" });
     if (decision.resolved)
         throw new ConvexError({ code: "APPROVAL_ALREADY_RESOLVED" });
+    const annotation = await recordEffectiveInput(ctx, row, decision, args);
     const messageId = await saveResponses(ctx, { ...row, messageId: decision.messageId, addMessages: args.addMessages }, [
         {
             approvalId: args.approvalId,
-            approved: args.approved,
-            ...(args.reason !== undefined ? { reason: args.reason } : {}),
+            approved: args.decision.kind === "approve",
+            ...(args.decision.kind === "reject" && args.decision.reason !== undefined
+                ? { reason: args.decision.reason }
+                : {}),
+            ...(annotation?.edited ? { reason: JSON.stringify({ agevexApproval: annotation }) } : {}),
             ...(decision.providerExecuted ? { providerExecuted: true } : {}),
         },
     ]);
     await saveResponseReceipt(ctx, receipt, messageId);
-    const requests = approvals.requests.map((request, offset) => offset === index ? { ...request, resolved: true } : request);
+    const requests = approvals.requests.map((request, offset) => offset === index
+        ? {
+            ...request,
+            resolved: true,
+            ...(args.effectiveInput !== undefined ? { effective: true } : {}),
+        }
+        : request);
     await ctx.db.patch("assignments", row._id, { approvals: { ...approvals, requests } });
     if (requests.every((request) => request.resolved)) {
         await ctx.db.patch("inbox", approvals.inboxId, { messageId });
@@ -83,11 +99,10 @@ export async function answerDeferredCall(ctx, args) {
     const row = await ctx.db.get("assignments", args.assignmentId);
     if (!row || row.subject !== args.subject)
         throw new ConvexError({ code: "FORBIDDEN" });
-    if (!args.text.trim() || args.text.length > LIMITS.messageLength)
-        throw new ConvexError({ code: "INVALID_MESSAGE" });
+    assertJson(args.value);
     if (!args.toolCallId || args.toolCallId.length > LIMITS.nativeCallIdLength)
         throw new ConvexError({ code: "TOOL_CALL_NOT_FOUND" });
-    const receipt = await responseReceipt(ctx, "answer", row.threadId, args.toolCallId, args.text);
+    const receipt = await responseReceipt(ctx, "answer", row.threadId, args.toolCallId, canonicalJson(args.value));
     if (receipt.messageId !== undefined)
         return { messageId: receipt.messageId, replayed: true };
     const pause = row.approvals;
@@ -101,13 +116,16 @@ export async function answerDeferredCall(ctx, args) {
         pause.cleanupPending ||
         pause.epoch !== row.cancellationEpoch)
         throw new ConvexError({ code: "TOOL_CALL_NOT_FOUND" });
-    const toolName = await deferredToolName(ctx, row, pause, request.messageId, args.toolCallId);
+    const call = await readPending(ctx, row, request);
+    validateAnswer(args.value, call.schema);
+    const toolName = call.tool;
     const messageId = await saveToolResult(ctx, row, pause, request.messageId, {
         toolCallId: args.toolCallId,
         toolName,
-        text: args.text,
+        value: args.value,
     });
     await saveResponseReceipt(ctx, receipt, messageId);
+    await ctx.db.delete("receipts", request.proposalId);
     const remaining = pause.requests.filter((_, offset) => offset !== index);
     const approvals = remaining.length ? { ...pause, requests: remaining } : undefined;
     const blocked = remaining.some((entry) => !entry.resolved);
@@ -118,20 +136,6 @@ export async function answerDeferredCall(ctx, args) {
     if (!blocked)
         await wake(ctx, { ...row, approvals, approvalBlocked: false });
     return { messageId, replayed: false };
-}
-/** Read the exact recorded assistant message and return the tool name of the
- * still-open, host-executed call being answered. One exact <=1 MiB read. */
-async function deferredToolName(ctx, row, pause, messageId, toolCallId) {
-    const [message] = await ctx.runQuery(pause.getMessages, { messageIds: [messageId] });
-    const content = message?.message?.content;
-    const call = message?.threadId === row.threadId &&
-        message.message?.role === "assistant" &&
-        Array.isArray(content)
-        ? content.find((part) => part.type === "tool-call" && part.toolCallId === toolCallId)
-        : undefined;
-    if (!call || call.type !== "tool-call" || call.providerExecuted)
-        throw new ConvexError({ code: "TOOL_CALL_NOT_FOUND" });
-    return call.toolName;
 }
 /** Agent 0.7.7 example/convex/chat/human.ts:135-148 uses exactly this
  * native tool-result. Our mutation also releases the existing inbox anchor.
@@ -153,7 +157,7 @@ async function saveToolResult(ctx, row, pause, promptMessageId, result) {
                             type: "tool-result",
                             toolCallId: result.toolCallId,
                             toolName: result.toolName,
-                            output: { type: "text", value: result.text },
+                            output: { type: "json", value: result.value },
                         },
                     ],
                 },
@@ -171,8 +175,8 @@ export const respond = mutation({
         assignmentId: v.id("assignments"),
         subject: v.string(),
         approvalId: v.string(),
-        approved: v.boolean(),
-        reason: v.optional(v.string()),
+        decision: decisionValidator,
+        effectiveInput: v.optional(v.any()),
         addMessages: v.string(),
     },
     returns: vResponseResult,
@@ -185,8 +189,36 @@ export const answer = mutation({
         assignmentId: v.id("assignments"),
         subject: v.string(),
         toolCallId: v.string(),
-        text: v.string(),
+        value: v.any(),
     },
     returns: vResponseResult,
     handler: (ctx, args) => answerDeferredCall(ctx, args),
 });
+/** Bind immutable input to the exact call before the native decision can wake it.
+ * One <=32 KiB proposal plus <=64 KiB receipt. Original proposal is never rewritten.
+ */
+async function recordEffectiveInput(ctx, row, request, args) {
+    if (args.decision.kind !== "approve")
+        return;
+    if (args.decision.edit && (request.providerExecuted || args.effectiveInput === undefined))
+        throw new ConvexError({ code: "APPROVAL_NOT_EDITABLE" });
+    if (args.effectiveInput === undefined)
+        return;
+    assertJson(args.effectiveInput);
+    const call = await readPending(ctx, row, request);
+    const annotation = {
+        edited: !!args.decision.edit,
+        toolCallId: call.toolCallId,
+        input: args.effectiveInput,
+        originalHash: await approvalKey(canonicalJson(call.input)),
+        effectiveHash: await approvalKey(canonicalJson(args.effectiveInput)),
+    };
+    await armPurge(ctx);
+    await ctx.db.insert("receipts", newDoneReceipt({
+        scope: "approved-input",
+        key: await approvalKey(JSON.stringify([row.threadId, call.toolCallId])),
+        fingerprint: annotation.effectiveHash,
+        result: annotation,
+    }));
+    return annotation;
+}

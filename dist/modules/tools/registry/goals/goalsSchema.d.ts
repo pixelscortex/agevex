@@ -13,27 +13,27 @@ import { type DataModelFromSchemaDefinition } from "convex/server";
  */
 export declare const goalTables: {
     agevexGoals: import("convex/server").TableDefinition<import("convex/values").VObject<{
-        threadId: string;
         subject: string;
+        threadId: string;
         goal: string;
     }, {
         subject: import("convex/values").VString<string, "required">;
         threadId: import("convex/values").VString<string, "required">;
         goal: import("convex/values").VString<string, "required">;
-    }, "required", "threadId" | "subject" | "goal">, {
+    }, "required", "subject" | "threadId" | "goal">, {
         by_owner_thread: ["subject", "threadId", "_creationTime"];
     }, {}, {}>;
 };
 declare const schema: import("convex/server").SchemaDefinition<{
     agevexGoals: import("convex/server").TableDefinition<import("convex/values").VObject<{
-        threadId: string;
         subject: string;
+        threadId: string;
         goal: string;
     }, {
         subject: import("convex/values").VString<string, "required">;
         threadId: import("convex/values").VString<string, "required">;
         goal: import("convex/values").VString<string, "required">;
-    }, "required", "threadId" | "subject" | "goal">, {
+    }, "required", "subject" | "threadId" | "goal">, {
         by_owner_thread: ["subject", "threadId", "_creationTime"];
     }, {}, {}>;
 }, true>;

@@ -32,12 +32,12 @@ export declare function stageContinuation(ctx: MutationCtx, args: {
 export declare const hookState: import("convex/server").RegisteredMutation<"public", {
     model?: string | undefined;
     complete?: boolean | undefined;
-    assignmentId: import("convex/values").GenericId<"assignments">;
     executionId: string;
+    assignmentId: import("convex/values").GenericId<"assignments">;
 }, Promise<number>>;
 /** Stage an afterTurn hook's continuation prompt for the next slice. */
 export declare const continueAdmission: import("convex/server").RegisteredMutation<"public", {
-    assignmentId: import("convex/values").GenericId<"assignments">;
     executionId: string;
+    assignmentId: import("convex/values").GenericId<"assignments">;
     prompt: string;
 }, Promise<import("convex/values").GenericId<"inbox"> | null>>;

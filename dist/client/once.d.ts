@@ -20,6 +20,8 @@ export type ToolContext = {
     signal: AbortSignal;
     meter: ScopedMeter;
 };
+/** Editing is a host capability explicitly granted by defineOnceTool's config. */
+export declare function editableApproval(declared: Tool): boolean;
 type OnceConfig<Input, Output> = {
     name: string;
     /** What the model reads when choosing the tool; defaults to `name`. */
@@ -27,6 +29,9 @@ type OnceConfig<Input, Output> = {
     input: z.ZodType<Input>;
     run: (input: Input, context: ToolContext) => Promise<Output> | Output;
     key?: (input: Input, context: ToolContext) => string;
+    approval?: {
+        editable: true;
+    };
     repeatSafe?: boolean;
     leaseMs?: number;
 };

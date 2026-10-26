@@ -8,34 +8,34 @@ export declare const runStatus: import("convex/values").VUnion<"failed" | "runni
 export declare const deliveryStatus: import("convex/values").VUnion<"failed" | "pending" | "accepted" | "blocked", [import("convex/values").VLiteral<"pending", "required">, import("convex/values").VLiteral<"accepted", "required">, import("convex/values").VLiteral<"failed", "required">, import("convex/values").VLiteral<"blocked", "required">], "required", never>;
 export declare const runPhase: import("convex/values").VUnion<"failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked", [import("convex/values").VLiteral<"queued", "required">, import("convex/values").VLiteral<"started", "required">, import("convex/values").VLiteral<"completed", "required">, import("convex/values").VLiteral<"failed", "required">, import("convex/values").VLiteral<"result_accepted", "required">, import("convex/values").VLiteral<"delivery_failed", "required">, import("convex/values").VLiteral<"delivery_blocked", "required">], "required", never>;
 export declare const runEvent: import("convex/values").VObject<{
-    phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
-    at: number;
     errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
+    at: number;
+    phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
 }, {
     phase: import("convex/values").VUnion<"failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked", [import("convex/values").VLiteral<"queued", "required">, import("convex/values").VLiteral<"started", "required">, import("convex/values").VLiteral<"completed", "required">, import("convex/values").VLiteral<"failed", "required">, import("convex/values").VLiteral<"result_accepted", "required">, import("convex/values").VLiteral<"delivery_failed", "required">, import("convex/values").VLiteral<"delivery_blocked", "required">], "required", never>;
     at: import("convex/values").VFloat64<number, "required">;
     errorCode: import("convex/values").VUnion<"BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null, [import("convex/values").VNull<null, "required">, import("convex/values").VLiteral<"BUDGET_EXCEEDED", "required">, import("convex/values").VLiteral<"HOOK_FAILED", "required">, import("convex/values").VLiteral<"GENERATION_FAILED", "required">, import("convex/values").VLiteral<"RUN_TIMEOUT", "required">, import("convex/values").VLiteral<"SLICE_LIMIT", "required">, import("convex/values").VLiteral<"APPROVAL_LIMIT", "required">, import("convex/values").VLiteral<"CLEANUP_FAILED", "required">, import("convex/values").VLiteral<"AUTHORIZATION_DENIED", "required">, import("convex/values").VLiteral<"EXECUTION_AMBIGUOUS", "required">, import("convex/values").VLiteral<"EMPTY_RESULT", "required">, import("convex/values").VLiteral<"RESULT_UNVERIFIED", "required">, import("convex/values").VLiteral<"ROOT_UNAVAILABLE", "required">, import("convex/values").VLiteral<"DELIVERY_FAILED", "required">], "required", never>;
-}, "required", "phase" | "at" | "errorCode">;
+}, "required", "errorCode" | "at" | "phase">;
 export declare const receipt: import("convex/values").VUnion<{
     status: "accepted";
-    position: number;
-    assignmentId: string;
     threadId: string;
+    assignmentId: string;
+    position: number;
     receiptId: string;
 } | {
     status: "duplicate";
-    position: number;
-    assignmentId: string;
     threadId: string;
+    assignmentId: string;
+    position: number;
     receiptId: string;
 } | {
     status: "rejected";
-    code: "KEY_CONFLICT" | "QUEUE_FULL" | "CANCELLED" | "INVALID_MESSAGE" | "INVALID_REQUEST_KEY" | "UNKNOWN_AGENT" | "INVALID_MODELS" | "ATTACHMENT_LIMIT" | "RECOVERY_REQUIRED";
+    code: "INVALID_MESSAGE" | "KEY_CONFLICT" | "QUEUE_FULL" | "CANCELLED" | "INVALID_REQUEST_KEY" | "UNKNOWN_AGENT" | "INVALID_MODELS" | "ATTACHMENT_LIMIT" | "RECOVERY_REQUIRED";
 }, [import("convex/values").VObject<{
     status: "accepted";
-    position: number;
-    assignmentId: string;
     threadId: string;
+    assignmentId: string;
+    position: number;
     receiptId: string;
 }, {
     status: import("convex/values").VLiteral<"accepted", "required">;
@@ -43,11 +43,11 @@ export declare const receipt: import("convex/values").VUnion<{
     assignmentId: import("convex/values").VString<string, "required">;
     threadId: import("convex/values").VString<string, "required">;
     receiptId: import("convex/values").VString<string, "required">;
-}, "required", "status" | "position" | "assignmentId" | "threadId" | "receiptId">, import("convex/values").VObject<{
+}, "required", "status" | "threadId" | "assignmentId" | "position" | "receiptId">, import("convex/values").VObject<{
     status: "duplicate";
-    position: number;
-    assignmentId: string;
     threadId: string;
+    assignmentId: string;
+    position: number;
     receiptId: string;
 }, {
     status: import("convex/values").VLiteral<"duplicate", "required">;
@@ -55,13 +55,13 @@ export declare const receipt: import("convex/values").VUnion<{
     assignmentId: import("convex/values").VString<string, "required">;
     threadId: import("convex/values").VString<string, "required">;
     receiptId: import("convex/values").VString<string, "required">;
-}, "required", "status" | "position" | "assignmentId" | "threadId" | "receiptId">, import("convex/values").VObject<{
+}, "required", "status" | "threadId" | "assignmentId" | "position" | "receiptId">, import("convex/values").VObject<{
     status: "rejected";
-    code: "KEY_CONFLICT" | "QUEUE_FULL" | "CANCELLED" | "INVALID_MESSAGE" | "INVALID_REQUEST_KEY" | "UNKNOWN_AGENT" | "INVALID_MODELS" | "ATTACHMENT_LIMIT" | "RECOVERY_REQUIRED";
+    code: "INVALID_MESSAGE" | "KEY_CONFLICT" | "QUEUE_FULL" | "CANCELLED" | "INVALID_REQUEST_KEY" | "UNKNOWN_AGENT" | "INVALID_MODELS" | "ATTACHMENT_LIMIT" | "RECOVERY_REQUIRED";
 }, {
     status: import("convex/values").VLiteral<"rejected", "required">;
-    code: import("convex/values").VUnion<"KEY_CONFLICT" | "QUEUE_FULL" | "CANCELLED" | "INVALID_MESSAGE" | "INVALID_REQUEST_KEY" | "UNKNOWN_AGENT" | "INVALID_MODELS" | "ATTACHMENT_LIMIT" | "RECOVERY_REQUIRED", [import("convex/values").VLiteral<"KEY_CONFLICT", "required">, import("convex/values").VLiteral<"QUEUE_FULL", "required">, import("convex/values").VLiteral<"CANCELLED", "required">, import("convex/values").VLiteral<"INVALID_MESSAGE", "required">, import("convex/values").VLiteral<"INVALID_REQUEST_KEY", "required">, import("convex/values").VLiteral<"UNKNOWN_AGENT", "required">, import("convex/values").VLiteral<"INVALID_MODELS", "required">, import("convex/values").VLiteral<"ATTACHMENT_LIMIT", "required">, import("convex/values").VLiteral<"RECOVERY_REQUIRED", "required">], "required", never>;
-}, "required", "status" | "code">], "required", "status" | "position" | "assignmentId" | "threadId" | "receiptId" | "code">;
+    code: import("convex/values").VUnion<"INVALID_MESSAGE" | "KEY_CONFLICT" | "QUEUE_FULL" | "CANCELLED" | "INVALID_REQUEST_KEY" | "UNKNOWN_AGENT" | "INVALID_MODELS" | "ATTACHMENT_LIMIT" | "RECOVERY_REQUIRED", [import("convex/values").VLiteral<"KEY_CONFLICT", "required">, import("convex/values").VLiteral<"QUEUE_FULL", "required">, import("convex/values").VLiteral<"CANCELLED", "required">, import("convex/values").VLiteral<"INVALID_MESSAGE", "required">, import("convex/values").VLiteral<"INVALID_REQUEST_KEY", "required">, import("convex/values").VLiteral<"UNKNOWN_AGENT", "required">, import("convex/values").VLiteral<"INVALID_MODELS", "required">, import("convex/values").VLiteral<"ATTACHMENT_LIMIT", "required">, import("convex/values").VLiteral<"RECOVERY_REQUIRED", "required">], "required", never>;
+}, "required", "status" | "code">], "required", "status" | "threadId" | "assignmentId" | "code" | "position" | "receiptId">;
 export declare const subagentCounts: import("convex/values").VObject<{
     active: number;
     history: number;
@@ -74,12 +74,12 @@ export declare const subagentCounts: import("convex/values").VObject<{
 export declare const activity: import("convex/values").VObject<{
     runId?: string | undefined;
     agent: string;
-    errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
-    assignmentId: string;
-    threadId: string;
-    assignmentStatus: "open";
     turnStatus: "idle" | "running" | "queued" | "recovery_required";
+    errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
+    threadId: string;
     queuedMessages: number;
+    assignmentId: string;
+    assignmentStatus: "open";
     subagents: {
         active: number;
         history: number;
@@ -106,38 +106,38 @@ export declare const activity: import("convex/values").VObject<{
         history: import("convex/values").VFloat64<number, "required">;
         total: import("convex/values").VFloat64<number, "required">;
     }, "required", "active" | "history" | "total">;
-}, "required", "agent" | "runId" | "errorCode" | "assignmentId" | "threadId" | "assignmentStatus" | "turnStatus" | "queuedMessages" | "subagents" | "subagents.active" | "subagents.history" | "subagents.total">;
+}, "required", "agent" | "runId" | "turnStatus" | "errorCode" | "threadId" | "queuedMessages" | "assignmentId" | "assignmentStatus" | "subagents" | "subagents.active" | "subagents.history" | "subagents.total">;
 export declare const scope: import("convex/values").VObject<{
     agent: string;
-    assignmentId: string;
-    threadId: string;
     subject: string;
+    threadId: string;
+    assignmentId: string;
 }, {
     assignmentId: import("convex/values").VString<string, "required">;
     threadId: import("convex/values").VString<string, "required">;
     subject: import("convex/values").VString<string, "required">;
     agent: import("convex/values").VString<string, "required">;
-}, "required", "agent" | "assignmentId" | "threadId" | "subject">;
+}, "required", "agent" | "subject" | "threadId" | "assignmentId">;
 export declare const subagentRun: import("convex/values").VObject<{
     startedAt: number | null;
     events: {
         agent: string;
         runId: string;
-        phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
-        at: number;
         errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
+        at: number;
+        phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
     }[];
     status: "failed" | "running" | "completed" | "queued" | "asking";
     agent: string;
     runId: string;
     errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
+    deliveryStatus: "failed" | "pending" | "accepted" | "blocked";
     side: boolean;
     childThreadId: string | null;
-    deliveryStatus: "failed" | "pending" | "accepted" | "blocked";
     createdAt: number;
+    resultMessageId: string | null;
     finishedAt: number | null;
     deliveryAt: number | null;
-    resultMessageId: string | null;
 }, {
     runId: import("convex/values").VString<string, "required">;
     side: import("convex/values").VBoolean<boolean, "required">;
@@ -154,23 +154,23 @@ export declare const subagentRun: import("convex/values").VObject<{
     events: import("convex/values").VArray<{
         agent: string;
         runId: string;
-        phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
-        at: number;
         errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
+        at: number;
+        phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
     }[], import("convex/values").VObject<{
         agent: string;
         runId: string;
-        phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
-        at: number;
         errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
+        at: number;
+        phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
     }, {
         runId: import("convex/values").VString<string, "required">;
         agent: import("convex/values").VString<string, "required">;
         phase: import("convex/values").VUnion<"failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked", [import("convex/values").VLiteral<"queued", "required">, import("convex/values").VLiteral<"started", "required">, import("convex/values").VLiteral<"completed", "required">, import("convex/values").VLiteral<"failed", "required">, import("convex/values").VLiteral<"result_accepted", "required">, import("convex/values").VLiteral<"delivery_failed", "required">, import("convex/values").VLiteral<"delivery_blocked", "required">], "required", never>;
         at: import("convex/values").VFloat64<number, "required">;
         errorCode: import("convex/values").VUnion<"BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null, [import("convex/values").VNull<null, "required">, import("convex/values").VLiteral<"BUDGET_EXCEEDED", "required">, import("convex/values").VLiteral<"HOOK_FAILED", "required">, import("convex/values").VLiteral<"GENERATION_FAILED", "required">, import("convex/values").VLiteral<"RUN_TIMEOUT", "required">, import("convex/values").VLiteral<"SLICE_LIMIT", "required">, import("convex/values").VLiteral<"APPROVAL_LIMIT", "required">, import("convex/values").VLiteral<"CLEANUP_FAILED", "required">, import("convex/values").VLiteral<"AUTHORIZATION_DENIED", "required">, import("convex/values").VLiteral<"EXECUTION_AMBIGUOUS", "required">, import("convex/values").VLiteral<"EMPTY_RESULT", "required">, import("convex/values").VLiteral<"RESULT_UNVERIFIED", "required">, import("convex/values").VLiteral<"ROOT_UNAVAILABLE", "required">, import("convex/values").VLiteral<"DELIVERY_FAILED", "required">], "required", never>;
-    }, "required", "agent" | "runId" | "phase" | "at" | "errorCode">, "required">;
-}, "required", "startedAt" | "events" | "status" | "agent" | "runId" | "errorCode" | "side" | "childThreadId" | "deliveryStatus" | "createdAt" | "finishedAt" | "deliveryAt" | "resultMessageId">;
+    }, "required", "agent" | "runId" | "errorCode" | "at" | "phase">, "required">;
+}, "required", "startedAt" | "events" | "status" | "agent" | "runId" | "errorCode" | "deliveryStatus" | "side" | "childThreadId" | "createdAt" | "resultMessageId" | "finishedAt" | "deliveryAt">;
 export declare const vPaginationResult: <T extends Validator<unknown, "required", string>>(item: T) => import("convex/values").VObject<{
     page: T["type"][];
     continueCursor: string;
@@ -217,7 +217,7 @@ declare const _default: import("convex/server").SchemaDefinition<{
             getThread: string;
         } | undefined;
         titleVersion?: number | undefined;
-        titleSource?: "user" | "auto" | undefined;
+        titleSource?: "auto" | "user" | undefined;
         titleTask?: {
             dispatched?: boolean | undefined;
             again?: import("convex/values").GenericId<"runs"> | undefined;
@@ -278,8 +278,8 @@ declare const _default: import("convex/server").SchemaDefinition<{
         }[] | undefined;
         reviewed?: {
             agent: string;
-            at: number;
             turn: number;
+            at: number;
             boundary: number;
         }[] | undefined;
         routingAgentIndex?: number | undefined;
@@ -319,8 +319,10 @@ declare const _default: import("convex/server").SchemaDefinition<{
             requests: {
                 deferred?: boolean | undefined;
                 resolved?: true | undefined;
+                effective?: boolean | undefined;
                 key: string;
                 messageId: string;
+                proposalId: import("convex/values").GenericId<"receipts">;
                 providerExecuted: boolean;
                 toolCallKey: ArrayBuffer;
             }[];
@@ -328,11 +330,6 @@ declare const _default: import("convex/server").SchemaDefinition<{
         lastSlice?: string | undefined;
         notesPending: number;
         agent: string;
-        errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
-        threadId: string;
-        turnStatus: "idle" | "running" | "queued" | "recovery_required";
-        queuedMessages: number;
-        subject: string;
         limits: {
             attachmentBytes: number;
             continuesPerRun: number;
@@ -350,10 +347,15 @@ declare const _default: import("convex/server").SchemaDefinition<{
             slicesPerTurn: number;
             leaseMs: number;
         };
+        turnStatus: "idle" | "running" | "queued" | "recovery_required";
+        errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
         completedTurns: number;
+        subject: string;
+        threadId: string;
         runTurn: string;
         cancellationEpoch: number;
         cancelled: boolean;
+        queuedMessages: number;
         nextSequence: number;
         nextTurn: number;
         activeRuns: number;
@@ -375,7 +377,7 @@ declare const _default: import("convex/server").SchemaDefinition<{
             everyTurns: import("convex/values").VFloat64<number | undefined, "optional">;
         }, "optional", "worker" | "title" | "summary" | "updateThread" | "getThread" | "everyTurns">;
         titleVersion: import("convex/values").VFloat64<number | undefined, "optional">;
-        titleSource: import("convex/values").VUnion<"user" | "auto" | undefined, [import("convex/values").VLiteral<"auto", "required">, import("convex/values").VLiteral<"user", "required">], "optional", never>;
+        titleSource: import("convex/values").VUnion<"auto" | "user" | undefined, [import("convex/values").VLiteral<"auto", "required">, import("convex/values").VLiteral<"user", "required">], "optional", never>;
         titleTask: import("convex/values").VObject<{
             dispatched?: boolean | undefined;
             again?: import("convex/values").GenericId<"runs"> | undefined;
@@ -509,20 +511,20 @@ declare const _default: import("convex/server").SchemaDefinition<{
         }, "required", "order" | "bytes" | "id" | "stepOrder" | "sequence">, "optional">;
         reviewed: import("convex/values").VArray<{
             agent: string;
-            at: number;
             turn: number;
+            at: number;
             boundary: number;
         }[] | undefined, import("convex/values").VObject<{
             agent: string;
-            at: number;
             turn: number;
+            at: number;
             boundary: number;
         }, {
             agent: import("convex/values").VString<string, "required">;
             turn: import("convex/values").VFloat64<number, "required">;
             at: import("convex/values").VFloat64<number, "required">;
             boundary: import("convex/values").VFloat64<number, "required">;
-        }, "required", "agent" | "at" | "turn" | "boundary">, "optional">;
+        }, "required", "agent" | "turn" | "at" | "boundary">, "optional">;
         completedTurns: import("convex/values").VFloat64<number, "required">;
         notesPending: import("convex/values").VFloat64<number, "required">;
         routingAgentIndex: import("convex/values").VFloat64<number | undefined, "optional">;
@@ -621,8 +623,10 @@ declare const _default: import("convex/server").SchemaDefinition<{
             requests: {
                 deferred?: boolean | undefined;
                 resolved?: true | undefined;
+                effective?: boolean | undefined;
                 key: string;
                 messageId: string;
+                proposalId: import("convex/values").GenericId<"receipts">;
                 providerExecuted: boolean;
                 toolCallKey: ArrayBuffer;
             }[];
@@ -635,30 +639,36 @@ declare const _default: import("convex/server").SchemaDefinition<{
             requests: import("convex/values").VArray<{
                 deferred?: boolean | undefined;
                 resolved?: true | undefined;
+                effective?: boolean | undefined;
                 key: string;
                 messageId: string;
+                proposalId: import("convex/values").GenericId<"receipts">;
                 providerExecuted: boolean;
                 toolCallKey: ArrayBuffer;
             }[], import("convex/values").VObject<{
                 deferred?: boolean | undefined;
                 resolved?: true | undefined;
+                effective?: boolean | undefined;
                 key: string;
                 messageId: string;
+                proposalId: import("convex/values").GenericId<"receipts">;
                 providerExecuted: boolean;
                 toolCallKey: ArrayBuffer;
             }, {
                 deferred: import("convex/values").VBoolean<boolean | undefined, "optional">;
                 key: import("convex/values").VString<string, "required">;
                 messageId: import("convex/values").VString<string, "required">;
+                proposalId: import("convex/values").VId<import("convex/values").GenericId<"receipts">, "required">;
                 providerExecuted: import("convex/values").VBoolean<boolean, "required">;
                 toolCallKey: import("convex/values").VBytes<ArrayBuffer, "required">;
                 resolved: import("convex/values").VLiteral<true | undefined, "optional">;
-            }, "required", "key" | "deferred" | "messageId" | "providerExecuted" | "toolCallKey" | "resolved">, "required">;
+                effective: import("convex/values").VBoolean<boolean | undefined, "optional">;
+            }, "required", "key" | "deferred" | "messageId" | "proposalId" | "providerExecuted" | "toolCallKey" | "resolved" | "effective">, "required">;
         }, "optional", "epoch" | "getMessages" | "inboxId" | "addMessages" | "cleanupPending" | "requests">;
         lastSlice: import("convex/values").VString<string | undefined, "optional">;
         activeRuns: import("convex/values").VFloat64<number, "required">;
         nextRunSequence: import("convex/values").VFloat64<number, "required">;
-    }, "required", "workflowId" | "notesPending" | "agent" | "runId" | "errorCode" | "threadId" | "turnStatus" | "queuedMessages" | "subject" | "limits" | "textConfig" | "titleVersion" | "titleSource" | "titleTask" | "summaryTask" | "textCompleted" | "textSummary" | "modelStep" | "contextMessages" | "reviewed" | "completedTurns" | "routingAgentIndex" | "hookContinue" | "models" | "runTurn" | "loopWaiting" | "pinged" | "recoveryAt" | "recoveryJobId" | "recoveryDelayMs" | "modelSteps" | "watchdogId" | "pendingGeneration" | "cancellationEpoch" | "cancelled" | "childRunId" | "rootAssignmentId" | "nextSequence" | "nextTurn" | "turnToken" | "promptMessageId" | "turnOrigin" | "inboxId" | "approvalBlocked" | "approvals" | "lastSlice" | "activeRuns" | "nextRunSequence" | "limits.attachmentBytes" | "limits.continuesPerRun" | "limits.sideRunsPerRun" | "limits.notesPending" | "limits.maxDepth" | "limits.messagesPerChild" | "limits.rootLane" | "limits.childLane" | "limits.runLaunches" | "limits.runHops" | "limits.activeChildrenPerRoot" | "limits.taskLength" | "limits.queueLength" | "limits.slicesPerTurn" | "limits.leaseMs" | "textConfig.worker" | "textConfig.title" | "textConfig.summary" | "textConfig.updateThread" | "textConfig.getThread" | "textConfig.everyTurns" | "titleTask.status" | "titleTask.key" | "titleTask.runId" | "titleTask.epoch" | "titleTask.version" | "titleTask.dispatched" | "titleTask.again" | "titleTask.deferred" | "titleTask.titleRef" | "titleTask.titleRef.order" | "titleTask.titleRef.bytes" | "titleTask.titleRef.id" | "titleTask.titleRef.stepOrder" | "summaryTask.status" | "summaryTask.key" | "summaryTask.runId" | "summaryTask.epoch" | "summaryTask.version" | "summaryTask.dispatched" | "summaryTask.again" | "summaryTask.deferred" | "summaryTask.titleRef" | "summaryTask.titleRef.order" | "summaryTask.titleRef.bytes" | "summaryTask.titleRef.id" | "summaryTask.titleRef.stepOrder" | "textCompleted.order" | "textCompleted.id" | "textCompleted.stepOrder" | "textCompleted.sequence" | "textSummary.text" | "textSummary.through" | "textSummary.through.order" | "textSummary.through.id" | "textSummary.through.stepOrder" | "textSummary.through.sequence" | "modelStep.stepOrder" | "modelStep.messageId" | `models.${string}` | "pendingGeneration.stream" | "pendingGeneration.epoch" | "pendingGeneration.messageId" | "pendingGeneration.executionId" | "pendingGeneration.getMessages" | "pendingGeneration.finalizeMessage" | "pendingGeneration.stream.id" | "pendingGeneration.stream.abort" | "approvals.epoch" | "approvals.getMessages" | "approvals.inboxId" | "approvals.addMessages" | "approvals.cleanupPending" | "approvals.requests">, {
+    }, "required", "workflowId" | "notesPending" | "agent" | "runId" | "limits" | "turnStatus" | "errorCode" | "textConfig" | "titleVersion" | "titleSource" | "titleTask" | "summaryTask" | "textCompleted" | "textSummary" | "modelStep" | "contextMessages" | "reviewed" | "completedTurns" | "routingAgentIndex" | "hookContinue" | "subject" | "threadId" | "models" | "runTurn" | "loopWaiting" | "pinged" | "recoveryAt" | "recoveryJobId" | "recoveryDelayMs" | "modelSteps" | "watchdogId" | "pendingGeneration" | "cancellationEpoch" | "cancelled" | "childRunId" | "rootAssignmentId" | "queuedMessages" | "nextSequence" | "nextTurn" | "turnToken" | "promptMessageId" | "turnOrigin" | "inboxId" | "approvalBlocked" | "approvals" | "lastSlice" | "activeRuns" | "nextRunSequence" | "limits.attachmentBytes" | "limits.continuesPerRun" | "limits.sideRunsPerRun" | "limits.notesPending" | "limits.maxDepth" | "limits.messagesPerChild" | "limits.rootLane" | "limits.childLane" | "limits.runLaunches" | "limits.runHops" | "limits.activeChildrenPerRoot" | "limits.taskLength" | "limits.queueLength" | "limits.slicesPerTurn" | "limits.leaseMs" | "textConfig.worker" | "textConfig.title" | "textConfig.summary" | "textConfig.updateThread" | "textConfig.getThread" | "textConfig.everyTurns" | "titleTask.status" | "titleTask.key" | "titleTask.runId" | "titleTask.epoch" | "titleTask.version" | "titleTask.dispatched" | "titleTask.again" | "titleTask.deferred" | "titleTask.titleRef" | "titleTask.titleRef.order" | "titleTask.titleRef.bytes" | "titleTask.titleRef.id" | "titleTask.titleRef.stepOrder" | "summaryTask.status" | "summaryTask.key" | "summaryTask.runId" | "summaryTask.epoch" | "summaryTask.version" | "summaryTask.dispatched" | "summaryTask.again" | "summaryTask.deferred" | "summaryTask.titleRef" | "summaryTask.titleRef.order" | "summaryTask.titleRef.bytes" | "summaryTask.titleRef.id" | "summaryTask.titleRef.stepOrder" | "textCompleted.order" | "textCompleted.id" | "textCompleted.stepOrder" | "textCompleted.sequence" | "textSummary.text" | "textSummary.through" | "textSummary.through.order" | "textSummary.through.id" | "textSummary.through.stepOrder" | "textSummary.through.sequence" | "modelStep.stepOrder" | "modelStep.messageId" | `models.${string}` | "pendingGeneration.stream" | "pendingGeneration.epoch" | "pendingGeneration.messageId" | "pendingGeneration.executionId" | "pendingGeneration.getMessages" | "pendingGeneration.finalizeMessage" | "pendingGeneration.stream.id" | "pendingGeneration.stream.abort" | "approvals.epoch" | "approvals.getMessages" | "approvals.inboxId" | "approvals.addMessages" | "approvals.cleanupPending" | "approvals.requests">, {
         by_thread: ["threadId", "_creationTime"];
     }, {}, {}>;
     inbox: import("convex/server").TableDefinition<import("convex/values").VObject<{
@@ -674,8 +684,8 @@ declare const _default: import("convex/server").SchemaDefinition<{
         kind: "result" | "user" | "parent" | "note" | "continue";
         sequence: number;
         runId: import("convex/values").GenericId<"runs">;
-        assignmentId: import("convex/values").GenericId<"assignments">;
         messageId: string;
+        assignmentId: import("convex/values").GenericId<"assignments">;
     }, {
         assignmentId: import("convex/values").VId<import("convex/values").GenericId<"assignments">, "required">;
         messageId: import("convex/values").VString<string, "required">;
@@ -695,7 +705,7 @@ declare const _default: import("convex/server").SchemaDefinition<{
         }, "optional", "newestSequence" | "earliestId" | "earliestSequence">;
         runId: import("convex/values").VId<import("convex/values").GenericId<"runs">, "required">;
         kind: import("convex/values").VUnion<"result" | "user" | "parent" | "note" | "continue", [import("convex/values").VLiteral<"user", "required">, import("convex/values").VLiteral<"result", "required">, import("convex/values").VLiteral<"parent", "required">, import("convex/values").VLiteral<"note", "required">, import("convex/values").VLiteral<"continue", "required">], "required", never>;
-    }, "required", "from" | "join" | "kind" | "sequence" | "runId" | "text" | "assignmentId" | "messageId" | "passive" | "noteEpoch" | "join.newestSequence" | "join.earliestId" | "join.earliestSequence">, {
+    }, "required", "from" | "join" | "kind" | "sequence" | "runId" | "text" | "messageId" | "assignmentId" | "passive" | "noteEpoch" | "join.newestSequence" | "join.earliestId" | "join.earliestSequence">, {
         by_message: ["messageId", "_creationTime"];
         by_assignment_ready: ["assignmentId", "passive", "noteEpoch", "sequence", "_creationTime"];
     }, {}, {}>;
@@ -703,6 +713,7 @@ declare const _default: import("convex/server").SchemaDefinition<{
         settings?: {
             agent: string;
             settings: {
+                askUser?: boolean | undefined;
                 mode: "stream" | "generate";
                 maxOutputTokens: number;
                 modelTimeoutMs: number;
@@ -724,6 +735,7 @@ declare const _default: import("convex/server").SchemaDefinition<{
         settings: import("convex/values").VArray<{
             agent: string;
             settings: {
+                askUser?: boolean | undefined;
                 mode: "stream" | "generate";
                 maxOutputTokens: number;
                 modelTimeoutMs: number;
@@ -733,6 +745,7 @@ declare const _default: import("convex/server").SchemaDefinition<{
         }[] | undefined, import("convex/values").VObject<{
             agent: string;
             settings: {
+                askUser?: boolean | undefined;
                 mode: "stream" | "generate";
                 maxOutputTokens: number;
                 modelTimeoutMs: number;
@@ -742,19 +755,21 @@ declare const _default: import("convex/server").SchemaDefinition<{
         }, {
             agent: import("convex/values").VString<string, "required">;
             settings: import("convex/values").VObject<{
+                askUser?: boolean | undefined;
                 mode: "stream" | "generate";
                 maxOutputTokens: number;
                 modelTimeoutMs: number;
                 toolTimeoutMs: number;
                 stepsPerTurn: number;
             }, {
+                askUser: import("convex/values").VBoolean<boolean | undefined, "optional">;
                 mode: import("convex/values").VUnion<"stream" | "generate", [import("convex/values").VLiteral<"stream", "required">, import("convex/values").VLiteral<"generate", "required">], "required", never>;
                 maxOutputTokens: import("convex/values").VFloat64<number, "required">;
                 modelTimeoutMs: import("convex/values").VFloat64<number, "required">;
                 toolTimeoutMs: import("convex/values").VFloat64<number, "required">;
                 stepsPerTurn: import("convex/values").VFloat64<number, "required">;
-            }, "required", "mode" | "maxOutputTokens" | "modelTimeoutMs" | "toolTimeoutMs" | "stepsPerTurn">;
-        }, "required", "agent" | "settings" | "settings.mode" | "settings.maxOutputTokens" | "settings.modelTimeoutMs" | "settings.toolTimeoutMs" | "settings.stepsPerTurn">, "optional">;
+            }, "required", "askUser" | "mode" | "maxOutputTokens" | "modelTimeoutMs" | "toolTimeoutMs" | "stepsPerTurn">;
+        }, "required", "agent" | "settings" | "settings.askUser" | "settings.mode" | "settings.maxOutputTokens" | "settings.modelTimeoutMs" | "settings.toolTimeoutMs" | "settings.stepsPerTurn">, "optional">;
         models: import("convex/values").VRecord<Record<string, string> | undefined, import("convex/values").VString<string, "required">, import("convex/values").VString<string, "required">, "optional", string>;
         startedAgents: import("convex/values").VInt64<bigint, "required">;
         routingAgents: import("convex/values").VInt64<bigint, "required">;
@@ -765,6 +780,17 @@ declare const _default: import("convex/server").SchemaDefinition<{
         cancelled: import("convex/values").VBoolean<boolean, "required">;
     }, "required", "settings" | "models" | "cancelled" | `models.${string}` | "usagePartial" | "startedAgents" | "routingAgents" | "continues" | "sideRuns" | "launches" | "hops">, {}, {}, {}>;
     receipts: import("convex/server").TableDefinition<import("convex/values").VUnion<{
+        result: {
+            schema?: any;
+            truncated?: true | undefined;
+            id: string;
+            providerExecuted: boolean;
+            toolCallId: string;
+            tool: string;
+            input: any;
+        };
+        kind: "proposal";
+    } | {
         result?: any;
         claim?: string | undefined;
         leaseUntil?: number | undefined;
@@ -775,13 +801,43 @@ declare const _default: import("convex/server").SchemaDefinition<{
         fingerprint: string;
         expiresAt: number;
     } | {
-        threadId?: string | undefined;
         messageId?: string | undefined;
+        threadId?: string | undefined;
         kind: "attachment";
         subject: string;
         native: string;
         fileId: string;
     }, [import("convex/values").VObject<{
+        result: {
+            schema?: any;
+            truncated?: true | undefined;
+            id: string;
+            providerExecuted: boolean;
+            toolCallId: string;
+            tool: string;
+            input: any;
+        };
+        kind: "proposal";
+    }, {
+        kind: import("convex/values").VLiteral<"proposal", "required">;
+        result: import("convex/values").VObject<{
+            schema?: any;
+            truncated?: true | undefined;
+            id: string;
+            providerExecuted: boolean;
+            toolCallId: string;
+            tool: string;
+            input: any;
+        }, {
+            id: import("convex/values").VString<string, "required">;
+            toolCallId: import("convex/values").VString<string, "required">;
+            tool: import("convex/values").VString<string, "required">;
+            input: import("convex/values").VAny<any, "required", string>;
+            providerExecuted: import("convex/values").VBoolean<boolean, "required">;
+            schema: import("convex/values").VAny<any, "optional", string>;
+            truncated: import("convex/values").VLiteral<true | undefined, "optional">;
+        }, "required", "id" | "providerExecuted" | "toolCallId" | "tool" | "input" | "schema" | "truncated" | `input.${string}` | `schema.${string}`>;
+    }, "required", "result" | "kind" | "result.id" | "result.providerExecuted" | "result.toolCallId" | "result.tool" | "result.input" | "result.schema" | "result.truncated" | `result.input.${string}` | `result.schema.${string}`>, import("convex/values").VObject<{
         result?: any;
         claim?: string | undefined;
         leaseUntil?: number | undefined;
@@ -802,8 +858,8 @@ declare const _default: import("convex/server").SchemaDefinition<{
         result: import("convex/values").VAny<any, "optional", string>;
         expiresAt: import("convex/values").VFloat64<number, "required">;
     }, "required", "result" | "kind" | "status" | "key" | "scope" | "fingerprint" | "claim" | "leaseUntil" | "expiresAt" | `result.${string}`>, import("convex/values").VObject<{
-        threadId?: string | undefined;
         messageId?: string | undefined;
+        threadId?: string | undefined;
         kind: "attachment";
         subject: string;
         native: string;
@@ -815,7 +871,7 @@ declare const _default: import("convex/server").SchemaDefinition<{
         subject: import("convex/values").VString<string, "required">;
         threadId: import("convex/values").VString<string | undefined, "optional">;
         messageId: import("convex/values").VString<string | undefined, "optional">;
-    }, "required", "kind" | "threadId" | "subject" | "messageId" | "native" | "fileId">], "required", "result" | "kind" | "status" | "key" | "threadId" | "subject" | "messageId" | "scope" | "fingerprint" | "claim" | "leaseUntil" | "expiresAt" | `result.${string}` | "native" | "fileId">, {
+    }, "required", "kind" | "messageId" | "subject" | "threadId" | "native" | "fileId">], "required", "result" | "kind" | "status" | "key" | "messageId" | "subject" | "threadId" | `result.input.${string}` | `result.schema.${string}` | "scope" | "fingerprint" | "claim" | "leaseUntil" | "expiresAt" | `result.${string}` | "native" | "fileId">, {
         by_scope_key: ["scope", "key", "_creationTime"];
         by_expiry: ["kind", "expiresAt", "_creationTime"];
         by_file: ["native", "fileId", "subject", "threadId", "_creationTime"];
@@ -825,30 +881,29 @@ declare const _default: import("convex/server").SchemaDefinition<{
         join?: "open" | "sealed" | "ready" | "joined" | undefined;
         startedAt?: number | undefined;
         side?: boolean | undefined;
-        childThreadId?: string | undefined;
-        resultMessageId?: string | undefined;
         group?: string | undefined;
         questionMessageId?: string | undefined;
         childAssignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
+        childThreadId?: string | undefined;
         childResultMessageId?: string | undefined;
         lastTurnResult?: {
             messageId?: string | undefined;
             errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
         } | undefined;
+        resultMessageId?: string | undefined;
         resultSequence?: number | undefined;
         events: {
-            phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
-            at: number;
             errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
+            at: number;
+            phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
         }[];
         status: "failed" | "running" | "completed" | "queued" | "asking";
         agent: string;
         sequence: number;
         runId: string;
         errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
-        deliveryStatus: "failed" | "pending" | "accepted" | "blocked";
-        createdAt: number;
         rootAssignmentId: import("convex/values").GenericId<"assignments">;
+        deliveryStatus: "failed" | "pending" | "accepted" | "blocked";
         rootCancellationEpoch: number;
         parentRunId: import("convex/values").GenericId<"runs">;
         dedupKey: string;
@@ -859,6 +914,7 @@ declare const _default: import("convex/server").SchemaDefinition<{
         actorAgent: string;
         deliveryToken: string;
         coordinateHandle: string;
+        createdAt: number;
     }, {
         side: import("convex/values").VBoolean<boolean | undefined, "optional">;
         runId: import("convex/values").VString<string, "required">;
@@ -896,19 +952,19 @@ declare const _default: import("convex/server").SchemaDefinition<{
         resultMessageId: import("convex/values").VString<string | undefined, "optional">;
         resultSequence: import("convex/values").VFloat64<number | undefined, "optional">;
         events: import("convex/values").VArray<{
-            phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
-            at: number;
             errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
+            at: number;
+            phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
         }[], import("convex/values").VObject<{
-            phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
-            at: number;
             errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
+            at: number;
+            phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
         }, {
             phase: import("convex/values").VUnion<"failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked", [import("convex/values").VLiteral<"queued", "required">, import("convex/values").VLiteral<"started", "required">, import("convex/values").VLiteral<"completed", "required">, import("convex/values").VLiteral<"failed", "required">, import("convex/values").VLiteral<"result_accepted", "required">, import("convex/values").VLiteral<"delivery_failed", "required">, import("convex/values").VLiteral<"delivery_blocked", "required">], "required", never>;
             at: import("convex/values").VFloat64<number, "required">;
             errorCode: import("convex/values").VUnion<"BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null, [import("convex/values").VNull<null, "required">, import("convex/values").VLiteral<"BUDGET_EXCEEDED", "required">, import("convex/values").VLiteral<"HOOK_FAILED", "required">, import("convex/values").VLiteral<"GENERATION_FAILED", "required">, import("convex/values").VLiteral<"RUN_TIMEOUT", "required">, import("convex/values").VLiteral<"SLICE_LIMIT", "required">, import("convex/values").VLiteral<"APPROVAL_LIMIT", "required">, import("convex/values").VLiteral<"CLEANUP_FAILED", "required">, import("convex/values").VLiteral<"AUTHORIZATION_DENIED", "required">, import("convex/values").VLiteral<"EXECUTION_AMBIGUOUS", "required">, import("convex/values").VLiteral<"EMPTY_RESULT", "required">, import("convex/values").VLiteral<"RESULT_UNVERIFIED", "required">, import("convex/values").VLiteral<"ROOT_UNAVAILABLE", "required">, import("convex/values").VLiteral<"DELIVERY_FAILED", "required">], "required", never>;
-        }, "required", "phase" | "at" | "errorCode">, "required">;
-    }, "required", "join" | "startedAt" | "events" | "status" | "agent" | "sequence" | "runId" | "errorCode" | "side" | "childThreadId" | "deliveryStatus" | "createdAt" | "resultMessageId" | "rootAssignmentId" | "rootCancellationEpoch" | "parentRunId" | "dedupKey" | "payloadFingerprint" | "actorAssignmentId" | "depth" | "group" | "questionMessageId" | "messagesReceived" | "childAssignmentId" | "childResultMessageId" | "lastTurnResult" | "actorAgent" | "deliveryToken" | "coordinateHandle" | "resultSequence" | "lastTurnResult.errorCode" | "lastTurnResult.messageId">, {
+        }, "required", "errorCode" | "at" | "phase">, "required">;
+    }, "required", "join" | "startedAt" | "events" | "status" | "agent" | "sequence" | "runId" | "errorCode" | "rootAssignmentId" | "deliveryStatus" | "side" | "rootCancellationEpoch" | "parentRunId" | "dedupKey" | "payloadFingerprint" | "actorAssignmentId" | "depth" | "group" | "questionMessageId" | "messagesReceived" | "childAssignmentId" | "childThreadId" | "childResultMessageId" | "lastTurnResult" | "actorAgent" | "deliveryToken" | "coordinateHandle" | "createdAt" | "resultMessageId" | "resultSequence" | "lastTurnResult.errorCode" | "lastTurnResult.messageId">, {
         by_result_message: ["resultMessageId", "_creationTime"];
         by_dedup: ["dedupKey", "_creationTime"];
         by_run: ["runId", "_creationTime"];

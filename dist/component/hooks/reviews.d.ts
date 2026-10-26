@@ -3,8 +3,8 @@ export declare const reviewContext: import("convex/server").RegisteredQuery<"pub
     turns?: number | undefined;
     minutes?: number | undefined;
     agent: string;
-    assignmentId: import("convex/values").GenericId<"assignments">;
     executionId: string;
+    assignmentId: import("convex/values").GenericId<"assignments">;
 }, Promise<{
     refs: {
         order: number;
@@ -18,9 +18,9 @@ export declare const reviewContext: import("convex/server").RegisteredQuery<"pub
 /** Record a side reviewer's consumed boundary. */
 export declare const reviewed: import("convex/server").RegisteredMutation<"public", {
     agent: string;
-    assignmentId: import("convex/values").GenericId<"assignments">;
-    executionId: string;
     boundary: number;
+    executionId: string;
+    assignmentId: import("convex/values").GenericId<"assignments">;
 }, Promise<null>>;
 /** Host coordinator saves (results, questions and follow-ups) do not pass
  * through the action's native-save fence. Capture their identities inside that

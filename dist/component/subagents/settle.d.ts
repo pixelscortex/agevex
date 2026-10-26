@@ -58,8 +58,8 @@ export declare function escalateRun(ctx: MutationCtx, runId: string, code: Doc<"
  * see `settlementScope` in subagents/views.ts. */
 export declare const settlementContext: import("convex/server").RegisteredQuery<"public", {
     runId: string;
-    assignmentId: import("convex/values").GenericId<"assignments">;
     turnToken: string;
+    assignmentId: import("convex/values").GenericId<"assignments">;
 }, Promise<{
     runId: string;
     agent: string;
@@ -73,8 +73,8 @@ export declare const settlementContext: import("convex/server").RegisteredQuery<
 export declare const settle: import("convex/server").RegisteredMutation<"public", {
     runId: string;
     errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
-    assignmentId: import("convex/values").GenericId<"assignments">;
     turnToken: string;
+    assignmentId: import("convex/values").GenericId<"assignments">;
     childResultMessageId: string | null;
 }, Promise<null>>;
 /** Fail a live run after its child turn failed terminally. */

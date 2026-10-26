@@ -5,15 +5,16 @@
  * `receipts` is one `(scope, key)` ledger shared by request acceptance
  * (`request:<subject>`, turns/send.ts), tool effects (receipts/effects.ts)
  * and approval/answer responses (turns/approvals.ts), plus attachment
- * attestations (files/attachments.ts). Effect rows expire after
+ * attestations (files/attachments.ts) and exact-ref compact pending proposals.
+ * Proposals are deleted with their pause references. Effect rows expire after
  * `LIMITS.receiptRetentionMs`; `armPurge` starts the single purge chain
  * (`receipts.effects.purge`) that removes them in bounded batches.
  */
 import type { WithoutSystemFields } from "convex/server";
 import type { MutationCtx, QueryCtx } from "../_generated/server.js";
 import type { Doc } from "../_generated/dataModel.js";
-/** The effect receipt for `(scope, key)`, or null. Attachment rows share the
- * table but never the scope/key index range, so they are filtered out. */
+/** The effect receipt for `(scope, key)`, or null. Attachments and proposals
+ * share the table but never the scope/key index range. */
 export declare function findReceipt(ctx: Pick<QueryCtx, "db">, scope: string, key: string): Promise<{
     _id: import("convex/values").GenericId<"receipts">;
     _creationTime: number;

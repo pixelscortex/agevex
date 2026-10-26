@@ -31,7 +31,7 @@ export declare function registerAgent(component: ComponentApi, config: Registrat
             threadId: string;
         }, Promise<{
             text: string | null;
-            source: "user" | "auto" | null;
+            source: "auto" | "user" | null;
             version: number;
         }>>;
         rename: import("convex/server").RegisteredMutation<"public", {
@@ -133,16 +133,40 @@ export declare function registerAgent(component: ComponentApi, config: Registrat
             code: "ATTACHMENT_LIMIT";
         }>>;
         respond: import("convex/server").RegisteredMutation<"public", {
-            reason?: string | undefined;
             threadId: string;
             approvalId: string;
-            approved: boolean;
+            decision: {
+                reason?: string | undefined;
+                kind: "reject";
+            } | {
+                edit?: {
+                    input: any;
+                } | undefined;
+                kind: "approve";
+            };
         }, Promise<{
             messageId: string;
             replayed: boolean;
         }>>;
+        pendingApprovals: import("convex/server").RegisteredQuery<"public", {
+            rootRunId?: string | undefined;
+            threadId: string;
+        }, Promise<{
+            schema?: any;
+            question?: string | undefined;
+            editable: boolean;
+            threadId: string;
+            agent: string;
+            kind: "ask" | "approval";
+            truncated?: true | undefined;
+            id: string;
+            providerExecuted: boolean;
+            toolCallId: string;
+            tool: string;
+            input: any;
+        }[]>>;
         answer: import("convex/server").RegisteredMutation<"public", {
-            text: string;
+            value: any;
             threadId: string;
             toolCallId: string;
         }, Promise<{
@@ -226,9 +250,9 @@ export declare function registerAgent(component: ComponentApi, config: Registrat
                 resultMessageId: string | null;
                 errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
                 events: {
-                    phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
-                    at: number;
                     errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
+                    at: number;
+                    phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
                     runId: string;
                     agent: string;
                 }[];

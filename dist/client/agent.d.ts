@@ -26,6 +26,8 @@ type AgentOptions<Tools extends ToolSet> = Omit<Config, "languageModel"> & {
      * "use node"). A slice is capped at five minutes, plus 30s server margin;
      * 32k output may require a longer model timeout; each managed slice remains exactly one model call.
      */
+    /** Human questions default to roots only; explicit true/false overrides both roles. */
+    askUser?: boolean;
     run?: RunSettings;
     sandbox?: boolean;
     hooks?: AgentHooks;
@@ -41,6 +43,8 @@ export declare class Agent<CustomCtx extends object = object, AgentTools extends
     readonly name: string;
     /** Default model for tool-free background text tasks. */
     readonly textModel: AgentOptions<AgentTools>["languageModel"];
+    /** Captured in the run snapshot; default resolves from the persisted assignment role. */
+    readonly askUser?: boolean;
     readonly run?: RunSettings;
     readonly sandbox: boolean;
     readonly subagents: readonly ManagedAgent[];

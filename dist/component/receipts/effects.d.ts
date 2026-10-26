@@ -92,9 +92,9 @@ export declare function completeEffect(ctx: MutationCtx, args: TurnFence & {
 /** Claim an effect, or replay/refuse it; see `beginEffect`. */
 export declare const begin: import("convex/server").RegisteredMutation<"public", {
     leaseMs?: number | undefined;
-    assignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
     executionId?: string | undefined;
     cancellationEpoch?: number | undefined;
+    assignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
     repeatSafe?: boolean | undefined;
     key: string;
     scope: string;
@@ -139,9 +139,9 @@ export declare const begin: import("convex/server").RegisteredMutation<"public",
 /** Record the current claim's outcome (or `unknown` after its lease). */
 export declare const complete: import("convex/server").RegisteredMutation<"public", {
     failed?: boolean | undefined;
-    assignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
     executionId?: string | undefined;
     cancellationEpoch?: number | undefined;
+    assignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
     result: any;
     key: string;
     scope: string;
@@ -153,9 +153,9 @@ export declare const purge: import("convex/server").RegisteredMutation<"internal
  * honest unknown outcome and never make that receipt eligible for paid replay.
  * One indexed receipt read + one <=64 KiB patch, independent of journal size. */
 export declare const unknown: import("convex/server").RegisteredMutation<"public", {
-    assignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
     executionId?: string | undefined;
     cancellationEpoch?: number | undefined;
+    assignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
     key: string;
     scope: string;
     claim: string;

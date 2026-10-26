@@ -23,7 +23,9 @@ export declare const continueInput: z.ZodObject<{
  *
  * This only requests consent. It neither changes a budget nor bypasses core's
  * run limits. The native approval (answered through core `respond`) is the
- * consent record; denial never executes the tool. The host applies its own
+ * consent record; denial never executes the tool. Core respond accepts
+ * decision: { kind: "approve", edit?: { input } } or { kind: "reject", reason? };
+ * host consent wrappers must check decision.kind and response.replayed. The host applies its own
  * budget policy afterwards (see `resumeAfterBudgetStop`).
  */
 export declare function createContinueBudgetTool(): import("ai").Tool<{

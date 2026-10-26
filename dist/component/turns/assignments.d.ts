@@ -29,7 +29,7 @@ export declare function assignmentByThread(ctx: Pick<QueryCtx, "db">, threadId: 
         getThread: string;
     } | undefined;
     titleVersion?: number | undefined;
-    titleSource?: "user" | "auto" | undefined;
+    titleSource?: "auto" | "user" | undefined;
     titleTask?: {
         dispatched?: boolean | undefined;
         again?: import("convex/values").GenericId<"runs"> | undefined;
@@ -90,8 +90,8 @@ export declare function assignmentByThread(ctx: Pick<QueryCtx, "db">, threadId: 
     }[] | undefined;
     reviewed?: {
         agent: string;
-        at: number;
         turn: number;
+        at: number;
         boundary: number;
     }[] | undefined;
     routingAgentIndex?: number | undefined;
@@ -131,8 +131,10 @@ export declare function assignmentByThread(ctx: Pick<QueryCtx, "db">, threadId: 
         requests: {
             deferred?: boolean | undefined;
             resolved?: true | undefined;
+            effective?: boolean | undefined;
             key: string;
             messageId: string;
+            proposalId: import("convex/values").GenericId<"receipts">;
             providerExecuted: boolean;
             toolCallKey: ArrayBuffer;
         }[];
@@ -140,11 +142,6 @@ export declare function assignmentByThread(ctx: Pick<QueryCtx, "db">, threadId: 
     lastSlice?: string | undefined;
     notesPending: number;
     agent: string;
-    errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
-    threadId: string;
-    turnStatus: "idle" | "running" | "queued" | "recovery_required";
-    queuedMessages: number;
-    subject: string;
     limits: {
         attachmentBytes: number;
         continuesPerRun: number;
@@ -162,10 +159,15 @@ export declare function assignmentByThread(ctx: Pick<QueryCtx, "db">, threadId: 
         slicesPerTurn: number;
         leaseMs: number;
     };
+    turnStatus: "idle" | "running" | "queued" | "recovery_required";
+    errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
     completedTurns: number;
+    subject: string;
+    threadId: string;
     runTurn: string;
     cancellationEpoch: number;
     cancelled: boolean;
+    queuedMessages: number;
     nextSequence: number;
     nextTurn: number;
     activeRuns: number;

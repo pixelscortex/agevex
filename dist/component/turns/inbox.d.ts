@@ -29,8 +29,8 @@ export declare function firstReady(ctx: Pick<QueryCtx, "db">, assignmentId: Id<"
     kind: "result" | "user" | "parent" | "note" | "continue";
     sequence: number;
     runId: import("convex/values").GenericId<"runs">;
-    assignmentId: import("convex/values").GenericId<"assignments">;
     messageId: string;
+    assignmentId: import("convex/values").GenericId<"assignments">;
 } | null>;
 /** Up to `limit` ready rows in FIFO order. Only cancel reads more than the
  * head; its caller passes the per-assignment bound from limits.ts. */
@@ -49,6 +49,6 @@ export declare function readyRows(ctx: Pick<QueryCtx, "db">, assignmentId: Id<"a
     kind: "result" | "user" | "parent" | "note" | "continue";
     sequence: number;
     runId: import("convex/values").GenericId<"runs">;
-    assignmentId: import("convex/values").GenericId<"assignments">;
     messageId: string;
+    assignmentId: import("convex/values").GenericId<"assignments">;
 }[]>;

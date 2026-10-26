@@ -1,7 +1,7 @@
 import { internal } from "../_generated/api.js";
 import { LIMITS } from "../limits.js";
-/** The effect receipt for `(scope, key)`, or null. Attachment rows share the
- * table but never the scope/key index range, so they are filtered out. */
+/** The effect receipt for `(scope, key)`, or null. Attachments and proposals
+ * share the table but never the scope/key index range. */
 export async function findReceipt(ctx, scope, key) {
     const row = await ctx.db
         .query("receipts")

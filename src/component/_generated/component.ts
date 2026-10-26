@@ -22,6 +22,7 @@ import type * as subagents_history from "../subagents/history.js";
 import type * as subagents_launch from "../subagents/launch.js";
 import type * as subagents_messages from "../subagents/messages.js";
 import type * as subagents_settle from "../subagents/settle.js";
+import type * as turns_decision_reads from "../turns/decision-reads.js";
 import type * as turns_approvals from "../turns/approvals.js";
 import type * as turns_cancel from "../turns/cancel.js";
 import type * as turns_failures from "../turns/failures.js";
@@ -62,6 +63,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
     "subagents/launch": typeof subagents_launch;
     "subagents/messages": typeof subagents_messages;
     "subagents/settle": typeof subagents_settle;
+    "turns/decision-reads": typeof turns_decision_reads;
     "turns/approvals": typeof turns_approvals;
     "turns/cancel": typeof turns_cancel;
     "turns/failures": typeof turns_failures;

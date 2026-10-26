@@ -36,7 +36,7 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
             getThread: string;
         } | undefined;
         titleVersion?: number | undefined;
-        titleSource?: "user" | "auto" | undefined;
+        titleSource?: "auto" | "user" | undefined;
         titleTask?: {
             dispatched?: boolean | undefined;
             again?: import("convex/values").GenericId<"runs"> | undefined;
@@ -97,8 +97,8 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         }[] | undefined;
         reviewed?: {
             agent: string;
-            at: number;
             turn: number;
+            at: number;
             boundary: number;
         }[] | undefined;
         routingAgentIndex?: number | undefined;
@@ -138,8 +138,10 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
             requests: {
                 deferred?: boolean | undefined;
                 resolved?: true | undefined;
+                effective?: boolean | undefined;
                 key: string;
                 messageId: string;
+                proposalId: import("convex/values").GenericId<"receipts">;
                 providerExecuted: boolean;
                 toolCallKey: ArrayBuffer;
             }[];
@@ -147,11 +149,6 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         lastSlice?: string | undefined;
         notesPending: number;
         agent: string;
-        errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
-        threadId: string;
-        turnStatus: "idle" | "running" | "queued" | "recovery_required";
-        queuedMessages: number;
-        subject: string;
         limits: {
             attachmentBytes: number;
             continuesPerRun: number;
@@ -169,10 +166,15 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
             slicesPerTurn: number;
             leaseMs: number;
         };
+        turnStatus: "idle" | "running" | "queued" | "recovery_required";
+        errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
         completedTurns: number;
+        subject: string;
+        threadId: string;
         runTurn: string;
         cancellationEpoch: number;
         cancelled: boolean;
+        queuedMessages: number;
         nextSequence: number;
         nextTurn: number;
         activeRuns: number;
@@ -192,7 +194,7 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
             getThread: string;
         } | undefined;
         titleVersion?: number | undefined;
-        titleSource?: "user" | "auto" | undefined;
+        titleSource?: "auto" | "user" | undefined;
         titleTask?: {
             dispatched?: boolean | undefined;
             again?: import("convex/values").GenericId<"runs"> | undefined;
@@ -253,8 +255,8 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         }[] | undefined;
         reviewed?: {
             agent: string;
-            at: number;
             turn: number;
+            at: number;
             boundary: number;
         }[] | undefined;
         routingAgentIndex?: number | undefined;
@@ -294,8 +296,10 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
             requests: {
                 deferred?: boolean | undefined;
                 resolved?: true | undefined;
+                effective?: boolean | undefined;
                 key: string;
                 messageId: string;
+                proposalId: import("convex/values").GenericId<"receipts">;
                 providerExecuted: boolean;
                 toolCallKey: ArrayBuffer;
             }[];
@@ -303,11 +307,6 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         lastSlice?: string | undefined;
         notesPending: number;
         agent: string;
-        errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
-        threadId: string;
-        turnStatus: "idle" | "running" | "queued" | "recovery_required";
-        queuedMessages: number;
-        subject: string;
         limits: {
             attachmentBytes: number;
             continuesPerRun: number;
@@ -325,10 +324,15 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
             slicesPerTurn: number;
             leaseMs: number;
         };
+        turnStatus: "idle" | "running" | "queued" | "recovery_required";
+        errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
         completedTurns: number;
+        subject: string;
+        threadId: string;
         runTurn: string;
         cancellationEpoch: number;
         cancelled: boolean;
+        queuedMessages: number;
         nextSequence: number;
         nextTurn: number;
         activeRuns: number;
@@ -340,30 +344,29 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         join?: "open" | "sealed" | "ready" | "joined" | undefined;
         startedAt?: number | undefined;
         side?: boolean | undefined;
-        childThreadId?: string | undefined;
-        resultMessageId?: string | undefined;
         group?: string | undefined;
         questionMessageId?: string | undefined;
         childAssignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
+        childThreadId?: string | undefined;
         childResultMessageId?: string | undefined;
         lastTurnResult?: {
             messageId?: string | undefined;
             errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
         } | undefined;
+        resultMessageId?: string | undefined;
         resultSequence?: number | undefined;
         events: {
-            phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
-            at: number;
             errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
+            at: number;
+            phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
         }[];
         status: "failed" | "running" | "completed" | "queued" | "asking";
         agent: string;
         sequence: number;
         runId: string;
         errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
-        deliveryStatus: "failed" | "pending" | "accepted" | "blocked";
-        createdAt: number;
         rootAssignmentId: import("convex/values").GenericId<"assignments">;
+        deliveryStatus: "failed" | "pending" | "accepted" | "blocked";
         rootCancellationEpoch: number;
         parentRunId: import("convex/values").GenericId<"runs">;
         dedupKey: string;
@@ -374,6 +377,7 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         actorAgent: string;
         deliveryToken: string;
         coordinateHandle: string;
+        createdAt: number;
     };
     child: {
         _id: import("convex/values").GenericId<"assignments">;
@@ -389,7 +393,7 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
             getThread: string;
         } | undefined;
         titleVersion?: number | undefined;
-        titleSource?: "user" | "auto" | undefined;
+        titleSource?: "auto" | "user" | undefined;
         titleTask?: {
             dispatched?: boolean | undefined;
             again?: import("convex/values").GenericId<"runs"> | undefined;
@@ -450,8 +454,8 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         }[] | undefined;
         reviewed?: {
             agent: string;
-            at: number;
             turn: number;
+            at: number;
             boundary: number;
         }[] | undefined;
         routingAgentIndex?: number | undefined;
@@ -491,8 +495,10 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
             requests: {
                 deferred?: boolean | undefined;
                 resolved?: true | undefined;
+                effective?: boolean | undefined;
                 key: string;
                 messageId: string;
+                proposalId: import("convex/values").GenericId<"receipts">;
                 providerExecuted: boolean;
                 toolCallKey: ArrayBuffer;
             }[];
@@ -500,11 +506,6 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         lastSlice?: string | undefined;
         notesPending: number;
         agent: string;
-        errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
-        threadId: string;
-        turnStatus: "idle" | "running" | "queued" | "recovery_required";
-        queuedMessages: number;
-        subject: string;
         limits: {
             attachmentBytes: number;
             continuesPerRun: number;
@@ -522,10 +523,15 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
             slicesPerTurn: number;
             leaseMs: number;
         };
+        turnStatus: "idle" | "running" | "queued" | "recovery_required";
+        errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
         completedTurns: number;
+        subject: string;
+        threadId: string;
         runTurn: string;
         cancellationEpoch: number;
         cancelled: boolean;
+        queuedMessages: number;
         nextSequence: number;
         nextTurn: number;
         activeRuns: number;
@@ -545,7 +551,7 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
             getThread: string;
         } | undefined;
         titleVersion?: number | undefined;
-        titleSource?: "user" | "auto" | undefined;
+        titleSource?: "auto" | "user" | undefined;
         titleTask?: {
             dispatched?: boolean | undefined;
             again?: import("convex/values").GenericId<"runs"> | undefined;
@@ -606,8 +612,8 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         }[] | undefined;
         reviewed?: {
             agent: string;
-            at: number;
             turn: number;
+            at: number;
             boundary: number;
         }[] | undefined;
         routingAgentIndex?: number | undefined;
@@ -647,8 +653,10 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
             requests: {
                 deferred?: boolean | undefined;
                 resolved?: true | undefined;
+                effective?: boolean | undefined;
                 key: string;
                 messageId: string;
+                proposalId: import("convex/values").GenericId<"receipts">;
                 providerExecuted: boolean;
                 toolCallKey: ArrayBuffer;
             }[];
@@ -656,11 +664,6 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         lastSlice?: string | undefined;
         notesPending: number;
         agent: string;
-        errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
-        threadId: string;
-        turnStatus: "idle" | "running" | "queued" | "recovery_required";
-        queuedMessages: number;
-        subject: string;
         limits: {
             attachmentBytes: number;
             continuesPerRun: number;
@@ -678,10 +681,15 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
             slicesPerTurn: number;
             leaseMs: number;
         };
+        turnStatus: "idle" | "running" | "queued" | "recovery_required";
+        errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
         completedTurns: number;
+        subject: string;
+        threadId: string;
         runTurn: string;
         cancellationEpoch: number;
         cancelled: boolean;
+        queuedMessages: number;
         nextSequence: number;
         nextTurn: number;
         activeRuns: number;
@@ -693,6 +701,7 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         settings?: {
             agent: string;
             settings: {
+                askUser?: boolean | undefined;
                 mode: "stream" | "generate";
                 maxOutputTokens: number;
                 modelTimeoutMs: number;
@@ -761,8 +770,8 @@ export declare function askParentRun(ctx: MutationCtx, args: {
 /** Trusted target projection for the host's atomic native message saves. */
 export declare const interactionContext: import("convex/server").RegisteredQuery<"public", {
     runId?: string | undefined;
-    assignmentId: import("convex/values").GenericId<"assignments">;
     turnToken: string;
+    assignmentId: import("convex/values").GenericId<"assignments">;
     op: "message" | "ask";
 }, Promise<{
     kind: "denied";
@@ -783,17 +792,17 @@ export declare const interactionContext: import("convex/server").RegisteredQuery
 /** The exact native follow-up id is saved in the inbox in the same transaction. */
 export declare const messageChild: import("convex/server").RegisteredMutation<"public", {
     runId: string;
-    assignmentId: import("convex/values").GenericId<"assignments">;
     messageId: string;
     turnToken: string;
+    assignmentId: import("convex/values").GenericId<"assignments">;
 }, Promise<{
     status: "accepted";
     runId: string;
 }>>;
 /** A child's question to its parent; see `askParentRun`. */
 export declare const askParent: import("convex/server").RegisteredMutation<"public", {
-    assignmentId: import("convex/values").GenericId<"assignments">;
     turnToken: string;
+    assignmentId: import("convex/values").GenericId<"assignments">;
     questionMessageId: string;
     parentMessageId: string;
 }, Promise<{

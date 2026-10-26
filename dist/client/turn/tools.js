@@ -6,6 +6,7 @@
 // `beforeTool` / `afterTool` hooks, and finally installs the managed
 // collaboration tools (`collaboration-tools.ts`), which are deliberately not
 // wrapped by the generic tool hooks.
+import { fingerprint } from "../keys.js";
 import { opaqueKey } from "../keys.js";
 import { bindOnceTool } from "../once.js";
 import { scopedMeter } from "../slots.js";
@@ -14,6 +15,7 @@ import { installCollaborationTools } from "./collaboration-tools.js";
 import { boundToolDeadlines } from "./deadlines.js";
 import { slotToolBags } from "./slots.js";
 import { assertBudget } from "./admission.js";
+import { askUserMarker } from "../../shared/tool-markers.js";
 /** Build the complete tool set for one generation. */
 export async function buildTurnTools(rt, gen) {
     const { turn, hc, backend } = gen;
@@ -38,6 +40,13 @@ export async function buildTurnTools(rt, gen) {
             continue; // Deferred/provider-owned effects execute outside this action.
         tools[name] = withToolHooks(rt, gen, name, declared);
     }
+    if (!(claimed.settings.askUser ?? !claimed.subagent))
+        for (const [name, tool] of Object.entries(tools))
+            if (askUserMarker(tool))
+                tools[name] = {
+                    ...tool,
+                    execute: async () => ({ status: "denied", code: "ROOT_ONLY" }),
+                };
     installCollaborationTools(rt, gen, tools, eligible);
     return boundToolDeadlines(gen, tools, () => assertBudget(rt, gen));
 }
@@ -70,6 +79,16 @@ function withToolHooks(rt, gen, name, declared) {
     return {
         ...declared,
         execute: async function (input, options) {
+            const approved = (await turn.rawCtx.runQuery(rt.component.turns["decision-reads"].effective, {
+                assignmentId: turn.args.assignmentId,
+                toolCallId: options.toolCallId,
+            }));
+            // Hooks receive a copy: in-place mutation must not mutate the immutable audit input.
+            if (approved?.edited)
+                input = JSON.parse(JSON.stringify(approved.input));
+            // Plain approvals retain native parsed values, including non-JSON schema
+            // transforms. Snapshot their fingerprint before hooks can mutate input.
+            const approvedHash = approved ? await fingerprint(input) : undefined;
             const before = await hook(managed.hooks?.beforeTool
                 ? () => managed.hooks.beforeTool(hc, { tool: name, input })
                 : undefined);
@@ -77,6 +96,8 @@ function withToolHooks(rt, gen, name, declared) {
                 return { status: "denied", code: "HOOK_BLOCKED", reason: before.block };
             // The outer deadline wrapper checked budget once before this hook.
             const actual = before && "input" in before ? before.input : input;
+            if (approved && (await fingerprint(actual)) !== approvedHash)
+                return { status: "denied", code: "APPROVED_INPUT_CHANGED" };
             const callKey = await opaqueKey("tool-call", facts.runId, facts.threadId, options.toolCallId);
             const tc = {
                 ...hc,
@@ -100,7 +121,8 @@ function withToolHooks(rt, gen, name, declared) {
                 const after = await hook(managed.hooks?.afterTool
                     ? () => managed.hooks.afterTool(hc, { tool: name, input: actual, output })
                     : undefined);
-                return after && "output" in after ? after.output : output;
+                const result = after && "output" in after ? after.output : output;
+                return approved?.edited ? { result, approval: approved } : result;
             };
             if (output && typeof output === "object" && Symbol.asyncIterator in output) {
                 // Preserve native streaming/backpressure; every published

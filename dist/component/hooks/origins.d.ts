@@ -26,8 +26,8 @@ export declare function messageOrigins(ctx: QueryCtx, args: {
 }): Promise<Record<string, Origin>>;
 /** Label note, continuation and result messages on one reader page. */
 export declare const origins: import("convex/server").RegisteredQuery<"public", {
-    assignmentId: import("convex/values").GenericId<"assignments">;
     subject: string;
+    assignmentId: import("convex/values").GenericId<"assignments">;
     messageIds: string[];
 }, Promise<Record<string, Origin>>>;
 export {};

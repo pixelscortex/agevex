@@ -98,7 +98,7 @@ export type AuthorizationScope = {
     subject: string;
     runId: string;
 } | {
-    operation: "title" | "rename" | "summary" | "summarize" | "note" | "respond" | "answer" | "cancel" | "messages" | "streams" | "activity";
+    operation: "pendingApprovals" | "title" | "rename" | "summary" | "summarize" | "note" | "respond" | "answer" | "cancel" | "messages" | "streams" | "activity";
     agent: string;
     threadId: string;
 } | {
@@ -262,6 +262,7 @@ export type CoordinateResult = DelegationResult | {
 export type ManagedAgent = {
     name: string;
     textModel?: Extract<LanguageModel, string | LanguageModelV4>;
+    askUser?: boolean;
     run?: RunSettings;
     sandbox?: boolean;
     hooks?: AgentHooks;
