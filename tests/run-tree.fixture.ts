@@ -1,7 +1,12 @@
 /** Native fake models, real lanes, and an optional real meter for tree guarantees. */
 import { convexTest } from "convex-test";
 import native from "@convex-dev/agent/test";
-import { componentsGeneric, type FunctionReference } from "convex/server";
+import {
+  componentsGeneric,
+  getFunctionAddress,
+  type FunctionReference,
+  type RegisteredAction,
+} from "convex/server";
 import { tool, type ToolSet } from "ai";
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import { z } from "zod";
@@ -18,7 +23,9 @@ import {
   registerAgent,
   type Registration,
   type ManagedAgent,
+  type TurnArgs,
 } from "../src/client/index.js";
+import type { RunnerCtx } from "../src/client/registration/context.js";
 import { components } from "./fixture/api.js";
 import schema from "./fixture/schema.js";
 import { main, builder, reviewer, reset, v2api as api } from "./delegation-v2.host.js";
@@ -76,12 +83,51 @@ function tools(boundary?: "approval" | "ask") {
   };
 }
 
+/** Hold an RPC before its transaction begins, preserving convex-test transaction isolation. */
+function interceptMarkerRpc(
+  action: RegisteredAction<"internal", TurnArgs, null>,
+  intercept: NonNullable<Parameters<typeof setup>[0]>["markerRpc"],
+  returned?: () => void,
+) {
+  const handler = (
+    action as unknown as {
+      _handler: (ctx: RunnerCtx, args: TurnArgs) => Promise<null>;
+    }
+  )._handler;
+
+  const markerKey = JSON.stringify(getFunctionAddress(components.agevex.turns.tools.mark));
+
+  return {
+    ...action,
+    _handler: async (ctx: RunnerCtx, args: TurnArgs) => {
+      const result = await handler(
+        {
+          ...ctx,
+          runMutation: (async (ref, payload) => {
+            if (JSON.stringify(getFunctionAddress(ref)) === markerKey)
+              await intercept?.(payload as MarkerArgs);
+
+            return ctx.runMutation(ref, payload);
+          }) as RunnerCtx["runMutation"],
+        },
+        args,
+      );
+
+      returned?.();
+
+      return result;
+    },
+  };
+}
+
 export function setup(
   options: {
     meter?: boolean;
     limits?: Registration["limits"];
     boundary?: "approval" | "ask";
     marker?: (args: MarkerArgs) => Promise<void>;
+    markerRpc?: (args: MarkerArgs) => Promise<void>;
+    turnReturned?: () => void;
   } = {},
 ) {
   reset();
@@ -96,7 +142,13 @@ export function setup(
       "./fixture/agents.ts": async () => {
         const endpoints = runtime.authorizedEndpoints();
 
-        return { ...endpoints, ...runtime.internalFunctions() };
+        const actions = runtime.internalFunctions();
+
+        return {
+          ...endpoints,
+          ...actions,
+          runTurn: interceptMarkerRpc(actions.runTurn, options.markerRpc, options.turnReturned),
+        };
       },
     },
   });

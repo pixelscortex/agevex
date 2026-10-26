@@ -19,6 +19,7 @@ import { boundToolDeadlines } from "./deadlines.js";
 import type { Generation } from "./context.js";
 import { slotToolBags } from "./slots.js";
 import { assertBudget } from "./admission.js";
+import { startToolProgress } from "./tool-progress.js";
 import { askUserMarker } from "../../shared/tool-markers.js";
 
 /** Build the complete tool set for one generation. */
@@ -205,29 +206,7 @@ export function withToolProgress(
   return {
     ...tool,
     execute: async function (input, options) {
-      const { rawCtx, args, turnKey } = gen.turn;
-      const mark = rt.component.turns.tools.mark;
-      let marker: (typeof args & { key: string }) | undefined;
-
-      // Progress must never delay or replace a paid result, including hashing,
-      // start failures and stream cleanup. Sequence clear behind start so a late
-      // start cannot resurrect progress. No retries: at most one read/patch per
-      // edge contends with assignment writes. Slice disarm clears failed edges;
-      // the mutation's turn/slice fence rejects writes arriving after disarm.
-      const started = Promise.resolve()
-        .then(async () => {
-          marker = { ...args, key: await opaqueKey("tool-progress", turnKey, options.toolCallId) };
-          await rawCtx.runMutation(mark, { ...marker, name });
-        })
-        .catch(() => {});
-
-      const clear = () => {
-        void started
-          .then(async () => {
-            if (marker) await rawCtx.runMutation(mark, marker);
-          })
-          .catch(() => {});
-      };
+      const clear = startToolProgress(rt, gen.turn, name, options.toolCallId);
 
       let streaming = false;
 

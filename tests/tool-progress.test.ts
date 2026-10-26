@@ -2,6 +2,7 @@
 import { expect, it, vi } from "vite-plus/test";
 import { tool } from "ai";
 import { z } from "zod";
+import { settleToolProgress } from "../src/client/turn/tool-progress.js";
 import { withToolProgress } from "../src/client/turn/tools.js";
 import type { Generation } from "../src/client/turn/context.js";
 import type { RuntimeContext } from "../src/client/registration/context.js";
@@ -14,12 +15,20 @@ function wrap(
   const rt = { component: { turns: { tools: { mark: "marker" } } } } as unknown as RuntimeContext;
 
   const gen = {
-    turn: { rawCtx: { runMutation }, args: {}, turnKey: "slice" },
+    turn: {
+      rawCtx: { runMutation },
+      args: {},
+      turnKey: "slice",
+      toolProgress: { pending: new Set(), clear: new Set(), closed: false },
+    },
   } as unknown as Generation;
 
   const wrapped = withToolProgress(rt, gen, "effect", tool({ inputSchema: z.object({}), execute }));
 
-  return () => wrapped.execute!({}, { toolCallId: "call", messages: [], context: {} });
+  return Object.assign(
+    () => wrapped.execute!({}, { toolCallId: "call", messages: [], context: {} }),
+    { settle: () => settleToolProgress(gen.turn) },
+  );
 }
 
 it.each(["start", "clear"])(
@@ -115,3 +124,53 @@ it.each(["exhaust", "return", "throw"])(
     await expect.poll(() => marker.mock.calls.length).toBe(2);
   },
 );
+
+it.each(["result", "error", "stream"])(
+  "slice cleanup clears unfinished %s work once and late completion dispatches no marker RPC",
+  async (ending) => {
+    const held = gate();
+    const failure = new Error("paid outcome unknown");
+    const marker = vi.fn(async () => null);
+
+    const execute = wrap(marker, async () => {
+      if (ending === "stream")
+        return (async function* () {
+          yield "known result";
+          await held.promise;
+        })();
+
+      await held.promise;
+
+      if (ending === "error") throw failure;
+
+      return "known result";
+    });
+
+    const output = execute();
+    // Observe a rejected paid outcome without changing it or allowing a retry.
+    const observed = output.catch((error: unknown) => error);
+    const stream = ending === "stream" ? ((await output) as AsyncIterableIterator<string>) : null;
+
+    if (stream) expect(await stream.next()).toEqual({ done: false, value: "known result" });
+
+    await execute.settle();
+    expect(marker).toHaveBeenCalledTimes(2);
+    held.release();
+
+    if (stream) await stream.return!();
+    else expect(await observed).toBe(ending === "error" ? failure : "known result");
+
+    await execute.settle();
+    expect(marker).toHaveBeenCalledTimes(2);
+  },
+);
+
+it("a tool invoked after slice cleanup cannot dispatch marker RPCs", async () => {
+  const marker = vi.fn(async () => null);
+  const execute = wrap(marker, () => "known result");
+
+  await execute.settle();
+  expect(await execute()).toBe("known result");
+  await execute.settle();
+  expect(marker).not.toHaveBeenCalled();
+});
