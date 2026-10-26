@@ -5,6 +5,7 @@ import { useStreamingUIMessages } from "@convex-dev/agent/react";
 import { getFunctionName, type FunctionReturnType } from "convex/server";
 import type { UIMessage } from "@convex-dev/agent";
 import { queryState, required, type AgevexApi } from "./types.js";
+import { combineMessages } from "./combine.js";
 
 export const REACT_LIMITS = { messages: 500, page: 50, pages: 10 } as const;
 type Page = FunctionReturnType<NonNullable<AgevexApi["messages"]>>;
@@ -58,8 +59,11 @@ export function useMessages(api: Omit<AgevexApi, "runTree">, threadId?: string) 
 
   if (cursors) setWindow({ ...current, cursors });
 
-  const ready = pages.every((page): page is Page => page !== undefined);
-  const stored = ready ? (pages as Page[]).flatMap((page) => page.page) : [];
+  // An uncached older page must not suspend the transcript or its live stream.
+  const loaded = pages.filter((page): page is Page => page !== undefined);
+  const ready = loaded.length > 0;
+  const complete = loaded.length === pages.length;
+  const stored = loaded.flatMap((page) => page.page);
 
   const streaming = useStreamingUIMessages(
     streamsRef,
@@ -78,7 +82,7 @@ export function useMessages(api: Omit<AgevexApi, "runTree">, threadId?: string) 
   const last = pages[pages.length - 1] as Page | undefined;
 
   const loadMore = () => {
-    if (!ready || !last || last.isDone || threadId === undefined) return;
+    if (!complete || !last || last.isDone || threadId === undefined) return;
 
     setWindow((previous) => {
       if (previous !== current) return previous;
@@ -94,7 +98,8 @@ export function useMessages(api: Omit<AgevexApi, "runTree">, threadId?: string) 
     ...queryState(threadId, ready ? messages : undefined),
     messages,
     loadMore,
-    canLoadMore: ready && !!last && !last.isDone,
+    canLoadMore: complete && !!last && !last.isDone,
+    isLoadingMore: threadId !== undefined && ready && !complete,
     evicted: current.evicted || merged.evicted,
     loadLatest: () => setWindow({ threadId, cursors: [null], evicted: false }),
   };
@@ -135,10 +140,12 @@ function mergeMessages(stored: Message[], streaming: UIMessage[]) {
       byPosition.set(key, message);
   }
 
+  const combined = combineMessages(
+    [...byPosition.values()].sort((a, b) => a.order - b.order || a.stepOrder - b.stepOrder),
+  );
+
   return {
-    messages: [...byPosition.values()]
-      .sort((a, b) => a.order - b.order || a.stepOrder - b.stepOrder)
-      .slice(-REACT_LIMITS.messages),
-    evicted: byPosition.size > REACT_LIMITS.messages,
+    messages: combined.slice(-REACT_LIMITS.messages),
+    evicted: combined.length > REACT_LIMITS.messages,
   };
 }

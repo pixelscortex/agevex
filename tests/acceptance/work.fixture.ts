@@ -12,7 +12,13 @@ import {
 } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { z } from "zod";
-import { Agent, defineOnceTool, registerAgent, type SlotFacts } from "../../src/client/index.js";
+import {
+  Agent,
+  defineOnceTool,
+  registerAgent,
+  type ManagedAgent,
+  type SlotFacts,
+} from "../../src/client/index.js";
 import { createAskUserTool } from "../../src/modules/tools/client/index.js";
 import agevex from "../../src/test.js";
 import { main, builder, reviewer, reset } from "../delegation-v2.host.js";
@@ -78,14 +84,13 @@ const charge = {
 
 /** No app tool trusts a model-supplied owner. Children inherit trusted subject facts. */
 function runtime() {
-  const review = new Agent(components.agent, {
+  const review: ManagedAgent = new Agent(components.agent, {
     name: "Reviewer",
     languageModel: reviewer.textModel,
-    askUser: false,
     tools: { fetch_work: fetchWork, ask_user: createAskUserTool() },
   });
 
-  const build = new Agent(components.agent, {
+  const build: ManagedAgent = new Agent(components.agent, {
     name: "Builder",
     languageModel: builder.textModel,
     subagents: [review],
@@ -95,7 +100,8 @@ function runtime() {
   const root = new Agent(components.agent, {
     name: "Main",
     languageModel: main.textModel,
-    subagents: [build],
+    // Main may delegate Reviewer, but only Builder owns the run it launches.
+    subagents: [build, review],
     tools: { ask_user: createAskUserTool() },
   });
 

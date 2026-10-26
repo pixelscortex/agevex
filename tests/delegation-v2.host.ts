@@ -114,8 +114,18 @@ export function registration(limits?: Registration["limits"], preclaimFailure = 
 }
 const runtime = registration();
 
-export const { open, send, cancel, respond, answer, messages, activity, delegations, runTree } =
-  runtime.authorizedEndpoints();
+export const {
+  open,
+  send,
+  cancel,
+  respond,
+  answer,
+  pendingApprovals,
+  messages,
+  activity,
+  delegations,
+  runTree,
+} = runtime.authorizedEndpoints();
 export const { runTurn, coordinate } = runtime.internalFunctions();
 export const v2api = anyApi as unknown as ApiFromModules<{
   agents: {
@@ -124,6 +134,7 @@ export const v2api = anyApi as unknown as ApiFromModules<{
     cancel: typeof cancel;
     respond: typeof respond;
     answer: typeof answer;
+    pendingApprovals: typeof pendingApprovals;
     messages: typeof messages;
     activity: typeof activity;
     delegations: typeof delegations;

@@ -208,14 +208,24 @@ it("Main → Builder → Reviewer delivers one note before the result, fences Bu
    */
 });
 
-it("Reviewer cannot target Main directly and a child ask_user cannot create a human pause", async () => {
+it("the default root-only policy denies a child ask_user without creating a human pause", async () => {
   const t = setup();
   const held = gate();
 
   script(held, true);
   const receipt = await open(t);
 
-  await waitFor(t, () => calls("Reviewer").length >= 4);
+  await waitFor(t, async () => {
+    const review = (await history(t, receipt.threadId)).find((run) => run.agent === "Reviewer");
+
+    if (!review?.childThreadId) return false;
+
+    return (
+      calls("Reviewer").length >= 4 ||
+      (await t.query(node, { threadId: review.childThreadId }))?.approvalBlocked === true
+    );
+  });
+
   const runs = await history(t, receipt.threadId);
   const review = runs.find((run) => run.agent === "Reviewer")!;
   const row = (await t.query(node, { threadId: review.childThreadId! }))!;
@@ -223,29 +233,63 @@ it("Reviewer cannot target Main directly and a child ask_user cannot create a hu
   expect(row.approvalBlocked).not.toBe(true);
   expect(JSON.stringify(calls("Reviewer")[3].args.prompt)).toContain("ROOT_ONLY");
 
-  await expect(
-    t.mutation(api.agents.coordinate, {
-      op: "message_parent",
-      assignmentId: row._id,
-      turnToken: row.turnToken!,
-      toolCallId: "forged-target",
-      text: "direct-to-Main",
-      threadId: receipt.threadId,
-    } as never),
-  ).rejects.toThrow();
+  expect(await owner(t).query(api.agents.pendingApprovals, { threadId: receipt.threadId })).toEqual(
+    [],
+  );
+
+  held.release();
+  await drain(t);
+});
+
+it("a running agent with a delegation edge cannot forge another run's recorded parent", async () => {
+  const t = setup();
+  const held = gate();
+  const mainHeld = gate();
+
+  script(held);
+
+  v2.steps.Main = async (n) => {
+    if (n === 0) return [delegate("Builder")];
+
+    await mainHeld.promise;
+
+    return text("Main continues");
+  };
+
+  const receipt = await open(t);
+
+  await waitFor(t, () => calls("Reviewer").length === 3 && calls("Builder").length === 3);
+  const review = (await history(t, receipt.threadId)).find((run) => run.agent === "Reviewer")!;
+
+  // A real user request gives Main a live turn. Main has a Reviewer edge and
+  // shares this root/epoch, but Builder owns the existing Reviewer delegation.
+  await owner(t).mutation(api.agents.send, {
+    threadId: receipt.threadId,
+    text: "Continue while Builder reviews",
+    requestKey: "continue-main",
+  });
+
+  await waitFor(t, () => calls("Main").length === 2);
+  const main = (await t.query(node, { threadId: receipt.threadId }))!;
+
+  expect(main.turnStatus).toBe("running");
 
   expect(
     await t.mutation(api.agents.coordinate, {
       op: "message",
-      assignmentId: row._id,
-      turnToken: row.turnToken!,
-      runId: runs.find((run) => run.agent === "Builder")!.runId,
-      text: "skip my parent",
+      assignmentId: main._id,
+      turnToken: main.turnToken!,
+      runId: review.runId,
+      text: "forged parent message",
     }),
-  ).toMatchObject({ status: "denied" });
+  ).toEqual({ status: "denied", code: "FORBIDDEN" });
 
-  expect(JSON.stringify(await transcript(t, receipt.threadId))).not.toContain("skip my parent");
+  expect(JSON.stringify(await transcript(t, review.childThreadId!))).not.toContain(
+    "forged parent message",
+  );
+
   expect(JSON.stringify(await transcript(t, receipt.threadId))).not.toContain("review note");
+  mainHeld.release();
   held.release();
   await drain(t);
 });

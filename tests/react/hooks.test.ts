@@ -233,30 +233,37 @@ it("ask filters the shared pending query and answers with a structured value", a
   });
 });
 
-it("send creates one request key per intent and Convex transport replay preserves its arguments", async () => {
+it("an app can retry a rejected send with the same intent key while fresh sends get new keys", async () => {
   const t = transport((name) =>
     name.endsWith(":messages")
       ? { page: [], isDone: true, continueCursor: "" }
       : { streams: { kind: "list", messages: [] } },
   );
 
-  const attempts: unknown[] = [];
+  const disconnected = new Error("connection lost before receipt");
+  let attempt = 0;
 
-  t.mutate(async (_name, args) => {
-    attempts.push(structuredClone(args));
-    // The Convex transport resends the same mutation after reconnecting.
-    attempts.push(structuredClone(args));
+  t.mutate(async () => {
+    if (attempt++ === 0) throw disconnected;
 
     return { status: "accepted" };
   });
 
   const { result } = renderHook(() => hooks.useThread("thread"), { wrapper: t.wrapper });
 
+  // The app retains the intent, including its key, until it gets a receipt.
+  const intent = { requestKey: crypto.randomUUID() };
+
+  await expect(result.current.send("same text", intent)).rejects.toBe(disconnected);
+  expect(t.writes).toHaveLength(1);
+  await expect(result.current.send("same text", intent)).resolves.toEqual({ status: "accepted" });
+  expect(t.writes).toHaveLength(2);
+  expect(t.writes[0].args).toEqual(t.writes[1].args);
+  expect(t.writes[1].args.requestKey).toBe(intent.requestKey);
   await result.current.send("same text");
   await result.current.send("same text");
-  expect(attempts[0]).toEqual(attempts[1]);
-  expect(attempts[2]).toEqual(attempts[3]);
-  expect(t.writes[0].args.requestKey).not.toBe(t.writes[1].args.requestKey);
+  expect(t.writes[2].args.requestKey).not.toBe(intent.requestKey);
+  expect(t.writes[2].args.requestKey).not.toBe(t.writes[3].args.requestKey);
 });
 
 it("title rename uses the observed version and runTree preserves the supplied reference's return type", async () => {

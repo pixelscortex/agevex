@@ -14,8 +14,8 @@ type TreeRef = FunctionReference<
 >;
 type Pending = FunctionReturnType<NonNullable<AgevexApi["pendingApprovals"]>>[number];
 
-/** Generate once per invocation. Convex retries this mutation's exact arguments;
- * a later send invocation is a different user intent, even with identical text.
+/** Generate once per new intent. Convex retries the mutation's exact arguments;
+ * apps can also retain an explicit key when retrying a rejected send promise.
  */
 function requestKey() {
   return crypto.randomUUID();
@@ -69,8 +69,12 @@ function useThread(api: Omit<AgevexApi, "runTree">, threadId?: string) {
 
   return {
     ...messages,
-    send: async (text: string) =>
-      send({ threadId: threadRequired(threadId), text, requestKey: requestKey() }),
+    send: async (text: string, intent?: { requestKey: string }) =>
+      send({
+        threadId: threadRequired(threadId),
+        text,
+        requestKey: intent?.requestKey ?? requestKey(),
+      }),
     cancel: async () => cancel({ threadId: threadRequired(threadId) }),
   };
 }
