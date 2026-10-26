@@ -42,11 +42,12 @@ export declare const deliveryContext: import("convex/server").RegisteredQuery<"p
     childThreadId: string;
     childResultMessageId: string | null;
     status: "failed" | "completed";
-    errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
+    errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | "DELIVERY_UNKNOWN" | null;
     rootAvailable: boolean;
 } | null>>;
 /** Ask the host coordinator to deliver a terminal run. If that call fails,
- * record a failed delivery instead; nothing is ever retried automatically. */
+ * record a failed delivery instead (`DELIVERY_UNKNOWN` if that record fails
+ * too, see `recordFailure`); the delivery is never retried automatically. */
 export declare const notify: import("convex/server").RegisteredAction<"internal", {
     runId: string;
     deliveryToken: string;
@@ -55,13 +56,15 @@ export declare const notify: import("convex/server").RegisteredAction<"internal"
 /** The coordinator's delivery outcome; see `applyDelivery`. */
 export declare const deliver: import("convex/server").RegisteredMutation<"public", {
     runId: string;
-    errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
+    errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | "DELIVERY_UNKNOWN" | null;
     deliveryStatus: "failed" | "accepted" | "blocked";
     deliveryToken: string;
     parentMessageId: string | null;
 }, Promise<null>>;
-/** notify's fallback when the coordinator itself failed. */
+/** notify's fallback when the coordinator itself failed. `unknown` records
+ * `DELIVERY_UNKNOWN` instead, for the case where this record also threw. */
 export declare const failDelivery: import("convex/server").RegisteredMutation<"internal", {
+    unknown?: boolean | undefined;
     runId: string;
     deliveryToken: string;
 }, Promise<null>>;

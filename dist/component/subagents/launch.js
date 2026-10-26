@@ -78,7 +78,7 @@ export async function reserveRun(ctx, args) {
         if (refusal)
             return refusal;
         if (!(await canOweResult(ctx, row, root)))
-            return denied("RUN_BUDGET");
+            return denied("RESULTS_PENDING");
     }
     const wait = args.wait ?? "each";
     const group = args.group ?? (wait === "all" ? "" : undefined);

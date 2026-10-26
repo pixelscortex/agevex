@@ -19,12 +19,15 @@ import { storedProposal } from "./turns/decision_proposals.js";
 export const turnOrigin = v.union(v.literal("user"), v.literal("subagent_result"));
 export const turnStatus = v.union(v.literal("queued"), v.literal("running"), v.literal("idle"), v.literal("recovery_required"));
 export const errorCode = v.union(v.null(), v.literal("BUDGET_EXCEEDED"), v.literal("HOOK_FAILED"), v.literal("GENERATION_FAILED"), v.literal("RUN_TIMEOUT"), v.literal("SLICE_LIMIT"), v.literal("APPROVAL_LIMIT"), v.literal("CLEANUP_FAILED"), v.literal("AUTHORIZATION_DENIED"), v.literal("EXECUTION_AMBIGUOUS"));
-// A run reports every turn failure code, plus the four outcomes that only a
+// A run reports every turn failure code, plus the five outcomes that only a
 // delegated run can have. Deriving from errorCode keeps one source of truth, so
 // a new turn failure code can never be missing from run reports.
 const [, ...turnFailureCodes] = errorCode.members;
-export const runErrorCode = v.union(v.null(), ...turnFailureCodes, v.literal("EMPTY_RESULT"), v.literal("RESULT_UNVERIFIED"), v.literal("ROOT_UNAVAILABLE"), v.literal("DELIVERY_FAILED"));
-export const denialCode = v.union(v.literal("HOOK_BLOCKED"), v.literal("ACTIVE_LIMIT"), v.literal("TASK_LIMIT"), v.literal("FORBIDDEN"), v.literal("STALE_TURN"), v.literal("DELEGATION_CONFLICT"), v.literal("RUN_BUDGET"), v.literal("DEPTH_LIMIT"), v.literal("GROUP_LIMIT"), v.literal("GROUP_CLOSED"), v.literal("GROUP_CONFLICT"), v.literal("CHILD_FINISHED"), v.literal("MESSAGE_LIMIT"), v.literal("MESSAGE_TOO_LARGE"), v.literal("MESSAGE_EMPTY"), v.literal("SIDE_RUN"), v.literal("MESSAGE_RATE_LIMIT"), v.literal("KEY_CONFLICT"), v.literal("NO_PARENT"), v.literal("ASK_PENDING"), v.literal("ASK_WITH_CHILDREN"), v.literal("QUEUE_LIMIT"));
+export const runErrorCode = v.union(v.null(), ...turnFailureCodes, v.literal("EMPTY_RESULT"), v.literal("RESULT_UNVERIFIED"), v.literal("ROOT_UNAVAILABLE"), v.literal("DELIVERY_FAILED"), 
+// The delivery attempt AND its `DELIVERY_FAILED` record both threw, so the
+// result's fate is not known; see `deliverTerminalRun`.
+v.literal("DELIVERY_UNKNOWN"));
+export const denialCode = v.union(v.literal("HOOK_BLOCKED"), v.literal("ACTIVE_LIMIT"), v.literal("TASK_LIMIT"), v.literal("FORBIDDEN"), v.literal("STALE_TURN"), v.literal("DELEGATION_CONFLICT"), v.literal("RUN_BUDGET"), v.literal("RESULTS_PENDING"), v.literal("DEPTH_LIMIT"), v.literal("GROUP_LIMIT"), v.literal("GROUP_CLOSED"), v.literal("GROUP_CONFLICT"), v.literal("CHILD_FINISHED"), v.literal("MESSAGE_LIMIT"), v.literal("MESSAGE_TOO_LARGE"), v.literal("MESSAGE_EMPTY"), v.literal("SIDE_RUN"), v.literal("MESSAGE_RATE_LIMIT"), v.literal("KEY_CONFLICT"), v.literal("NO_PARENT"), v.literal("ASK_PENDING"), v.literal("ASK_WITH_CHILDREN"), v.literal("QUEUE_LIMIT"));
 export const runStatus = v.union(v.literal("queued"), v.literal("running"), v.literal("asking"), v.literal("completed"), v.literal("failed"));
 export const deliveryStatus = v.union(v.literal("pending"), v.literal("accepted"), v.literal("failed"), v.literal("blocked"));
 export const runPhase = v.union(v.literal("queued"), v.literal("started"), v.literal("completed"), v.literal("failed"), v.literal("result_accepted"), v.literal("delivery_failed"), v.literal("delivery_blocked"));

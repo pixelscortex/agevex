@@ -12,6 +12,7 @@
  * `subagentRuns`, `runs`, `inbox` and the parent's counters.
  */
 import {
+  type ActionCtx,
   type MutationCtx,
   mutation,
   query,
@@ -218,7 +219,8 @@ export const deliveryContext = query({
 });
 
 /** Ask the host coordinator to deliver a terminal run. If that call fails,
- * record a failed delivery instead; nothing is ever retried automatically. */
+ * record a failed delivery instead (`DELIVERY_UNKNOWN` if that record fails
+ * too, see `recordFailure`); the delivery is never retried automatically. */
 export const notify = internalAction({
   args: { runId: v.string(), deliveryToken: v.string(), coordinateHandle: v.string() },
   returns: v.null(),
@@ -230,20 +232,48 @@ export const notify = internalAction({
         deliveryToken: args.deliveryToken,
       });
     } catch {
-      try {
-        await ctx.runMutation(internal.subagents.deliver.failDelivery, {
-          runId: args.runId,
-          deliveryToken: args.deliveryToken,
-        });
-      } catch {
-        // The delivery attempt and its failure record both failed to commit.
-        // Nothing is claimed here: the run stays terminal and undelivered.
-      }
+      await recordFailure(ctx, args);
     }
 
     return null;
   },
 });
+
+/** Record a failed notify, falling back to `DELIVERY_UNKNOWN`.
+ *
+ * Why the extra write: a settled run whose delivery stays `pending` holds one
+ * cross-request result slot (`canOweResult` in headroom.ts) and a hop, and
+ * only a cancel (an epoch bump; the guard counts current-epoch rows only)
+ * would ever free it. Reaching the second catch means the notify attempt and
+ * the `DELIVERY_FAILED` record have both thrown, so no delivery is in flight
+ * any more: recording `failed` with `DELIVERY_UNKNOWN` now (same token, same
+ * pending compare-and-set in `applyDelivery`) cannot drop a result that would
+ * otherwise arrive. That is "outcome unknown", not "known failure", which is
+ * why it has its own code. The delivery itself is never retried.
+ *
+ * This is best effort: if the unknown record throws too, the error is
+ * swallowed and the run stays `pending` until a cancel frees the slot. */
+async function recordFailure(
+  ctx: ActionCtx,
+  args: { runId: string; deliveryToken: string },
+): Promise<void> {
+  const { runId, deliveryToken } = args;
+
+  try {
+    await ctx.runMutation(internal.subagents.deliver.failDelivery, { runId, deliveryToken });
+  } catch {
+    try {
+      await ctx.runMutation(internal.subagents.deliver.failDelivery, {
+        runId,
+        deliveryToken,
+        unknown: true,
+      });
+    } catch {
+      // All three writes failed to commit; nothing is claimed about a
+      // delivery that did not happen. Only a cancel clears this row.
+    }
+  }
+}
 
 /** The coordinator's delivery outcome; see `applyDelivery`. */
 export const deliver = mutation({
@@ -258,16 +288,17 @@ export const deliver = mutation({
   handler: (ctx, args) => applyDelivery(ctx, args),
 });
 
-/** notify's fallback when the coordinator itself failed. */
+/** notify's fallback when the coordinator itself failed. `unknown` records
+ * `DELIVERY_UNKNOWN` instead, for the case where this record also threw. */
 export const failDelivery = internalMutation({
-  args: { runId: v.string(), deliveryToken: v.string() },
+  args: { runId: v.string(), deliveryToken: v.string(), unknown: v.optional(v.boolean()) },
   returns: v.null(),
-  handler: (ctx, args) =>
+  handler: (ctx, { unknown, ...args }) =>
     applyDelivery(ctx, {
       ...args,
       deliveryStatus: "failed",
       parentMessageId: null,
-      errorCode: "DELIVERY_FAILED",
+      errorCode: unknown ? "DELIVERY_UNKNOWN" : "DELIVERY_FAILED",
     }),
 });
 
