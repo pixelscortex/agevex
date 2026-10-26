@@ -20,6 +20,9 @@ import { fixture, reset, exports, api, registration, text, call } from "./hooks.
 import { components, rawAssignment, internal } from "./fixture/api.js";
 import { requireReceipt } from "./receipt.js";
 import { RUN_LIMITS, resolveRunSettings, sliceWatchdogMs } from "../src/component/run_settings.js";
+import { advanceUntil } from "./clock.js";
+
+const SERIAL_TOOL_LIMITS = { count: 16, workMs: 600 } as const;
 
 const modules = import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]);
 
@@ -455,12 +458,14 @@ it.each(["stream", "generate"] as const)(
     let completed = 0;
 
     fixture.run.Main = { mode, stepsPerTurn: 1, modelTimeoutMs: 5_000, toolTimeoutMs: 1_000 };
-    fixture.steps.Main = () => Array.from({ length: 16 }, () => call("managed", {})).flat();
+
+    fixture.steps.Main = () =>
+      Array.from({ length: SERIAL_TOOL_LIMITS.count }, () => call("managed", {})).flat();
 
     fixture.toolWork = async () => {
       active++;
       maximum = Math.max(maximum, active);
-      await new Promise((resolve) => setTimeout(resolve, 600));
+      await new Promise((resolve) => setTimeout(resolve, SERIAL_TOOL_LIMITS.workMs));
       active--;
       completed++;
 
@@ -468,6 +473,23 @@ it.each(["stream", "generate"] as const)(
     };
 
     const receipt = await open(t);
+
+    // The generic drain pumps the clock while lazy modules are still loading.
+    // Start each 600 ms interval only after its tool is ready; freeze time
+    // between tools so machine speed cannot spend their 1,000 ms deadlines.
+    await advanceUntil(t, () => active === 1);
+
+    for (let tool = 0; tool < SERIAL_TOOL_LIMITS.count; tool++) {
+      await t.action(async () => {
+        await vi.advanceTimersByTimeAsync(SERIAL_TOOL_LIMITS.workMs);
+      });
+
+      await advanceUntil(
+        t,
+        () => completed === tool + 1 && (completed === SERIAL_TOOL_LIMITS.count || active === 1),
+        0,
+      );
+    }
 
     await drain(t);
     expect(maximum).toBe(1);
