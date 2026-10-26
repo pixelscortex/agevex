@@ -23,7 +23,7 @@ import {
   sliceWatchdogMs,
   type ResolvedRunSettings,
 } from "../run-settings.js";
-import { LIMITS } from "../limits.js";
+import { LIMITS, readyRowLimit } from "../limits.js";
 import { claimNotes, noteHandles } from "../hooks/notes.js";
 import { firstReady } from "./inbox.js";
 import { appendEvent, runById } from "../subagents/runs.js";
@@ -163,10 +163,9 @@ async function consumeHead(ctx: MutationCtx, row: Doc<"assignments">) {
   return mergeConsecutive(ctx, row, head, noteAnchor);
 }
 
-/** Consume the consecutive head only. Freeing capacity can publish an
- * already-ready join, so drain that same FIFO before choosing its native
- * anchor. Otherwise an older deferred join could hide a consumed answer
- * on the very next turn. Never cross another run/user turn.
+/** Consume the consecutive head only. Publish ready joins into that same FIFO
+ * before choosing its native anchor. Otherwise an older joined result could
+ * hide a consumed answer on the very next turn. Never cross another run/user turn.
  * <=100 backlog + reserved answer +50 joins + reserved head =152 rows.
  * The by_join "ready" range is scoped to this budget: <=50 members TOTAL
  * across its cohorts. <=100 run metadata reads (1,600 KiB), <=152
@@ -185,7 +184,7 @@ async function mergeConsecutive(
 ) {
   let newest = head.join?.newestSequence ?? head.sequence;
   let earliest = head.join?.earliestSequence ?? newest;
-  const bound = row.limits.queueLength + row.limits.runLaunches + 1;
+  const bound = readyRowLimit(row.limits) - 1;
 
   for (let count = 0; count < bound; count++) {
     await ctx.runMutation(api.subagents.deliver.releaseGroups, {

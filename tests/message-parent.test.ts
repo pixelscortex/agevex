@@ -284,7 +284,7 @@ it("cancellation fences late messages and retries while committed progress remai
 });
 
 it.each(["queue", "hop"])(
-  "the %s cap reserves the child final result while refusing fresh progress and replaying accepted retries",
+  "the %s cap refuses fresh progress and replays accepted retries while final delivery always succeeds",
   async (cap) => {
     const t = setup(cap === "queue" ? { queueLength: 2 } : { runHops: 3 });
     const childHeld = gate();
@@ -323,6 +323,12 @@ it.each(["queue", "hop"])(
       await t.action(async () => {
         await vi.advanceTimersByTimeAsync(LIMITS.parentNoteIntervalMs);
       });
+
+      expect(await send(t, actor, "fills last message slot")).toMatchObject({ status: "accepted" });
+
+      await t.action(async () => {
+        await vi.advanceTimersByTimeAsync(LIMITS.parentNoteIntervalMs);
+      });
     }
 
     expect(await send(t, actor, "denied by cap")).toMatchObject({
@@ -344,7 +350,7 @@ it.each(["queue", "hop"])(
 
     expect(
       (await t.query(rawAssignment, { assignmentId: receipt.assignmentId }))!.queuedMessages,
-    ).toBeLessThanOrEqual(cap === "queue" ? 2 : HOST_LIMITS.queueLength.default);
+    ).toBeLessThanOrEqual(cap === "queue" ? 3 : HOST_LIMITS.queueLength.default);
 
     parentHeld.release();
     await drain(t);
@@ -784,7 +790,7 @@ it("the full 58-row delivery range reserves a settled child's final hop after ac
   await drain(t);
 });
 
-it("notes reserve parent queue slots for results from older user requests too", async () => {
+it("notes use free message slots while results from older user requests still deliver", async () => {
   const t = setup({ queueLength: 2 });
   const held = gate();
 
@@ -814,10 +820,10 @@ it("notes reserve parent queue slots for results from older user requests too", 
   await waitFor(t, () => calls("Reviewer").length === 2);
 
   expect(
-    await send(t, await sender(t, receipt.threadId), "would crowd the old final result"),
-  ).toMatchObject({ status: "denied", code: "QUEUE_LIMIT" });
+    await send(t, await sender(t, receipt.threadId), "progress beside old and new final results"),
+  ).toMatchObject({ status: "accepted" });
 
-  expect(await hops(t, receipt.assignmentId)).toBe(1);
+  expect(await hops(t, receipt.assignmentId)).toBe(2);
   held.release();
   await drain(t);
   const history = await transcript(t, receipt.threadId);
@@ -834,7 +840,7 @@ it("notes reserve parent queue slots for results from older user requests too", 
   }
 });
 
-it("100 pending parent results across budgets leave no optional note slot under real transaction limits", async () => {
+it("pending results across budgets do not reserve message queue slots under real transaction limits", async () => {
   const maxima = Object.fromEntries(
     Object.entries(HOST_LIMITS).map(([key, value]) => [key, value.max]),
   );
@@ -858,13 +864,12 @@ it("100 pending parent results across budgets leave no optional note slot under 
 
   await t.mutation(fillQueue, { assignmentId: receipt.assignmentId });
 
-  expect(await send(t, actor, "no space beyond reserved results")).toMatchObject({
-    status: "denied",
-    code: "QUEUE_LIMIT",
+  expect(await send(t, actor, "a message uses actual queue occupancy")).toMatchObject({
+    status: "accepted",
   });
 
-  expect(await hops(t, receipt.assignmentId)).toBe(1);
-  expect(JSON.stringify(await transcript(t, receipt.threadId))).not.toContain("reserved results");
+  expect(await hops(t, receipt.assignmentId)).toBe(2);
+  expect(JSON.stringify(await transcript(t, receipt.threadId))).toContain("actual queue occupancy");
   expect(calls("Main")).toHaveLength(1);
   await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
   held.release();

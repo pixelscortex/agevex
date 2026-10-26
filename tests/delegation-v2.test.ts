@@ -557,8 +557,8 @@ async function complete(t: Test, child: Awaited<ReturnType<typeof launch>>, resu
   });
 }
 
-it("child follow-ups cannot take the four result slots left by sixteen grandchild notes", async () => {
-  const t = setup({ runHops: 30 });
+it("child follow-ups fill the message queue and all four grandchild results still deliver", async () => {
+  const t = setup({ runHops: 34, messagesPerChild: 8 });
   const root = await manualRoot(t);
   const child = await launch(t, root, "Builder", { task: "bounded task" });
   const grandchildren = [];
@@ -590,15 +590,25 @@ it("child follow-ups cannot take the four result slots left by sixteen grandchil
         assignmentId: root.assignmentId,
         turnToken: root.turnToken,
         runId: child.runId,
-        text: `would crowd grandchild result ${index}`,
+        text: `fills message queue ${index}`,
       }),
-    ).toMatchObject({ status: "denied", code: "QUEUE_LIMIT" });
+    ).toMatchObject({ status: "accepted" });
+
+  expect(
+    await t.mutation(api.agents.coordinate, {
+      op: "message",
+      assignmentId: root.assignmentId,
+      turnToken: root.turnToken,
+      runId: child.runId,
+      text: "ordinary message overflow",
+    }),
+  ).toMatchObject({ status: "denied", code: "QUEUE_LIMIT" });
 
   for (const [index, grandchild] of grandchildren.entries())
     await complete(t, grandchild, `grandchild final ${index}`);
 
   expect(await t.query(rawAssignment, { assignmentId: child.assignmentId })).toMatchObject({
-    queuedMessages: 20,
+    queuedMessages: 24,
   });
 
   const history = await owner(t).query(api.agents.messages, {
@@ -607,7 +617,7 @@ it("child follow-ups cannot take the four result slots left by sixteen grandchil
   });
 
   expect(history.page.filter((row) => row.origin === "result")).toHaveLength(4);
-  expect(JSON.stringify(history)).not.toContain("would crowd");
+  expect(JSON.stringify(history)).not.toContain("ordinary message overflow");
 
   const runs = await owner(t).query(api.agents.delegations, {
     threadId: root.threadId,
@@ -638,14 +648,47 @@ it("four questions cannot crowd out any of five results in a length-four root qu
         turnToken: child.turnToken,
         question: `would crowd a result ${index}?`,
       }),
-    ).toMatchObject({ status: "denied", code: "QUEUE_LIMIT" });
+    ).toMatchObject({ status: "accepted" });
   }
 
-  await t.mutation(components.agevex.turns.slices.finish, {
-    assignmentId: root.assignmentId,
-    turnToken: root.turnToken,
-    errorCode: null,
-  });
+  expect(
+    await t.mutation(api.agents.coordinate, {
+      op: "ask",
+      assignmentId: children[4].assignmentId,
+      turnToken: children[4].turnToken,
+      question: "fifth question is full",
+    }),
+  ).toMatchObject({ status: "denied", code: "QUEUE_LIMIT" });
+
+  for (const child of children.slice(0, 4))
+    expect(
+      await t.mutation(api.agents.coordinate, {
+        op: "message",
+        assignmentId: root.assignmentId,
+        turnToken: root.turnToken,
+        runId: child.runId,
+        text: "answer while question is queued",
+      }),
+    ).toMatchObject({ status: "accepted" });
+
+  // The mid-turn answer is still ready work on the child. Consume it before
+  // reporting that child's final outcome, just as its next real turn would.
+  for (const child of children.slice(0, 4)) {
+    await t.mutation(components.agevex.turns.slices.finish, {
+      assignmentId: child.assignmentId,
+      turnToken: child.turnToken,
+      errorCode: null,
+    });
+
+    const row = (await t.query(rawAssignment, { assignmentId: child.assignmentId }))!;
+
+    child.turnToken = row.turnToken!;
+
+    await t.mutation(components.agevex.turns.slices.claim, {
+      assignmentId: child.assignmentId,
+      turnToken: child.turnToken,
+    });
+  }
 
   for (const [index, child] of children.entries())
     await complete(t, child, `questioner final ${index}`);
@@ -656,7 +699,7 @@ it("four questions cannot crowd out any of five results in a length-four root qu
   });
 
   expect(history.page.filter((row) => row.origin === "result")).toHaveLength(5);
-  expect(JSON.stringify(history)).not.toContain("would crowd");
+  expect(JSON.stringify(history)).not.toContain("fifth question is full");
 
   const runs = await owner(t).query(api.agents.delegations, {
     threadId: root.threadId,
@@ -668,12 +711,12 @@ it("four questions cannot crowd out any of five results in a length-four root qu
   await drain(t);
 });
 
-it("the twentieth user prompt is refused before saving so the busy root receives its child's result", async () => {
+it("twenty user prompts fill the queue and its child result delivers beyond that limit", async () => {
   const t = setup();
   const root = await manualRoot(t);
   const child = await launch(t, root, "Reviewer", { task: "bounded task" });
 
-  for (let index = 0; index < 20; index++)
+  for (let index = 0; index <= 20; index++)
     expect(
       await owner(t).mutation(api.agents.send, {
         threadId: root.threadId,
@@ -681,7 +724,7 @@ it("the twentieth user prompt is refused before saving so the busy root receives
         requestKey: `backlog-${index}`,
       }),
     ).toMatchObject(
-      index < 19 ? { status: "accepted" } : { status: "rejected", code: "QUEUE_FULL" },
+      index < 20 ? { status: "accepted" } : { status: "rejected", code: "QUEUE_FULL" },
     );
 
   const parent = (await t.query(rawAssignment, { assignmentId: root.assignmentId }))!;
@@ -704,7 +747,7 @@ it("the twentieth user prompt is refused before saving so the busy root receives
   await complete(t, child, "child result survives user backlog");
 
   expect(await t.query(rawAssignment, { assignmentId: root.assignmentId })).toMatchObject({
-    queuedMessages: 20,
+    queuedMessages: 21,
   });
 
   const history = await owner(t).query(api.agents.messages, {
@@ -714,7 +757,7 @@ it("the twentieth user prompt is refused before saving so the busy root receives
 
   expect(history.page.filter((row) => row.origin === "result")).toHaveLength(1);
   expect(JSON.stringify(history)).toContain("child result survives user backlog");
-  expect(JSON.stringify(history)).not.toContain("user backlog 19");
+  expect(JSON.stringify(history)).not.toContain("user backlog 20");
 
   expect(
     (
@@ -729,7 +772,7 @@ it("the twentieth user prompt is refused before saving so the busy root receives
   await drain(t);
 });
 
-it("a reserved approval head cannot grant a second extra delivery slot before claim", async () => {
+it("both results deliver beyond a full queue beside a reserved approval head", async () => {
   const t = setup({ queueLength: 1 });
   const root = await manualRoot(t);
   const first = await launch(t, root, "Reviewer", { task: "first result" });
@@ -787,17 +830,15 @@ it("a reserved approval head cannot grant a second extra delivery slot before cl
     errorCode: null,
   });
 
-  await expect(
-    t.mutation(api.agents.coordinate, {
-      op: "notify",
-      runId: second.runId,
-      deliveryToken: second.deliveryToken,
-    }),
-  ).rejects.toThrow("QUEUE_LIMIT");
+  await t.mutation(api.agents.coordinate, {
+    op: "notify",
+    runId: second.runId,
+    deliveryToken: second.deliveryToken,
+  });
 
   const parent = (await t.query(rawAssignment, { assignmentId: root.assignmentId }))!;
 
-  expect(parent).toMatchObject({ turnStatus: "queued", queuedMessages: 1 });
+  expect(parent).toMatchObject({ turnStatus: "queued", queuedMessages: 2 });
   expect(parent.inboxId).toBe(parent.approvals!.inboxId);
 
   expect(
@@ -807,7 +848,7 @@ it("a reserved approval head cannot grant a second extra delivery slot before cl
         paginationOpts: { cursor: null, numItems: 20 },
       })
     ).page.filter((row) => row.origin === "result"),
-  ).toHaveLength(1);
+  ).toHaveLength(2);
 
   await owner(t).mutation(api.agents.cancel, { threadId: root.threadId });
   await drain(t);
@@ -1165,12 +1206,12 @@ it("cancel at all maxima fences live loop → turn → Workpool dispatch chains 
   for (let i = 1; i < HOST_LIMITS.activeChildrenPerRoot.max; i++)
     descendants.push(await launch(t, parent, "Reviewer"));
 
-  for (const child of descendants) {
+  for (const child of [...descendants].reverse()) {
     expect(
       await t.mutation(api.agents.coordinate, {
         op: "message",
-        assignmentId: root.assignmentId,
-        turnToken: root.turnToken,
+        assignmentId: child === parent ? root.assignmentId : parent.assignmentId,
+        turnToken: child === parent ? root.turnToken : parent.turnToken,
         runId: child.runId,
         text: "resume through the real dispatch",
       }),
@@ -1421,8 +1462,8 @@ it("the 15-descendant cap includes grandchildren and cancel fences maximum queue
     expect(
       await t.mutation(api.agents.coordinate, {
         op: "message",
-        assignmentId: root.assignmentId,
-        turnToken: root.turnToken,
+        assignmentId: parent.assignmentId,
+        turnToken: parent.turnToken,
         runId: child.runId,
         text: "😀".repeat(HOST_LIMITS.taskLength.max / 2),
       }),
@@ -1443,8 +1484,8 @@ it("the 15-descendant cap includes grandchildren and cancel fences maximum queue
   expect(
     await t.mutation(api.agents.coordinate, {
       op: "message",
-      assignmentId: root.assignmentId,
-      turnToken: root.turnToken,
+      assignmentId: parent.assignmentId,
+      turnToken: parent.turnToken,
       runId: descendants[descendants.length - 3].runId,
       text: "budget exhausted",
     }),
@@ -1843,7 +1884,7 @@ it("a valid native assistant message outside the recorded turn cannot impersonat
   await drain(t);
 });
 
-it("a joined group needs one queue slot and resumes after a full inbox without retrying native delivery", async () => {
+it("a joined group releases beyond a full message queue without retrying native delivery", async () => {
   const t = setup({ ...maxima, queueLength: 1 });
   const root = await manualRoot(t);
   const children = [];
@@ -1894,6 +1935,10 @@ it("a joined group needs one queue slot and resumes after a full inbox without r
   let current = (await t.query(rawAssignment, {
     assignmentId: root.assignmentId,
   }))!;
+
+  // The user head is reserved, and the joined row is already ready behind
+  // it. Queue capacity cannot defer the join until the next claim.
+  expect(current.queuedMessages).toBe(1);
 
   await t.mutation(components.agevex.turns.slices.claim, {
     assignmentId: root.assignmentId,
@@ -3239,7 +3284,10 @@ it.each([1, HOST_LIMITS.queueLength.max])(
       });
     }
 
-    const available = Math.max(0, queueLength - failed.length - live.length);
+    const rootBacklog = (await t.query(rawAssignment, { assignmentId: root.assignmentId }))!
+      .queuedMessages;
+
+    const available = Math.max(0, queueLength - rootBacklog);
 
     for (let n = 0; n < queueLength; n++)
       expect(

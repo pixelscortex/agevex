@@ -1,7 +1,9 @@
 /** Fill the bounded delivery range, including a settled-but-undelivered child. */
-import { v } from "convex/values";
+import { getConvexSize, v } from "convex/values";
 import { mutation } from "../src/component/_generated/server.js";
-import { HOST_LIMITS } from "../src/component/limits.js";
+import { HOST_LIMITS, readyRowLimit } from "../src/component/limits.js";
+import { newRun } from "../src/component/turns/runs.js";
+import { resolveRunSettings } from "../src/component/run-settings.js";
 
 /** The live actor and terminal gap both need final hops, even with activeRuns=1.
  * Keep all 58 rows near their 4 KiB metadata envelope; no native bodies copied.
@@ -48,9 +50,9 @@ export const seed = mutation({
   },
 });
 
-/** Older requests may settle before their notifications run. Fill the queue's
- * reservation range across two budgets, keeping each within its launch cap.
- * <=99 rows *4 KiB plus three <=16 KiB budgets stays below 512 KiB written.
+/** Older requests may settle before their notifications run. Fill the maximum
+ * outstanding result work across budgets without occupying message slots.
+ * <=49 rows *4 KiB plus two <=16 KiB budgets stays below 256 KiB written.
  */
 export const fillQueue = mutation({
   args: { assignmentId: v.id("assignments") },
@@ -67,7 +69,7 @@ export const fillQueue = mutation({
     const { _id, _creationTime, ...template } = live;
     const { _id: _budgetId, _creationTime: _budgetCreated, ...budgetTemplate } = budget;
     const launchCap = HOST_LIMITS.runLaunches.max;
-    const pending = HOST_LIMITS.queueLength.max - 1;
+    const pending = HOST_LIMITS.runLaunches.max - 1;
 
     for (let offset = 0; offset < pending; offset += launchCap) {
       const launches = Math.min(launchCap, pending - offset);
@@ -95,3 +97,73 @@ export const fillQueue = mutation({
     return null;
   },
 });
+
+/** Conservative cancellation envelope, seeded ONE assignment per transaction.
+ * <=152 ready rows +152 full settings snapshots +one <=32 KiB assignment
+ * stay <3 MiB written per seed. Root rows use distinct request budgets;
+ * child rows share one inherited budget. Across 16 assignments cancel must
+ * clear all 2,432 ready rows and 168 distinct budgets in one transaction.
+ * This overfills simultaneous per-run hop/launch usage intentionally: proving
+ * the full envelope is stronger than relying on incompatible maxima to fit.
+ */
+export const fillCancelQueue = mutation({
+  args: { assignmentId: v.id("assignments") },
+  returns: v.null(),
+  handler: async (ctx, { assignmentId }) => {
+    const row = (await ctx.db.get("assignments", assignmentId))!;
+
+    const budget = newRun(
+      undefined,
+      Array.from({ length: 64 }, (_, index) => ({
+        agent: String(index).padEnd(100, "x"),
+        settings: resolveRunSettings(),
+      })),
+    );
+
+    if (!row.childRunId) await ctx.db.patch("runs", row.runId!, { settings: budget.settings });
+
+    const childBudget = row.childRunId ? await ctx.db.insert("runs", budget) : undefined;
+    const count = readyRowLimit(row.limits);
+    let head;
+
+    for (let index = 0; index < count; index++) {
+      const runId = childBudget ?? (await ctx.db.insert("runs", budget));
+      const result = index >= row.limits.queueLength && index < count - 2;
+
+      const ready = {
+        assignmentId,
+        runId,
+        sequence: row.nextSequence + index,
+        messageId: "m".repeat(200),
+        from: "f".repeat(200),
+        kind: result ? ("result" as const) : ("parent" as const),
+        ...(result
+          ? {
+              join: { newestSequence: index, earliestId: "e".repeat(200), earliestSequence: index },
+            }
+          : {}),
+      };
+
+      expectReadySize(ready);
+      const id = await ctx.db.insert("inbox", ready);
+
+      head ??= id;
+    }
+
+    await ctx.db.patch("assignments", row._id, {
+      queuedMessages: count - 1,
+      inboxId: head,
+      turnStatus: "queued",
+      nextSequence: row.nextSequence + count,
+      routingAgentIndex: 0,
+      ...(childBudget ? { runId: childBudget } : {}),
+    });
+
+    return null;
+  },
+});
+
+function expectReadySize(row: Parameters<typeof getConvexSize>[0]) {
+  // Native ids/time add less than 128 bytes; cancel's envelope is 1 KiB/row.
+  if (getConvexSize(row) > (1 << 10) - 128) throw new Error("FIXTURE_READY_ROW_TOO_LARGE");
+}

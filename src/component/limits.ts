@@ -38,7 +38,7 @@ export const HOST_LIMITS = {
   // Pool admission shares eight scheduled-action slots at both maxima together.
   rootLane: { default: 2, max: 4 },
   childLane: { default: 4, max: 4 },
-  // Bound reservation/result admission and the number of child records per run.
+  // Bound launches per run and outstanding result work per assignment across runs.
   runLaunches: { default: 12, max: 50 },
   runHops: { default: 24, max: 100 },
   // Bound the assignments, run records and cleanup jobs fenced by one cancel.
@@ -56,40 +56,46 @@ export const HOST_LIMITS = {
 /**
  * Cancel budget at ALL host maxima:
  * C = 15 descendants; A = 1 root + C = 16 assignments (depth never multiplies A).
- * Every assignment has <=100 regular queued rows, one reserved answer slot,
- * and its reserved head (or approval continuation): I=A*102=1,632 ready rows.
+ * Every assignment has <=100 message rows +50 direct-child result rows,
+ * one answer and its reserved head (or approval continuation):
+ * I=A*(100+50+2)=2,432 ready rows. Launch admission bounds outstanding
+ * result work across user budgets: pending deliveries +unreleased join members
+ * +ready result rows <=50. Joined rows replace members; delivery never needs
+ * queue capacity. Only launch increases that total, and claim decreases it.
  * Independently, <=24 passive notes per assignment add N=A*24=384 rows.
  * This deliberately overcounts: simultaneous child queues can belong to
  * DIFFERENT user-run budgets, so one run's 100 hops cannot bound the backlog.
  * Children only receive work from their fixed parentRunId; only the root
  * accepts new user requests. Across all queues there are therefore at most
- * U=100 root backlog + reserved head/answer/current +15 child budgets=118
+ * U=100 root messages +50 result budgets +head/answer/current +15 child budgets=168
  * distinct runs. Cancel deduplicates those ids before patching 16 KiB rows.
  * Retain the old per-ready-row run-patch count as conservative write headroom.
  * Passive note bodies and retained control rows are NEVER read by cancel.
  * One finite cleanup job per assignment handles <=24 raw notes separately.
  * Keep the old 2N metadata/delete allowance below as conservative headroom;
  * it also covers the extra <=A cleanup jobs (<=4 KiB each).
- * Each assignment costs three patches, one current-run patch, two scheduler
- * cancels and one exact-id cleanup job: 7A=112. Add C child-run patches and
+ * Each assignment costs one combined state patch, one current-run patch,
+ * two scheduler cancels and one exact-id cleanup job: 5A=80. Add C child-run patches and
  * one final root patch. Reserve 64A=1,024 reads AND writes for Workflow's
  * current loop/turn, Workpool, scheduler and callback bookkeeping.
- * Routing settlement adds two writes and THREE reads per owner: get the run,
- * read it again to patch it, and read the assignment again to clear ownership.
- * Writes <=2I+N+9A+C+1+64A=4,832 <8,000 <16,000.
- * Reads <=3I+2N+6A+A+3A+2C+2+64A=6,980 <32,000.
+ * Routing settlement adds one write and TWO reads per owner: get the run
+ * and read it again to patch it. Cancel clears routing ownership, watchdog
+ * and recovery fields in its single assignment patch, saving 3A*32 KiB
+ * compared with separate disarm/routing state patches.
+ * Writes <=2I+N+6A+C+1+64A=6,384 <8,000 <16,000.
+ * Reads <=3I+2N+4A+A+2A+2C+2+64A=9,232 <32,000.
  * Indexed queries <=3 child-status ranges +A inbox ranges +64A SDK allowance
  * =1,043 <4,096; point reads above do not execute indexed range queries.
- * Bytes (KiB): inbox reads 2I=3,264; unique runs U*16=1,888;
- * assignment patch reads 4A*32=2,048; current runs A*16=256; scheduler 2A*4=128; child runs 2C*4=120;
+ * Bytes (KiB): inbox reads 2I=4,864; unique runs U*16=2,688;
+ * assignment read/patch 2A*32=1,024; current runs A*16=256; scheduler 2A*4=128; child runs 2C*4=120;
  * ownership/final root 2*32=64; SDK allowance 64A*4=4,096;
- * passive metadata 2N=768; routing A*(16+16+32)=1,024.
- * Total <=13,656 KiB; staged continuations add <=1,040 KiB (turns/cancel.ts):
- * <=14,696 KiB <16,384 KiB, leaving 1,688 KiB read headroom.
+ * passive metadata 2N=768; routing A*(16+16)=512.
+ * Total <=14,520 KiB; staged continuations add <=1,040 KiB (turns/cancel.ts):
+ * <=15,560 KiB <16,384 KiB, leaving 824 KiB read headroom.
  * Written bytes: run patches/inbox deletes <=U*16+I KiB, note deletes
- * <=N KiB, coordination <=4A*32+A*16+2A*4 KiB,
+ * <=N KiB, coordination <=2A*32+A*16+2A*4 KiB,
  * children <=C*4 KiB, final root <=32 KiB, SDK <=64A*4 KiB, and routing
- * <=A*(16+32) KiB: <=11,292 KiB <16 MiB.
+ * <=A*16 KiB: <=11,356 KiB <16 MiB.
  * Native messages (including each nearly
  * 1 MiB placeholder) are NEVER read by cancel; cleanup runs separately.
  * Subagent rows stay <=4 KiB: names/subjects/groups <=200 UTF-16 units,
@@ -109,7 +115,7 @@ export const HOST_LIMITS = {
  * newRun bounds the complete metadata at <=16 KiB, including native envelope.
  *
  * Other proportional paths: claim drains <=152 consecutive ready rows,
- * including <=50 ready joins from its run. Notes additionally read one exact
+ * including <=50 owed result rows/joins from its run. Notes additionally read one exact
  * anchor and one native merge-head batch (hooks/notes.ts); no history is scanned. Each
  * join uses an indexed ready representative and <=15 cohort metadata rows;
  * admission/send/attach handle one item. Membership sealing reads/patches
@@ -233,6 +239,14 @@ export const limitsValidator = v.object({
   leaseMs: v.number(),
 });
 export type Limits = { [K in keyof typeof limitsValidator.fields]: number };
+
+/** Message backlog + outstanding direct-child results + answer + reserved head
+ * (or approval continuation). Launch bounds result work across request budgets;
+ * joined rows replace members. The head is ready but excluded from queuedMessages.
+ */
+export function readyRowLimit(limits: Pick<Limits, "queueLength" | "runLaunches">) {
+  return limits.queueLength + limits.runLaunches + 2;
+}
 
 /** Fail at registration, before any accepted prompt can launch background work. */
 export function resolveLimits(overrides: Partial<Limits> = {}): Limits {

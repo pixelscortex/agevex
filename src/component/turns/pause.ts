@@ -254,10 +254,9 @@ export async function suspendForApprovals(
   // This is the suspended turn's control continuation, so it uses the
   // reserved head/approval slot even when ordinary ready work is full.
   // answer/respond update this exact row instead of admitting more work;
-  // 100 ordinary rows + one parent-answer slot + this continuation remain
-  // within the 102-row per-assignment cancel bound in limits.ts.
-  // Final-result delivery exempts this exact ready control row from its queue
-  // check (subagents/headroom.ts), so pausing cannot steal a reserved result slot.
+  // 100 message rows +50 owed results +one parent-answer slot +this continuation
+  // remain within the 152-row per-assignment cancel bound in limits.ts.
+  // Results and joined releases enter the queue regardless of this continuation.
   // The response continuation must precede unrelated queued sends.
   const head = await firstReady(ctx, row._id);
 

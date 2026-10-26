@@ -83,7 +83,7 @@ export async function interaction(
   )
     return denied("FORBIDDEN");
 
-  if (args.op === "message" && child._id === actor._id) return denied("FORBIDDEN");
+  if (args.op === "message" && parent._id !== actor._id) return denied("FORBIDDEN");
 
   if (args.op !== "message" && child._id !== actor._id) return denied("FORBIDDEN");
 
@@ -122,7 +122,7 @@ export async function interaction(
 
   if (!replay) {
     const kind = args.op === "message_parent" ? "note" : answering ? "answer" : args.op;
-    const refusal = await reserveFor(ctx, kind, root, budget, target, run._id);
+    const refusal = await reserveFor(ctx, kind, root, budget);
 
     if (refusal) return refusal;
   }
@@ -191,7 +191,7 @@ export async function post(
   answering = false,
   from?: string,
 ) {
-  if (target.queuedMessages >= target.limits.queueLength + Number(answering))
+  if (!answering && target.queuedMessages >= target.limits.queueLength)
     throw new Error("QUEUE_LIMIT");
 
   await ctx.db.insert("inbox", {

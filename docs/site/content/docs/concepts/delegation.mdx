@@ -72,11 +72,18 @@ acknowledgement. The host's `runtime.note` remains passive and never wakes.
 A user prompt starts one run. Launches, delivered results, notes, questions,
 answers and follow-ups share 12 launches and 24 hops, with hard maxima of 50
 and 100. Each launch reserves its result's hop; each question reserves its
-answer. Notes, questions, messages and user sends cannot take the queue slots
-or hops that owed results need. `RUN_BUDGET` or `QUEUE_LIMIT` may therefore
-appear earlier. User sends receive the existing `QUEUE_FULL` refusal earlier
-when results are owed (`QUEUE_LIMIT` at component acceptance). A root
-admits at most 5 active descendants, 15 at the hard maximum.
+answer hop. Notes, questions and follow-ups cannot spend those reserved hops.
+Final results and joined groups always enter the ready queue, even above
+`queueLength`. The queue limit applies to messages: user sends, parent notes,
+questions and child follow-ups are refused at capacity (`QUEUE_FULL` for user
+sends, `QUEUE_LIMIT` for component enqueues). Answers and approval continuations
+retain their control allowance. Messages are refused until the queue drains
+below its limit. Launch admission bounds outstanding result work per assignment
+across user requests at `runLaunches`: pending deliveries, unreleased join members
+and queued result rows. A joined row replaces its members; claim frees capacity.
+Reaching this separate bound returns `RUN_BUDGET`. A root admits at most 5 active
+descendants, 15 at the hard maximum. Only the recorded parent can send a child
+follow-ups or answer its questions.
 
 ## Reading the tree
 

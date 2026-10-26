@@ -40,6 +40,29 @@ cap (`sliceLimit`). `cancel` (`turns/cancel.ts`) fences the root and every
 live descendant in one transaction. `reconcile` re-rings a loop whose ping
 was lost.
 
+## Message queues and owed results
+
+Final results and wait-"all" joined releases always enter the ready queue, even
+above `queueLength`. User sends/open follow-ups, `message_parent` notes, questions
+and child follow-ups require `queuedMessages < queueLength`. Answers and approval
+continuations retain their control allowance. Launches reserve final-result hops;
+questions reserve answer hops. Ordinary messages cannot spend either reservation.
+
+`runLaunches` bounds launches per request and outstanding result work per assignment
+across requests. Launch admission counts pending deliveries, unreleased join members
+and ready result rows. Delivery replaces a pending result; a joined row replaces its
+members; claim removes rows. Only launch increases this total. The current-epoch
+`by_parent_delivery` range excludes cancelled history. This separate bound is needed
+because a root can accept new requests while older children still owe results.
+
+An assignment has at most `queueLength + runLaunches + 2` ready rows, including
+one answer and the reserved head or approval continuation. At all hard maxima,
+cancel covers `16 × 152 = 2,432` ready rows and 384 passive notes. It deduplicates
+at most `100 + 50 + 3 + 15 = 168` request budgets. Combining assignment state
+updates keeps the conservative read/write bounds at 15,560/11,356 KiB, below
+16 MiB; native bodies are never read by cancel. Claim consumes at most 152 rows
+including its head. The complete arithmetic is in `limits.ts`.
+
 ## Background text state and budgets
 
 No tables are added. Root `assignments` carry:

@@ -507,7 +507,14 @@ export default defineSchema({
     .index("by_run", ["runId"])
     .index("by_root_sequence", ["rootAssignmentId", "sequence"])
     .index("by_root_status", ["rootAssignmentId", "status"])
-    .index("by_parent_delivery", ["actorAssignmentId", "side", "deliveryStatus"])
+    // Launch admission also pins the epoch to bound outstanding result work
+    // across request budgets without reading cancelled delivery history.
+    .index("by_parent_delivery", [
+      "actorAssignmentId",
+      "side",
+      "deliveryStatus",
+      "rootCancellationEpoch",
+    ])
     // Every reader pins actor, epoch and one join state: settlementBlocked
     // (open/sealed/ready), releaseGroups (ready [+ run]), sealGroups (open + run).
     .index("by_join", ["actorAssignmentId", "rootCancellationEpoch", "join", "parentRunId"])

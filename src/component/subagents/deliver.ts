@@ -26,7 +26,6 @@ import type { FunctionReference } from "convex/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api.js";
 import { runErrorCode } from "../schema.js";
-import { deliveryQueueLimit } from "./headroom.js";
 import { deliveryContextFields, terminalContext } from "./views.js";
 
 type Delivery = {
@@ -162,16 +161,13 @@ async function deliverJoinMember(
 }
 
 /** An ordinary accepted result becomes one ready "result" row on the parent,
- * refused when the parent's ready queue is full. */
+ * regardless of the message queue limit: a launch already owes its result. */
 async function enqueueResult(
   ctx: MutationCtx,
   run: Doc<"subagentRuns">,
   parent: Doc<"assignments">,
   parentMessageId: string,
 ) {
-  if (parent.queuedMessages >= (await deliveryQueueLimit(ctx, parent)))
-    throw new Error("QUEUE_LIMIT");
-
   await ctx.db.insert("inbox", {
     assignmentId: parent._id,
     messageId: parentMessageId,

@@ -792,11 +792,9 @@ it.each(["routing", "approval"])(
           }),
         ).toBe(true);
 
-    // Side runs owe no queued result. The seven ordinary children reserve
-    // seven of the hundred slots; the approval continuation already counts
-    // as one queued row. Saturate the largest backlog admission now permits.
-    const reservedResults = HOST_LIMITS.activeChildrenPerRoot.max - HOST_LIMITS.sideRunsPerRun.max;
-    const backlog = HOST_LIMITS.queueLength.max - reservedResults;
+    // Results never reserve message slots. The approval continuation already
+    // counts as one queued row; fill the remaining actual queue capacity.
+    const backlog = HOST_LIMITS.queueLength.max;
 
     for (let i = mode === "approval" ? 1 : 0; i < backlog; i++) {
       expect(

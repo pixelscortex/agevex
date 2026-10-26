@@ -6,7 +6,8 @@
  * parent run are live in the current epoch, depth and group arguments are
  * valid, the tool call was not already reserved (idempotent replay), the root
  * has a free active slot, the run budget has a launch/hop (or side-run) left,
- * and the named cohort accepts another member. Success spends the budget and
+ * the assignment has outstanding-result headroom across requests, and the named
+ * cohort accepts another member. Success spends the budget and
  * inserts the queued run in the same transaction as the host's native
  * child-thread creation. `attachChild` then creates the child assignment with
  * its task as the first inbox row and wakes it. Touches `subagentRuns`,
@@ -23,7 +24,7 @@ import { messageRef, recordRefs } from "../hooks/refs.js";
 import { newChildAssignment } from "../turns/assignments.js";
 import { wake } from "../turns/wake.js";
 import { delegateScope } from "./views.js";
-import { reserveFor } from "./headroom.js";
+import { canOweResult, reserveFor } from "./headroom.js";
 
 export const reserveArgs = {
   assignmentId: v.id("assignments"),
@@ -90,6 +91,8 @@ export async function reserveRun(ctx: MutationCtx, args: ReserveArgs) {
     const refusal = await reserveFor(ctx, "launch", root, budget);
 
     if (refusal) return refusal;
+
+    if (!(await canOweResult(ctx, row, root))) return denied("RUN_BUDGET");
   }
 
   const wait = args.wait ?? "each";

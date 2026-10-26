@@ -89,7 +89,7 @@ export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = tru
 }
 
 /**
- * A full inbox may defer a join. Drain empty ready cohorts until either
+ * Drain empty ready cohorts until either
  * work is published or no cohort remains, so several all-failed groups
  * sealed by the same last slice cannot strand an idle child. A child owns
  * one run budget: <=50 members TOTAL, <=50 indexed probes/releases,

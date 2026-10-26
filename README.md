@@ -336,10 +336,16 @@ step order is protected by replay fixtures.
 A user prompt starts one run. Its turns and child results share a budget of
 12 launches / 24 hops (launches, delivered results, notes, questions, answers and
 follow-ups). Each launch reserves its result's hop; each question reserves its
-answer. Notes, questions, messages and user sends cannot take the queue slots
-or hops that owed results need. `RUN_BUDGET` or `QUEUE_LIMIT` may therefore
-appear before the ordinary limit is reached; user sends receive the existing
-`QUEUE_FULL` refusal earlier when results are owed. Result turns may call
+answer hop. Notes, questions and follow-ups cannot spend those reserved hops.
+Final results and joined groups always enter the ready queue, even above
+`queueLength`. The queue limit applies to messages: user sends, parent notes,
+questions and child follow-ups are refused at capacity (`QUEUE_FULL` for user
+sends, `QUEUE_LIMIT` for component enqueues). Answers and approval continuations
+retain their control allowance. Messages are refused until the queue drains
+below its limit. Launch admission also caps outstanding result work per assignment
+at `runLaunches` across user requests: pending results, unreleased join members
+and queued result rows. A joined row replaces its members; claim frees this
+capacity. Reaching this separate bound returns `RUN_BUDGET`. Result turns may call
 `agevex_delegate` again. A root admits at most
 5 active descendants by default and 4000 characters per delegated task.
 
@@ -624,8 +630,10 @@ A fresh `send` can start new work after cancellation. External effects already
 accepted by a provider still depend on that provider's abort behavior.
 
 At the hard maximum of 15 descendants, cancel covers 16 assignments, up to
-1,632 ready rows and 384 pending notes. Its read bound is 12,680 KiB of
-16,384 KiB (22.6% headroom), including routing owner reads and patches.
+2,432 ready rows (`16 × (100 messages + 50 results + 2 control rows)`) and
+384 pending notes. Cancel deduplicates up to 168 request budgets. Its conservative
+read bound is 15,560 KiB of 16,384 KiB, including routing ownership and staged
+continuations; native message bodies are cleaned separately.
 
 Pending native tool approvals block generation and leave the inbox row
 waiting, avoiding Agent 0.7.7's automatic denial on a new generation.

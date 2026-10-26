@@ -191,7 +191,7 @@ export function addHeadroomFixture(t: Test) {
   });
 
   return componentsGeneric().agevex.headroomFixture as unknown as Record<
-    "seed" | "fillQueue",
+    "seed" | "fillQueue" | "fillCancelQueue",
     FunctionReference<"mutation", "internal", { assignmentId: string }, null>
   >;
 }

@@ -1,6 +1,6 @@
 /**
  * Non-blocking child progress: a native parent note, ready inbox reference,
- * hop spend, final-result reservations, lifetime/rate counters and replay
+ * hop spend, final-result hop reservations, lifetime/rate counters and replay
  * receipt commit atomically.
  * No text is copied into coordination rows. Replays check live fences first,
  * then bypass fresh-note limits without re-enqueueing or ringing the loop.
@@ -40,9 +40,9 @@ export function parentNoteFits(text: string) {
  * expiry-head receipt probe keep admission metadata below 1 MiB.
  * The host's one native save reads <=1 MiB tail (Agent messages.ts:298-322).
  * post/wake adds bounded group recovery (<2.25 MiB); combined <6 MiB.
- * Including the pending-delivery reservation scan (headroom.ts), the whole
- * host transaction stays below 10 MiB /1,500 reads /128 writes. Notes add
- * no queue rows beyond the existing <=100 backlog + reserved head/answer envelope.
+ * Including the hop reservation scan (headroom.ts), the whole host
+ * transaction stays below 8 MiB /1,000 reads /128 writes. Notes require
+ * queuedMessages < queueLength; owed final results may exceed that limit.
  */
 async function context(ctx: QueryCtx | MutationCtx, args: NoteArgs) {
   if (!args.text.trim()) return { kind: "denied" as const, code: "MESSAGE_EMPTY" as const };

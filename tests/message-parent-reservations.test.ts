@@ -202,7 +202,7 @@ it.each(["before", "after"] as const)(
 );
 
 it.each(["each", "all"] as const)(
-  "an approval continuation cannot consume a pending wait=%s result's queue slot at raised limits",
+  "a wait=%s final result delivers beyond a full message queue beside an approval continuation",
   async (wait) => {
     const t = setup({ runHops: HOST_LIMITS.runHops.max, queueLength: 4 }, "approval");
     const parentHeld = gate();
@@ -265,8 +265,8 @@ it.each(["each", "all"] as const)(
       async () => (await deliveries(t, receipt.threadId))[0].deliveryStatus === "accepted",
     );
 
-    // Four ordinary rows +one exact approval continuation; cancellation's
-    // existing reserved control-row envelope remains unchanged.
+    // Three messages +one exact approval continuation +one owed result;
+    // delivery never needs a free message slot beside the control row.
     expect(
       (await t.query(rawAssignment, { assignmentId: receipt.assignmentId }))?.queuedMessages,
     ).toBe(5);
