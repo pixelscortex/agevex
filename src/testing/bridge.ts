@@ -14,6 +14,7 @@ import {
   type FunctionReference,
 } from "convex/server";
 import { v } from "convex/values";
+import { assertSettingsSnapshot, settingsSnapshot, RUN_LIMITS } from "../component/run-settings.js";
 import { LIMITS } from "../component/limits.js";
 
 const args = { lane: v.string(), module: v.string(), name: v.string(), args: v.any() };
@@ -114,6 +115,35 @@ export const fillHookMetadata = internalMutationGeneric({
       })),
       completedTurns: LIMITS.turnsPerLoop,
     });
+
+    return null;
+  },
+});
+
+/** Exact run and claim-armed watchdog metadata for offline settings fixtures. */
+export const runMetadata = internalQueryGeneric({
+  args: { assignmentId: v.string() },
+  handler: async (ctx, { assignmentId }) => {
+    const id = ctx.db.normalizeId("assignments", assignmentId);
+    const row = id ? await ctx.db.get(id) : null;
+
+    return {
+      run: row?.runId ? await ctx.db.get(row.runId) : null,
+      watchdog: row?.watchdogId ? await ctx.db.system.get(row.watchdogId) : null,
+    };
+  },
+});
+
+/** Fill the <=118-run cancellation fixture with maximum-size accepted settings.
+ * Read+patch <=118*16 KiB twice (<4 MiB), no messages or transcript scans. */
+export const fillRunSettings = internalMutationGeneric({
+  args: { settings: v.optional(settingsSnapshot) },
+  handler: async (ctx, { settings }) => {
+    if (settings) assertSettingsSnapshot(settings);
+
+    const rows = await ctx.db.query("runs").take(RUN_LIMITS.cancelBudgets);
+
+    for (const row of rows) await ctx.db.patch(row._id, { settings });
 
     return null;
   },

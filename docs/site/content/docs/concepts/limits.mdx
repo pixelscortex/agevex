@@ -1,12 +1,14 @@
 ---
 title: Limits
 icon: Gauge
-description: Every bound exported as LIMITS, with its default and hard maximum.
+description: Registration limits and per-agent run settings, with defaults and hard maxima.
 status: Available
 ---
 
-`LIMITS` is the single source of runtime bounds. The policy rows come first;
-only they can be raised, through `registerAgent({ limits })`.
+`LIMITS` contains registration and fixed runtime bounds. Registration policy
+rows come first; tune them through `registerAgent({ limits })`.
+[Per-agent run settings](/docs/concepts/runtime#per-agent-run-settings) have their
+own validated defaults, hard ceilings and combined action budget.
 
 | Limit                    | Default       | Hard max      |
 | ------------------------ | ------------- | ------------- |
@@ -47,8 +49,6 @@ only they can be raised, through `registerAgent({ limits })`.
 | `groupLength`            | 200           | 200           |
 | `turnsPerLoop`           | 50            | 50            |
 | `workflowVersion`        | 1             | 1             |
-| `generationAbortMs`      | 90 seconds    | 90 seconds    |
-| `executionWatchdogMs`    | 2 minutes     | 2 minutes     |
 | `cancelPollMs`           | 1 second      | 1 second      |
 | `outputTokens`           | 4,096         | 4,096         |
 | `messageLength`          | 16,000        | 16,000        |
@@ -78,3 +78,7 @@ only they can be raised, through `registerAgent({ limits })`.
 Policy rows can be lowered even when their default equals their maximum;
 non-policy rows are fixed. `PLATFORM` adds
 an 8 MiB journal, an 800 KiB step, 10 and 30 minute actions, 8 scheduled slots.
+
+Lane overrides configure one shared pool pair per mount. Defaults: roots 2,
+children 4; maxima 4 each, combined at most 8 slots. All registrations on a
+mount must agree. Sleeping workflows consume no action slot.

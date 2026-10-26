@@ -263,7 +263,7 @@ it("a failed native answer save rolls back its result and leaves the recorded ca
   expect(results).toHaveLength(1);
 });
 
-it("deferred overflow commits a bounded failure before saving untracked calls", async () => {
+it("deferred tool-call overflow leaves no actionable untracked calls", async () => {
   const t = setup(undefined, undefined, true);
 
   state.deferred = true;
@@ -277,12 +277,13 @@ it("deferred overflow commits a bounded failure before saving untracked calls", 
 
   expect(await owner(t).query(api.agents.activity, { threadId: receipt.threadId })).toMatchObject({
     turnStatus: "recovery_required",
-    errorCode: "APPROVAL_LIMIT",
+    errorCode: "GENERATION_FAILED",
   });
 
   expect(
-    (await native(t, receipt.threadId)).page.some((doc) =>
-      JSON.stringify(doc.message).includes('"toolName":"askHuman"'),
+    (await native(t, receipt.threadId)).page.some(
+      (doc) =>
+        doc.status === "success" && JSON.stringify(doc.message).includes('"toolName":"askHuman"'),
     ),
   ).toBe(false);
 });

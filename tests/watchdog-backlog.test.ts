@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { sliceWatchdogMs, resolveRunSettings } from "../src/component/run-settings.js";
 import { requireReceipt } from "./receipt.js";
 import { it, expect, vi, afterEach, beforeEach } from "vite-plus/test";
 import { setup, api, components, state } from "./setup.js";
@@ -13,8 +14,8 @@ afterEach(() => {
 const drain = (t: ReturnType<typeof setup>) =>
   t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1_000), 2000);
 
-// A healthy generation spends virtual time but stays inside the 90s generation
-// abort budget, so only queue time can exceed the 120s claim-armed watchdog.
+// A healthy generation stays inside the 90s provider deadline. This fixture
+// lowers tool time to 1s, deriving a 136s watchdog: only queue time exceeds it.
 const GENERATION_MS = 60_000;
 
 const open = (alice: ReturnType<ReturnType<typeof setup>["withIdentity"]>, prompt: string) =>
@@ -29,6 +30,7 @@ it("a backlog larger than pool capacity runs every turn exactly once", async () 
   const t = setup();
   const alice = t.withIdentity({ subject: "alice" });
 
+  state.run = { toolTimeoutMs: 1_000 };
   state.delayMs = GENERATION_MS;
   const receipts = [];
 
@@ -90,7 +92,7 @@ it("a claimed turn keeps the full execution window", async () => {
 
   expect(await t.mutation(components.agevex.turns.slices.claim, args)).not.toBeNull();
 
-  await vi.advanceTimersByTimeAsync(119_000);
+  await vi.advanceTimersByTimeAsync(sliceWatchdogMs(resolveRunSettings()) - 1_000);
 
   expect(await alice.query(api.agents.activity, { threadId: receipt.threadId })).toMatchObject({
     turnStatus: "running",

@@ -9,6 +9,7 @@
 import { Agent as NativeAgent, type AgentComponent, type Config } from "@convex-dev/agent";
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import type { Instructions, LanguageModel, StopCondition, ToolSet } from "ai";
+import type { RunSettings } from "../component/run-settings.js";
 import type { AgentHooks, SideAgent, ManagedAgent } from "./types.js";
 
 // Replace the native model property before restating it: intersecting the two
@@ -27,6 +28,17 @@ type AgentOptions<Tools extends ToolSet> = Omit<Config, "languageModel"> & {
    * from each root (or one when limits.maxDepth is lowered).
    */
   subagents?: readonly ManagedAgent[];
+  /**
+   * Managed run policy, validated at registration and snapshotted at acceptance.
+   * Defaults: stream, 4096 tokens, 90s model/tool deadlines, 16 model steps.
+   * Bounds: tokens 1–32768, deadlines 1000–300000ms, steps 1–64; model +
+   * 16*tool + 60000ms must fit the 30-minute Convex action ceiling. Generate
+   * saves native messages/usage/tools/approvals without deltas. Direct native
+   * calls stay unmanaged. runTurn requires the default Convex runtime (no
+   * "use node"). A slice is capped at five minutes, plus 30s server margin;
+   * 32k output may require a longer model timeout; each managed slice remains exactly one model call.
+   */
+  run?: RunSettings;
   sandbox?: boolean;
   hooks?: AgentHooks;
   sideAgents?: readonly SideAgent[];
@@ -54,6 +66,7 @@ export class Agent<
   /** Type-only marker: managed registration cannot supply required custom context. */
   declare readonly _agevexContext: (ctx: CustomCtx) => void;
   readonly name: string;
+  readonly run?: RunSettings;
   readonly sandbox: boolean;
   readonly subagents: readonly ManagedAgent[];
   readonly hooks?: AgentHooks;
@@ -69,6 +82,7 @@ export class Agent<
   constructor(component: AgentComponent, options: AgentOptions<AgentTools>) {
     super(component, options);
     this.name = options.name;
+    this.run = options.run;
     this.sandbox = options.sandbox ?? false;
     this.subagents = options.subagents ?? [];
     this.hooks = options.hooks;

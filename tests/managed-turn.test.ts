@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { sliceWatchdogMs, resolveRunSettings } from "../src/component/run-settings.js";
 import { requireReceipt } from "./receipt.js";
 import { it, expect, vi, afterEach, beforeEach } from "vite-plus/test";
 import { setup, api, internal, components, state } from "./setup.js";
@@ -190,7 +191,7 @@ it("stalled detection blocks an owner rather than stealing or replaying it", asy
   const args = { assignmentId: receipt.assignmentId, turnToken: `${receipt.assignmentId}:0` };
 
   expect(await t.mutation(components.agevex.turns.slices.claim, args)).not.toBeNull();
-  await vi.advanceTimersByTimeAsync(120_000);
+  await vi.advanceTimersByTimeAsync(sliceWatchdogMs(resolveRunSettings()));
   await drain(t);
   expect(state.calls).toHaveLength(0);
 

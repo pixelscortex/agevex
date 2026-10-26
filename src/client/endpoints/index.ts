@@ -9,6 +9,7 @@
 // `authorize` contract before touching component state.
 
 import type { ComponentApi } from "../../component/_generated/component.js";
+import type { RuntimeContext } from "../registration/context.js";
 import type { Registration } from "../types.js";
 import { createEndpointContext } from "./access.js";
 import { answerEndpoint, cancelEndpoint, respondEndpoint } from "./controls.js";
@@ -24,8 +25,12 @@ import { openEndpoint, sendEndpoint } from "./requests.js";
 export type { OriginMessage } from "./reads.js";
 
 /** Build every public endpoint for one registration. */
-export function authorizedEndpoints(component: ComponentApi, config: Registration) {
-  const ep = createEndpointContext(component, config);
+export function authorizedEndpoints(
+  component: ComponentApi,
+  config: Registration,
+  settings: RuntimeContext["settings"],
+) {
+  const ep = createEndpointContext(component, config, settings);
 
   return {
     open: openEndpoint(ep),

@@ -22,6 +22,7 @@ import {
   type CoordinateResult,
   type TurnArgs,
   type Registration,
+  type RunSettings,
 } from "../src/client/index.js";
 import { scriptedModel } from "../src/test.js";
 import { createTool, mockModel } from "@convex-dev/agent";
@@ -45,6 +46,7 @@ const toolNames = (tools: unknown): string[] =>
   Array.isArray(tools) ? tools.map((entry) => (entry as { name?: string }).name ?? "?") : [];
 
 export const state = {
+  run: undefined as RunSettings | undefined,
   deferred: false,
   deferredCount: 1,
   deferredQuestion: "Which option?",
@@ -396,6 +398,8 @@ export const main = new Agent(components.agent, {
   },
   subagents: [researcher],
 });
+
+Object.defineProperty(main, "run", { get: () => state.run });
 
 /** Current policy: which persisted owners may keep a background operation alive. */
 const ALLOWED_BACKGROUND_SUBJECTS = new Set(["alice"]);

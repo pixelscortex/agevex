@@ -119,6 +119,10 @@ export function bindOnceTool(
       try {
         const result = await config.run(input, tc);
 
+        // A timeout is an unknown effect. Never finalize a late result or turn
+        // its abort into a known failure that could authorize another attempt.
+        tc.signal.throwIfAborted();
+
         await rawCtx.runMutation(component.receipts.effects.complete, {
           ...common,
           claim: admission.claim,
@@ -127,6 +131,8 @@ export function bindOnceTool(
 
         return result;
       } catch {
+        tc.signal.throwIfAborted();
+
         const result = { status: "failed", code: "TOOL_FAILED" };
 
         await rawCtx.runMutation(component.receipts.effects.complete, {

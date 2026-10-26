@@ -769,7 +769,7 @@ it.each([1, LIMITS.approvalsPerPause])(
   },
 );
 
-it("a genuine managed APPROVAL_LIMIT can cancel and complete a fresh send without orphan approvals", async () => {
+it("a model tool-call overflow can cancel and complete a fresh send without orphan approvals", async () => {
   const t = setup(undefined, undefined, true);
 
   state.approval = true;
@@ -780,7 +780,7 @@ it("a genuine managed APPROVAL_LIMIT can cancel and complete a fresh send withou
 
   expect(await execution(t, receipt.assignmentId)).toMatchObject({
     turnStatus: "recovery_required",
-    errorCode: "APPROVAL_LIMIT",
+    errorCode: "GENERATION_FAILED",
   });
 
   expect((await execution(t, receipt.assignmentId))?.approvals).toBeUndefined();

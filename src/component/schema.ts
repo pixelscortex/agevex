@@ -12,6 +12,7 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v, type Validator } from "convex/values";
 
+import { settingsSnapshot } from "./run-settings.js";
 import { modelOverrides } from "./models.js";
 
 import { limitsValidator } from "./limits.js";
@@ -28,6 +29,7 @@ export const errorCode = v.union(
   v.literal("BUDGET_EXCEEDED"),
   v.literal("HOOK_FAILED"),
   v.literal("GENERATION_FAILED"),
+  v.literal("RUN_TIMEOUT"),
   v.literal("SLICE_LIMIT"),
   v.literal("APPROVAL_LIMIT"),
   v.literal("CLEANUP_FAILED"),
@@ -232,6 +234,8 @@ export default defineSchema({
     // running turn = a slice is in flight; absent on a running turn = between
     // slices (continueTurn disarmed it). Read by claim (next-slice admission),
     // betweenSlices, stalled (with lastSlice, the active slice) and disarmSlice.
+    // Model steps claimed in the current logical turn, reset on its first slice.
+    modelSteps: v.optional(v.number()),
     watchdogId: v.optional(v.id("_scheduled_functions")),
     pendingGeneration: v.optional(pendingGeneration),
     cancellationEpoch: v.number(),
@@ -339,6 +343,8 @@ export default defineSchema({
   // A run outlives an individual turn: results and subsequent delegations spend
   // the same launch/hop budget. Results are ready independently of siblings.
   runs: defineTable({
+    // Read by claim/watchdog and betweenSlices. Children inherit this same run id.
+    settings: v.optional(settingsSnapshot),
     // Run snapshot shared by every root/descendant/result turn. A beforeTurn
     // hook may choose its agent model at run start; later turns only read it.
     // Read at claim, never replaced by a subsequent send's thread policy.
