@@ -33,7 +33,7 @@
     "./_generated/component.js": {
       "types": "./dist/component/_generated/component.d.ts"
     },
-    "./test": "./src/test.ts",
+    "./test": "./src/testing/test.ts",
     "./meter": {
       "types": "./dist/modules/meter/client/index.d.ts",
       "default": "./dist/modules/meter/client/index.js"

@@ -85,3 +85,4 @@ declare const _default: {
     modules: Record<string, () => Promise<unknown>>;
 };
 export default _default;
+export { fakeSandboxProvider } from "../../testing/sandbox.js";

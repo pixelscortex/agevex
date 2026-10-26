@@ -7,3 +7,6 @@ export function register(t, name = "sandbox") {
     return componentsGeneric()[name];
 }
 export default { register, schema, modules };
+// The offline fake provider lives with the sandbox's test entry as well, so
+// hosts testing only this module import everything from `agevex/sandbox/test`.
+export { fakeSandboxProvider } from "../../testing/sandbox.js";
