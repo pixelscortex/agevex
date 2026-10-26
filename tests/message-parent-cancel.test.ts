@@ -138,6 +138,10 @@ it("cancel clears 2,432 ready rows and 168 maximum-size budgets across sixteen a
     });
 
     expect(row?.routingAgentIndex).toBeUndefined();
+
+    expect(
+      await t.mutation(components.agevex.subagents.deliver.releaseGroups, { assignmentId }),
+    ).toBe(false);
   }
 
   held.release();

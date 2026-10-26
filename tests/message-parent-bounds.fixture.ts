@@ -4,6 +4,9 @@ import { mutation } from "../src/component/_generated/server.js";
 import { HOST_LIMITS, LIMITS, readyRowLimit } from "../src/component/limits.js";
 import { newRun } from "../src/component/turns/runs.js";
 import { resolveRunSettings } from "../src/component/run-settings.js";
+import { newSubagentRun } from "../src/component/subagents/runs.js";
+import type { Doc } from "../src/component/_generated/dataModel.js";
+import type { MutationCtx } from "../src/component/_generated/server.js";
 import { fillAssignment, fillNotes, fullReport } from "./assignment-envelope.fixture.js";
 
 /** The live actor and terminal gap both need final hops, even with activeRuns=1.
@@ -174,11 +177,46 @@ export const fillCancelQueue = mutation({
 
     await ctx.db.patch("runs", childBudget ?? row.runId!, { routingAgents: 1n });
     await fillNotes(ctx, { ...row, runId: childBudget ?? row.runId });
+    await fillDeferredGroups(ctx, { ...row, runId: childBudget ?? row.runId });
     await fillAssignment(ctx, row._id);
 
     return null;
   },
 });
+
+/** Deferred groups coexist with queues from older requests. Overfill even the
+ * result-work envelope to prove cancel neither scans them nor revives them.
+ * Their old epoch remains fenced after cancel, independent of ready FIFO size.
+ */
+async function fillDeferredGroups(ctx: MutationCtx, actor: Doc<"assignments">) {
+  const root = actor.rootAssignmentId
+    ? (await ctx.db.get("assignments", actor.rootAssignmentId))!
+    : actor;
+
+  const budget = (await ctx.db.get("runs", actor.runId!))!;
+
+  for (let i = 0; i < actor.limits.runLaunches; i++)
+    await ctx.db.insert("subagentRuns", {
+      ...newSubagentRun({
+        request: { agent: "Reviewer", payloadFingerprint: "hash", coordinateHandle: "opaque" },
+        runId: `deferred-${actor._id}-${i}`,
+        actor,
+        root,
+        budget,
+        depth: 2,
+        wait: "all",
+        group: `deferred-${i}`,
+        dedupKey: `deferred-${i}`,
+        sequence: i + 1,
+        now: Date.now(),
+      }),
+      status: "completed",
+      deliveryStatus: "accepted",
+      join: "ready",
+      resultMessageId: actor.promptMessageId,
+      resultSequence: i + 1,
+    });
+}
 
 function expectReadySize(row: Parameters<typeof getConvexSize>[0]) {
   // Native ids/time add less than 128 bytes; cancel's envelope is 1 KiB/row.

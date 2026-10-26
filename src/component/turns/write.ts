@@ -137,7 +137,7 @@ export async function fencedWrite(ctx: MutationCtx, args: WriteArgs): Promise<un
  * action still owns the turn token. It no longer occupies an active slot, so
  * cancel need not visit its assignment. The root epoch still fences every
  * late native/tool write: two <=34 KiB assignment reads plus one <=4 KiB
- * child-run reference (<72 KiB), no traversal. */
+ * child-run reference (<=72 KiB), no traversal. */
 async function liveWriter(ctx: MutationCtx, row: Doc<"assignments"> | null, args: WriteArgs) {
   const root = row?.rootAssignmentId ? await ctx.db.get("assignments", row.rootAssignmentId) : null;
   const run = row?.childRunId ? await runById(ctx, row.childRunId) : null;

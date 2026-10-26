@@ -170,7 +170,9 @@ task links/previews live on `subagentRuns`, captured with native saves. The
 request suffix on `by_parent_delivery` prevent later sends from fencing old
 requests. Only ordinary descendants/deliveries/groups fence successful closure.
 Assignments carry at most 16 active tool markers, checked against the complete
-34 KiB row envelope; every slice disarm and cancellation clears them. Query
+34 KiB row envelope; every slice disarm and cancellation clears them. Native
+saves clear markers atomically before report/ref/usage/approval metadata grows,
+then assert the complete saved assignment stays within the envelope. Query
 projection also suppresses tools on terminal nodes. No new tables are added.
 Marker start/clear writes are best effort and never awaited by tool execution
 or stream cleanup. Clear follows start; failed writes are not retried, keeping
