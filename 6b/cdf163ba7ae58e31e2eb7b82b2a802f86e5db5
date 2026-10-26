@@ -1,0 +1,92 @@
+tests/message-parent.fixture.ts
+  s_13555e3b41e1bf::t_056c24d1a068a3 194
+src/component/subagents/headroom.ts
+  s_13555e3b41e1bf::t_622b1908826f7e 1,3-5,15-17,41-50,52-55,57-59,62-66,68,70,72-79
+  s_13555e3b41e1bf::t_d1f5e14cd316cb 80-81,83-84,86-88
+src/component/turns/pause.ts
+  s_13555e3b41e1bf::t_b68b0548b557ca 257-259
+src/client/coordinate/interaction.ts
+  s_13555e3b41e1bf::t_b68b0548b557ca 42-43
+README.md
+  s_13555e3b41e1bf::t_b68b0548b557ca 339-348,630-633
+src/component/hooks/routing.ts
+  s_13555e3b41e1bf::t_b88c0a1231c3d0 32-34
+  s_13555e3b41e1bf::t_622b1908826f7e 36,49-51
+tests/message-parent-bounds.fixture.ts
+  s_13555e3b41e1bf::t_056c24d1a068a3 2,4-6,100-116,118-151
+  s_13555e3b41e1bf::t_01e0e5bc9ead59 53-55,72,117
+  s_13555e3b41e1bf::t_eb79a3016c63a7 152-169
+tests/message-parent-cancel.test.ts
+  s_13555e3b41e1bf::t_056c24d1a068a3 1-5,7,20-22,24-29,34-38,40-43,45-49,51-52,68-70,72-75,82-83,91,93-94,103,105-118,131-134
+  s_13555e3b41e1bf::t_8a0feba9775f48 6,8-19,30-32,39,53-55,76-80,85-90,95-101,124-126
+  s_13555e3b41e1bf::t_e1e1068be4e326 23,33,44,50,67,81,84,92,102,104,119-123,128-130
+  s_13555e3b41e1bf::t_3367c0c0b07413 127
+  s_13555e3b41e1bf::t_6d25d6027ec27a 56-66,71
+src/component/README.md
+  s_13555e3b41e1bf::t_b68b0548b557ca 43-65
+src/component/run-settings.ts
+  s_13555e3b41e1bf::t_622b1908826f7e 19-20
+  s_13555e3b41e1bf::t_cd911f253e0ef2 21-24
+tests/message-parent-queue.test.ts
+  s_13555e3b41e1bf::t_01e0e5bc9ead59 6-16,18,37-47,51-52,55-56,83-84,87-95,101-103,109-111,128,130,136-138,143-149,151-158,161,165-167,171,182-187,208-211,218-220,224,256-257,260-261,263-270,272-279,285-287,289-296,300-312,314-317,319-323,325-331,341-346,348-349,354-357,359
+  s_13555e3b41e1bf::t_3dc1c9bcf80925 17,22,49,69,75,79,81,86,96,100,104,108,121,126,132,142,150,159,164,168,188,193,199,207,213,217,221,237-238,243,249-252,255,262,271,280-284,288,297,313,318,324,332-340,347,350-353,358
+  s_13555e3b41e1bf::t_b0288d36e76f43 1-5,19-21,23-36,48,50,53-54,57-68,70-74,76-78,80,82,85,97-99,105-107,112-120,122-125,127,129,131,133-135,139-141,160,162-163,169-170,172-181,189-192,194-198,200-206,212,214-216,222-223,225-236,239-242,244-248,253-254,258-259,298-299,360-362
+  s_13555e3b41e1bf::t_cc8e6d6110e883 363-367
+tests/message-parent.test.ts
+  s_13555e3b41e1bf::t_67dc19c46cdc02 287,326-331,353,793,823-824,826,843,867-868,871-872
+docs/site/content/docs/concepts/delegation.mdx
+  s_13555e3b41e1bf::t_b68b0548b557ca 75-86
+src/component/schema.ts
+  s_13555e3b41e1bf::t_622b1908826f7e 510-512
+  s_13555e3b41e1bf::t_38393c14273613 513-517
+src/component/turns/cancel.ts
+  s_13555e3b41e1bf::t_622b1908826f7e 21-23,58,106-110,117-118,122,153-157
+tests/delegation-v2.test.ts
+  s_13555e3b41e1bf::t_b88c0a1231c3d0 678-680,682,686,688-689,1939-1942,3289
+  s_13555e3b41e1bf::t_f5c8fb78674ea7 560,593,595-605,611,620,651,654-672,702,714,719,727,750,760,775,833-837,841,851,1209,1213-1214,1465-1466,1487-1488,1887,3287-3288,3290
+  s_13555e3b41e1bf::t_7d56fdbc33f5fe 561,673-677,681,683-685,687,690-691
+src/component/turns/claim.ts
+  s_13555e3b41e1bf::t_b88c0a1231c3d0 26,166-168,187
+tests/review-regressions.test.ts
+  s_13555e3b41e1bf::t_f5c8fb78674ea7 795-797
+src/component/turns/inbox.ts
+  s_13555e3b41e1bf::t_b88c0a1231c3d0 27-28
+src/component/limits.ts
+  s_13555e3b41e1bf::t_b68b0548b557ca 41,59-64,70,77-78,81-86,89-90,92-94,96,98,118
+  s_13555e3b41e1bf::t_622b1908826f7e 243-250
+tests/message-parent-reservations.test.ts
+  s_13555e3b41e1bf::t_b68b0548b557ca 205,268-269
+src/component/subagents/launch.ts
+  s_13555e3b41e1bf::t_622b1908826f7e 27,94-95
+  s_13555e3b41e1bf::t_b88c0a1231c3d0 9-10
+src/component/subagents/deliver.ts
+  s_13555e3b41e1bf::t_05e8ca2eafc86d 164
+src/component/subagents/groups.ts
+  s_13555e3b41e1bf::t_1b7c01b6ae7ade 46-48,187
+src/component/subagents/messages.ts
+  s_13555e3b41e1bf::t_e19c469054bb23 86,125,194
+src/component/subagents/parent-notes.ts
+  s_13555e3b41e1bf::t_7d81f955c317c5 3,43-45
+src/component/turns/send.ts
+  s_13555e3b41e1bf::t_866d4e408f8e6e 93,187
+src/component/turns/wake.ts
+  s_13555e3b41e1bf::t_e2c8aea22179ae 92
+src/testing/bridge.ts
+  s_13555e3b41e1bf::t_ce7f188f81acb3 137-138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6bcdf163ba7ae58e31e2eb7b82b2a802f86e5db5",
+  "prompts": {},
+  "sessions": {
+    "s_13555e3b41e1bf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a178ec-a85f-7010-84b7-17696a613ddc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
