@@ -1,0 +1,27 @@
+tests/component-api.types.ts
+  s_d863bd773ba186::t_b298ee8967bd38 1-20
+src/component/_generated/component.ts
+  s_d863bd773ba186::t_d5b222e5c21455 40
+src/modules/extract/component/_generated/component.ts
+  s_d863bd773ba186::t_50caca7c9752fe 10
+src/modules/meter/component/_generated/component.ts
+  s_d863bd773ba186::t_2377b0461dc83c 11
+src/modules/telemetry/client/index.ts
+  s_d863bd773ba186::t_9a786869201c9a 21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3ce17326e853fe7bba5ed3f613b35908e7ecac69",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
