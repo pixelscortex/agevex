@@ -1,0 +1,21 @@
+src/client/tasks.ts
+  s_d863bd773ba186::t_db7c74d8f3c53e 3-4,36-38,92-94,115-116,245-255,270,277-279,290,382
+tests/tasks.test.ts
+  s_d863bd773ba186::t_8a04af18922cf0 103-176
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "16d5a28307db4f2da2e3c4c4f4c45a6438a0019e",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
