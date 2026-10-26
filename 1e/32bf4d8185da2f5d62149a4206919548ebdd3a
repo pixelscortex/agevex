@@ -1,0 +1,21 @@
+package.json
+  s_d863bd773ba186::t_cebe0ef3e83061 87
+scripts/release-git.sh
+  s_d863bd773ba186::t_3925d711f9f161 19-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1e32bf4d8185da2f5d62149a4206919548ebdd3a",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
