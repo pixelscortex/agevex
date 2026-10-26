@@ -1,0 +1,175 @@
+src/modules/meter/shared/limits.ts
+  s_ae4fa8df21cc67::t_06c704c819b7d8 15-18
+src/modules/meter/component/charges.ts
+  s_ae4fa8df21cc67::t_93ac6c0aa15020 20,103-104
+  s_ae4fa8df21cc67::t_8139d07e10f0b9 105-115
+src/client/turn/context.ts
+  s_ae4fa8df21cc67::t_4e87a0505495d6 53
+src/modules/meter/client/pricing.ts
+  s_ae4fa8df21cc67::t_0dd3a1d879a60c 129-138,152-155,160-167
+  s_ae4fa8df21cc67::t_986c921989ab96 107-128,139-151,156-159,168-169
+  s_ae4fa8df21cc67::t_e9b90cf4d02814 170-178
+src/modules/meter/client/scope.ts
+  s_ae4fa8df21cc67::t_3033714a911c8e 101-103,111-112
+  s_ae4fa8df21cc67::t_986c921989ab96 10,95,98,110
+  s_ae4fa8df21cc67::t_69ca91288e12a1 104
+src/modules/meter/component/reads.ts
+  s_ae4fa8df21cc67::t_5cdf8659fd3dfa 22-25
+tests/slots.test.ts
+  s_ae4fa8df21cc67::t_1250c660239198 177,276,285-287,299
+src/component/turns/slices.ts
+  s_ae4fa8df21cc67::t_b4dfaae700b0d8 108,110-111,114,116,122-123
+  s_ae4fa8df21cc67::t_4e87a0505495d6 106-107,109,112-113,115,117-121,124-125
+src/modules/meter/component/charge-records.ts
+  s_ae4fa8df21cc67::t_986c921989ab96 36,38
+src/client/turn/admission.ts
+  s_ae4fa8df21cc67::t_4e87a0505495d6 14-25
+  s_ae4fa8df21cc67::t_5573aaeb7b32ca 26-37
+src/modules/meter/component/charge-creation.ts
+  s_ae4fa8df21cc67::t_986c921989ab96 100-101
+  s_ae4fa8df21cc67::t_3033714a911c8e 102-107
+  s_ae4fa8df21cc67::t_817402a26d5be8 27-31,125-127
+src/modules/meter/component/charge-lookup.ts
+  s_ae4fa8df21cc67::t_7d3d17a82e7f31 45-56,63,98-101,168
+  s_ae4fa8df21cc67::t_5cdf8659fd3dfa 149
+  s_ae4fa8df21cc67::t_8c1ad5b5854db1 9-10,37-42,44,57,60,66-69,71,74,78,81,102,146
+  s_ae4fa8df21cc67::t_52f708fb2b98b3 62,91,103-104,115,137,142,169-171
+src/client/turn/slots.ts
+  s_ae4fa8df21cc67::t_4e87a0505495d6 22,29,31,54-57,59-63,65-67,70-73
+  s_ae4fa8df21cc67::t_ff0bed8f9e5816 74,79,82
+src/component/schema.ts
+  s_ae4fa8df21cc67::t_4e87a0505495d6 345-346
+src/client/README.md
+  s_ae4fa8df21cc67::t_08fd54b6063eb7 33-35,74-75
+src/modules/meter/component/usage-views.ts
+  s_ae4fa8df21cc67::t_5cdf8659fd3dfa 1-8,27-28,30-31,36-37,45-64,66,80
+  s_ae4fa8df21cc67::t_3033714a911c8e 9-26,29,32-35,39-43,65,68-79
+  s_ae4fa8df21cc67::t_900f726be5283b 38,44,67
+tests/meter/usage-v2.test.ts
+  s_ae4fa8df21cc67::t_0dd3a1d879a60c 1-244
+  s_ae4fa8df21cc67::t_4085d85a7ac2d4 245-357
+src/modules/meter/API.md
+  s_ae4fa8df21cc67::t_15aba4b349cf55 119-121,123,206-243
+  s_ae4fa8df21cc67::t_4d0cc6b2f2b79c 60
+  s_ae4fa8df21cc67::t_9577fd76d64713 244
+src/modules/meter/client/maintenance.ts
+  s_ae4fa8df21cc67::t_271e9399f1e4c3 9-11,17,23-25,32-33,36-37
+  s_ae4fa8df21cc67::t_c7781f6b2e8d4f 12-16,18-22,34
+  s_ae4fa8df21cc67::t_234d886a13fb7a 35
+src/modules/meter/README.md
+  s_ae4fa8df21cc67::t_023834c66449ab 91
+  s_ae4fa8df21cc67::t_15aba4b349cf55 43-69,78,96-98
+  s_ae4fa8df21cc67::t_4d0cc6b2f2b79c 41
+  s_cf246d9a3dfec1::t_ece30bf9d5c91d 42
+src/modules/meter/client/openrouter.ts
+  s_ae4fa8df21cc67::t_271e9399f1e4c3 1-58
+  s_ae4fa8df21cc67::t_f26274aadaf99d 59-95
+src/modules/meter/component/charge-updates.ts
+  s_ae4fa8df21cc67::t_986c921989ab96 26
+  s_ae4fa8df21cc67::t_0a3fd386e8629a 27-28,96-101
+src/client/turn/provider-evidence.ts
+  s_ae4fa8df21cc67::t_fe53bf58540c75 1-12
+  s_ae4fa8df21cc67::t_08412a8e0b8a45 13-16
+tests/meter/adapters.test.ts
+  s_ae4fa8df21cc67::t_e2cb5c032cf820 4,15,23
+  s_ae4fa8df21cc67::t_ba9589b7ba6a6f 24-27,35-40,341,376-590
+src/modules/meter/component/schema.ts
+  s_ae4fa8df21cc67::t_06c704c819b7d8 17-20
+  s_ae4fa8df21cc67::t_df5fcf7181a079 22-29,98-99,128
+docs/site/content/docs/concepts/slots.mdx
+  s_ae4fa8df21cc67::t_08fd54b6063eb7 41-50,53-54,57-59
+tests/meter/bounds.test.ts
+  s_ae4fa8df21cc67::t_72beb0f42b0a2a 27,44,74,187-191,231-251,263,274,449-457
+  s_ae4fa8df21cc67::t_49b6742ee180cd 458-477
+src/client/turn/deadlines.ts
+  s_ae4fa8df21cc67::t_4e87a0505495d6 81
+  s_ae4fa8df21cc67::t_fe53bf58540c75 9,31
+  s_ae4fa8df21cc67::t_ab302a911411e4 32-34,43,50-57,80,82-84,96
+README.md
+  s_ae4fa8df21cc67::t_15aba4b349cf55 45,55
+  s_ae4fa8df21cc67::t_08fd54b6063eb7 47-54
+  s_ae4fa8df21cc67::t_aacb3c2b5778fa 46
+src/client/turn/tools.ts
+  s_ae4fa8df21cc67::t_4e87a0505495d6 20,62
+  s_ae4fa8df21cc67::t_023834c66449ab 57,91,107-108
+  s_cf246d9a3dfec1::t_5e3aaef1a47850 109
+src/client/index.ts
+  s_ae4fa8df21cc67::t_06c704c819b7d8 48-50
+src/client/turn/run-turn.ts
+  s_ae4fa8df21cc67::t_4e87a0505495d6 21,48
+src/modules/meter/client/slots.ts
+  s_ae4fa8df21cc67::t_271e9399f1e4c3 14,59-60
+src/client/slots.ts
+  s_ae4fa8df21cc67::t_06c704c819b7d8 24-26,28-30,34-43,48,65,70-72,113
+  s_ae4fa8df21cc67::t_19113c7bc6b6e3 31-33,44-47
+src/component/turns/runs.ts
+  s_ae4fa8df21cc67::t_4e87a0505495d6 35
+docs/site/content/docs/modules/meter.mdx
+  s_ae4fa8df21cc67::t_08fd54b6063eb7 12-15,38,42-48,92-130,140,142-145
+  s_ae4fa8df21cc67::t_c6c40aca08fbda 167-195
+src/modules/meter/client/workers.ts
+  s_ae4fa8df21cc67::t_4d0cc6b2f2b79c 27-28
+  s_ae4fa8df21cc67::t_8c1ad5b5854db1 31
+src/client/turn/claim.ts
+  s_ae4fa8df21cc67::t_06c704c819b7d8 76
+src/modules/meter/component/charge-contracts.ts
+  s_ae4fa8df21cc67::t_06c704c819b7d8 9,25-26
+src/client/turn/generation.ts
+  s_ae4fa8df21cc67::t_4e87a0505495d6 34-35
+  s_ae4fa8df21cc67::t_2f21de99434151 57-70,100-102,138-140
+  s_cf246d9a3dfec1::t_9cddb3a5458616 141
+src/modules/meter/client/reads.ts
+  s_ae4fa8df21cc67::t_7d3d17a82e7f31 51-55
+  s_ae4fa8df21cc67::t_271e9399f1e4c3 11
+src/client/turn/usage.ts
+  s_ae4fa8df21cc67::t_4e87a0505495d6 1-41
+  s_ae4fa8df21cc67::t_74fcedfa4135d6 42-85
+src/client/turn/completion.ts
+  s_ae4fa8df21cc67::t_4e87a0505495d6 38
+  s_ae4fa8df21cc67::t_c02249e8d613ce 39
+src/modules/meter/component/aggregates.ts
+  s_ae4fa8df21cc67::t_023834c66449ab 45-51,135-138,152-157
+  s_ae4fa8df21cc67::t_5cdf8659fd3dfa 13,122
+src/modules/meter/client/index.ts
+  s_ae4fa8df21cc67::t_271e9399f1e4c3 8-9
+src/modules/meter/component/reconciliation.ts
+  s_ae4fa8df21cc67::t_93ac6c0aa15020 1-21,28-30,32,34-36,38-39,41,52,60,62,64-65
+  s_ae4fa8df21cc67::t_b4dfaae700b0d8 22-27,31,33,37,40,42-51,53-59,61,63
+src/modules/meter/client/types.ts
+  s_ae4fa8df21cc67::t_06c704c819b7d8 31-32,83
+src/modules/meter/component/usage-projections.ts
+  s_ae4fa8df21cc67::t_3033714a911c8e 22-28,37-41
+  s_ae4fa8df21cc67::t_5cdf8659fd3dfa 1-20,30-36,43-44
+  s_ae4fa8df21cc67::t_cec0fe942f2776 21,29,42
+tests/hooks.host.ts
+  s_ae4fa8df21cc67::t_e2cb5c032cf820 31,81-113,193
+docs/site/content/docs/concepts/runtime.mdx
+  s_ae4fa8df21cc67::t_15aba4b349cf55 128,136
+  s_ae4fa8df21cc67::t_08fd54b6063eb7 130-135
+  s_ae4fa8df21cc67::t_2f21de99434151 80-85
+  s_cf246d9a3dfec1::t_a019297f78cf3f 129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e91e06391d6634d1b4d408041ab99e9942fb6bee",
+  "prompts": {},
+  "sessions": {
+    "s_ae4fa8df21cc67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a177d0-4acf-78f3-8dbf-e37361129fee",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_cf246d9a3dfec1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0db98003-7c44-4541-94c3-cabbb5a3aacd",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
