@@ -1,0 +1,35 @@
+src/component/schema.ts
+  s_e4663d341c6b00::t_d4c57172389ed5 62
+docs/site/content/docs/concepts/message-parent.mdx
+  s_e4663d341c6b00::t_d4c57172389ed5 37-40
+src/component/subagents/launch.ts
+  s_e4663d341c6b00::t_3a28c6d28be15f 102
+tests/message-parent-queue.test.ts
+  s_e4663d341c6b00::t_d4c57172389ed5 310,319-320,336-339,351,354,361,366
+src/component/README.md
+  s_e4663d341c6b00::t_d4c57172389ed5 57-58
+src/client/turn/collaboration-tools.ts
+  s_e4663d341c6b00::t_d4c57172389ed5 75
+docs/site/content/docs/concepts/delegation.mdx
+  s_e4663d341c6b00::t_d4c57172389ed5 84-86
+README.md
+  s_e4663d341c6b00::t_d4c57172389ed5 356-358
+src/client/types.ts
+  s_e4663d341c6b00::t_d4c57172389ed5 238
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9f51f90949459da2b9afcaa07c6321b3cf164daa",
+  "prompts": {},
+  "sessions": {
+    "s_e4663d341c6b00": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17a43-c121-7250-932b-8e5747cc06ba",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
