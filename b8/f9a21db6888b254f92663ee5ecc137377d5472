@@ -1,0 +1,152 @@
+docs/site/content/docs/concepts/runtime.mdx
+  s_151bd37d4860f2::t_b4771bd06a1404 90
+  s_151bd37d4860f2::t_2277ac6519fcf8 75-89,91
+src/component/turns/boundaries.ts
+  s_151bd37d4860f2::t_fd5bc4109f813f 33
+src/component/subagents/tree.ts
+  s_151bd37d4860f2::t_223517243f0fdc 6,24-30,41-43,49-50,67-71,76-95,97,103-108,136-142,169-184,186-195,197-200,209-210
+  s_151bd37d4860f2::t_d2092b7f246667 109-111
+  s_151bd37d4860f2::t_31fc7789e26d89 12,40,44,208
+  s_151bd37d4860f2::t_5b51dd701e4a81 1-4,7-11,13-23,31-39,45-48,51-66,72-75,96,98-102,112-135,143-168,185,196,201-207,211
+  s_151bd37d4860f2::t_c8df0c1cc8950c 5
+  s_151bd37d4860f2::t_fdaf1806dda8bf 212-215
+src/component/turns/tools.ts
+  s_151bd37d4860f2::t_5aecf8a7227156 1-49
+  s_151bd37d4860f2::t_1801e49ad731ad 50-61
+src/component/subagents/runs.ts
+  s_151bd37d4860f2::t_68f6a3900f5e08 15-16,116,147-161
+  s_151bd37d4860f2::t_ed8ffa553f23a6 162-163
+src/client/index.ts
+  s_151bd37d4860f2::t_68f6a3900f5e08 8
+src/component/subagents/views.ts
+  s_151bd37d4860f2::t_223517243f0fdc 9
+tests/run-tree.fixture.ts
+  s_151bd37d4860f2::t_3e2702da4c0379 5,71,74
+  s_151bd37d4860f2::t_f4f6e87e38814d 1-4,7-11,13-14,17-70,73,76-78,93-100,102-110
+  s_151bd37d4860f2::t_f885a2d8fa100b 12,75
+  s_151bd37d4860f2::t_47ec3b764efa1f 6,72,101
+  s_151bd37d4860f2::t_c8f8cf9e32c4d5 15-16,79-92
+  s_151bd37d4860f2::t_e47eefc09d7fb9 111-149
+src/modules/meter/component/usage-views.ts
+  s_151bd37d4860f2::t_c8df0c1cc8950c 6,29-33,65-77,80
+  s_151bd37d4860f2::t_a1541e0afb643b 81-86
+src/component/README.md
+  s_151bd37d4860f2::t_b4771bd06a1404 138-142,161-180
+  s_151bd37d4860f2::t_5cce0b87f26a2e 181
+src/client/README.md
+  s_151bd37d4860f2::t_b4771bd06a1404 42-56
+src/component/turns/wake.ts
+  s_151bd37d4860f2::t_fd5bc4109f813f 22,63
+  s_6249b1c1f07e7c::t_60dcacfc7c7ed4 64
+src/component/turns/run-lifecycle.ts
+  s_151bd37d4860f2::t_fd5bc4109f813f 1-8,15-22,37-38,52-59,61-67,70-91
+  s_151bd37d4860f2::t_d2092b7f246667 9-14,23-36,39-51,60,68-69
+  s_151bd37d4860f2::t_32734dec96fcdd 92-95
+src/component/turns/claim.ts
+  s_151bd37d4860f2::t_fd5bc4109f813f 327-333
+tests/run-tree-meter.seed.ts
+  s_151bd37d4860f2::t_02b5ffd53a54da 1-67
+  s_151bd37d4860f2::t_27f6f1f890a991 68-90
+tests/run-tree.seed.ts
+  s_151bd37d4860f2::t_3e2702da4c0379 2,14,31
+  s_151bd37d4860f2::t_d3710765c6a1ba 1,3-13,15-30,32-109,112-113
+  s_151bd37d4860f2::t_0291f9f39a61c7 110-111,114-232
+src/component/hooks/state.ts
+  s_151bd37d4860f2::t_d2092b7f246667 46,50
+  s_151bd37d4860f2::t_6b54e5195a2236 44-45,47-49
+src/client/endpoints/requests.ts
+  s_151bd37d4860f2::t_ba2731c2ee969b 21,180
+src/component/schema.ts
+  s_151bd37d4860f2::t_d2092b7f246667 378-380
+  s_151bd37d4860f2::t_69d4fccebb87af 191-193,370,375-377,381-387,408,455-457,537
+src/component/subagents/deliver.ts
+  s_151bd37d4860f2::t_fd5bc4109f813f 24,98
+  s_6249b1c1f07e7c::t_7c701da02a9f3a 99
+src/component/subagents/history.ts
+  s_151bd37d4860f2::t_5b51dd701e4a81 13-15,32-33,39
+src/client/turn/tools.ts
+  s_151bd37d4860f2::t_8b95101fe20ed9 72-74,194-237
+src/client/coordinate/launch.ts
+  s_151bd37d4860f2::t_ba2731c2ee969b 15,268
+src/component/turns/runs.ts
+  s_151bd37d4860f2::t_d2092b7f246667 20
+  s_151bd37d4860f2::t_82d9c34396a266 21-23,28
+src/component/run-tree-values.ts
+  s_151bd37d4860f2::t_6b54e5195a2236 78-84
+  s_151bd37d4860f2::t_68f6a3900f5e08 9-10,29-33,35-44,59-66,72-77
+  s_151bd37d4860f2::t_69d4fccebb87af 1-8,11-28,34,45-58,67,69-71,85
+  s_151bd37d4860f2::t_31fc7789e26d89 68
+src/component/turns/send.ts
+  s_151bd37d4860f2::t_ba2731c2ee969b 27,38,110-111,113-115
+  s_151bd37d4860f2::t_d2092b7f246667 112
+src/component/turns/cancel.ts
+  s_151bd37d4860f2::t_fd5bc4109f813f 60-61,150
+docs/site/content/docs/concepts/delegation.mdx
+  s_151bd37d4860f2::t_b4771bd06a1404 90-133
+src/client/endpoints/reads.ts
+  s_151bd37d4860f2::t_cb30f0ae3b97fe 224,229-233
+  s_151bd37d4860f2::t_223517243f0fdc 26,228,235
+  s_151bd37d4860f2::t_baa84525d7833f 30,210-211,217-218,221-223,225-227,234,236-243,248-250
+  s_151bd37d4860f2::t_d2092b7f246667 28,215-216,244-247
+src/component/turns/finish.ts
+  s_151bd37d4860f2::t_fd5bc4109f813f 23,49-50,102-103,105
+src/testing/bridge.ts
+  s_151bd37d4860f2::t_49cd845617e9a7 19-44
+  s_151bd37d4860f2::t_94c025e2a59070 45-55
+src/component/subagents/groups.ts
+  s_151bd37d4860f2::t_5aecf8a7227156 224-225
+  s_151bd37d4860f2::t_fd5bc4109f813f 18
+tests/delegation-state.ts
+  s_151bd37d4860f2::t_49cd845617e9a7 1-16
+  s_151bd37d4860f2::t_918fc4d1291864 17-20
+src/component/subagents/launch.ts
+  s_151bd37d4860f2::t_ba2731c2ee969b 21,226,269-270
+  s_151bd37d4860f2::t_68f6a3900f5e08 23,268,273-276
+src/component/turns/write.ts
+  s_151bd37d4860f2::t_6b54e5195a2236 178,232-234
+  s_151bd37d4860f2::t_f885a2d8fa100b 27,219,235,243-251
+  s_151bd37d4860f2::t_2b9ec58bd306c0 252-253
+tests/run-tree.test.ts
+  s_151bd37d4860f2::t_47ec3b764efa1f 20-21
+  s_151bd37d4860f2::t_02b5ffd53a54da 9,198,209
+  s_151bd37d4860f2::t_3e2702da4c0379 1-8,10-19,22-197,199-204
+  s_151bd37d4860f2::t_54255e85c99a0f 205-208,210-368
+src/component/_generated/api.ts
+  s_151bd37d4860f2::t_ce62764f80aec1 35,73
+src/component/_generated/component.ts
+  s_151bd37d4860f2::t_54758e01de69fe 31,75
+tests/delegation-v2.test.ts
+  s_151bd37d4860f2::t_d4abbf630c7e93 1,70,381-388,396-398,1714-1719
+tests/hooks.test.ts
+  s_151bd37d4860f2::t_a6f9f20209c850 1,842,954,1064,1127-1128,1490,1535,1687-1689
+tests/live/runtime.live.ts
+  s_151bd37d4860f2::t_d5d371dcfe377b 270,273-274
+tests/message-parent.fixture.ts
+  s_151bd37d4860f2::t_2b8890a19ebae6 1,128
+tests/slots.test.ts
+  s_151bd37d4860f2::t_e0599cad854b61 1,899-901
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b8f9a21db6888b254f92663ee5ecc137377d5472",
+  "prompts": {},
+  "sessions": {
+    "s_151bd37d4860f2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1796d-2cac-78e3-ac14-6a17d7bfca72",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_6249b1c1f07e7c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1796d-3879-7ee3-aa3b-987711204a87",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
