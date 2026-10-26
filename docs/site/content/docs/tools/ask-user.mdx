@@ -22,13 +22,13 @@ const tools = { ask_user: createAskUserTool() };
 // Include ...tools in your Agent's tools and keep host authorization policies.
 ```
 
-`ask_user({ question })` is a **deferred tool**: it has no `execute`, so core
+By default, `ask_user({ question })` is a **deferred tool**: it has no `execute`, so core
 records the call as pending and the turn waits. `ASK_USER_LIMITS` cap one
 nonblank, trimmed question at 2000 characters; blank, oversized or extra fields
 (including ownership) become an ordinary tool error and never pause the thread.
 
 Subscribe to `pendingApprovals({ threadId })` for the owned root and its children;
-render each ask's `question` and optional `schema`, then answer through core:
+render each ask's `question` or custom `input` and optional `schema`, then answer through core:
 
 ```ts title="client/answerQuestion.ts"
 import type { ConvexClient } from "convex/browser";
@@ -55,7 +55,7 @@ calls, paid effects or retries. The host's UI and authorization stay host-owned.
 
 ## Structured answers and agent policy
 
-The schema is app-supplied; the model supplies only the question:
+Use a static answer schema with the default question input:
 
 ```ts
 const ask_user = createAskUserTool({
@@ -74,7 +74,72 @@ boolean, null), `properties`, `required`, `additionalProperties` (boolean),
 `items`, `enum`, `minimum`/`maximum`, `minLength`/`maxLength`,
 `minItems`/`maxItems`, `title`, and `description`. Unknown keywords and remote
 references are refused. Schemas are at most 8 KiB, depth 8, and 32 object fields.
+Property names must follow Convex field-name rules: at most 1024 characters,
+non-control ASCII (U+0020–U+007E), and no leading `$`. These rules apply to static
+and derived schemas, including model-supplied question IDs used as property names.
 Malformed answers leave the decision pending; there is no string coercion.
+
+## Model-authored forms
+
+`createAskUserTool({ inputSchema?, answerSchema? })` accepts a Zod input type or
+a JSON Schema in the dialect above with top-level `type: "object"`.
+JSON input schemas default top-level `additionalProperties` to `false`; set it
+explicitly to `true` to allow extra fields. The default remains `z.strictObject({ question })`.
+An answer schema may also be a synchronous `(input) => JsonSchema` callback.
+Async callbacks fail at registration with `answerSchema must be synchronous`.
+
+```ts
+import { z } from "zod";
+
+const ask_user = createAskUserTool({
+  inputSchema: z.strictObject({
+    questions: z
+      .array(
+        z.strictObject({
+          id: z
+            .string()
+            .min(1)
+            .max(1024)
+            .regex(/^(?!\$)[\x20-\x7e]+$/),
+          question: z.string(),
+          choices: z.array(z.string()).min(1).max(3),
+        }),
+      )
+      .min(1)
+      .max(3),
+  }),
+  answerSchema: ({ questions }) => ({
+    type: "object",
+    additionalProperties: false,
+    required: questions.map(({ id }) => id),
+    properties: Object.fromEntries(
+      questions.map(({ id, choices }) => [id, { type: "string", enum: choices }]),
+    ),
+  }),
+});
+```
+
+Core validates each model call and derives its answer schema on the host during
+the turn. The compact pending proposal stores the validated input (including Zod
+defaults/transforms) and that call's answer schema. `answer({ value })` uses the
+stored schema even if registration later changes. Schemas stay outside
+model-visible input. Invalid inputs return a tool error (`INVALID_QUESTION`);
+invalid derived schemas (including invalid property names) return `INVALID_FORM_SCHEMA`,
+without a human pause or failed turn. Optional `undefined` fields/items in validated
+input and derived schemas are omitted before JSON and Convex serialization checks.
+AI SDK validation errors are preserved when already present.
+
+Raw and validated input each fit 16 KiB of encoded JSON/Convex bytes; derived
+schemas have the same 8 KiB, depth 8, 32-field limits as static schemas.
+`pendingApprovals` exposes custom `input` in full, including any `question` field.
+A question-only input is projected once as `question`, with `input: null`.
+The input, schema, identifiers, and pending envelope must fit the combined 16 KiB
+item budget. An ask exceeding it returns the typed tool denial `ASK_TOO_LARGE`
+before creating a pending item, so the model can retry with a smaller ask.
+Other oversized pending decisions may appear as `truncated` stubs; answering any
+truncated ask returns `PROPOSAL_TRUNCATED` and leaves it pending.
+For JSON Schema inputs, use `createAskUserTool<Input>(...)` to type the callback;
+Zod inputs infer its type.
 
 By default only root assignments may use `ask_user`. Children receive a normal
 `ROOT_ONLY` tool result and continue without showing a human prompt. They can use

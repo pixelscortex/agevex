@@ -515,10 +515,8 @@ it("oversized pending input commits typed APPROVAL_LIMIT instead of GENERATION_F
   ).toEqual([]);
 });
 
-it("one oversized ask projection returns a bounded stub while ordinary approval questions are not duplicated", async () => {
+it("ordinary approval questions are not duplicated in the pending projection", async () => {
   const t = setup();
-
-  main.declaredTools.large_question = tool({ inputSchema: z.object({ question: z.string() }) });
 
   main.declaredTools.plain_echo = tool({
     inputSchema: z.object({ question: z.string() }),
@@ -527,8 +525,6 @@ it("one oversized ask projection returns a bounded stub while ordinary approval 
   });
 
   state.steps.push([
-    // Even without the duplicated input this item plus its envelope exceeds 16 KiB.
-    ...call("large_question", "large-ask", { question: "q".repeat(16300) }),
     ...call("plain_echo", "large-approval", { question: "q".repeat(15 << 10) }),
     ...call("editable_echo", "small-approval", { text: "ok" }),
   ]);
@@ -539,15 +535,7 @@ it("one oversized ask projection returns a bounded stub while ordinary approval 
     threadId: receipt.threadId,
   });
 
-  expect(pending).toHaveLength(3);
-
-  expect(pending.find((item) => item.tool === "large_question")).toMatchObject({
-    id: "large-ask",
-    tool: "large_question",
-    truncated: true,
-    input: null,
-  });
-
+  expect(pending).toHaveLength(2);
   expect(pending.find((item) => item.tool === "plain_echo")).not.toHaveProperty("question");
 
   expect(pending.find((item) => item.tool === "plain_echo")?.input).toEqual({
@@ -555,6 +543,44 @@ it("one oversized ask projection returns a bounded stub while ordinary approval 
   });
 
   expect(pending.find((item) => item.tool === "editable_echo")?.editable).toBe(true);
+});
+
+it("a no-execute tool whose pending item cannot fit is refused before saving, and a fitting one is answerable", async () => {
+  const t = setup();
+
+  main.declaredTools.large_question = tool({ inputSchema: z.object({ question: z.string() }) });
+
+  // The input alone fits the 16 KiB input limit, but its pending item (with
+  // identifiers and envelope) would not: it must never be saved as a stub.
+  state.steps.push(call("large_question", "large-ask", { question: "q".repeat(16300) }));
+  const refused = await open(t);
+
+  expect(await t.query(rawAssignment, { assignmentId: refused.assignmentId })).toMatchObject({
+    turnStatus: "recovery_required",
+    errorCode: "APPROVAL_LIMIT",
+  });
+
+  const alice = t.withIdentity({ subject: "alice" });
+
+  expect(await alice.query(api.host.pendingApprovals, { threadId: refused.threadId })).toEqual([]);
+
+  state.steps.push(call("large_question", "fits", { question: "q".repeat(10 << 10) }));
+
+  const accepted = requireReceipt(
+    await alice.mutation(api.host.open, { agent: "Tools", prompt: "Again", requestKey: "again" }),
+  );
+
+  await drain(t);
+  const [item] = await alice.query(api.host.pendingApprovals, { threadId: accepted.threadId });
+
+  expect(item).toMatchObject({ toolCallId: "fits", kind: "ask" });
+  expect(item.truncated).toBeUndefined();
+
+  await alice.mutation(api.host.answer, {
+    threadId: accepted.threadId,
+    toolCallId: "fits",
+    value: "ok",
+  });
 });
 
 it("two clients deciding concurrently commit one decision and reject the losing payload", async () => {
@@ -708,50 +734,65 @@ it("an approved call still executes its approved input after a sibling stays und
   expect(JSON.stringify(state.calls[1].prompt)).not.toContain("APPROVED_INPUT_GONE");
 });
 
-it("truncated proposals refuse edits and answers with PROPOSAL_TRUNCATED and stay pending", async () => {
+it("a truncated approval refuses edits with PROPOSAL_TRUNCATED and stays pending", async () => {
   const t = setup();
-  const longId = (prefix: string) => prefix.repeat(DECISION_LIMITS.identifierChars + 1);
 
-  main.declaredTools.ask_user = createAskUserTool({ answerSchema: schema });
-
-  state.steps.push([
-    ...call("editable_echo", longId("e"), { text: "original" }),
-    ...call("ask_user", longId("f"), { question: "Choose settings" }),
-  ]);
+  state.steps.push(
+    call("editable_echo", "e".repeat(DECISION_LIMITS.identifierChars + 1), { text: "original" }),
+  );
 
   const receipt = await open(t);
   const alice = t.withIdentity({ subject: "alice" });
   const pending = await alice.query(api.host.pendingApprovals, { threadId: receipt.threadId });
-  const approvalItem = pending.find((item) => item.kind === "approval")!;
 
-  expect(pending).toHaveLength(2);
-  expect(pending.every((item) => item.truncated)).toBe(true);
+  expect(pending).toHaveLength(1);
+  expect(pending[0].truncated).toBe(true);
 
   await expect(
     alice.mutation(api.host.respond, {
       threadId: receipt.threadId,
-      approvalId: approvalItem.id,
+      approvalId: pending[0].id,
       decision: { kind: "approve", edit: { input: { text: "changed" } } },
     }),
   ).rejects.toMatchObject({ data: { code: "PROPOSAL_TRUNCATED" } });
 
-  // Even a well-formed answer is refused: the stub lost the schema, so it cannot be validated.
-  for (const value of ["not a form", { color: "green", count: 1 }])
-    await expect(
-      alice.mutation(api.host.answer, {
-        threadId: receipt.threadId,
-        toolCallId: longId("f"),
-        value,
-      }),
-    ).rejects.toMatchObject({ data: { code: "PROPOSAL_TRUNCATED" } });
-
   expect(await alice.query(api.host.pendingApprovals, { threadId: receipt.threadId })).toHaveLength(
-    2,
+    1,
   );
 
   expect(state.effects).toEqual([]);
   await alice.mutation(api.host.cancel, { threadId: receipt.threadId });
   await drain(t);
+});
+
+it("a factory ask call with an identifier over the limit is denied before saving and the model continues", async () => {
+  const t = setup();
+  const id = "f".repeat(DECISION_LIMITS.identifierChars + 1);
+
+  main.declaredTools.ask_user = createAskUserTool({ answerSchema: schema });
+  state.steps.push(call("ask_user", id, { question: "Choose settings" }));
+  const receipt = await open(t);
+  const alice = t.withIdentity({ subject: "alice" });
+
+  expect(await alice.query(api.host.pendingApprovals, { threadId: receipt.threadId })).toEqual([]);
+  expect(state.calls).toHaveLength(2);
+  expect(JSON.stringify(state.calls[1].prompt)).toContain("ASK_TOO_LARGE");
+});
+
+it("a no-execute call with an identifier over the limit is refused with APPROVAL_LIMIT instead of becoming an unanswerable stub", async () => {
+  const t = setup();
+  const id = "f".repeat(DECISION_LIMITS.identifierChars + 1);
+
+  main.declaredTools.large_question = tool({ inputSchema: z.object({ question: z.string() }) });
+  state.steps.push(call("large_question", id, { question: "Choose settings" }));
+  const receipt = await open(t);
+  const alice = t.withIdentity({ subject: "alice" });
+
+  expect(await alice.query(api.host.pendingApprovals, { threadId: receipt.threadId })).toEqual([]);
+
+  expect(await t.query(rawAssignment, { assignmentId: receipt.assignmentId })).toMatchObject({
+    errorCode: "APPROVAL_LIMIT",
+  });
 });
 
 it("an ask with a long question and a large form schema appears in full without a duplicated input", async () => {
