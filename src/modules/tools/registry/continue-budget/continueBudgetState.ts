@@ -1,4 +1,8 @@
-// Registry source installed into the host Convex app; not an agevex component.
+/**
+ * Internal host mutations for recording, consuming and cleaning up spending consent.
+ * Installed beside the schema snippet; authorized host approval/resume flows call
+ * these endpoints in their existing transaction. Spent approvals cannot be reused.
+ */
 import { internalMutationGeneric, type MutationBuilder } from "convex/server";
 import { LIMITS } from "agevex";
 import { v } from "convex/values";
@@ -22,6 +26,7 @@ const consent = {
 // the safe age is retention + one purge interval + a margin, not retention alone.
 const CONSENT_RETENTION_MS = LIMITS.receiptRetentionMs + LIMITS.purgeIntervalMs + 60 * 60_000;
 
+/** Reject unindexable provider approval ids before any consent lookup or write. */
 const checkId = (approvalId: string) => {
   if (
     !approvalId ||

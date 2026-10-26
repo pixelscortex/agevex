@@ -1,4 +1,9 @@
-// Component runtime source; keep host dependencies and environment access outside this boundary.
+/**
+ * Mount definition for the optional meter component.
+ * Two aggregate children store thread and subject/run projections independently.
+ * Workpool executes on-demand evidence and delivery jobs with explicit retries.
+ * Core imports none of these children; the host chooses whether to mount meter.
+ */
 import { defineComponent } from "convex/server";
 import aggregate from "@convex-dev/aggregate/convex.config";
 import workpool from "@convex-dev/workpool/convex.config";

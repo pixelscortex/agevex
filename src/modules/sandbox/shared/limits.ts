@@ -1,3 +1,8 @@
+/**
+ * Pure bounds and validation shared by host and component sandbox code.
+ * Registration checks overrides against hard maxima before admitting provider work.
+ * Row, output and action budgets keep transactions and provider responses bounded.
+ */
 /** All host-tunable bounds have hard ceilings; no provider input can lift them. */
 export const LIMITS = {
   commandTimeoutS: 180,

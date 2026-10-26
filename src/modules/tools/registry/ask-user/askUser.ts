@@ -1,4 +1,8 @@
-// Registry source installed into the host Convex app; not an agevex component.
+/**
+ * Deferred question tool installed into the host app through the registry.
+ * Core records its pending native call and resumes only after the owner answers.
+ * This item owns no state table and performs no tool effect.
+ */
 import { tool } from "ai";
 import { z } from "zod";
 

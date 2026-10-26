@@ -1,4 +1,8 @@
-// Registry source installed into the host Convex app; not an agevex component.
+/**
+ * Host schema snippet for single-use spending consent.
+ * The installer merges these tables into its Convex schema; state handlers
+ * bind each approval to its owner, thread and run and retain spent receipts.
+ */
 import { defineSchema, defineTable, type DataModelFromSchemaDefinition } from "convex/server";
 import { v } from "convex/values";
 

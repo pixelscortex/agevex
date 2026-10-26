@@ -1,4 +1,8 @@
-// Component runtime source; keep host dependencies and environment access outside this boundary.
+/**
+ * Artifact receipts and per-namespace indexing state, with shared wire validators.
+ * Registered functions use identity, failure, usage, and summary validators from this file.
+ * Tables store only bounded metadata; file bytes and searchable content stay outside them.
+ */
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 export const failure = v.union(

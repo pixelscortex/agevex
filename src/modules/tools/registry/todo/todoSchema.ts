@@ -1,4 +1,8 @@
-// Registry source installed into the host Convex app; not an agevex component.
+/**
+ * Host schema snippet for one bounded todo list per owner and thread.
+ * Installers spread todoTables into their schema; todoState uses the owner/thread
+ * index for current-state reads, replacement writes and explicit host cleanup.
+ */
 import { defineSchema, defineTable, type DataModelFromSchemaDefinition } from "convex/server";
 import { v } from "convex/values";
 

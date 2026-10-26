@@ -1,19 +1,26 @@
-// Component runtime source; keep host dependencies and environment access outside this boundary.
+/**
+ * Registered namespace index API and atomic fences around native RAG writes.
+ * Host indexing actions call these functions while RAG owns content, chunks, and vectors.
+ * Each indexes row records one artifact/namespace claim and its exact native entry id.
+ */
 import type { RAG } from "@convex-dev/rag";
 import { v } from "convex/values";
-import { mutation, query, internalMutation } from "./_generated/server.js";
-import type { Doc, Id } from "./_generated/dataModel.js";
-import { internal } from "./_generated/api.js";
 import { bounded, integer, LIMITS } from "../shared/limits.js";
+import { internal } from "./_generated/api.js";
+import type { Doc, Id } from "./_generated/dataModel.js";
+import { internalMutation, mutation, query } from "./_generated/server.js";
 
 type RagApi = ConstructorParameters<typeof RAG>[0];
 const fence = { indexId: v.id("indexes"), claim: v.string() };
 
+/** Accept writes only for the same cleaning or running claim, protecting namespace isolation. */
 const active = (row: Doc<"indexes">, claim: string) =>
   row.claim === claim && (row.status === "cleaning" || row.status === "running");
 
+/** Check the admission lease without scheduling or retrying paid work. */
 const expired = (row: Doc<"indexes">) => row.leaseUntil <= Date.now();
 
+/** Read one exact artifact/namespace row through its bounded identity index. */
 const byTarget = (ctx: { db: any }, artifactId: string, namespace: string) =>
   ctx.db
     .query("indexes")

@@ -1,4 +1,8 @@
-// Registry source installed into the host Convex app; not an agevex component.
+/**
+ * Host tool factories and bounded input validation for thread todo lists.
+ * Core supplies the fenced owner/thread ToolContext; internal state refs are
+ * wired by the installer. Both count and encoded bytes bound the stored list.
+ */
 import { defineOnceTool } from "agevex";
 import type { FunctionReference } from "convex/server";
 import { z } from "zod";

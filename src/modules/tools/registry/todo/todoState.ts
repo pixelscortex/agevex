@@ -1,4 +1,8 @@
-// Registry source installed into the host Convex app; not an agevex component.
+/**
+ * Internal host queries and mutations for durable thread todo lists.
+ * Tool factories provide fenced ownership facts; validation repeats at the data
+ * boundary. Bounded cleanup is driven by the host rather than a scheduled chain.
+ */
 import {
   internalMutationGeneric,
   internalQueryGeneric,
@@ -39,6 +43,7 @@ export const read = query({
   },
 });
 
+/** Replace the bounded list inside core's fenced tool mutation; indexed lookup serializes first writes. */
 export const write = mutation({
   args: { ...scope, ...result },
   returns: v.object(result),

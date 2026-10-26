@@ -1,14 +1,19 @@
-// Component runtime source; keep host dependencies and environment access outside this boundary.
+/**
+ * Id-only extraction Workflow and its one-shot completion callback.
+ * Admission starts the worker without retries; completion drains fenced host callbacks.
+ * Payloads never enter the journal, and callback failures cannot cancel other callbacks.
+ */
 import { WorkflowManager } from "@convex-dev/workflow";
 import { vResultValidator } from "@convex-dev/workpool";
-import { v } from "convex/values";
 import type { FunctionHandle } from "convex/server";
+import { v } from "convex/values";
+import { LIMITS } from "../shared/limits.js";
 import { components, internal } from "./_generated/api.js";
 import { internalMutation } from "./_generated/server.js";
-import { LIMITS } from "../shared/limits.js";
 export const manager = new WorkflowManager(components.workflow, {
   workpoolOptions: { retryActionsByDefault: false, logLevel: "ERROR" },
 });
+/** Run the exact admitted worker once, retaining the versioned id-only journal step. */
 export const extract = manager
   .define({
     args: {
@@ -45,6 +50,7 @@ export const extract = manager
 
     return null;
   });
+/** Drain the owning claim callbacks atomically and clean up the completed Workflow. */
 export const done = internalMutation({
   args: {
     workflowId: v.string(),

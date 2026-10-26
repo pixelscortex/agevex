@@ -1,3 +1,9 @@
+/**
+ * Hard meter ceilings, overridable registration bounds and scalar validators.
+ * Host pricing and component handlers share exact nanodollar arithmetic.
+ * The constants bound charge receipts, tree work, outbox batches and HTTP IO;
+ * comments explain their effect on document size and transaction budgets.
+ */
 /** Hard ceilings keep row sizes, aggregate depth and action payloads predictable. */
 export const LIMITS = {
   deltaSeparator: ":delta:",
@@ -79,12 +85,14 @@ export type Limits = Pick<
 export type ResolvedLimits = { [K in keyof Limits]: number };
 const overridable = ["maxThreadCharges", "maxGroups", "maxDays", "maxAttempts", "pruneMinAgeMs"];
 
+/** Reject fractional, negative or over-ceiling inputs at registration and operation boundaries. */
 export function integer(value: number, max: number, name: string) {
   if (!Number.isSafeInteger(value) || value < 0 || value > max) throw new Error(`INVALID_${name}`);
 
   return value;
 }
 
+/** Bound nonempty UTF-8 labels and keys before persisting them or building aggregate keys. */
 export function text(value: string, name: string, max: number = LIMITS.maxStringBytes) {
   if (typeof value !== "string" || !value || new TextEncoder().encode(value).length > max)
     throw new Error(`INVALID_${name}`);
@@ -109,6 +117,7 @@ export function chargeKey(value: string) {
   return value;
 }
 
+/** Accept only named positive overrides within hard ceilings when the host registers meter. */
 export function resolveLimits(overrides: Partial<ResolvedLimits> = {}): ResolvedLimits {
   for (const [key, value] of Object.entries(overrides)) {
     if (!overridable.includes(key)) throw new Error("INVALID_LIMIT");

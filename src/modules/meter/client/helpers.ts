@@ -1,4 +1,9 @@
-// Host-side module API and helpers; this code is imported by the installing app.
+/**
+ * Host adapters for provider evidence, observations and native Agent usage.
+ * Oversized model labels use a full hash; absent cost evidence stays unknown.
+ * Observation callbacks never change a provider result or retry paid work.
+ * The Agent adapter requires exact step identity from its caller, never a scan.
+ */
 import type { UsageHandler } from "@convex-dev/agent";
 import type { Meter } from "./client.js";
 import type { Attribution } from "./types.js";
@@ -19,12 +24,14 @@ export function openRouterCost(providerMetadata: unknown): number | undefined {
   return typeof cost === "number" && Number.isFinite(cost) && cost >= 0 ? cost : undefined;
 }
 
+/** Observe success/failure once while ensuring evidence errors never replace the paid outcome. */
 export async function observeProviderOutcome<T>(options: {
   invoke: () => Promise<T>;
   onSuccess: (result: T) => void | Promise<void>;
   onFailure?: (error: unknown) => void | Promise<void>;
   onObservationError?: (error: unknown) => void | Promise<void>;
 }): Promise<T> {
+  /** Contain both observation and observation-error failures after the provider has finished. */
   async function observe(fn: () => void | Promise<void>) {
     try {
       await fn();

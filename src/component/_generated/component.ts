@@ -37,7 +37,7 @@ type Wire<T> = T extends GenericId<string>
 type Exposed<T, Name extends string | undefined> = {
   [K in keyof T as T[K] extends FunctionReference<any, "public">
     ? K
-    : T[K] extends FunctionReference<any>
+    : T[K] extends FunctionReference<any, any>
       ? never
       : K]: T[K] extends FunctionReference<infer Type, "public", infer Args, infer Result>
     ? FunctionReference<Type, "internal", Wire<Args>, Wire<Result>, Name>

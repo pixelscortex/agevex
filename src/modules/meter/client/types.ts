@@ -1,4 +1,9 @@
-// Host-side module API and helpers; this code is imported by the installing app.
+/**
+ * Host contracts for provider pricing, scoped charges, sinks and registration.
+ * Charge shapes follow the component schema while hiding its operation ledger.
+ * Contexts expose only the capabilities needed by host operations; providers
+ * and sink adapters run in host actions, outside component transactions.
+ */
 import type { GenericActionCtx, GenericDataModel, FunctionReference } from "convex/server";
 import type { Infer } from "convex/values";
 import type { Doc } from "../component/_generated/dataModel.js";

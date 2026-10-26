@@ -1,4 +1,9 @@
-// Component runtime source; keep host dependencies and environment access outside this boundary.
+/**
+ * Meter component tables and shared charge validators.
+ * Charges own immutable attribution, pricing, bounded operation receipts and
+ * per-sink event snapshots; deliveries hold small retryable outbox rows.
+ * Claims distinguish delivery jobs that took a batch from pre-claim crashes.
+ */
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 

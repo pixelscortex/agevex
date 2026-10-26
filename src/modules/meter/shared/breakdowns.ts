@@ -1,4 +1,9 @@
-// Pure shared contracts and bounds used by the host and component; no function registrations.
+/**
+ * Pure opt-in projection names and validation shared by both meter sides.
+ * Host registration freezes enabled memberships onto each new charge.
+ * Host reads and component queries use the same disabled-projection error,
+ * so an unavailable breakdown cannot silently appear as an empty result.
+ */
 export const BREAKDOWNS = [
   "thread.model",
   "thread.provider",
@@ -9,6 +14,7 @@ export const BREAKDOWNS = [
 
 export type Breakdown = (typeof BREAKDOWNS)[number];
 
+/** Explicit read failure when registration did not enable the requested projection. */
 export class BreakdownDisabledError extends Error {
   readonly code = "BREAKDOWN_DISABLED";
 
@@ -18,6 +24,7 @@ export class BreakdownDisabledError extends Error {
   }
 }
 
+/** Validate registration/query memberships and deduplicate without changing their order. */
 export function resolveBreakdowns(breakdowns: Breakdown[] = []): Breakdown[] {
   if (
     !Array.isArray(breakdowns) ||
@@ -29,6 +36,7 @@ export function resolveBreakdowns(breakdowns: Breakdown[] = []): Breakdown[] {
   return [...new Set(breakdowns)];
 }
 
+/** Reject unavailable read projections before any aggregate query can imply empty data. */
 export function requireBreakdown(enabled: Breakdown[], breakdown: Breakdown) {
   if (!enabled.includes(breakdown)) throw new BreakdownDisabledError(breakdown);
 }
