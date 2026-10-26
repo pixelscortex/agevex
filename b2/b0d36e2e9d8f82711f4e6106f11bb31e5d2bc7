@@ -1,0 +1,89 @@
+README.md
+  s_51fbc688730d1c::t_13872a810d9839 593-596,934-952
+dist/client/endpoints/index.d.ts
+  s_51fbc688730d1c::t_adb2ace2da039c 142
+dist/client/endpoints/pending.d.ts
+  s_51fbc688730d1c::t_09c75894c183a6 17
+dist/client/endpoints/pending.js
+  s_51fbc688730d1c::t_27d396cc826b8e 9,42
+dist/client/index.d.ts
+  s_51fbc688730d1c::t_ca7626595f4ce7 16
+dist/client/index.js
+  s_51fbc688730d1c::t_bed5791faecfd2 11
+dist/client/runtime.d.ts
+  s_51fbc688730d1c::t_5d1c9349858c09 165
+dist/client/turn/fence.js
+  s_51fbc688730d1c::t_9d192624a3a376 190
+dist/component/turns/decision-proposals.d.ts
+  s_51fbc688730d1c::t_bd862a26ab8504 2,85
+dist/component/turns/decision-proposals.js
+  s_51fbc688730d1c::t_41bc5ffe216ec3 36,41,43,47
+dist/component/turns/decision-reads.js
+  s_51fbc688730d1c::t_d06ea8a73ca42b 8,30,36-38
+dist/component/turns/decision-save.d.ts
+  s_51fbc688730d1c::t_9162d8086e2f70 4,14,18-22,24-27
+dist/component/turns/decision-save.js
+  s_51fbc688730d1c::t_c7e2d7fa52fd17 1-2,23-44,48-66,93-97,99-102,107-134
+dist/component/turns/pause.d.ts
+  s_51fbc688730d1c::t_7e966807415ada 16,39
+dist/component/turns/slices.d.ts
+  s_51fbc688730d1c::t_c4f91d67bbb4d0 90-95
+dist/component/turns/write.d.ts
+  s_51fbc688730d1c::t_393f109952dbc6 14-19,21-26,28-44
+dist/component/turns/write.js
+  s_51fbc688730d1c::t_f5eb0c8e24e76e 21-28,50
+dist/modules/tools/registry/ask-user/askUser.d.ts
+  s_51fbc688730d1c::t_32861a5e46640d 7,16-20,24,26-27
+dist/modules/tools/registry/ask-user/askUser.js
+  s_51fbc688730d1c::t_17dc68a67eb9a7 6-7,9,14,19-21,23-24,27-61
+dist/shared/ask-values.d.ts
+  s_51fbc688730d1c::t_4528ed7c309a82 1-22
+dist/shared/ask-values.js
+  s_51fbc688730d1c::t_430b4e0bedf94d 1-37
+dist/shared/decisions.js
+  s_51fbc688730d1c::t_d815e21704a363 3,47-55
+dist/shared/tool-markers.d.ts
+  s_51fbc688730d1c::t_e3fcdf549b7456 1-3,5-20,25
+dist/shared/tool-markers.js
+  s_51fbc688730d1c::t_31d2895b0e6df4 1-5,11-83
+src/client/endpoints/pending.ts
+  s_51fbc688730d1c::t_37c1a13d203f02 9,49
+src/client/index.ts
+  s_51fbc688730d1c::t_7e052529961f2b 64-69
+src/client/turn/fence.ts
+  s_51fbc688730d1c::t_f6e7c63914bd71 18,253
+src/component/turns/decision-proposals.ts
+  s_51fbc688730d1c::t_6070d9739d439c 6,45,47-48,53,55,61
+src/component/turns/decision-reads.ts
+  s_51fbc688730d1c::t_a2814c2a65fdc8 9,45,51-54
+src/component/turns/decision-save.ts
+  s_51fbc688730d1c::t_5d868a6606835e 5-12,25,49-77,79-87,89-92,94-95,140-144,146-159,169-208
+src/component/turns/pause.ts
+  s_51fbc688730d1c::t_681b294f44e708 23,128,142,188
+src/component/turns/write.ts
+  s_51fbc688730d1c::t_98a44f873d0bed 45-59,92-97
+src/modules/tools/registry/ask-user/askUser.ts
+  s_51fbc688730d1c::t_4774fb881593e3 6-7,9,16-21,25-35,40,42,45-81
+src/shared/ask-values.ts
+  s_51fbc688730d1c::t_0969e6e0e2af16 1-47
+src/shared/decisions.ts
+  s_51fbc688730d1c::t_eb3ee89c1d1448 3,78-87
+src/shared/tool-markers.ts
+  s_51fbc688730d1c::t_ef0ee30b4e7e2f 2-12,14-22,30-34,36-123
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b2b0d36e2e9d8f82711f4e6106f11bb31e5d2bc7",
+  "prompts": {},
+  "sessions": {
+    "s_51fbc688730d1c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8aca7eb0-49ce-4eb5-b17e-f885c3afbcba",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
