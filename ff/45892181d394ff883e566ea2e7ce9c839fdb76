@@ -1,0 +1,39 @@
+docs/site/content/docs/concepts/main-builder-reviewer.mdx
+  s_d1acb60e801bf5::t_cdb32b304824cb 94-98
+src/client/turn/claim.ts
+  s_d1acb60e801bf5::t_6c9894e4ac3efb 79-89
+src/client/turn/context.ts
+  s_d1acb60e801bf5::t_29d5cb98e52f15 41-42
+src/client/turn/run-turn.ts
+  s_d1acb60e801bf5::t_25ca2af2097a62 21,49
+src/client/turn/tool-progress.ts
+  s_d1acb60e801bf5::t_d34db754c27a53 1-70
+src/client/turn/tools.ts
+  s_d1acb60e801bf5::t_4378d2f66640d2 22,209
+tests/acceptance/main-builder-reviewer.test.ts
+  s_d1acb60e801bf5::t_20a4509d5a7882 44,135-167,237-262,367-374
+tests/acceptance/work.fixture.ts
+  s_d1acb60e801bf5::t_8f871170efd1d1 21,25-26,81,121-133,148,159-164
+tests/run-tree.fixture.ts
+  s_d1acb60e801bf5::t_395faa35715eec 4-9,26,28,86-122,129-130,145-151
+tests/tool-progress.test.ts
+  s_d1acb60e801bf5::t_2060c356906c12 5,18-23,28-31,127-176
+tests/turn-tool-progress.test.ts
+  s_d1acb60e801bf5::t_d8ada91754f1a6 1-135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ff45892181d394ff883e566ea2e7ce9c839fdb76",
+  "prompts": {},
+  "sessions": {
+    "s_d1acb60e801bf5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a179a2-6b81-7d22-a42b-0465e67c2781",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
