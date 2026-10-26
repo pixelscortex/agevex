@@ -6,11 +6,10 @@ export declare function payloadRef(runtime: RuntimeContext, ctx: ActionCtx, args
         _id: string;
         _creationTime: number;
         usage?: {
+            credits?: number | undefined;
             inputTokens?: number | undefined;
             outputTokens?: number | undefined;
-            credits?: number | undefined;
         } | undefined;
-        failure?: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED" | undefined;
         summary?: {
             language?: string | undefined;
             kind: "document" | "text" | "image";
@@ -18,6 +17,7 @@ export declare function payloadRef(runtime: RuntimeContext, ctx: ActionCtx, args
             pages: number;
             preview: string;
         } | undefined;
+        failure?: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED" | undefined;
         payloadStorageId?: string | undefined;
         callbacks?: string[] | undefined;
         status: "failed" | "running" | "pending" | "unknown" | "ready" | "released";

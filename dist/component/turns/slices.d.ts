@@ -21,6 +21,13 @@ export declare const claim: import("convex/server").RegisteredMutation<"public",
 }, Promise<{
     modelId?: string | undefined;
     agent: string;
+    settings: {
+        mode: "stream" | "generate";
+        maxOutputTokens: number;
+        modelTimeoutMs: number;
+        toolTimeoutMs: number;
+        stepsPerTurn: number;
+    };
     assignmentId: string;
     threadId: string;
     runId: string;
@@ -46,7 +53,7 @@ export declare const claim: import("convex/server").RegisteredMutation<"public",
 /** End the running turn, successfully or with a failure code; see
  * turns/finish.ts. */
 export declare const finish: import("convex/server").RegisteredMutation<"public", {
-    errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
+    errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
     assignmentId: import("convex/values").GenericId<"assignments">;
     turnToken: string;
 }, Promise<null>>;
@@ -107,3 +114,12 @@ export declare const sliceLimit: import("convex/server").RegisteredMutation<"int
     assignmentId: import("convex/values").GenericId<"assignments">;
     executionId: string;
 }, Promise<null>>;
+/** Sticky evidence failure on the captured run, even after cancellation/later sends.
+ * One run row <=16 KiB read/written, never changes execution or paid receipts. */
+export declare const usageFailed: import("convex/server").RegisteredMutation<"public", {
+    runId: import("convex/values").GenericId<"runs">;
+}, Promise<null>>;
+/** Host projections compose this sticky marker with the optional usage view. */
+export declare const usageReporting: import("convex/server").RegisteredQuery<"public", {
+    runId: import("convex/values").GenericId<"runs">;
+}, Promise<boolean>>;

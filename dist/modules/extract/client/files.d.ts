@@ -11,9 +11,9 @@ export declare function run(runtime: RuntimeContext, ctx: ActionCtx, args: FileA
 /** Read a bounded artifact view after exact attachment authorization. */
 export declare function get(runtime: RuntimeContext, ctx: ActionCtx, args: FileArgs | ArtifactArgs): Promise<{
     usage?: {
+        credits?: number | undefined;
         inputTokens?: number | undefined;
         outputTokens?: number | undefined;
-        credits?: number | undefined;
     } | undefined;
     failure?: {
         code: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED";
@@ -39,9 +39,9 @@ export declare function fromUrl(runtime: RuntimeContext, ctx: ActionCtx, args: S
     url: string;
 }): Promise<{
     usage?: {
+        credits?: number | undefined;
         inputTokens?: number | undefined;
         outputTokens?: number | undefined;
-        credits?: number | undefined;
     } | undefined;
     fileId: string;
 }>;

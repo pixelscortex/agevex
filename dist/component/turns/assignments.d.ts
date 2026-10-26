@@ -45,6 +45,7 @@ export declare function assignmentByThread(ctx: Pick<QueryCtx, "db">, threadId: 
     recoveryAt?: number | undefined;
     recoveryJobId?: import("convex/values").GenericId<"_scheduled_functions"> | undefined;
     recoveryDelayMs?: number | undefined;
+    modelSteps?: number | undefined;
     watchdogId?: import("convex/values").GenericId<"_scheduled_functions"> | undefined;
     pendingGeneration?: {
         stream?: {
@@ -82,7 +83,7 @@ export declare function assignmentByThread(ctx: Pick<QueryCtx, "db">, threadId: 
     lastSlice?: string | undefined;
     notesPending: number;
     agent: string;
-    errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
+    errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
     threadId: string;
     turnStatus: "idle" | "running" | "queued" | "recovery_required";
     queuedMessages: number;

@@ -12,6 +12,7 @@ import { updateCharge } from "./charge-updates.js";
 import { attachCharge, expireCharge, recordLookupResult } from "./charge-lookup.js";
 import { claimDeliveryBatch, recordDeliveryResult, completeDelivery, retryPendingSinks, } from "./delivery.js";
 import { pruneCharges } from "./retention.js";
+import { reconcileArgs, reconcileRun as reconcileHandler } from "./reconciliation.js";
 import { createArgs, updateArgs, attachArgs, expireArgs, lookupResultArgs, claimDeliveriesArgs, deliveryResultArgs, deliveryCompleteArgs, retrySinksArgs, pruneArgs, } from "./charge-contracts.js";
 /** Return one charge with bounded delivery state; callers authorize in the host client. */
 export const get = query({
@@ -70,4 +71,16 @@ export const retrySinks = mutation({
 export const prune = mutation({
     args: pruneArgs,
     handler: pruneCharges,
+});
+/** Host run-close/backstop entry: discovery is idempotent on the pending index. */
+export const reconcile = mutation({
+    args: reconcileArgs,
+    returns: v.null(),
+    handler: reconcileHandler,
+});
+/** Bounded successor of an explicit sweep; never a perpetual scheduled chain. */
+export const reconcileRun = internalMutation({
+    args: reconcileArgs,
+    returns: v.null(),
+    handler: reconcileHandler,
 });

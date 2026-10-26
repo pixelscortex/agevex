@@ -12,6 +12,7 @@
 // usage capture, the post-step snapshot, `continueAfterToolCalls`) use `Turn.rawCtx`.
 import { createFunctionHandle, getFunctionAddress } from "convex/server";
 import { ConvexError } from "convex/values";
+import { sliceDeadlineMs } from "../../component/run-settings.js";
 import { LIMITS } from "../../component/limits.js";
 import { deferredToolNames } from "../registration/graph.js";
 import { stillRunning } from "./context.js";
@@ -31,7 +32,19 @@ export function startTurnFence(rt, turn) {
         state.fencedOut = true;
         controller.abort();
     };
-    const timer = setTimeout(() => controller.abort(), LIMITS.generationAbortMs);
+    const timers = new Set();
+    const deadline = (ms) => {
+        const timer = setTimeout(() => controller.abort(new Error("RUN_TIMEOUT")), ms);
+        timers.add(timer);
+        return () => {
+            clearTimeout(timer);
+            timers.delete(timer);
+        };
+    };
+    controller.signal.addEventListener("abort", () => {
+        state.fencedOut = true;
+    });
+    deadline(sliceDeadlineMs(turn.claimed.settings));
     const poll = setInterval(() => {
         void turn.rawCtx
             .runQuery(rt.component.turns.slices.execution, { assignmentId: turn.args.assignmentId })
@@ -59,8 +72,11 @@ export function startTurnFence(rt, turn) {
         controller,
         ctx,
         assertActive,
+        deadline,
+        wait: (work) => waitForSignal(controller.signal, work),
         stop: () => {
-            clearTimeout(timer);
+            for (const timer of timers)
+                clearTimeout(timer);
             clearInterval(poll);
         },
     };
@@ -122,8 +138,16 @@ function fencedContext(rt, turn, nativeCtx, assertActive, controller) {
             await assertActive();
             try {
                 const saved = await rawCtx.runMutation(rt.component.turns.slices.write, await fencedWriteArgs(rt, turn, ref, payload));
-                if (rt.config.usage && functionKey(ref) === addMessagesKey)
-                    await recordStepUsage(rt, turn, rt.config.usage, saved);
+                if (functionKey(ref) === addMessagesKey) {
+                    // The native transaction committed this evidence even if cancellation
+                    // follows before the model result reaches the host action.
+                    const messages = saved
+                        ?.messages;
+                    if (messages?.some((message) => message.usage && message.status === "success"))
+                        turn.usageSaved = true;
+                    if (rt.config.usage)
+                        await recordStepUsage(rt, turn, rt.config.usage, saved);
+                }
                 return saved;
             }
             catch (error) {
@@ -170,4 +194,23 @@ async function fencedWriteArgs(rt, turn, ref, payload) {
             }
             : {}),
     };
+}
+/** Bounded waiting does not claim that a timed-out external effect failed. */
+function waitForSignal(signal, work) {
+    if (signal.aborted) {
+        // The work may have thrown synchronously while aborting a hook. Observe its
+        // eventual rejection even though revocation already wins this race.
+        void Promise.resolve(work).catch(() => { });
+        return Promise.reject(signal.reason);
+    }
+    return new Promise((resolve, reject) => {
+        const abort = () => {
+            signal.removeEventListener("abort", abort);
+            reject(signal.reason);
+        };
+        signal.addEventListener("abort", abort, { once: true });
+        Promise.resolve(work)
+            .then(resolve, reject)
+            .finally(() => signal.removeEventListener("abort", abort));
+    });
 }

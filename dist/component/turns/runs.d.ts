@@ -11,4 +11,4 @@ import type { WithoutSystemFields } from "convex/server";
 import type { Doc } from "../_generated/dataModel.js";
 /** The fresh budget for one accepted send. `models` is the thread's model
  * policy at acceptance, snapshotted so later sends cannot change a live run. */
-export declare function newRun(models: Doc<"runs">["models"]): WithoutSystemFields<Doc<"runs">>;
+export declare function newRun(models: Doc<"runs">["models"], settings?: Doc<"runs">["settings"]): WithoutSystemFields<Doc<"runs">>;

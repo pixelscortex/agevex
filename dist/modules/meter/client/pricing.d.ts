@@ -33,4 +33,28 @@ type Priced = {
 export declare function priceInline(provider: Provider | undefined, evidence: Parameters<NonNullable<Provider["inline"]>>[0]): Priced;
 /** Same rule for estimates, which managed tools reach through core's slot. */
 export declare function priceEstimate(provider: Provider | undefined, profile: string | undefined, quantity: number): Priced;
+/** Price saved usage from inline evidence first, then a host's token estimate. */
+export declare function priceRecord(provider: Provider | undefined, evidence: Parameters<NonNullable<Provider["inline"]>>[0] & {
+    model?: string;
+}): {
+    source: "inline";
+    nanos?: number;
+    credits?: number;
+    reason?: UnknownReason;
+} | {
+    source: "estimate";
+    nanos?: number;
+    credits?: number;
+    reason?: UnknownReason;
+};
+/** Preserve token absence rather than fabricating zero; supports native and V4 usage. */
+export declare function usageTokens(usage: unknown): {
+    inputTokens: number;
+    outputTokens: number;
+} | undefined;
+/** Host-configured rates, never guessed from a model name or a remote catalog. */
+export declare function tokenEstimate(rates: {
+    inputUsdPerMillion: number;
+    outputUsdPerMillion: number;
+}): NonNullable<Provider["estimate"]>;
 export {};

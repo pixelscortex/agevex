@@ -19,19 +19,16 @@ import type { MeterBackend, SlotFacts, UsageSlot } from "../slots.js";
 import type { HookContext, Registration } from "../types.js";
 import { sliceKey, type Turn } from "./context.js";
 import type { TurnFence } from "./fence.js";
+import { failOpenMeter, markUsagePartial } from "./usage.js";
 
 /** The usage slot's meter for this turn, or `undefined`. Usage is fail-open. */
 export function meterBackend(
   config: Registration,
   ctx: RunnerCtx,
   facts: SlotFacts,
+  failed: () => Promise<void>,
 ): MeterBackend | undefined {
-  try {
-    return config.usage?.scope(ctx, facts);
-  } catch {
-    /* Usage is fail-open. */
-    return undefined;
-  }
+  return config.usage ? failOpenMeter(() => config.usage!.scope(ctx, facts), failed) : undefined;
 }
 
 /**
@@ -54,27 +51,35 @@ export async function recordStepUsage(
 
   if (!step?.usage) return;
 
-  const captured = await turn.rawCtx.runQuery(rt.component.turns.slices.execution, {
-    assignmentId: turn.claimed.assignmentId,
-  });
-
-  if (
-    !(
-      captured?.modelStep?.messageId === String(step._id) &&
-      captured.modelStep.stepOrder === step.stepOrder
-    )
-  )
-    return;
-
   try {
+    const captured = await turn.rawCtx.runQuery(rt.component.turns.slices.execution, {
+      assignmentId: turn.claimed.assignmentId,
+    });
+
+    if (
+      !(
+        captured?.modelStep?.messageId === String(step._id) &&
+        captured.modelStep.stepOrder === step.stepOrder
+      )
+    )
+      return;
+
+    const requestId = step.providerMetadata?.agevex?.requestId;
+
     await usage
-      .scope(turn.rawCtx, { ...turn.facts, ...(step.model ? { model: step.model } : {}) })
+      .scope(turn.rawCtx, {
+        ...turn.facts,
+        purpose: "agent",
+        ...(step.model ? { model: step.model } : {}),
+      })
       .record(step.provider ?? "model", {
         key: await opaqueKey("model", turn.facts.threadId, step._id, step.stepOrder),
         usage: step.usage,
         providerMetadata: step.providerMetadata,
+        ...(typeof requestId === "string" ? { requestId } : {}),
       });
   } catch {
+    await markUsagePartial(rt, turn);
     // Billing evidence is best effort. Never replay a paid
     // generation because its meter was unavailable.
   }

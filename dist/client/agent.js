@@ -15,6 +15,7 @@ const EMPTY_TOOLS = {};
 /** Native Agent plus metadata; generation, tools, threads and streams stay native. */
 export class Agent extends NativeBase {
     name;
+    run;
     sandbox;
     subagents;
     hooks;
@@ -29,6 +30,7 @@ export class Agent extends NativeBase {
     constructor(component, options) {
         super(component, options);
         this.name = options.name;
+        this.run = options.run;
         this.sandbox = options.sandbox ?? false;
         this.subagents = options.subagents ?? [];
         this.hooks = options.hooks;

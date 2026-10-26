@@ -21,7 +21,30 @@ export type SlotFacts = {
   threadId: string;
   runId: string;
   agent: string;
+  purpose?: "agent" | "hook" | "tool" | "title" | "summary";
+  /** Delegation identity; absent on the root node. Never supplied by the model. */
+  nodeId?: string;
 };
+export type UsageView = {
+  inputTokens: number | null;
+  outputTokens: number | null;
+  estimatedUsd: number;
+  settledUsd: number;
+  unknown: number;
+  reporting: "available" | "partial";
+};
+export type UsageViewArgs = {
+  subject: string;
+  runId: string;
+  /** At most 59 exclusive nodes, already discovered by the caller; null is root. */
+  nodeIds: (string | null)[];
+  partial?: boolean;
+};
+export type UsageProjection = {
+  total: UsageView;
+  nodes: { nodeId: string | null; usage: UsageView }[];
+};
+export type SlotReadCtx = Pick<SlotActionCtx, "runQuery" | "auth">;
 export type SlotActionCtx = GenericActionCtx<GenericDataModel>;
 export type ChargeCost = { usd: number; credits?: never } | { credits: number; usd?: never };
 export type MeterChargeBackend = {
@@ -38,11 +61,14 @@ export type MeterBackend = {
   ): Promise<MeterChargeBackend>;
   record(
     provider: string,
-    args: { key: string; usage?: unknown; providerMetadata?: unknown },
+    args: { key: string; usage?: unknown; providerMetadata?: unknown; requestId?: string },
   ): Promise<MeterChargeBackend>;
 };
 export type UsageSlot = {
   scope(ctx: SlotActionCtx, facts: SlotFacts & { model?: string }): MeterBackend;
+  view?(ctx: SlotReadCtx, args: UsageViewArgs): Promise<UsageProjection>;
+  /** On-demand, read-only evidence discovery; never invokes a model. */
+  reconcile?(ctx: SlotActionCtx, args: { subject: string; runId: string }): Promise<unknown>;
 };
 export type BudgetSlot = {
   check(
@@ -83,7 +109,7 @@ export type ScopedMeter = {
   ): Promise<MeterCharge>;
   record(
     provider: string,
-    args: { key?: string; usage?: unknown; providerMetadata?: unknown },
+    args: { key?: string; usage?: unknown; providerMetadata?: unknown; requestId?: string },
   ): Promise<MeterCharge>;
 };
 

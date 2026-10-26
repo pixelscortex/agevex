@@ -19,6 +19,7 @@ import { modelOverrides, validModelOverrides } from "../models.js";
 import { messageRef, recordRefs } from "../hooks/refs.js";
 import { armPurge, findReceipt, newDoneReceipt } from "../receipts/records.js";
 import { assignmentByThread, newRootAssignment } from "./assignments.js";
+import { settingsSnapshot, resolveRunSettings } from "../run-settings.js";
 import { newRun } from "./runs.js";
 import { wake } from "./wake.js";
 import { activity as vActivity, receipt as vReceipt, scope } from "../schema.js";
@@ -36,6 +37,7 @@ export const acceptArgs = {
   runTurn: v.string(),
   limits: limitsValidator,
   models: v.optional(modelOverrides),
+  settings: v.optional(settingsSnapshot),
 };
 
 /** The typed duplicate/conflict receipt for an already accepted request, or
@@ -98,7 +100,11 @@ export async function acceptSend(ctx: MutationCtx, args: ObjectType<typeof accep
   // successive accepted messages would both report position zero.
   const position = row.queuedMessages + (row.inboxId ? 1 : 0);
   const models = args.models ?? row.models;
-  const runId = await ctx.db.insert("runs", newRun(models));
+
+  const runId = await ctx.db.insert(
+    "runs",
+    newRun(models, args.settings ?? [{ agent: args.agent, settings: resolveRunSettings() }]),
+  );
 
   await ctx.db.insert("inbox", {
     assignmentId: row._id,

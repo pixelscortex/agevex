@@ -4,6 +4,8 @@ export declare const attribution: import("convex/values").VObject<{
     runId?: string | undefined;
     model?: string | undefined;
     rootThreadId?: string | undefined;
+    nodeId?: string | undefined;
+    purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
     subject: string;
 }, {
     subject: import("convex/values").VString<string, "required">;
@@ -12,7 +14,17 @@ export declare const attribution: import("convex/values").VObject<{
     runId: import("convex/values").VString<string | undefined, "optional">;
     agent: import("convex/values").VString<string | undefined, "optional">;
     model: import("convex/values").VString<string | undefined, "optional">;
-}, "required", "agent" | "threadId" | "runId" | "subject" | "model" | "rootThreadId">;
+    purpose: import("convex/values").VUnion<"agent" | "tool" | "title" | "hook" | "summary" | undefined, [import("convex/values").VLiteral<"agent", "required">, import("convex/values").VLiteral<"hook", "required">, import("convex/values").VLiteral<"tool", "required">, import("convex/values").VLiteral<"title", "required">, import("convex/values").VLiteral<"summary", "required">], "optional", never>;
+    nodeId: import("convex/values").VString<string | undefined, "optional">;
+}, "required", "agent" | "threadId" | "runId" | "subject" | "model" | "rootThreadId" | "nodeId" | "purpose">;
+export declare const tokens: import("convex/values").VObject<{
+    inputTokens: number;
+    outputTokens: number;
+}, {
+    inputTokens: import("convex/values").VFloat64<number, "required">;
+    outputTokens: import("convex/values").VFloat64<number, "required">;
+}, "required", "inputTokens" | "outputTokens">;
+export declare const reconciliation: import("convex/values").VUnion<"running" | "pending" | "complete" | "unavailable" | "exhausted", [import("convex/values").VLiteral<"pending", "required">, import("convex/values").VLiteral<"running", "required">, import("convex/values").VLiteral<"complete", "required">, import("convex/values").VLiteral<"unavailable", "required">, import("convex/values").VLiteral<"exhausted", "required">], "required", never>;
 export declare const status: import("convex/values").VUnion<"unknown" | "estimate" | "settled" | "corrected", [import("convex/values").VLiteral<"estimate", "required">, import("convex/values").VLiteral<"settled", "required">, import("convex/values").VLiteral<"corrected", "required">, import("convex/values").VLiteral<"unknown", "required">], "required", never>;
 export declare const source: import("convex/values").VUnion<"lookup" | "estimate" | "inline" | "settlement", [import("convex/values").VLiteral<"estimate", "required">, import("convex/values").VLiteral<"inline", "required">, import("convex/values").VLiteral<"settlement", "required">, import("convex/values").VLiteral<"lookup", "required">], "required", never>;
 export declare const breakdowns: import("convex/values").VArray<("thread.model" | "thread.provider" | "subject.agent" | "subject.model" | "subject.provider")[], import("convex/values").VUnion<"thread.model" | "thread.provider" | "subject.agent" | "subject.model" | "subject.provider", [import("convex/values").VLiteral<"thread.model", "required">, import("convex/values").VLiteral<"thread.provider", "required">, import("convex/values").VLiteral<"subject.agent", "required">, import("convex/values").VLiteral<"subject.model", "required">, import("convex/values").VLiteral<"subject.provider", "required">], "required", never>, "required">;
@@ -117,6 +129,11 @@ declare const _default: import("convex/server").SchemaDefinition<{
         profile?: string | undefined;
         quantity?: number | undefined;
         providerRequestId?: string | undefined;
+        tokens?: {
+            inputTokens: number;
+            outputTokens: number;
+        } | undefined;
+        reconciliation?: "running" | "pending" | "complete" | "unavailable" | "exhausted" | undefined;
         lookupUntil?: number | undefined;
         lastStale?: {
             operation: string;
@@ -133,6 +150,8 @@ declare const _default: import("convex/server").SchemaDefinition<{
             runId?: string | undefined;
             model?: string | undefined;
             rootThreadId?: string | undefined;
+            nodeId?: string | undefined;
+            purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
             subject: string;
         };
         operations: {
@@ -144,6 +163,11 @@ declare const _default: import("convex/server").SchemaDefinition<{
                 profile?: string | undefined;
                 quantity?: number | undefined;
                 providerRequestId?: string | undefined;
+                tokens?: {
+                    inputTokens: number;
+                    outputTokens: number;
+                } | undefined;
+                reconciliation?: "running" | "pending" | "complete" | "unavailable" | "exhausted" | undefined;
                 lookupUntil?: number | undefined;
                 lastStale?: {
                     operation: string;
@@ -162,6 +186,8 @@ declare const _default: import("convex/server").SchemaDefinition<{
                     runId?: string | undefined;
                     model?: string | undefined;
                     rootThreadId?: string | undefined;
+                    nodeId?: string | undefined;
+                    purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
                     subject: string;
                 };
                 revision: number;
@@ -242,6 +268,11 @@ declare const _default: import("convex/server").SchemaDefinition<{
                 profile?: string | undefined;
                 quantity?: number | undefined;
                 providerRequestId?: string | undefined;
+                tokens?: {
+                    inputTokens: number;
+                    outputTokens: number;
+                } | undefined;
+                reconciliation?: "running" | "pending" | "complete" | "unavailable" | "exhausted" | undefined;
                 lookupUntil?: number | undefined;
                 lastStale?: {
                     operation: string;
@@ -260,6 +291,8 @@ declare const _default: import("convex/server").SchemaDefinition<{
                     runId?: string | undefined;
                     model?: string | undefined;
                     rootThreadId?: string | undefined;
+                    nodeId?: string | undefined;
+                    purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
                     subject: string;
                 };
                 revision: number;
@@ -287,6 +320,11 @@ declare const _default: import("convex/server").SchemaDefinition<{
                 profile?: string | undefined;
                 quantity?: number | undefined;
                 providerRequestId?: string | undefined;
+                tokens?: {
+                    inputTokens: number;
+                    outputTokens: number;
+                } | undefined;
+                reconciliation?: "running" | "pending" | "complete" | "unavailable" | "exhausted" | undefined;
                 lookupUntil?: number | undefined;
                 lastStale?: {
                     operation: string;
@@ -305,6 +343,8 @@ declare const _default: import("convex/server").SchemaDefinition<{
                     runId?: string | undefined;
                     model?: string | undefined;
                     rootThreadId?: string | undefined;
+                    nodeId?: string | undefined;
+                    purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
                     subject: string;
                 };
                 revision: number;
@@ -332,6 +372,11 @@ declare const _default: import("convex/server").SchemaDefinition<{
                 profile?: string | undefined;
                 quantity?: number | undefined;
                 providerRequestId?: string | undefined;
+                tokens?: {
+                    inputTokens: number;
+                    outputTokens: number;
+                } | undefined;
+                reconciliation?: "running" | "pending" | "complete" | "unavailable" | "exhausted" | undefined;
                 lookupUntil?: number | undefined;
                 lastStale?: {
                     operation: string;
@@ -350,6 +395,8 @@ declare const _default: import("convex/server").SchemaDefinition<{
                     runId?: string | undefined;
                     model?: string | undefined;
                     rootThreadId?: string | undefined;
+                    nodeId?: string | undefined;
+                    purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
                     subject: string;
                 };
                 revision: number;
@@ -419,6 +466,8 @@ declare const _default: import("convex/server").SchemaDefinition<{
                     runId?: string | undefined;
                     model?: string | undefined;
                     rootThreadId?: string | undefined;
+                    nodeId?: string | undefined;
+                    purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
                     subject: string;
                 }, {
                     subject: import("convex/values").VString<string, "required">;
@@ -427,7 +476,9 @@ declare const _default: import("convex/server").SchemaDefinition<{
                     runId: import("convex/values").VString<string | undefined, "optional">;
                     agent: import("convex/values").VString<string | undefined, "optional">;
                     model: import("convex/values").VString<string | undefined, "optional">;
-                }, "required", "agent" | "threadId" | "runId" | "subject" | "model" | "rootThreadId">;
+                    purpose: import("convex/values").VUnion<"agent" | "tool" | "title" | "hook" | "summary" | undefined, [import("convex/values").VLiteral<"agent", "required">, import("convex/values").VLiteral<"hook", "required">, import("convex/values").VLiteral<"tool", "required">, import("convex/values").VLiteral<"title", "required">, import("convex/values").VLiteral<"summary", "required">], "optional", never>;
+                    nodeId: import("convex/values").VString<string | undefined, "optional">;
+                }, "required", "agent" | "threadId" | "runId" | "subject" | "model" | "rootThreadId" | "nodeId" | "purpose">;
                 provider: import("convex/values").VString<string, "required">;
                 breakdowns: import("convex/values").VArray<("thread.model" | "thread.provider" | "subject.agent" | "subject.model" | "subject.provider")[], import("convex/values").VUnion<"thread.model" | "thread.provider" | "subject.agent" | "subject.model" | "subject.provider", [import("convex/values").VLiteral<"thread.model", "required">, import("convex/values").VLiteral<"thread.provider", "required">, import("convex/values").VLiteral<"subject.agent", "required">, import("convex/values").VLiteral<"subject.model", "required">, import("convex/values").VLiteral<"subject.provider", "required">], "required", never>, "required">;
                 profile: import("convex/values").VString<string | undefined, "optional">;
@@ -437,6 +488,14 @@ declare const _default: import("convex/server").SchemaDefinition<{
                 nanos: import("convex/values").VFloat64<number | undefined, "optional">;
                 credits: import("convex/values").VFloat64<number | undefined, "optional">;
                 providerRequestId: import("convex/values").VString<string | undefined, "optional">;
+                tokens: import("convex/values").VObject<{
+                    inputTokens: number;
+                    outputTokens: number;
+                } | undefined, {
+                    inputTokens: import("convex/values").VFloat64<number, "required">;
+                    outputTokens: import("convex/values").VFloat64<number, "required">;
+                }, "optional", "inputTokens" | "outputTokens">;
+                reconciliation: import("convex/values").VUnion<"running" | "pending" | "complete" | "unavailable" | "exhausted" | undefined, [import("convex/values").VLiteral<"pending", "required">, import("convex/values").VLiteral<"running", "required">, import("convex/values").VLiteral<"complete", "required">, import("convex/values").VLiteral<"unavailable", "required">, import("convex/values").VLiteral<"exhausted", "required">], "optional", never>;
                 lookupUntil: import("convex/values").VFloat64<number | undefined, "optional">;
                 revision: import("convex/values").VFloat64<number, "required">;
                 lastStale: import("convex/values").VObject<{
@@ -448,8 +507,8 @@ declare const _default: import("convex/server").SchemaDefinition<{
                 }, "optional", "operation" | "revision">;
                 lookupAttempt: import("convex/values").VFloat64<number | undefined, "optional">;
                 reason: import("convex/values").VUnion<"NO_COST" | "DECODE_FAILED" | "INVALID_COST" | "OVER_CAP" | "PROVIDER_NOT_REGISTERED" | "PROFILE_NOT_REGISTERED" | "THREAD_CAPACITY" | undefined, [import("convex/values").VLiteral<"NO_COST", "required">, import("convex/values").VLiteral<"DECODE_FAILED", "required">, import("convex/values").VLiteral<"INVALID_COST", "required">, import("convex/values").VLiteral<"OVER_CAP", "required">, import("convex/values").VLiteral<"PROVIDER_NOT_REGISTERED", "required">, import("convex/values").VLiteral<"PROFILE_NOT_REGISTERED", "required">, import("convex/values").VLiteral<"THREAD_CAPACITY", "required">], "optional", never>;
-            }, "required", "_id" | "_creationTime" | "status" | "key" | "reason" | "provider" | "source" | "attribution" | "credits" | "revision" | "nanos" | "sinkState" | "breakdowns" | "profile" | "quantity" | "providerRequestId" | "lookupUntil" | "lastStale" | "lookupAttempt" | "attribution.agent" | "attribution.threadId" | "attribution.runId" | "attribution.subject" | "attribution.model" | "attribution.rootThreadId" | "lastStale.operation" | "lastStale.revision">;
-        }, "required", "key" | "outcome" | "outcome._id" | "outcome._creationTime" | "outcome.status" | "outcome.key" | "outcome.reason" | "outcome.provider" | "outcome.source" | "outcome.attribution" | "outcome.credits" | "outcome.revision" | "outcome.nanos" | "outcome.sinkState" | "outcome.breakdowns" | "outcome.profile" | "outcome.quantity" | "outcome.providerRequestId" | "outcome.lookupUntil" | "outcome.lastStale" | "outcome.lookupAttempt" | "outcome.attribution.agent" | "outcome.attribution.threadId" | "outcome.attribution.runId" | "outcome.attribution.subject" | "outcome.attribution.model" | "outcome.attribution.rootThreadId" | "outcome.lastStale.operation" | "outcome.lastStale.revision">, "required">;
+            }, "required", "_id" | "_creationTime" | "status" | "key" | "reason" | "provider" | "source" | "attribution" | "credits" | "revision" | "nanos" | "sinkState" | "breakdowns" | "profile" | "quantity" | "providerRequestId" | "tokens" | "reconciliation" | "lookupUntil" | "lastStale" | "lookupAttempt" | "attribution.agent" | "attribution.threadId" | "attribution.runId" | "attribution.subject" | "attribution.model" | "attribution.rootThreadId" | "attribution.nodeId" | "attribution.purpose" | "tokens.inputTokens" | "tokens.outputTokens" | "lastStale.operation" | "lastStale.revision">;
+        }, "required", "key" | "outcome" | "outcome._id" | "outcome._creationTime" | "outcome.status" | "outcome.key" | "outcome.reason" | "outcome.provider" | "outcome.source" | "outcome.attribution" | "outcome.credits" | "outcome.revision" | "outcome.nanos" | "outcome.sinkState" | "outcome.breakdowns" | "outcome.profile" | "outcome.quantity" | "outcome.providerRequestId" | "outcome.tokens" | "outcome.reconciliation" | "outcome.lookupUntil" | "outcome.lastStale" | "outcome.lookupAttempt" | "outcome.attribution.agent" | "outcome.attribution.threadId" | "outcome.attribution.runId" | "outcome.attribution.subject" | "outcome.attribution.model" | "outcome.attribution.rootThreadId" | "outcome.attribution.nodeId" | "outcome.attribution.purpose" | "outcome.tokens.inputTokens" | "outcome.tokens.outputTokens" | "outcome.lastStale.operation" | "outcome.lastStale.revision">, "required">;
         key: import("convex/values").VString<string, "required">;
         attribution: import("convex/values").VObject<{
             agent?: string | undefined;
@@ -457,6 +516,8 @@ declare const _default: import("convex/server").SchemaDefinition<{
             runId?: string | undefined;
             model?: string | undefined;
             rootThreadId?: string | undefined;
+            nodeId?: string | undefined;
+            purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
             subject: string;
         }, {
             subject: import("convex/values").VString<string, "required">;
@@ -465,7 +526,9 @@ declare const _default: import("convex/server").SchemaDefinition<{
             runId: import("convex/values").VString<string | undefined, "optional">;
             agent: import("convex/values").VString<string | undefined, "optional">;
             model: import("convex/values").VString<string | undefined, "optional">;
-        }, "required", "agent" | "threadId" | "runId" | "subject" | "model" | "rootThreadId">;
+            purpose: import("convex/values").VUnion<"agent" | "tool" | "title" | "hook" | "summary" | undefined, [import("convex/values").VLiteral<"agent", "required">, import("convex/values").VLiteral<"hook", "required">, import("convex/values").VLiteral<"tool", "required">, import("convex/values").VLiteral<"title", "required">, import("convex/values").VLiteral<"summary", "required">], "optional", never>;
+            nodeId: import("convex/values").VString<string | undefined, "optional">;
+        }, "required", "agent" | "threadId" | "runId" | "subject" | "model" | "rootThreadId" | "nodeId" | "purpose">;
         provider: import("convex/values").VString<string, "required">;
         breakdowns: import("convex/values").VArray<("thread.model" | "thread.provider" | "subject.agent" | "subject.model" | "subject.provider")[], import("convex/values").VUnion<"thread.model" | "thread.provider" | "subject.agent" | "subject.model" | "subject.provider", [import("convex/values").VLiteral<"thread.model", "required">, import("convex/values").VLiteral<"thread.provider", "required">, import("convex/values").VLiteral<"subject.agent", "required">, import("convex/values").VLiteral<"subject.model", "required">, import("convex/values").VLiteral<"subject.provider", "required">], "required", never>, "required">;
         profile: import("convex/values").VString<string | undefined, "optional">;
@@ -475,6 +538,14 @@ declare const _default: import("convex/server").SchemaDefinition<{
         nanos: import("convex/values").VFloat64<number | undefined, "optional">;
         credits: import("convex/values").VFloat64<number | undefined, "optional">;
         providerRequestId: import("convex/values").VString<string | undefined, "optional">;
+        tokens: import("convex/values").VObject<{
+            inputTokens: number;
+            outputTokens: number;
+        } | undefined, {
+            inputTokens: import("convex/values").VFloat64<number, "required">;
+            outputTokens: import("convex/values").VFloat64<number, "required">;
+        }, "optional", "inputTokens" | "outputTokens">;
+        reconciliation: import("convex/values").VUnion<"running" | "pending" | "complete" | "unavailable" | "exhausted" | undefined, [import("convex/values").VLiteral<"pending", "required">, import("convex/values").VLiteral<"running", "required">, import("convex/values").VLiteral<"complete", "required">, import("convex/values").VLiteral<"unavailable", "required">, import("convex/values").VLiteral<"exhausted", "required">], "optional", never>;
         lookupUntil: import("convex/values").VFloat64<number | undefined, "optional">;
         revision: import("convex/values").VFloat64<number, "required">;
         lastStale: import("convex/values").VObject<{
@@ -486,8 +557,9 @@ declare const _default: import("convex/server").SchemaDefinition<{
         }, "optional", "operation" | "revision">;
         lookupAttempt: import("convex/values").VFloat64<number | undefined, "optional">;
         reason: import("convex/values").VUnion<"NO_COST" | "DECODE_FAILED" | "INVALID_COST" | "OVER_CAP" | "PROVIDER_NOT_REGISTERED" | "PROFILE_NOT_REGISTERED" | "THREAD_CAPACITY" | undefined, [import("convex/values").VLiteral<"NO_COST", "required">, import("convex/values").VLiteral<"DECODE_FAILED", "required">, import("convex/values").VLiteral<"INVALID_COST", "required">, import("convex/values").VLiteral<"OVER_CAP", "required">, import("convex/values").VLiteral<"PROVIDER_NOT_REGISTERED", "required">, import("convex/values").VLiteral<"PROFILE_NOT_REGISTERED", "required">, import("convex/values").VLiteral<"THREAD_CAPACITY", "required">], "optional", never>;
-    }, "required", "status" | "key" | "reason" | "provider" | "source" | "attribution" | "credits" | "operations" | "revision" | "nanos" | "sinkState" | "terminal" | "breakdowns" | "profile" | "quantity" | "providerRequestId" | "lookupUntil" | "lastStale" | "lookupAttempt" | "attribution.agent" | "attribution.threadId" | "attribution.runId" | "attribution.subject" | "attribution.model" | "attribution.rootThreadId" | "lastStale.operation" | "lastStale.revision">, {
+    }, "required", "status" | "key" | "reason" | "provider" | "source" | "attribution" | "credits" | "operations" | "revision" | "nanos" | "sinkState" | "terminal" | "breakdowns" | "profile" | "quantity" | "providerRequestId" | "tokens" | "reconciliation" | "lookupUntil" | "lastStale" | "lookupAttempt" | "attribution.agent" | "attribution.threadId" | "attribution.runId" | "attribution.subject" | "attribution.model" | "attribution.rootThreadId" | "attribution.nodeId" | "attribution.purpose" | "tokens.inputTokens" | "tokens.outputTokens" | "lastStale.operation" | "lastStale.revision">, {
         by_key: ["key", "_creationTime"];
+        by_run_lookup: ["attribution.subject", "attribution.runId", "reconciliation", "_creationTime"];
         by_terminal: ["terminal", "_creationTime"];
     }, {}, {}>;
     /**
@@ -515,6 +587,8 @@ declare const _default: import("convex/server").SchemaDefinition<{
             runId?: string | undefined;
             model?: string | undefined;
             rootThreadId?: string | undefined;
+            nodeId?: string | undefined;
+            purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
             subject: string;
         };
         sink: string;
@@ -540,6 +614,8 @@ declare const _default: import("convex/server").SchemaDefinition<{
             runId?: string | undefined;
             model?: string | undefined;
             rootThreadId?: string | undefined;
+            nodeId?: string | undefined;
+            purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
             subject: string;
         }, {
             subject: import("convex/values").VString<string, "required">;
@@ -548,14 +624,16 @@ declare const _default: import("convex/server").SchemaDefinition<{
             runId: import("convex/values").VString<string | undefined, "optional">;
             agent: import("convex/values").VString<string | undefined, "optional">;
             model: import("convex/values").VString<string | undefined, "optional">;
-        }, "required", "agent" | "threadId" | "runId" | "subject" | "model" | "rootThreadId">;
+            purpose: import("convex/values").VUnion<"agent" | "tool" | "title" | "hook" | "summary" | undefined, [import("convex/values").VLiteral<"agent", "required">, import("convex/values").VLiteral<"hook", "required">, import("convex/values").VLiteral<"tool", "required">, import("convex/values").VLiteral<"title", "required">, import("convex/values").VLiteral<"summary", "required">], "optional", never>;
+            nodeId: import("convex/values").VString<string | undefined, "optional">;
+        }, "required", "agent" | "threadId" | "runId" | "subject" | "model" | "rootThreadId" | "nodeId" | "purpose">;
         provider: import("convex/values").VString<string, "required">;
         attempts: import("convex/values").VFloat64<number, "required">;
         limited: import("convex/values").VBoolean<boolean, "required">;
         failed: import("convex/values").VBoolean<boolean, "required">;
         dueAt: import("convex/values").VFloat64<number, "required">;
         claim: import("convex/values").VString<string | undefined, "optional">;
-    }, "required", "failed" | "event" | "attempts" | "key" | "claim" | "provider" | "attribution" | "attribution.agent" | "attribution.threadId" | "attribution.runId" | "attribution.subject" | "attribution.model" | "attribution.rootThreadId" | "sink" | "limited" | "dueAt" | "event.externalId" | "event.revision" | "event.nanos" | "event.totalNanos">, {
+    }, "required", "failed" | "event" | "attempts" | "key" | "claim" | "provider" | "attribution" | "attribution.agent" | "attribution.threadId" | "attribution.runId" | "attribution.subject" | "attribution.model" | "attribution.rootThreadId" | "attribution.nodeId" | "attribution.purpose" | "sink" | "limited" | "dueAt" | "event.externalId" | "event.revision" | "event.nanos" | "event.totalNanos">, {
         by_key: ["key", "sink", "_creationTime"];
         by_due: ["sink", "failed", "claim", "dueAt", "_creationTime"];
         by_claim: ["claim", "_creationTime"];

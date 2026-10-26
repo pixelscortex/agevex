@@ -17,7 +17,7 @@ import { resolveLimits } from "../../component/limits.js";
  * reader, and visit shared agents once. Registration validates name uniqueness
  * and graph shape before these endpoints are constructed.
  */
-export function createEndpointContext(component, config) {
+export function createEndpointContext(component, config, settings) {
     const limits = resolveLimits(config.limits);
     const managedAgents = new Map();
     function include(managed) {
@@ -31,7 +31,7 @@ export function createEndpointContext(component, config) {
     }
     for (const root of config.agents)
         include(root);
-    return { component, config, limits, managedAgents };
+    return { component, config, limits, managedAgents, settings };
 }
 /**
  * Resolve a public root agent by name, or throw `UNKNOWN_AGENT`.

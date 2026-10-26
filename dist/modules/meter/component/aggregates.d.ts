@@ -22,11 +22,12 @@ export type Axis = "agent" | "model" | "provider";
 export declare const axes: Axis[];
 /** The root thread owns every thread-scoped tree; rootless charges have none. */
 export declare function rootOf(attribution: Doc<"charges">["attribution"]): string | undefined;
-type Projection = {
+export type Projection = {
     tree: Tree;
     key: Key;
     namespace: string[];
     depth: number;
+    value?: number;
 };
 /**
  * Every namespace is owned by ONE subject or ONE root thread; none is shared
@@ -53,10 +54,10 @@ export declare function projections(row: Doc<"charges">): Projection[];
  * tree size lookup, both siblings, grandchild, merge re-reads; plus the
  * predecessor descent) and writes <=4; an insert reads <=2 and writes <=3.
  * The emptiness probe below reads one path. So one projection replacement is
- * <=11*D+7 reads and <=7*D+4 writes. At the hard maximum, eight projections:
- * 3 thread-scoped at D=10 and 5 subject/run-scoped at D=24:
- *   reads  3*117 + 5*271 = 1,706 docs (<3.4 MiB at 2 KiB)
- *   writes 3*74  + 5*172 = 1,082 docs (<2.2 MiB)
+ * <=11*D+7 reads and <=7*D+4 writes. At the hard maximum, thirteen projections:
+ * 3 thread-scoped at D=10 and 10 subject/run/node-scoped at D=24:
+ *   reads  3*117 + 10*271 = 3,061 docs (<6 MiB at 2 KiB)
+ *   writes 3*74  + 10*172 = 1,942 docs (<3.8 MiB)
  * plus the <=280 KiB charge (<=3 patches), <=4 outbox rows, the 3-count
  * thread-capacity read (<=21 docs) and <=4 Workpool admissions: well under
  * 16 MiB / 32k docs read and 16 MiB / 16k docs written. ONE charge per mutation.
@@ -83,4 +84,3 @@ export declare function summary(ctx: QueryCtx, tree: Tree, namespace: string[], 
 }>;
 /** Combine the capped and overflow thread summaries without hiding unknown charges. */
 export declare function combine(a: Summary, b: Summary): Summary;
-export {};

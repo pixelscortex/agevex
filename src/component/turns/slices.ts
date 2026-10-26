@@ -103,3 +103,23 @@ export const sliceLimit = internalMutation({
     return null;
   },
 });
+
+/** Sticky evidence failure on the captured run, even after cancellation/later sends.
+ * One run row <=16 KiB read/written, never changes execution or paid receipts. */
+export const usageFailed = mutation({
+  args: { runId: v.id("runs") },
+  returns: v.null(),
+  handler: async (ctx, { runId }) => {
+    const row = await ctx.db.get("runs", runId);
+
+    if (row && !row.usagePartial) await ctx.db.patch("runs", runId, { usagePartial: true });
+
+    return null;
+  },
+});
+/** Host projections compose this sticky marker with the optional usage view. */
+export const usageReporting = query({
+  args: { runId: v.id("runs") },
+  returns: v.boolean(),
+  handler: async (ctx, { runId }) => (await ctx.db.get("runs", runId))?.usagePartial ?? false,
+});

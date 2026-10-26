@@ -21,6 +21,8 @@ export async function completeGeneration(rt, gen, result, reason) {
     });
     if (!stillOwns(snapshot, turn))
         return null;
+    if (state.budgetExceeded)
+        return { errorCode: "BUDGET_EXCEEDED", childError: "BUDGET_EXCEEDED" };
     if (child && state.asked) {
         await fence.ctx.runMutation(rt.component.turns.slices.finish, {
             assignmentId: args.assignmentId,

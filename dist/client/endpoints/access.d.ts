@@ -1,5 +1,6 @@
 import type { GenericDataModel, GenericMutationCtx, GenericQueryCtx } from "convex/server";
 import type { ComponentApi } from "../../component/_generated/component.js";
+import type { SettingsSnapshot } from "../../component/run-settings.js";
 import { type Limits } from "../../component/limits.js";
 import type { AgentEvent, ManagedAgent, Registration } from "../types.js";
 /** What every endpoint builder needs, resolved once per `authorizedEndpoints` call. */
@@ -7,6 +8,7 @@ export type EndpointContext = {
     component: ComponentApi;
     config: Registration;
     limits: Limits;
+    settings: SettingsSnapshot;
     /** Every agent in the registered graph, by name: roots, children and side agents. */
     managedAgents: Map<string, ManagedAgent>;
 };
@@ -22,7 +24,7 @@ export type ThreadOperation = "send" | "respond" | "answer" | "cancel" | "messag
  * reader, and visit shared agents once. Registration validates name uniqueness
  * and graph shape before these endpoints are constructed.
  */
-export declare function createEndpointContext(component: ComponentApi, config: Registration): EndpointContext;
+export declare function createEndpointContext(component: ComponentApi, config: Registration, settings: SettingsSnapshot): EndpointContext;
 /**
  * Resolve a public root agent by name, or throw `UNKNOWN_AGENT`.
  *

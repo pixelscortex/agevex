@@ -68,6 +68,40 @@ export declare const acceptArgs: {
         leaseMs: import("convex/values").VFloat64<number, "required">;
     }, "required", "attachmentBytes" | "continuesPerRun" | "sideRunsPerRun" | "notesPending" | "maxDepth" | "messagesPerChild" | "rootLane" | "childLane" | "runLaunches" | "runHops" | "activeChildrenPerRoot" | "taskLength" | "queueLength" | "slicesPerTurn" | "leaseMs">;
     models: import("convex/values").VRecord<Record<string, string> | undefined, import("convex/values").VString<string, "required">, import("convex/values").VString<string, "required">, "optional", string>;
+    settings: import("convex/values").VArray<{
+        agent: string;
+        settings: {
+            mode: "stream" | "generate";
+            maxOutputTokens: number;
+            modelTimeoutMs: number;
+            toolTimeoutMs: number;
+            stepsPerTurn: number;
+        };
+    }[] | undefined, import("convex/values").VObject<{
+        agent: string;
+        settings: {
+            mode: "stream" | "generate";
+            maxOutputTokens: number;
+            modelTimeoutMs: number;
+            toolTimeoutMs: number;
+            stepsPerTurn: number;
+        };
+    }, {
+        agent: import("convex/values").VString<string, "required">;
+        settings: import("convex/values").VObject<{
+            mode: "stream" | "generate";
+            maxOutputTokens: number;
+            modelTimeoutMs: number;
+            toolTimeoutMs: number;
+            stepsPerTurn: number;
+        }, {
+            mode: import("convex/values").VUnion<"stream" | "generate", [import("convex/values").VLiteral<"stream", "required">, import("convex/values").VLiteral<"generate", "required">], "required", never>;
+            maxOutputTokens: import("convex/values").VFloat64<number, "required">;
+            modelTimeoutMs: import("convex/values").VFloat64<number, "required">;
+            toolTimeoutMs: import("convex/values").VFloat64<number, "required">;
+            stepsPerTurn: import("convex/values").VFloat64<number, "required">;
+        }, "required", "mode" | "maxOutputTokens" | "modelTimeoutMs" | "toolTimeoutMs" | "stepsPerTurn">;
+    }, "required", "agent" | "settings" | "settings.mode" | "settings.maxOutputTokens" | "settings.modelTimeoutMs" | "settings.toolTimeoutMs" | "settings.stepsPerTurn">, "optional">;
 };
 /** The typed duplicate/conflict receipt for an already accepted request, or
  * null for a new one. Shares the `request:<subject>` ledger scope. */
@@ -143,6 +177,16 @@ export declare const assignment: import("convex/server").RegisteredQuery<"public
 } | null>>;
 /** Admit one host send with its native prompt save; see `acceptSend`. */
 export declare const accept: import("convex/server").RegisteredMutation<"public", {
+    settings?: {
+        agent: string;
+        settings: {
+            mode: "stream" | "generate";
+            maxOutputTokens: number;
+            modelTimeoutMs: number;
+            toolTimeoutMs: number;
+            stepsPerTurn: number;
+        };
+    }[] | undefined;
     models?: Record<string, string> | undefined;
     savedMessage?: {
         order: number;
@@ -203,7 +247,7 @@ export declare const activity: import("convex/server").RegisteredQuery<"public",
     assignmentStatus: "open";
     turnStatus: "idle" | "running" | "queued" | "recovery_required";
     queuedMessages: number;
-    errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
+    errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
     runId: import("convex/values").GenericId<"runs"> | undefined;
     subagents: {
         active: number;

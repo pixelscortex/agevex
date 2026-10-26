@@ -12,6 +12,10 @@ export declare const LIMITS: {
     readonly nanosPerCent: 10000000;
     readonly centDecimalPlaces: 7;
     readonly maxOperations: 32;
+    readonly maxUsageNodes: 59;
+    readonly reconcileBatch: 4;
+    readonly tokensPerMillion: 1000000;
+    readonly maxTokens: 1000000000;
     readonly aggregateNodeSize: 4;
     readonly dayMs: 86400000;
     readonly maxStringBytes: 128;

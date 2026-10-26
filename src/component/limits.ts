@@ -60,7 +60,11 @@ export const HOST_LIMITS = {
  * Independently, <=24 passive notes per assignment add N=A*24=384 rows.
  * This deliberately overcounts: simultaneous child queues can belong to
  * DIFFERENT user-run budgets, so one run's 100 hops cannot bound the backlog.
- * Each ready row costs one run patch and one inbox delete: 2I=3,264 writes.
+ * Children only receive work from their fixed parentRunId; only the root
+ * accepts new user requests. Across all queues there are therefore at most
+ * U=100 root backlog + reserved head/answer/current +15 child budgets=118
+ * distinct runs. Cancel deduplicates those ids before patching 16 KiB rows.
+ * Retain the old per-ready-row run-patch count as conservative write headroom.
  * Passive note bodies and retained control rows are NEVER read by cancel.
  * One finite cleanup job per assignment handles <=24 raw notes separately.
  * Keep the old 2N metadata/delete allowance below as conservative headroom;
@@ -75,15 +79,16 @@ export const HOST_LIMITS = {
  * Reads <=3I+2N+6A+A+3A+2C+2+64A=6,980 <32,000.
  * Indexed queries <=3 child-status ranges +A inbox ranges +64A SDK allowance
  * =1,043 <4,096; point reads above do not execute indexed range queries.
- * Bytes (KiB): inbox/run reads 3I=4,896; assignment patch reads 4A*32=2,048;
- * current runs A=16; scheduler 2A*4=128; child runs 2C*4=120;
+ * Bytes (KiB): inbox reads 2I=3,264; unique runs U*16=1,888;
+ * assignment patch reads 4A*32=2,048; current runs A*16=256; scheduler 2A*4=128; child runs 2C*4=120;
  * ownership/final root 2*32=64; SDK allowance 64A*4=4,096;
- * passive metadata 2N=768; routing A*(1+1+32)=544.
- * Total <=12,680 KiB <16,384 KiB: 3,704 KiB /22.6% read headroom.
- * Written bytes are also bounded by these envelopes: ready run patches/inbox
- * deletes <=2I KiB, note deletes <=N KiB, coordination <=4A*32+A+2A*4 KiB,
+ * passive metadata 2N=768; routing A*(16+16+32)=1,024.
+ * Total <=13,656 KiB; staged continuations add <=1,040 KiB (turns/cancel.ts):
+ * <=14,696 KiB <16,384 KiB, leaving 1,688 KiB read headroom.
+ * Written bytes: run patches/inbox deletes <=U*16+I KiB, note deletes
+ * <=N KiB, coordination <=4A*32+A*16+2A*4 KiB,
  * children <=C*4 KiB, final root <=32 KiB, SDK <=64A*4 KiB, and routing
- * <=A*(1+32) KiB: <=10,556 KiB <16 MiB.
+ * <=A*(16+32) KiB: <=11,292 KiB <16 MiB.
  * Native messages (including each nearly
  * 1 MiB placeholder) are NEVER read by cancel; cleanup runs separately.
  * Subagent rows stay <=4 KiB: names/subjects/groups <=200 UTF-16 units,
@@ -95,8 +100,9 @@ export const HOST_LIMITS = {
  * list. Notes have their own bounded queue N; each raw row stays <=17 KiB
  * and is read only by separate per-assignment cleanup transactions (<864 KiB including ownership).
  * Saved control rows retain <=1 KiB of exact-id origin metadata and are excluded
- * from every ready/cancel index range. Run additions are scalar counters plus
- * two 64-bit start/routing masks, keeping each run within its <=1 KiB envelope.
+ * from every ready/cancel index range. Runs carry a <=15 KiB settings map,
+ * <=512-byte model map, scalar counters and two 64-bit start/routing masks.
+ * newRun bounds the complete metadata at <=16 KiB, including native envelope.
  *
  * Other proportional paths: claim drains <=152 consecutive ready rows,
  * including <=50 ready joins from its run. Notes additionally read one exact
@@ -144,8 +150,6 @@ export const LIMITS = {
   slicesPerTurn: HOST_LIMITS.slicesPerTurn.default,
   turnsPerLoop: 50,
   workflowVersion: 1,
-  generationAbortMs: 90_000,
-  executionWatchdogMs: 120_000,
   cancelPollMs: 1_000,
   outputTokens: 4096,
   runLaunches: HOST_LIMITS.runLaunches.default,

@@ -1,8 +1,9 @@
 import type { ComponentApi } from "../../component/_generated/component.js";
+import type { RuntimeContext } from "../registration/context.js";
 import type { Registration } from "../types.js";
 export type { OriginMessage } from "./reads.js";
 /** Build every public endpoint for one registration. */
-export declare function authorizedEndpoints(component: ComponentApi, config: Registration): {
+export declare function authorizedEndpoints(component: ComponentApi, config: Registration, settings: RuntimeContext["settings"]): {
     open: import("convex/server").RegisteredMutation<"public", {
         models?: Record<string, string> | undefined;
         files?: string[] | undefined;
@@ -131,7 +132,7 @@ export declare function authorizedEndpoints(component: ComponentApi, config: Reg
         assignmentStatus: "open";
         turnStatus: "idle" | "running" | "queued" | "recovery_required";
         queuedMessages: number;
-        errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
+        errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
         runId: string | undefined;
         subagents: {
             active: number;
@@ -168,11 +169,11 @@ export declare function authorizedEndpoints(component: ComponentApi, config: Reg
     }, Promise<{
         page: {
             resultMessageId: string | null;
-            errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
+            errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
             events: {
                 phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
                 at: number;
-                errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
+                errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
                 runId: string;
                 agent: string;
             }[];

@@ -31,6 +31,11 @@ export type Provider = {
         usage: unknown;
         providerMetadata: unknown;
     }) => Cost | undefined;
+    /** Used only when inline evidence is missing; return undefined for unpriced models. */
+    estimate?: (args: {
+        usage: unknown;
+        model?: string;
+    }) => Cost | undefined;
     profiles?: Record<string, {
         unit: string;
         usd: number;
@@ -103,5 +108,6 @@ export type ScopedMeter = {
         key: string;
         usage?: unknown;
         providerMetadata?: unknown;
+        requestId?: string;
     }): Promise<ChargeHandle>;
 };

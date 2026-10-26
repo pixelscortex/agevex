@@ -38,3 +38,49 @@ export declare const childResultMessageId: import("convex/server").RegisteredQue
 export declare const fillHookMetadata: import("convex/server").RegisteredMutation<"internal", {
     assignmentId: import("convex/values").GenericId<"assignments">;
 }, Promise<null>>;
+/** Exact run and claim-armed watchdog metadata for offline settings fixtures. */
+export declare const runMetadata: import("convex/server").RegisteredQuery<"internal", {
+    assignmentId: string;
+}, Promise<{
+    run: any;
+    watchdog: {
+        _id: import("convex/values").GenericId<"_scheduled_functions">;
+        _creationTime: number;
+        completedTime?: number | undefined;
+        name: string;
+        args: any[];
+        scheduledTime: number;
+        state: {
+            kind: "pending";
+        } | {
+            kind: "inProgress";
+        } | {
+            kind: "success";
+        } | {
+            kind: "failed";
+            error: string;
+        } | {
+            kind: "canceled";
+        };
+    } | {
+        _id: import("convex/values").GenericId<"_storage">;
+        _creationTime: number;
+        contentType?: string | undefined;
+        sha256: string;
+        size: number;
+    } | null;
+}>>;
+/** Fill the <=118-run cancellation fixture with maximum-size accepted settings.
+ * Read+patch <=118*16 KiB twice (<4 MiB), no messages or transcript scans. */
+export declare const fillRunSettings: import("convex/server").RegisteredMutation<"internal", {
+    settings?: {
+        agent: string;
+        settings: {
+            mode: "stream" | "generate";
+            maxOutputTokens: number;
+            modelTimeoutMs: number;
+            toolTimeoutMs: number;
+            stepsPerTurn: number;
+        };
+    }[] | undefined;
+}, Promise<null>>;

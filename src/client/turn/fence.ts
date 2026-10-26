@@ -13,6 +13,7 @@
 
 import { createFunctionHandle, getFunctionAddress } from "convex/server";
 import { ConvexError } from "convex/values";
+import { sliceDeadlineMs } from "../../component/run-settings.js";
 import { LIMITS } from "../../component/limits.js";
 import { deferredToolNames } from "../registration/graph.js";
 import type { RunnerCtx, RuntimeContext } from "../registration/context.js";
@@ -27,6 +28,10 @@ export type TurnFence = {
   ctx: RunnerCtx;
   /** Throws `CANCELLED` (and aborts) once the turn no longer owns a running execution. */
   assertActive: () => Promise<void>;
+  /** Arm a phase deadline; aborting fences the whole slice and late writes. */
+  deadline: (ms: number) => () => void;
+  /** Race even uncooperative providers/tools against revocation. */
+  wait: <T>(work: PromiseLike<T>) => Promise<T>;
   /** Stop the deadline timer and the poll; called when generation ends. */
   stop: () => void;
 };
@@ -52,7 +57,24 @@ export function startTurnFence(rt: RuntimeContext, turn: Turn): TurnFence {
     controller.abort();
   };
 
-  const timer = setTimeout(() => controller.abort(), LIMITS.generationAbortMs);
+  const timers = new Set<ReturnType<typeof setTimeout>>();
+
+  const deadline = (ms: number) => {
+    const timer = setTimeout(() => controller.abort(new Error("RUN_TIMEOUT")), ms);
+
+    timers.add(timer);
+
+    return () => {
+      clearTimeout(timer);
+      timers.delete(timer);
+    };
+  };
+
+  controller.signal.addEventListener("abort", () => {
+    state.fencedOut = true;
+  });
+
+  deadline(sliceDeadlineMs(turn.claimed.settings));
 
   const poll = setInterval(() => {
     void turn.rawCtx
@@ -85,8 +107,11 @@ export function startTurnFence(rt: RuntimeContext, turn: Turn): TurnFence {
     controller,
     ctx,
     assertActive,
+    deadline,
+    wait: (work) => waitForSignal(controller.signal, work),
     stop: () => {
-      clearTimeout(timer);
+      for (const timer of timers) clearTimeout(timer);
+
       clearInterval(poll);
     },
   };
@@ -168,8 +193,17 @@ function fencedContext(
           await fencedWriteArgs(rt, turn, ref, payload),
         );
 
-        if (rt.config.usage && functionKey(ref) === addMessagesKey)
-          await recordStepUsage(rt, turn, rt.config.usage, saved);
+        if (functionKey(ref) === addMessagesKey) {
+          // The native transaction committed this evidence even if cancellation
+          // follows before the model result reaches the host action.
+          const messages = (saved as { messages?: { usage?: unknown; status: string }[] } | null)
+            ?.messages;
+
+          if (messages?.some((message) => message.usage && message.status === "success"))
+            turn.usageSaved = true;
+
+          if (rt.config.usage) await recordStepUsage(rt, turn, rt.config.usage, saved);
+        }
 
         return saved;
       } catch (error) {
@@ -223,4 +257,28 @@ async function fencedWriteArgs(
         }
       : {}),
   };
+}
+
+/** Bounded waiting does not claim that a timed-out external effect failed. */
+function waitForSignal<T>(signal: AbortSignal, work: PromiseLike<T>): Promise<T> {
+  if (signal.aborted) {
+    // The work may have thrown synchronously while aborting a hook. Observe its
+    // eventual rejection even though revocation already wins this race.
+    void Promise.resolve(work).catch(() => {});
+
+    return Promise.reject(signal.reason);
+  }
+
+  return new Promise((resolve, reject) => {
+    const abort = () => {
+      signal.removeEventListener("abort", abort);
+      reject(signal.reason);
+    };
+
+    signal.addEventListener("abort", abort, { once: true });
+
+    Promise.resolve(work)
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener("abort", abort));
+  });
 }

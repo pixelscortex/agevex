@@ -4,6 +4,7 @@
 // slot contracts, `defineOnceTool`, structured tasks and the public types. The
 // implementation is organised by concept; see `client/README.md` for the map.
 
+export type { RunSettings, ResolvedRunSettings } from "../component/run-settings.js";
 export { Agent } from "./agent.js";
 export {
   DELEGATE_TOOL_NAME,
@@ -44,6 +45,9 @@ export type {
   SlotActionCtx,
   ChargeCost,
   UsageSlot,
+  UsageView,
+  UsageViewArgs,
+  UsageProjection,
   BudgetSlot,
   TelemetrySlot,
   SandboxSlot,

@@ -5,7 +5,7 @@ import type { HookContext, Registration } from "../types.js";
 import { type Turn } from "./context.js";
 import type { TurnFence } from "./fence.js";
 /** The usage slot's meter for this turn, or `undefined`. Usage is fail-open. */
-export declare function meterBackend(config: Registration, ctx: RunnerCtx, facts: SlotFacts): MeterBackend | undefined;
+export declare function meterBackend(config: Registration, ctx: RunnerCtx, facts: SlotFacts, failed: () => Promise<void>): MeterBackend | undefined;
 /**
  * Meter the model step one native message save just captured.
  *

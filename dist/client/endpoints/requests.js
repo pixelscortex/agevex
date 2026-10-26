@@ -62,6 +62,7 @@ async function acceptRequest(ep, ctx, request) {
         runTurn: request.runTurn,
         limits: ep.limits,
         models: request.models,
+        settings: ep.settings,
     });
     if (accepted.status !== "accepted")
         throw new Error("ADMISSION_CHANGED");

@@ -20,10 +20,11 @@ function lookupWorker(meter) {
         handler: async (ctx, args) => {
             const row = await ctx.runQuery(component.charges.get, { key: args.key });
             if (!row ||
+                row.provider !== args.provider ||
+                row.providerRequestId !== args.requestId ||
                 row.lookupUntil !== args.until ||
                 row.lookupAttempt !== args.attempt ||
-                row.source !== "estimate" ||
-                row.status === "unknown")
+                row.reconciliation !== "running")
                 return null;
             let amount;
             if (Date.now() < args.until) {

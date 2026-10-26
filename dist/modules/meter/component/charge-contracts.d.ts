@@ -9,9 +9,14 @@ import { type Infer } from "convex/values";
 export declare const createArgs: import("convex/values").VObject<{
     reason?: "NO_COST" | "DECODE_FAILED" | "INVALID_COST" | "OVER_CAP" | "PROVIDER_NOT_REGISTERED" | "PROFILE_NOT_REGISTERED" | "THREAD_CAPACITY" | undefined;
     credits?: number | undefined;
+    requestId?: string | undefined;
     nanos?: number | undefined;
     profile?: string | undefined;
     quantity?: number | undefined;
+    tokens?: {
+        inputTokens: number;
+        outputTokens: number;
+    } | undefined;
     status: "unknown" | "estimate" | "settled" | "corrected";
     key: string;
     provider: string;
@@ -22,6 +27,8 @@ export declare const createArgs: import("convex/values").VObject<{
         runId?: string | undefined;
         model?: string | undefined;
         rootThreadId?: string | undefined;
+        nodeId?: string | undefined;
+        purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
         subject: string;
     };
     breakdowns: ("thread.model" | "thread.provider" | "subject.agent" | "subject.model" | "subject.provider")[];
@@ -40,6 +47,8 @@ export declare const createArgs: import("convex/values").VObject<{
         runId?: string | undefined;
         model?: string | undefined;
         rootThreadId?: string | undefined;
+        nodeId?: string | undefined;
+        purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
         subject: string;
     }, {
         subject: import("convex/values").VString<string, "required">;
@@ -48,7 +57,9 @@ export declare const createArgs: import("convex/values").VObject<{
         runId: import("convex/values").VString<string | undefined, "optional">;
         agent: import("convex/values").VString<string | undefined, "optional">;
         model: import("convex/values").VString<string | undefined, "optional">;
-    }, "required", "agent" | "threadId" | "runId" | "subject" | "model" | "rootThreadId">;
+        purpose: import("convex/values").VUnion<"agent" | "tool" | "title" | "hook" | "summary" | undefined, [import("convex/values").VLiteral<"agent", "required">, import("convex/values").VLiteral<"hook", "required">, import("convex/values").VLiteral<"tool", "required">, import("convex/values").VLiteral<"title", "required">, import("convex/values").VLiteral<"summary", "required">], "optional", never>;
+        nodeId: import("convex/values").VString<string | undefined, "optional">;
+    }, "required", "agent" | "threadId" | "runId" | "subject" | "model" | "rootThreadId" | "nodeId" | "purpose">;
     provider: import("convex/values").VString<string, "required">;
     breakdowns: import("convex/values").VArray<("thread.model" | "thread.provider" | "subject.agent" | "subject.model" | "subject.provider")[], import("convex/values").VUnion<"thread.model" | "thread.provider" | "subject.agent" | "subject.model" | "subject.provider", [import("convex/values").VLiteral<"thread.model", "required">, import("convex/values").VLiteral<"thread.provider", "required">, import("convex/values").VLiteral<"subject.agent", "required">, import("convex/values").VLiteral<"subject.model", "required">, import("convex/values").VLiteral<"subject.provider", "required">], "required", never>, "required">;
     profile: import("convex/values").VString<string | undefined, "optional">;
@@ -58,6 +69,14 @@ export declare const createArgs: import("convex/values").VObject<{
     nanos: import("convex/values").VFloat64<number | undefined, "optional">;
     credits: import("convex/values").VFloat64<number | undefined, "optional">;
     reason: import("convex/values").VUnion<"NO_COST" | "DECODE_FAILED" | "INVALID_COST" | "OVER_CAP" | "PROVIDER_NOT_REGISTERED" | "PROFILE_NOT_REGISTERED" | "THREAD_CAPACITY" | undefined, [import("convex/values").VLiteral<"NO_COST", "required">, import("convex/values").VLiteral<"DECODE_FAILED", "required">, import("convex/values").VLiteral<"INVALID_COST", "required">, import("convex/values").VLiteral<"OVER_CAP", "required">, import("convex/values").VLiteral<"PROVIDER_NOT_REGISTERED", "required">, import("convex/values").VLiteral<"PROFILE_NOT_REGISTERED", "required">, import("convex/values").VLiteral<"THREAD_CAPACITY", "required">], "optional", never>;
+    tokens: import("convex/values").VObject<{
+        inputTokens: number;
+        outputTokens: number;
+    } | undefined, {
+        inputTokens: import("convex/values").VFloat64<number, "required">;
+        outputTokens: import("convex/values").VFloat64<number, "required">;
+    }, "optional", "inputTokens" | "outputTokens">;
+    requestId: import("convex/values").VString<string | undefined, "optional">;
     sinks: import("convex/values").VArray<string[], import("convex/values").VString<string, "required">, "required">;
     maxThreadCharges: import("convex/values").VFloat64<number, "required">;
     jobs: import("convex/values").VObject<{
@@ -69,7 +88,7 @@ export declare const createArgs: import("convex/values").VObject<{
         deliver: import("convex/values").VString<string | undefined, "optional">;
         maxAttempts: import("convex/values").VFloat64<number, "required">;
     }, "required", "maxAttempts" | "deliver" | "lookup">;
-}, "required", "status" | "key" | "reason" | "provider" | "source" | "attribution" | "credits" | "nanos" | "breakdowns" | "profile" | "quantity" | "attribution.agent" | "attribution.threadId" | "attribution.runId" | "attribution.subject" | "attribution.model" | "attribution.rootThreadId" | "maxThreadCharges" | "sinks" | "jobs" | "jobs.maxAttempts" | "jobs.deliver" | "jobs.lookup">;
+}, "required", "status" | "key" | "reason" | "provider" | "source" | "attribution" | "credits" | "requestId" | "nanos" | "breakdowns" | "profile" | "quantity" | "tokens" | "attribution.agent" | "attribution.threadId" | "attribution.runId" | "attribution.subject" | "attribution.model" | "attribution.rootThreadId" | "attribution.nodeId" | "attribution.purpose" | "tokens.inputTokens" | "tokens.outputTokens" | "maxThreadCharges" | "sinks" | "jobs" | "jobs.maxAttempts" | "jobs.deliver" | "jobs.lookup">;
 export type CreateArgs = Infer<typeof createArgs>;
 /** Existing update arguments shared by its registration and transaction handler. */
 export declare const updateArgs: import("convex/values").VObject<{
@@ -105,6 +124,7 @@ export type UpdateArgs = Infer<typeof updateArgs>;
 /** Existing attach arguments shared by its registration and transaction handler. */
 export declare const attachArgs: import("convex/values").VObject<{
     key: string;
+    requestId: string;
     lookupMs: number;
     jobs: {
         deliver?: string | undefined;
@@ -112,7 +132,6 @@ export declare const attachArgs: import("convex/values").VObject<{
         maxAttempts: number;
     };
     operationKey: string;
-    requestId: string;
 }, {
     key: import("convex/values").VString<string, "required">;
     operationKey: import("convex/values").VString<string, "required">;
@@ -127,7 +146,7 @@ export declare const attachArgs: import("convex/values").VObject<{
         deliver: import("convex/values").VString<string | undefined, "optional">;
         maxAttempts: import("convex/values").VFloat64<number, "required">;
     }, "required", "maxAttempts" | "deliver" | "lookup">;
-}, "required", "key" | "lookupMs" | "jobs" | "jobs.maxAttempts" | "jobs.deliver" | "jobs.lookup" | "operationKey" | "requestId">;
+}, "required", "key" | "requestId" | "lookupMs" | "jobs" | "jobs.maxAttempts" | "jobs.deliver" | "jobs.lookup" | "operationKey">;
 export type AttachArgs = Infer<typeof attachArgs>;
 /** Existing expire arguments shared by its registration and transaction handler. */
 export declare const expireArgs: import("convex/values").VObject<{
@@ -142,13 +161,13 @@ export declare const lookupResultArgs: import("convex/values").VObject<{
     nanos?: number | undefined;
     key: string;
     provider: string;
+    requestId: string;
     attempt: number;
     jobs: {
         deliver?: string | undefined;
         lookup?: string | undefined;
         maxAttempts: number;
     };
-    requestId: string;
     until: number;
 }, {
     nanos: import("convex/values").VFloat64<number | undefined, "optional">;
@@ -167,7 +186,7 @@ export declare const lookupResultArgs: import("convex/values").VObject<{
         deliver: import("convex/values").VString<string | undefined, "optional">;
         maxAttempts: import("convex/values").VFloat64<number, "required">;
     }, "required", "maxAttempts" | "deliver" | "lookup">;
-}, "required", "key" | "provider" | "credits" | "attempt" | "nanos" | "jobs" | "jobs.maxAttempts" | "jobs.deliver" | "jobs.lookup" | "requestId" | "until">;
+}, "required", "key" | "provider" | "credits" | "requestId" | "attempt" | "nanos" | "jobs" | "jobs.maxAttempts" | "jobs.deliver" | "jobs.lookup" | "until">;
 export type LookupResultArgs = Infer<typeof lookupResultArgs>;
 /** Existing claimDeliveries arguments shared by its registration and transaction handler. */
 export declare const claimDeliveriesArgs: import("convex/values").VObject<{

@@ -6,9 +6,14 @@ export declare const get: import("convex/server").RegisteredQuery<"public", {
 export declare const create: import("convex/server").RegisteredMutation<"public", {
     reason?: "NO_COST" | "DECODE_FAILED" | "INVALID_COST" | "OVER_CAP" | "PROVIDER_NOT_REGISTERED" | "PROFILE_NOT_REGISTERED" | "THREAD_CAPACITY" | undefined;
     credits?: number | undefined;
+    requestId?: string | undefined;
     nanos?: number | undefined;
     profile?: string | undefined;
     quantity?: number | undefined;
+    tokens?: {
+        inputTokens: number;
+        outputTokens: number;
+    } | undefined;
     status: "unknown" | "estimate" | "settled" | "corrected";
     key: string;
     provider: string;
@@ -19,6 +24,8 @@ export declare const create: import("convex/server").RegisteredMutation<"public"
         runId?: string | undefined;
         model?: string | undefined;
         rootThreadId?: string | undefined;
+        nodeId?: string | undefined;
+        purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
         subject: string;
     };
     breakdowns: ("thread.model" | "thread.provider" | "subject.agent" | "subject.model" | "subject.provider")[];
@@ -47,6 +54,7 @@ export declare const update: import("convex/server").RegisteredMutation<"public"
 /** Attach provider evidence identity and schedule its bounded lookup window. */
 export declare const attach: import("convex/server").RegisteredMutation<"public", {
     key: string;
+    requestId: string;
     lookupMs: number;
     jobs: {
         deliver?: string | undefined;
@@ -54,7 +62,6 @@ export declare const attach: import("convex/server").RegisteredMutation<"public"
         maxAttempts: number;
     };
     operationKey: string;
-    requestId: string;
 }, Promise<import("./charge-records.js").Outcome>>;
 /** One-shot deadline for unresolved lookup evidence. */
 export declare const expire: import("convex/server").RegisteredMutation<"internal", {
@@ -66,13 +73,13 @@ export declare const lookupResult: import("convex/server").RegisteredMutation<"p
     nanos?: number | undefined;
     key: string;
     provider: string;
+    requestId: string;
     attempt: number;
     jobs: {
         deliver?: string | undefined;
         lookup?: string | undefined;
         maxAttempts: number;
     };
-    requestId: string;
     until: number;
 }, Promise<null>>;
 /** Claim one bounded sink batch without reading large charge documents. */
@@ -109,6 +116,8 @@ export declare const claimDeliveries: import("convex/server").RegisteredMutation
         runId?: string | undefined;
         model?: string | undefined;
         rootThreadId?: string | undefined;
+        nodeId?: string | undefined;
+        purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
         subject: string;
     };
     sink: string;
@@ -170,3 +179,31 @@ export declare const prune: import("convex/server").RegisteredMutation<"public",
     deleted: number;
     more: boolean;
 }>>;
+/** Host run-close/backstop entry: discovery is idempotent on the pending index. */
+export declare const reconcile: import("convex/server").RegisteredMutation<"public", {
+    runId: string;
+    subject: string;
+    jobs: {
+        deliver?: string | undefined;
+        lookup?: string | undefined;
+        maxAttempts: number;
+    };
+    providers: {
+        name: string;
+        lookupMs: number;
+    }[];
+}, Promise<null>>;
+/** Bounded successor of an explicit sweep; never a perpetual scheduled chain. */
+export declare const reconcileRun: import("convex/server").RegisteredMutation<"internal", {
+    runId: string;
+    subject: string;
+    jobs: {
+        deliver?: string | undefined;
+        lookup?: string | undefined;
+        maxAttempts: number;
+    };
+    providers: {
+        name: string;
+        lookupMs: number;
+    }[];
+}, Promise<null>>;

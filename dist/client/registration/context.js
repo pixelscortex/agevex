@@ -8,6 +8,7 @@
 // helpers they share: best-effort `observe` and the lazy coordinator reference.
 // Touches no tables.
 import { LIMITS, resolveLimits } from "../../component/limits.js";
+import { assertSettingsSnapshot, resolveRunSettings, } from "../../component/run-settings.js";
 import { deferredToolNames, resolveGraph } from "./graph.js";
 /**
  * Validate one registration and resolve its runtime context.
@@ -20,6 +21,15 @@ import { deferredToolNames, resolveGraph } from "./graph.js";
 export function createRuntimeContext(component, config) {
     const limits = resolveLimits(config.limits);
     const graph = resolveGraph(config);
+    const settings = [...graph.byName].map(([name, agent]) => {
+        const resolved = resolveRunSettings(agent.run);
+        // Retain the existing host default while allowing an explicit per-agent
+        // step count. Resolve the raw run object first so malformed JS fails too.
+        if (agent.run?.stepsPerTurn === undefined)
+            resolved.stepsPerTurn = limits.slicesPerTurn;
+        return { agent: name, settings: resolved };
+    });
+    assertSettingsSnapshot(settings);
     assertSlots(config);
     assertModelRegistration(config);
     assertDeferredTools(graph);
@@ -29,7 +39,7 @@ export function createRuntimeContext(component, config) {
     if (collaboration && !config.refs.coordinate)
         throw new Error("COORDINATE_REF_REQUIRED");
     const watching = [...graph.byName.values()].some((agent) => agent.sideAgents?.length);
-    const rt = { component, config, limits, graph, agentIndexes, watching };
+    const rt = { component, config, limits, graph, agentIndexes, watching, settings };
     return rt;
 }
 /** Every configured optional slot must expose the methods the runtime calls. */

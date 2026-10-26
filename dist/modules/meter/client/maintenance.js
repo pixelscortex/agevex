@@ -5,10 +5,27 @@
  * neither operation starts paid provider work.
  */
 import { authorize, jobs } from "./configuration.js";
+import { lookupMs } from "./pricing.js";
+/** Used by trusted close hooks and the authorized host backstop alike. */
+export async function reconcile(meter, ctx, args) {
+    return await ctx.runMutation(meter.component.charges.reconcile, {
+        subject: args.subject,
+        runId: args.runId,
+        providers: Object.entries(meter.options.providers)
+            .filter(([, provider]) => provider.lookup)
+            .map(([name, provider]) => ({ name, lookupMs: lookupMs(provider) })),
+        jobs: await jobs(meter),
+    });
+}
 /** Compose maintenance calls without changing their existing authorization boundary. */
 export function maintenance(meter) {
     const { component, limits } = meter;
     return {
+        /** Explicit bounded backstop, safe to repeat after completion; no model calls. */
+        reconcile: async (ctx, args) => {
+            await authorize(meter, ctx, { subject: args.subject, runId: args.runId });
+            return await reconcile(meter, ctx, args);
+        },
         /**
          * Retention for host crons. A host admin operation like extract's
          * `purge`: it performs no `authorize`; expose it only behind an admin check.

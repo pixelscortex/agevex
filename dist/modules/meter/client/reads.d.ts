@@ -1,5 +1,6 @@
 import { type MeterContext } from "./configuration.js";
 import type { ReadCtx } from "./types.js";
+import type { UsageViewArgs } from "../../../client/slots.js";
 /** Check a budget snapshot after authorization; trusted core calls validate labels only. */
 export declare function check(meter: MeterContext, ctx: ReadCtx, args: {
     subject: string;
@@ -26,6 +27,27 @@ export declare function check(meter: MeterContext, ctx: ReadCtx, args: {
 }>;
 /** Compose the host read API with the same authorization and opt-in projection checks. */
 export declare function costReads(meter: MeterContext): {
+    usageView: (ctx: ReadCtx, args: UsageViewArgs) => Promise<{
+        total: {
+            inputTokens: number | null;
+            outputTokens: number | null;
+            estimatedUsd: number;
+            settledUsd: number;
+            unknown: number;
+            reporting: "partial" | "available";
+        };
+        nodes: {
+            nodeId: string | null;
+            usage: {
+                inputTokens: number | null;
+                outputTokens: number | null;
+                estimatedUsd: number;
+                settledUsd: number;
+                unknown: number;
+                reporting: "partial" | "available";
+            };
+        }[];
+    }>;
     threadCost: (ctx: ReadCtx, args: {
         threadId: string;
         cursors?: Partial<Record<"agent" | "model" | "provider", string>>;

@@ -17,6 +17,8 @@ export type Turn = {
      * work must use the fenced `Generation.fence.ctx` instead.
      */
     rawCtx: RunnerCtx;
+    /** Native model usage committed before any later timeout/cancel. */
+    usageSaved?: boolean;
     args: TurnArgs;
     queued: NonNullable<Execution>;
     managed: ManagedAgent;
@@ -30,6 +32,9 @@ export type Turn = {
 };
 /** Flags generation sets while the model and its tools run. */
 export type GenerationState = {
+    /** Provider dispatch began; failed/dropped native saves must report partial. */
+    modelStarted: boolean;
+    budgetExceeded?: boolean;
     /** A hook threw or returned an invalid result: the turn reports HOOK_FAILED. */
     hookFailed: boolean;
     /** `beforeTurn` blocked the turn: no generation, no error code on the root. */

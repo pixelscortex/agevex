@@ -52,11 +52,10 @@ export declare const get: import("convex/server").RegisteredQuery<"public", {
     _id: import("convex/values").GenericId<"artifacts">;
     _creationTime: number;
     usage?: {
+        credits?: number | undefined;
         inputTokens?: number | undefined;
         outputTokens?: number | undefined;
-        credits?: number | undefined;
     } | undefined;
-    failure?: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED" | undefined;
     summary?: {
         language?: string | undefined;
         kind: "document" | "text" | "image";
@@ -64,6 +63,7 @@ export declare const get: import("convex/server").RegisteredQuery<"public", {
         pages: number;
         preview: string;
     } | undefined;
+    failure?: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED" | undefined;
     payloadStorageId?: string | undefined;
     callbacks?: string[] | undefined;
     status: "failed" | "running" | "pending" | "unknown" | "ready" | "released";
@@ -85,11 +85,10 @@ export declare const lookup: import("convex/server").RegisteredQuery<"public", {
     _id: import("convex/values").GenericId<"artifacts">;
     _creationTime: number;
     usage?: {
+        credits?: number | undefined;
         inputTokens?: number | undefined;
         outputTokens?: number | undefined;
-        credits?: number | undefined;
     } | undefined;
-    failure?: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED" | undefined;
     summary?: {
         language?: string | undefined;
         kind: "document" | "text" | "image";
@@ -97,6 +96,7 @@ export declare const lookup: import("convex/server").RegisteredQuery<"public", {
         pages: number;
         preview: string;
     } | undefined;
+    failure?: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED" | undefined;
     payloadStorageId?: string | undefined;
     callbacks?: string[] | undefined;
     status: "failed" | "running" | "pending" | "unknown" | "ready" | "released";
@@ -123,11 +123,10 @@ export declare const start: import("convex/server").RegisteredMutation<"public",
 export declare const complete: import("convex/server").RegisteredMutation<"public", {
     unknown?: boolean | undefined;
     usage?: {
+        credits?: number | undefined;
         inputTokens?: number | undefined;
         outputTokens?: number | undefined;
-        credits?: number | undefined;
     } | undefined;
-    failure?: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED" | undefined;
     summary?: {
         language?: string | undefined;
         kind: "document" | "text" | "image";
@@ -135,6 +134,7 @@ export declare const complete: import("convex/server").RegisteredMutation<"publi
         pages: number;
         preview: string;
     } | undefined;
+    failure?: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED" | undefined;
     payloadStorageId?: string | undefined;
     claim: string;
     attempt: number;

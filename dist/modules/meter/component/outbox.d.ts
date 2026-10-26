@@ -31,6 +31,11 @@ export declare function prepareSinks(ctx: MutationCtx, row: Doc<"charges">, conf
     profile?: string | undefined;
     quantity?: number | undefined;
     providerRequestId?: string | undefined;
+    tokens?: {
+        inputTokens: number;
+        outputTokens: number;
+    } | undefined;
+    reconciliation?: "running" | "pending" | "complete" | "unavailable" | "exhausted" | undefined;
     lookupUntil?: number | undefined;
     lastStale?: {
         operation: string;
@@ -47,6 +52,8 @@ export declare function prepareSinks(ctx: MutationCtx, row: Doc<"charges">, conf
         runId?: string | undefined;
         model?: string | undefined;
         rootThreadId?: string | undefined;
+        nodeId?: string | undefined;
+        purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
         subject: string;
     };
     operations: {
@@ -58,6 +65,11 @@ export declare function prepareSinks(ctx: MutationCtx, row: Doc<"charges">, conf
             profile?: string | undefined;
             quantity?: number | undefined;
             providerRequestId?: string | undefined;
+            tokens?: {
+                inputTokens: number;
+                outputTokens: number;
+            } | undefined;
+            reconciliation?: "running" | "pending" | "complete" | "unavailable" | "exhausted" | undefined;
             lookupUntil?: number | undefined;
             lastStale?: {
                 operation: string;
@@ -76,6 +88,8 @@ export declare function prepareSinks(ctx: MutationCtx, row: Doc<"charges">, conf
                 runId?: string | undefined;
                 model?: string | undefined;
                 rootThreadId?: string | undefined;
+                nodeId?: string | undefined;
+                purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
                 subject: string;
             };
             revision: number;

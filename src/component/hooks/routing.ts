@@ -29,7 +29,7 @@ export function assertAgentIndex(agentIndex: number) {
  * Ownership lives on that assignment so watchdog/cancel can settle it without
  * scanning siblings or trusting a failed action to run cleanup. <=3 metadata
  * reads (get run, read run for patch, read assignment for patch) and <=2 writes:
- * (1+1+32)=34 KiB read per owner, included in limits.ts's cancel budget. No
+ * (16+16+32)=64 KiB read per owner, included in limits.ts's cancel budget. No
  * native content is accessed.
  */
 export async function settleRouting(ctx: MutationCtx, row: Doc<"assignments">) {

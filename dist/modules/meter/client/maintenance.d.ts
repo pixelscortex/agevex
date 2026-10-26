@@ -6,8 +6,18 @@
  */
 import { type MeterContext } from "./configuration.js";
 import type { WriteCtx } from "./types.js";
+/** Used by trusted close hooks and the authorized host backstop alike. */
+export declare function reconcile(meter: MeterContext, ctx: WriteCtx, args: {
+    subject: string;
+    runId: string;
+}): Promise<null>;
 /** Compose maintenance calls without changing their existing authorization boundary. */
 export declare function maintenance(meter: MeterContext): {
+    /** Explicit bounded backstop, safe to repeat after completion; no model calls. */
+    reconcile: (ctx: WriteCtx, args: {
+        subject: string;
+        runId: string;
+    }) => Promise<null>;
     /**
      * Retention for host crons. A host admin operation like extract's
      * `purge`: it performs no `authorize`; expose it only behind an admin check.

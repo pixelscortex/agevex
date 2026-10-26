@@ -7,6 +7,24 @@
 // skipped; a budget refusal also leaves the model a note through `turns.slices.write`
 // → `hooks.notes.addNote` under the turn's fence.
 import { createFunctionHandle } from "convex/server";
+/** Snapshot before the next model/tool boundary. In-flight work may overshoot;
+ * this never reserves credits and never offers a resumable pause. */
+export async function assertBudget(rt, gen) {
+    if (!rt.config.budget)
+        return;
+    try {
+        if ((await rt.config.budget.check(gen.turn.rawCtx, {
+            subject: gen.turn.facts.subject,
+            runId: gen.turn.facts.runId,
+        })).allowed)
+            return;
+    }
+    catch {
+        /* Fail closed before another effect. */
+    }
+    gen.state.budgetExceeded = true;
+    throw new Error("BUDGET_EXCEEDED");
+}
 /**
  * Model-facing: a delegated child sees this at its next safe
  * claim (e.g. when descendant results arrive). Raising the

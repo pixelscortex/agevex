@@ -19,6 +19,7 @@ import { WorkflowManager, type WorkflowId, type WorkflowCtx } from "@convex-dev/
 import { components, internal } from "../_generated/api.js";
 import { type MutationCtx, internalMutation } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
+import { RUN_LIMITS } from "../run-settings.js";
 import { LIMITS, type Limits } from "../limits.js";
 import { v } from "convex/values";
 import { vResultValidator } from "@convex-dev/workpool";
@@ -112,7 +113,7 @@ function defineTurn(manager: WorkflowManager) {
       // when adding a new sequence; never silently reorder a deployed version.
       if (args.version !== LIMITS.workflowVersion) throw new Error("UNKNOWN_WORKFLOW_VERSION");
 
-      for (let slice = 0; slice < (args.slicesPerTurn ?? LIMITS.slicesPerTurn); slice++) {
+      for (let slice = 0; slice < (args.slicesPerTurn ?? RUN_LIMITS.stepsPerTurn.max); slice++) {
         await step.runAction(
           internal.workflows.worker.dispatch,
           {

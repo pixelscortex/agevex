@@ -36,6 +36,10 @@ export async function check(meter, ctx, args, budgetPolicy = meter.options.budge
 export function costReads(meter) {
     const { component, breakdowns, limits } = meter;
     return {
+        usageView: async (ctx, args) => {
+            await authorize(meter, ctx, { subject: args.subject, runId: args.runId });
+            return await ctx.runQuery(component.reads.usage, args);
+        },
         threadCost: async (ctx, args) => {
             await authorize(meter, ctx, { threadId: args.threadId });
             for (const axis of ["model", "provider"])

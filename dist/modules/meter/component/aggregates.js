@@ -7,6 +7,7 @@
 import { DirectAggregate } from "@convex-dev/aggregate";
 import { components } from "./_generated/api.js";
 import { LIMITS } from "../shared/limits.js";
+import { usageProjections } from "./usage-projections.js";
 export const byThread = new DirectAggregate(components.costByThread);
 export const bySubject = new DirectAggregate(components.costBySubject);
 export const groups = ["estimate", "settled", "unknown"];
@@ -92,7 +93,7 @@ export function projections(row) {
                 depth: thread,
             });
         }
-    return entries;
+    return [...entries, ...usageProjections(row, bySubject, state)];
 }
 /**
  * Upstream btree.ts:56-138 (insert/delete/replace handlers) and 590-805
@@ -104,10 +105,10 @@ export function projections(row) {
  * tree size lookup, both siblings, grandchild, merge re-reads; plus the
  * predecessor descent) and writes <=4; an insert reads <=2 and writes <=3.
  * The emptiness probe below reads one path. So one projection replacement is
- * <=11*D+7 reads and <=7*D+4 writes. At the hard maximum, eight projections:
- * 3 thread-scoped at D=10 and 5 subject/run-scoped at D=24:
- *   reads  3*117 + 5*271 = 1,706 docs (<3.4 MiB at 2 KiB)
- *   writes 3*74  + 5*172 = 1,082 docs (<2.2 MiB)
+ * <=11*D+7 reads and <=7*D+4 writes. At the hard maximum, thirteen projections:
+ * 3 thread-scoped at D=10 and 10 subject/run/node-scoped at D=24:
+ *   reads  3*117 + 10*271 = 3,061 docs (<6 MiB at 2 KiB)
+ *   writes 3*74  + 10*172 = 1,942 docs (<3.8 MiB)
  * plus the <=280 KiB charge (<=3 patches), <=4 outbox rows, the 3-count
  * thread-capacity read (<=21 docs) and <=4 Workpool admissions: well under
  * 16 MiB / 32k docs read and 16 MiB / 16k docs written. ONE charge per mutation.
@@ -116,7 +117,11 @@ export async function updateAggregates(ctx, row, old) {
     const entries = projections(row);
     const previous = old && projections(old);
     for (const [index, entry] of entries.entries()) {
-        const next = { key: entry.key, namespace: entry.namespace, sumValue: summand(row) };
+        const next = {
+            key: entry.key,
+            namespace: entry.namespace,
+            sumValue: entry.value ?? summand(row),
+        };
         const before = previous?.[index];
         if (before?.namespace.join("\u0000") !== entry.namespace.join("\u0000")) {
             // Small nodes bound bytes on range reads, but an aggregate insert into a

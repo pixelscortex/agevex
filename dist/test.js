@@ -23,6 +23,13 @@ import { mockModel } from "@convex-dev/agent";
 export function scriptedModel(steps) {
     const model = mockModel({ contentSteps: steps });
     const stream = model.doStream.bind(model);
+    const generate = model.doGenerate.bind(model);
+    model.doGenerate = async (args) => {
+        const result = await generate(args);
+        return result.content.some((part) => part.type === "tool-call")
+            ? { ...result, finishReason: { unified: "tool-calls", raw: "tool_calls" } }
+            : result;
+    };
     model.doStream = async (args) => {
         const result = await stream(args);
         let calledTool = false;

@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { api, internal } from "../_generated/api.js";
 import { scope, turnOrigin as vTurnOrigin } from "../schema.js";
+import { runSettings, resolveRunSettings, sliceWatchdogMs, } from "../run-settings.js";
 import { LIMITS } from "../limits.js";
 import { claimNotes, noteHandles } from "../hooks/notes.js";
 import { firstReady } from "./inbox.js";
@@ -25,6 +26,7 @@ export const vClaim = v.object({
     promptMessageId: v.string(),
     runId: v.string(),
     modelId: v.optional(v.string()),
+    settings: runSettings,
     isTurnStart: v.boolean(),
     isRunStart: v.boolean(),
     turn: v.number(),
@@ -62,8 +64,11 @@ export async function claimSlice(ctx, args) {
         return null;
     const noteAnchor = first && row.inboxId ? await consumeHead(ctx, row) : row.promptMessageId;
     await flushNotes(ctx, row, first, noteAnchor, args.notes);
-    await markRunning(ctx, row, first, args);
     const budget = row.runId ? await ctx.db.get("runs", row.runId) : null;
+    const settings = budget?.settings?.find((entry) => entry.agent === row.agent)?.settings ?? resolveRunSettings();
+    if (!first && (row.modelSteps ?? 0) >= settings.stepsPerTurn)
+        return null;
+    await markRunning(ctx, row, first, args, settings);
     const modelId = budget?.models?.[row.agent];
     const isRunStart = await markRunStart(ctx, row, budget, args);
     const claim = {
@@ -74,6 +79,7 @@ export async function claimSlice(ctx, args) {
         promptMessageId: row.promptMessageId,
         runId: row.runId,
         modelId,
+        settings,
         isTurnStart: first || !!row.hookContinue,
         isRunStart,
         turn: row.completedTurns,
@@ -102,9 +108,9 @@ async function consumeHead(ctx, row) {
  * on the very next turn. Never cross another run/user turn.
  * <=100 backlog + reserved answer +50 joins + reserved head =152 rows.
  * The by_join "ready" range is scoped to this budget: <=50 members TOTAL
- * across its cohorts. <=100 run metadata reads (400 KiB), <=152
+ * across its cohorts. <=100 run metadata reads (1,600 KiB), <=152
  * inbox deletes/assignment patches and fixed per-iteration probes stay
- * <8 MiB, <2,000 reads/<600 writes even at all host maxima.
+ * <10 MiB, <2,000 reads/<600 writes even at all host maxima.
  * @convex-dev/agent/src/component/messages.ts:298-322 anchors native
  * context at the prompt's recorded order, rather than our inbox order.
  * Moves `row.promptMessageId` to the newest merged message and returns the
@@ -170,15 +176,16 @@ async function flushNotes(ctx, row, first, noteAnchor, notes) {
 /** Publish the running state for this slice, retire the recovery check and
  * arm the slice watchdog (`turns.failures.stalled`), recorded on the row so only
  * disarmSlice clears it. */
-async function markRunning(ctx, row, first, args) {
+async function markRunning(ctx, row, first, args, settings) {
     await ctx.db.patch("assignments", row._id, {
         turnStatus: "running",
+        modelSteps: first ? 1 : (row.modelSteps ?? 0) + 1,
         hookContinue: false,
         lastSlice: args.sliceId,
         inboxId: undefined,
     });
     await disarmRecovery(ctx, row);
-    const watchdogId = await ctx.scheduler.runAfter(LIMITS.executionWatchdogMs, internal.turns.failures.stalled, {
+    const watchdogId = await ctx.scheduler.runAfter(sliceWatchdogMs(settings), internal.turns.failures.stalled, {
         assignmentId: args.assignmentId,
         turnToken: args.turnToken,
         sliceId: args.sliceId ?? args.turnToken,

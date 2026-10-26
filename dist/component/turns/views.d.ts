@@ -7,7 +7,7 @@ export declare function activityView(row: Doc<"assignments">): {
     assignmentStatus: "open";
     turnStatus: "idle" | "running" | "queued" | "recovery_required";
     queuedMessages: number;
-    errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
+    errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
     runId: import("convex/values").GenericId<"runs"> | undefined;
     subagents: {
         active: number;

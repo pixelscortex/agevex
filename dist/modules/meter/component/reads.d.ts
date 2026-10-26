@@ -1,3 +1,30 @@
+/** Existing aggregates, exclusive node attribution, no ledger scan. */
+export declare const usage: import("convex/server").RegisteredQuery<"public", {
+    partial?: boolean | undefined;
+    runId: string;
+    subject: string;
+    nodeIds: (string | null)[];
+}, Promise<{
+    total: {
+        inputTokens: number | null;
+        outputTokens: number | null;
+        estimatedUsd: number;
+        settledUsd: number;
+        unknown: number;
+        reporting: "partial" | "available";
+    };
+    nodes: {
+        nodeId: string | null;
+        usage: {
+            inputTokens: number | null;
+            outputTokens: number | null;
+            estimatedUsd: number;
+            settledUsd: number;
+            unknown: number;
+            reporting: "partial" | "available";
+        };
+    }[];
+}>>;
 /** Summarize a root thread and page its enabled axes under the capped-tree read budget. */
 export declare const threadCost: import("convex/server").RegisteredQuery<"public", {
     cursors?: {

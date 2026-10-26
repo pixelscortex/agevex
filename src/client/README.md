@@ -13,7 +13,8 @@ agent index, and `open` looks roots up in `config.agents`.
    and models once (`registration/`) and returns the endpoints, `runTurn`,
    `coordinate` and the host helpers.
 2. **Accept.** `open` / `send` (`endpoints/requests.ts`) authorize the subject,
-   dedupe the request key, save the native prompt and call `turns.send.accept`.
+   dedupe the request key, save the native prompt and call `turns.send.accept`,
+   which snapshots validated Agent.run settings for the root and all children.
 3. **Schedule.** The component's Workflow loop schedules `runTurn` once per turn
    slice.
 4. **Claim.** `turn/claim.ts` checks the execution row and claims the turn
@@ -22,11 +23,16 @@ agent index, and `open` looks roots up in `config.agents`.
 6. **Generate.** `turn/generation.ts` starts the cancellation fence
    (`turn/fence.ts`), runs extract admission and `beforeTurn` / model routing
    (`turn/routing.ts`), builds the tool set with hooks and collaboration tools
-   (`turn/tools.ts`, `turn/collaboration-tools.ts`) and runs one native model step.
+   (`turn/tools.ts`, `turn/collaboration-tools.ts`) and runs one native stream or
+   generate step. `turn/deadlines.ts` separates provider/tool deadlines and caps
+   serial tools; claim derives its watchdog from the accepted run snapshot.
 7. **Continue or complete.** `turn/completion.ts` continues after tool calls, runs
    `afterTurn`, launches side reviews and admits continuations.
 8. **Finish.** `turn/finish.ts` calls `turns.slices.finish`; a child turn first settles its
    run (`coordinate/settle.ts`) and delivers the result (`coordinate/delivery.ts`).
+9. **Reconcile.** Every slice exit calls the optional usage adapter's bounded
+   sweep. It reads saved provider ids and corrects existing charges; generation
+   is never repeated. Observation failures leave a sticky partial run marker.
 
 Collaboration tools and side reviews call the `coordinate` mutation
 (`coordinate/coordinator.ts`), which runs each op in one transaction.
@@ -65,6 +71,8 @@ Collaboration tools and side reviews call the `coordinate` mutation
 | `turn/context.ts`             | `Turn`, `Generation`, `TurnOutcome` and the fence predicates.                 |
 | `turn/claim.ts`               | Load the execution and claim the turn.                                        |
 | `turn/admission.ts`           | `authorizeExecution` and the budget check.                                    |
+| `turn/usage.ts`               | Fail-open evidence and bounded reconciliation on slice exit.                  |
+| `turn/provider-evidence.ts`   | Preserve exact provider response ids in native saved metadata.                |
 | `turn/fence.ts`               | Cancellation deadline, poll and the fenced action context.                    |
 | `turn/generation.ts`          | One generation: phases, native model step, failure mapping.                   |
 | `turn/hook-runner.ts`         | Validated hook calls and hook notes.                                          |

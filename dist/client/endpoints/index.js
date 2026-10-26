@@ -12,8 +12,8 @@ import { answerEndpoint, cancelEndpoint, respondEndpoint } from "./controls.js";
 import { activityEndpoint, delegationsEndpoint, messagesEndpoint, runTreeEndpoint, streamsEndpoint, } from "./reads.js";
 import { openEndpoint, sendEndpoint } from "./requests.js";
 /** Build every public endpoint for one registration. */
-export function authorizedEndpoints(component, config) {
-    const ep = createEndpointContext(component, config);
+export function authorizedEndpoints(component, config, settings) {
+    const ep = createEndpointContext(component, config, settings);
     return {
         open: openEndpoint(ep),
         send: sendEndpoint(ep),

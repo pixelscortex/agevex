@@ -6,12 +6,35 @@
  */
 import { authorize, jobs, type MeterContext } from "./configuration.js";
 import type { WriteCtx } from "./types.js";
+import { lookupMs } from "./pricing.js";
+
+/** Used by trusted close hooks and the authorized host backstop alike. */
+export async function reconcile(
+  meter: MeterContext,
+  ctx: WriteCtx,
+  args: { subject: string; runId: string },
+) {
+  return await ctx.runMutation(meter.component.charges.reconcile, {
+    subject: args.subject,
+    runId: args.runId,
+    providers: Object.entries(meter.options.providers)
+      .filter(([, provider]) => provider.lookup)
+      .map(([name, provider]) => ({ name, lookupMs: lookupMs(provider) })),
+    jobs: await jobs(meter),
+  });
+}
 
 /** Compose maintenance calls without changing their existing authorization boundary. */
 export function maintenance(meter: MeterContext) {
   const { component, limits } = meter;
 
   return {
+    /** Explicit bounded backstop, safe to repeat after completion; no model calls. */
+    reconcile: async (ctx: WriteCtx, args: { subject: string; runId: string }) => {
+      await authorize(meter, ctx, { subject: args.subject, runId: args.runId });
+
+      return await reconcile(meter, ctx, args);
+    },
     /**
      * Retention for host crons. A host admin operation like extract's
      * `purge`: it performs no `authorize`; expose it only behind an admin check.

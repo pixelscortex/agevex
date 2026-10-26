@@ -22,6 +22,13 @@ export declare const claimArgs: {
 export declare const vClaim: import("convex/values").VObject<{
     modelId?: string | undefined;
     agent: string;
+    settings: {
+        mode: "stream" | "generate";
+        maxOutputTokens: number;
+        modelTimeoutMs: number;
+        toolTimeoutMs: number;
+        stepsPerTurn: number;
+    };
     assignmentId: string;
     threadId: string;
     runId: string;
@@ -47,6 +54,19 @@ export declare const vClaim: import("convex/values").VObject<{
     promptMessageId: import("convex/values").VString<string, "required">;
     runId: import("convex/values").VString<string, "required">;
     modelId: import("convex/values").VString<string | undefined, "optional">;
+    settings: import("convex/values").VObject<{
+        mode: "stream" | "generate";
+        maxOutputTokens: number;
+        modelTimeoutMs: number;
+        toolTimeoutMs: number;
+        stepsPerTurn: number;
+    }, {
+        mode: import("convex/values").VUnion<"stream" | "generate", [import("convex/values").VLiteral<"stream", "required">, import("convex/values").VLiteral<"generate", "required">], "required", never>;
+        maxOutputTokens: import("convex/values").VFloat64<number, "required">;
+        modelTimeoutMs: import("convex/values").VFloat64<number, "required">;
+        toolTimeoutMs: import("convex/values").VFloat64<number, "required">;
+        stepsPerTurn: import("convex/values").VFloat64<number, "required">;
+    }, "required", "mode" | "maxOutputTokens" | "modelTimeoutMs" | "toolTimeoutMs" | "stepsPerTurn">;
     isTurnStart: import("convex/values").VBoolean<boolean, "required">;
     isRunStart: import("convex/values").VBoolean<boolean, "required">;
     turn: import("convex/values").VFloat64<number, "required">;
@@ -87,7 +107,7 @@ export declare const vClaim: import("convex/values").VObject<{
     threadId: import("convex/values").VString<string, "required">;
     subject: import("convex/values").VString<string, "required">;
     agent: import("convex/values").VString<string, "required">;
-}, "required", "agent" | "assignmentId" | "threadId" | "runId" | "subject" | "turn" | "cancellationEpoch" | "promptMessageId" | "turnOrigin" | "modelId" | "isTurnStart" | "isRunStart" | "subagent" | "subagent.agent" | "subagent.runId" | "subagent.subject" | "subagent.childThreadId" | "subagent.rootAssignmentId" | "subagent.actorAgent" | "subagent.deliveryToken" | "subagent.rootAgent" | "subagent.rootThreadId">;
+}, "required", "agent" | "settings" | "settings.mode" | "settings.maxOutputTokens" | "settings.modelTimeoutMs" | "settings.toolTimeoutMs" | "settings.stepsPerTurn" | "assignmentId" | "threadId" | "runId" | "subject" | "turn" | "cancellationEpoch" | "promptMessageId" | "turnOrigin" | "modelId" | "isTurnStart" | "isRunStart" | "subagent" | "subagent.agent" | "subagent.runId" | "subagent.subject" | "subagent.childThreadId" | "subagent.rootAssignmentId" | "subagent.actorAgent" | "subagent.deliveryToken" | "subagent.rootAgent" | "subagent.rootThreadId">;
 type ClaimArgs = {
     assignmentId: Id<"assignments">;
     turnToken: string;

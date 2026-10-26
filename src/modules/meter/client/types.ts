@@ -28,6 +28,8 @@ export type Charge = Omit<Doc<"charges">, "_id" | "operations" | "terminal" | "s
 export type Cost = { usd: number } | { credits: number };
 export type Provider = {
   inline?: (args: { usage: unknown; providerMetadata: unknown }) => Cost | undefined;
+  /** Used only when inline evidence is missing; return undefined for unpriced models. */
+  estimate?: (args: { usage: unknown; model?: string }) => Cost | undefined;
   profiles?: Record<string, { unit: string; usd: number }>;
   credits?: { usdPerCredit: number };
   lookup?: (ctx: ActionCtx, requestId: string) => Promise<Cost | undefined>;
@@ -78,6 +80,6 @@ export type ScopedMeter = {
   ): Promise<ChargeHandle>;
   record(
     provider: string,
-    args: { key: string; usage?: unknown; providerMetadata?: unknown },
+    args: { key: string; usage?: unknown; providerMetadata?: unknown; requestId?: string },
   ): Promise<ChargeHandle>;
 };

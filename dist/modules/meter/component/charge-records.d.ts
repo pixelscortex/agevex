@@ -16,6 +16,11 @@ export declare function find(ctx: Pick<QueryCtx, "db">, key: string): Promise<{
     profile?: string | undefined;
     quantity?: number | undefined;
     providerRequestId?: string | undefined;
+    tokens?: {
+        inputTokens: number;
+        outputTokens: number;
+    } | undefined;
+    reconciliation?: "running" | "pending" | "complete" | "unavailable" | "exhausted" | undefined;
     lookupUntil?: number | undefined;
     lastStale?: {
         operation: string;
@@ -32,6 +37,8 @@ export declare function find(ctx: Pick<QueryCtx, "db">, key: string): Promise<{
         runId?: string | undefined;
         model?: string | undefined;
         rootThreadId?: string | undefined;
+        nodeId?: string | undefined;
+        purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
         subject: string;
     };
     operations: {
@@ -43,6 +50,11 @@ export declare function find(ctx: Pick<QueryCtx, "db">, key: string): Promise<{
             profile?: string | undefined;
             quantity?: number | undefined;
             providerRequestId?: string | undefined;
+            tokens?: {
+                inputTokens: number;
+                outputTokens: number;
+            } | undefined;
+            reconciliation?: "running" | "pending" | "complete" | "unavailable" | "exhausted" | undefined;
             lookupUntil?: number | undefined;
             lastStale?: {
                 operation: string;
@@ -61,6 +73,8 @@ export declare function find(ctx: Pick<QueryCtx, "db">, key: string): Promise<{
                 runId?: string | undefined;
                 model?: string | undefined;
                 rootThreadId?: string | undefined;
+                nodeId?: string | undefined;
+                purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
                 subject: string;
             };
             revision: number;
@@ -102,7 +116,7 @@ export declare function find(ctx: Pick<QueryCtx, "db">, key: string): Promise<{
  * billed because the amount is known. Estimates are billed once corrected.
  */
 export declare function billable(row: Doc<"charges">): boolean;
-/** Lookup stops once evidence is authoritative or its estimate has become unknown. */
+/** Missing inline evidence can be recovered by lookup too; expiry never restarts itself. */
 export declare function resolved(row: Doc<"charges">): boolean;
 /** Settled and acknowledged by every sink (vacuously true without sinks).
  * `corrected` is not terminal: a settlement or lookup may still replace it. */
@@ -117,6 +131,11 @@ export declare function stale(ctx: MutationCtx, row: Doc<"charges">, operation: 
     profile?: string | undefined;
     quantity?: number | undefined;
     providerRequestId?: string | undefined;
+    tokens?: {
+        inputTokens: number;
+        outputTokens: number;
+    } | undefined;
+    reconciliation?: "running" | "pending" | "complete" | "unavailable" | "exhausted" | undefined;
     lookupUntil?: number | undefined;
     lastStale?: {
         operation: string;
@@ -133,6 +152,8 @@ export declare function stale(ctx: MutationCtx, row: Doc<"charges">, operation: 
         runId?: string | undefined;
         model?: string | undefined;
         rootThreadId?: string | undefined;
+        nodeId?: string | undefined;
+        purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
         subject: string;
     };
     operations: {
@@ -144,6 +165,11 @@ export declare function stale(ctx: MutationCtx, row: Doc<"charges">, operation: 
             profile?: string | undefined;
             quantity?: number | undefined;
             providerRequestId?: string | undefined;
+            tokens?: {
+                inputTokens: number;
+                outputTokens: number;
+            } | undefined;
+            reconciliation?: "running" | "pending" | "complete" | "unavailable" | "exhausted" | undefined;
             lookupUntil?: number | undefined;
             lastStale?: {
                 operation: string;
@@ -162,6 +188,8 @@ export declare function stale(ctx: MutationCtx, row: Doc<"charges">, operation: 
                 runId?: string | undefined;
                 model?: string | undefined;
                 rootThreadId?: string | undefined;
+                nodeId?: string | undefined;
+                purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
                 subject: string;
             };
             revision: number;
@@ -213,6 +241,11 @@ export declare function replay(row: Doc<"charges">, key: string): {
     profile?: string | undefined;
     quantity?: number | undefined;
     providerRequestId?: string | undefined;
+    tokens?: {
+        inputTokens: number;
+        outputTokens: number;
+    } | undefined;
+    reconciliation?: "running" | "pending" | "complete" | "unavailable" | "exhausted" | undefined;
     lookupUntil?: number | undefined;
     lastStale?: {
         operation: string;
@@ -231,6 +264,8 @@ export declare function replay(row: Doc<"charges">, key: string): {
         runId?: string | undefined;
         model?: string | undefined;
         rootThreadId?: string | undefined;
+        nodeId?: string | undefined;
+        purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
         subject: string;
     };
     revision: number;

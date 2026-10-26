@@ -7,8 +7,8 @@ import { getConvexSize, v } from "convex/values";
 import { LIMITS } from "./limits.js";
 export const modelOverrides = v.record(v.string(), v.string());
 /** Runs are read once per queued row during cancel. Keep the entire map at
- * <=512 bytes so each run, including its native envelope and counters, remains
- * <=1 KiB in the existing 3I*1 KiB cancellation budget. Character caps alone
+ * <=512 Convex bytes, reserving room alongside the run settings map in the
+ * 16 KiB runs envelope. newRun also validates the complete JSON byte envelope. Character caps alone
  * cannot provide that guarantee for UTF-8 agent names and model ids.
  */
 export function validModelOverrides(models) {

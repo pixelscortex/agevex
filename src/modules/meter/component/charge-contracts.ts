@@ -6,7 +6,7 @@
  */
 import { v, type Infer } from "convex/values";
 import { vOnCompleteArgs } from "@convex-dev/workpool";
-import { attribution, status, source, breakdowns, reason } from "./schema.js";
+import { attribution, status, source, breakdowns, reason, tokens } from "./schema.js";
 import { jobs, lookupJob, deliveryJob } from "../shared/contracts.js";
 
 /** Existing create arguments shared by its registration and transaction handler. */
@@ -22,6 +22,8 @@ export const createArgs = v.object({
   nanos: v.optional(v.number()),
   credits: v.optional(v.number()),
   reason: v.optional(reason),
+  tokens: v.optional(tokens),
+  requestId: v.optional(v.string()),
   sinks: v.array(v.string()),
   maxThreadCharges: v.number(),
   jobs,

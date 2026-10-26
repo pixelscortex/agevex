@@ -2,7 +2,7 @@
 //
 // `generateTurn` starts the cancellation fence, binds hook tasks to it, then runs
 // the phases in order: extract admission, model selection (`routing.ts`), tool
-// set (`tools.ts`), the native `streamText` call (`streamGeneration`), and the
+// set (`tools.ts`), the native stream/generate call (`nativeGeneration`), and the
 // post-step decisions (`completion.ts`). A throw from those phases becomes an
 // outcome: a hook failure is HOOK_FAILED; a `beforeTurn` block finishes a root
 // turn without an error code and settles a child run as EMPTY_RESULT; anything
@@ -11,6 +11,7 @@
 // is completed. A throw while assembling the generation (`startGeneration`)
 // reaches neither and propagates. Called by `turn/run-turn.ts`.
 
+import { boundedModel } from "./deadlines.js";
 import { LIMITS } from "../../component/limits.js";
 import { boundedDownload } from "./download.js";
 import type { RuntimeContext } from "../registration/context.js";
@@ -30,6 +31,8 @@ import { hookRunner } from "./hook-runner.js";
 import { completeRouting, selectTurnModel } from "./routing.js";
 import { extractAttachedFiles, meterBackend, telemetryIntegrations } from "./slots.js";
 import { buildTurnTools } from "./tools.js";
+import { markUsagePartial } from "./usage.js";
+import { assertBudget } from "./admission.js";
 
 /**
  * Run one admitted turn's generation.
@@ -46,19 +49,40 @@ export async function generateTurn(rt: RuntimeContext, turn: Turn): Promise<Turn
     await extractAttachedFiles(rt, turn, gen.fence);
     const model = await selectTurnModel(rt, gen);
     const tools = await buildTurnTools(rt, gen);
-    const { result, reason } = await streamGeneration(rt, gen, tools, model);
+    const { result, reason } = await nativeGeneration(rt, gen, tools, model);
 
     return await completeGeneration(rt, gen, result, reason);
   } catch {
+    const timedOut = gen.fence.controller.signal.reason?.message === "RUN_TIMEOUT";
+
     return {
-      errorCode: state.hookFailed ? "HOOK_FAILED" : state.hookBlocked ? null : "GENERATION_FAILED",
-      childError: state.hookFailed
-        ? "HOOK_FAILED"
-        : state.hookBlocked
-          ? "EMPTY_RESULT"
-          : "GENERATION_FAILED",
+      errorCode: state.budgetExceeded
+        ? "BUDGET_EXCEEDED"
+        : state.hookFailed
+          ? "HOOK_FAILED"
+          : state.hookBlocked
+            ? null
+            : timedOut
+              ? "RUN_TIMEOUT"
+              : "GENERATION_FAILED",
+      childError: state.budgetExceeded
+        ? "BUDGET_EXCEEDED"
+        : state.hookFailed
+          ? "HOOK_FAILED"
+          : state.hookBlocked
+            ? "EMPTY_RESULT"
+            : timedOut
+              ? "RUN_TIMEOUT"
+              : "GENERATION_FAILED",
     };
   } finally {
+    if (
+      rt.config.usage &&
+      state.modelStarted &&
+      (gen.fence.controller.signal.aborted || !turn.usageSaved)
+    )
+      await markUsagePartial(rt, turn);
+
     gen.fence.stop();
 
     if (turn.claimed.isRunStart && turn.managed.hooks?.beforeTurn) await completeRouting(rt, turn);
@@ -76,7 +100,7 @@ function startGeneration(rt: RuntimeContext, turn: Turn): Generation {
 
   bindTaskContext(fence.ctx, {
     component: rt.component,
-    attribution: facts,
+    attribution: { ...facts, purpose: "hook" },
     turnKey,
     usage: rt.config.usage,
     fence: {
@@ -86,9 +110,12 @@ function startGeneration(rt: RuntimeContext, turn: Turn): Generation {
     },
   });
 
-  const backend = meterBackend(rt.config, fence.ctx, facts);
+  const backend = meterBackend(rt.config, turn.rawCtx, { ...facts, purpose: "tool" }, () =>
+    markUsagePartial(rt, turn),
+  );
 
   const state: GenerationState = {
+    modelStarted: false,
     hookFailed: false,
     hookBlocked: false,
     delegated: false,
@@ -99,7 +126,12 @@ function startGeneration(rt: RuntimeContext, turn: Turn): Generation {
     ctx: fence.ctx,
     ...facts,
     signal: fence.controller.signal,
-    meter: scopedMeter(backend, `${sliceKey(turn)}:hook`),
+    meter: scopedMeter(
+      meterBackend(rt.config, turn.rawCtx, { ...facts, purpose: "hook" }, () =>
+        markUsagePartial(rt, turn),
+      ),
+      `${sliceKey(turn)}:hook`,
+    ),
   };
 
   const hook = hookRunner(rt, turn, fence, state);
@@ -113,50 +145,83 @@ function startGeneration(rt: RuntimeContext, turn: Turn): Generation {
  * Throws `INCOMPLETE_GENERATION` when a hook failed, the stream errored, the
  * fence aborted, or the finish reason is not one a step may end with.
  */
-async function streamGeneration(
+async function nativeGeneration(
   rt: RuntimeContext,
   gen: Generation,
   tools: import("ai").ToolSet,
   selectedModel: string | null | undefined,
 ) {
-  const { turn, fence, state } = gen;
+  const { turn, fence } = gen;
   const { config } = rt;
 
-  const result = await turn.managed.streamText(
-    fence.ctx,
-    { threadId: turn.claimed.threadId },
-    {
-      promptMessageId: turn.claimed.promptMessageId,
-      // Agent 0.7.7 vercel/client/start.ts:107-108,234 supports this
-      // per-call override natively; never mutate a shared Agent's options.
-      ...(selectedModel ? { model: resolveModel(config, selectedModel) } : {}),
-      tools,
-      ...(config.telemetry
-        ? { telemetry: { integrations: telemetryIntegrations(config, turn.facts, turn.turnKey) } }
-        : {}),
-      experimental_download: boundedDownload(turn.queued.attachmentBytes, fence.controller.signal),
-      maxOutputTokens: LIMITS.outputTokens,
-      maxRetries: LIMITS.modelRetries,
-      // Native stop conditions are evaluated after each step: exactly
-      // one model step per slice.
-      stopWhen: () => true,
-      abortSignal: fence.controller.signal,
-    },
-    {
+  // Admission already checked this boundary. Only pre-model host work can
+  // change observed spend before the call; do not read a policy twice otherwise.
+  if (turn.managed.hooks?.beforeTurn || config.extract) await assertBudget(rt, gen);
+
+  const args = {
+    promptMessageId: turn.claimed.promptMessageId,
+    // Agent 0.7.7 vercel/client/start.ts:107-108,234 supports this
+    // per-call override natively; never mutate a shared Agent's options.
+    ...(selectedModel ? { model: resolveModel(config, selectedModel) } : {}),
+    tools,
+    ...(config.telemetry
+      ? { telemetry: { integrations: telemetryIntegrations(config, turn.facts, turn.turnKey) } }
+      : {}),
+    experimental_download: boundedDownload(turn.queued.attachmentBytes, fence.controller.signal),
+    maxOutputTokens: turn.claimed.settings.maxOutputTokens,
+    toolCallConcurrency: 1,
+    prepareStep: ({ model }: { model: import("ai").LanguageModel }) => ({
+      model: boundedModel(gen, model),
+    }),
+    maxRetries: LIMITS.modelRetries,
+    // Native stop conditions are evaluated after each step: exactly
+    // one model step per slice.
+    stopWhen: () => true,
+    abortSignal: fence.controller.signal,
+  };
+
+  const target = { threadId: turn.claimed.threadId };
+  const storageOptions = { saveMessages: "promptAndOutput" as const };
+
+  if (turn.claimed.settings.mode === "generate") {
+    const result = await fence.wait(
+      turn.managed.generateText(fence.ctx, target, args, { storageOptions }),
+    );
+
+    const reason = result.finishReason;
+
+    assertComplete(gen, reason, false);
+
+    return { result, reason };
+  }
+
+  const result = await fence.wait(
+    turn.managed.streamText(fence.ctx, target, args, {
       saveStreamDeltas: { chunking: "word", throttleMs: LIMITS.streamThrottleMs },
-      storageOptions: { saveMessages: "promptAndOutput" },
-    },
+      storageOptions,
+    }),
   );
 
   let streamError = false;
 
-  await result.consumeStream({
-    onError: () => {
-      streamError = true;
-    },
-  });
+  await fence.wait(
+    result.consumeStream({
+      onError: () => {
+        streamError = true;
+      },
+    }),
+  );
 
   const reason = await result.finishReason;
+
+  assertComplete(gen, reason, streamError);
+
+  return { result, reason };
+}
+
+/** A timeout or partial native response must never continue the logical turn. */
+function assertComplete(gen: Generation, reason: string, streamError: boolean) {
+  const { state, fence } = gen;
   const accepted = ["stop", "length", "tool-calls"];
 
   if (
@@ -166,8 +231,6 @@ async function streamGeneration(
     !accepted.includes(reason)
   )
     throw new Error("INCOMPLETE_GENERATION");
-
-  return { result, reason };
 }
 
 /** Resolve a stored model id; it must still be on the host allowlist. */

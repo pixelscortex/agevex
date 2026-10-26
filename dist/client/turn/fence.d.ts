@@ -8,6 +8,10 @@ export type TurnFence = {
     ctx: RunnerCtx;
     /** Throws `CANCELLED` (and aborts) once the turn no longer owns a running execution. */
     assertActive: () => Promise<void>;
+    /** Arm a phase deadline; aborting fences the whole slice and late writes. */
+    deadline: (ms: number) => () => void;
+    /** Race even uncooperative providers/tools against revocation. */
+    wait: <T>(work: PromiseLike<T>) => Promise<T>;
     /** Stop the deadline timer and the poll; called when generation ends. */
     stop: () => void;
 };

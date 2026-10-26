@@ -20,6 +20,7 @@ import { childLane, rootLane } from "../workflows/lanes.js";
 import { readyRows } from "./inbox.js";
 import { disarmRecovery } from "./recovery.js";
 import { disarmSlice } from "./boundaries.js";
+import { RUN_LIMITS } from "../run-settings.js";
 import { v } from "convex/values";
 
 /** Cancel the root thread owned by `subject` and all its live descendants.
@@ -47,7 +48,15 @@ export async function cancelRoot(
     ).filter((row): row is Doc<"assignments"> => row !== null),
   ];
 
-  for (const row of affected) await cancelAssignment(ctx, row);
+  const runIds = new Set<Id<"runs">>();
+
+  for (const row of affected) await cancelAssignment(ctx, row, runIds);
+
+  if (runIds.size > RUN_LIMITS.cancelBudgets) throw new Error("CANCEL_RUN_BUDGET");
+
+  // <=118 distinct runs *16 KiB <1.85 MiB, even with full settings maps.
+  // Deduplicate across assignments: every child belongs to one root budget.
+  for (const runId of runIds) await ctx.db.patch("runs", runId, { cancelled: true });
 
   for (const run of children) {
     await ctx.db.patch("subagentRuns", run._id, {
@@ -88,7 +97,11 @@ async function liveChildren(ctx: MutationCtx, root: Doc<"assignments">) {
 /** Fence and idle one assignment, then drop its ready work. `row` is the
  * pre-cancel snapshot: the staged continuation, pending generation, notes,
  * run and workflow it names are the ones cleaned up here. */
-async function cancelAssignment(ctx: MutationCtx, row: Doc<"assignments">) {
+async function cancelAssignment(
+  ctx: MutationCtx,
+  row: Doc<"assignments">,
+  runIds: Set<Id<"runs">>,
+) {
   await disarmSlice(ctx, row);
   await disarmRecovery(ctx, row);
 
@@ -97,22 +110,22 @@ async function cancelAssignment(ctx: MutationCtx, row: Doc<"assignments">) {
   await ctx.db.patch("assignments", row._id, cancelledState(row, approvalCleanup));
 
   // Only ready rows are read here. Raw passive bodies are cleared by one
-  // bounded job per assignment, preserving the 12,680 KiB cancel ceiling.
+  // bounded job per assignment, preserving the documented <15 MiB cancel ceiling.
   const inbox = await readyRows(ctx, row._id, row.limits.queueLength + 2);
 
   // A staged hook continuation is addressed directly, never included in a
   // backlog scan. <=16 assignments * (64 KiB text +1 KiB metadata) read
-  // for deletion adds <=1,040 KiB to the 12,680 KiB cancel budget: <14 MiB.
+  // for deletion adds <=1,040 KiB to the 13,656 KiB base budget: <15 MiB.
   if (row.hookContinue && row.inboxId) await ctx.db.delete("inbox", row.inboxId);
 
   await scheduleCleanup(ctx, row, approvalCleanup);
 
   for (const item of inbox) {
-    await ctx.db.patch("runs", item.runId, { cancelled: true });
+    runIds.add(item.runId);
     await ctx.db.delete("inbox", item._id);
   }
 
-  if (row.runId) await ctx.db.patch("runs", row.runId, { cancelled: true });
+  if (row.runId) runIds.add(row.runId);
 
   if (row.workflowId)
     await (row.childRunId ? childLane : rootLane).cancel(ctx, row.workflowId as WorkflowId);

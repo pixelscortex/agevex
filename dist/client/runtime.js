@@ -37,7 +37,7 @@ export function registerAgent(component, config) {
         sandboxComplete: (ctx, event) => sandboxComplete(rt, ctx, event),
         note: (ctx, args) => note(rt, ctx, args),
         /** The subject-authorized public queries and mutations the host exports. */
-        authorizedEndpoints: () => authorizedEndpoints(component, config),
+        authorizedEndpoints: () => authorizedEndpoints(component, config, rt.settings),
         /** The internal functions the host exports as `refs.runTurn` and `refs.coordinate`. */
         internalFunctions: () => {
             const coordinate = buildCoordinate(rt);

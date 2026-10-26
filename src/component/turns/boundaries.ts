@@ -11,6 +11,8 @@
  */
 import type { MutationCtx } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
+import { resolveRunSettings } from "../run-settings.js";
+import { finishTurn } from "./finish.js";
 import { settleRouting } from "../hooks/routing.js";
 import { sealGroups } from "../subagents/groups.js";
 import { cancelIfPending } from "./recovery.js";
@@ -90,6 +92,19 @@ export async function admitNextSlice(
   const run = row.runId ? await ctx.db.get("runs", row.runId) : null;
 
   if (!run || run.cancelled) return null;
+
+  const settings =
+    run.settings?.find((entry) => entry.agent === row.agent)?.settings ?? resolveRunSettings();
+
+  if ((row.modelSteps ?? 0) >= settings.stepsPerTurn) {
+    await finishTurn(ctx, {
+      assignmentId: row._id,
+      turnToken: args.executionId,
+      errorCode: "SLICE_LIMIT",
+    });
+
+    return null;
+  }
 
   // Exhausting delegation budget never prevents a final answer. Admission of
   // additional effects checks launches/hops transactionally in reserve.

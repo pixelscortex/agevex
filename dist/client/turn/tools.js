@@ -11,7 +11,9 @@ import { bindOnceTool } from "../once.js";
 import { scopedMeter } from "../slots.js";
 import { RESERVED_TOOL_NAMES } from "../tool-names.js";
 import { installCollaborationTools } from "./collaboration-tools.js";
+import { boundToolDeadlines } from "./deadlines.js";
 import { slotToolBags } from "./slots.js";
+import { assertBudget } from "./admission.js";
 /** Build the complete tool set for one generation. */
 export async function buildTurnTools(rt, gen) {
     const { turn, hc, backend } = gen;
@@ -34,10 +36,10 @@ export async function buildTurnTools(rt, gen) {
     for (const [name, declared] of Object.entries(tools)) {
         if (!declared.execute)
             continue; // Deferred/provider-owned effects execute outside this action.
-        tools[name] = withToolHooks(gen, name, declared);
+        tools[name] = withToolHooks(rt, gen, name, declared);
     }
     installCollaborationTools(rt, gen, tools, eligible);
-    return tools;
+    return boundToolDeadlines(gen, tools, () => assertBudget(rt, gen));
 }
 /**
  * Merge tool bags into one set. A name may appear once across all bags and may
@@ -61,7 +63,7 @@ function mergeSlotTools(...bags) {
  * input; `afterTool` may rewrite the output, including every value a streaming
  * tool yields. The tool receives an opaque per-call key and a per-call meter.
  */
-function withToolHooks(gen, name, declared) {
+function withToolHooks(rt, gen, name, declared) {
     const { turn, hc, hook, backend, fence } = gen;
     const { managed, facts } = turn;
     const execute = declared.execute;
@@ -73,6 +75,7 @@ function withToolHooks(gen, name, declared) {
                 : undefined);
             if (before?.block)
                 return { status: "denied", code: "HOOK_BLOCKED", reason: before.block };
+            // A host hook may itself report spend. Recheck before the actual effect.
             const actual = before && "input" in before ? before.input : input;
             const callKey = await opaqueKey("tool-call", facts.runId, facts.threadId, options.toolCallId);
             const tc = {

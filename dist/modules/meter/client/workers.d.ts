@@ -4,13 +4,13 @@ export declare function internalFunctions(meter: MeterContext): {
     meterLookup: import("convex/server").RegisteredAction<"internal", {
         key: string;
         provider: string;
+        requestId: string;
         attempt: number;
         jobs: {
             deliver?: string | undefined;
             lookup?: string | undefined;
             maxAttempts: number;
         };
-        requestId: string;
         until: number;
     }, Promise<null>>;
     meterDeliver: import("convex/server").RegisteredAction<"internal", {

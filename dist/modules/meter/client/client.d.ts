@@ -13,13 +13,13 @@ export declare function defineMeter(component: ComponentApi, options: MeterOptio
         meterLookup: import("convex/server").RegisteredAction<"internal", {
             key: string;
             provider: string;
+            requestId: string;
             attempt: number;
             jobs: {
                 deliver?: string | undefined;
                 lookup?: string | undefined;
                 maxAttempts: number;
             };
-            requestId: string;
             until: number;
         }, Promise<null>>;
         meterDeliver: import("convex/server").RegisteredAction<"internal", {
@@ -32,6 +32,10 @@ export declare function defineMeter(component: ComponentApi, options: MeterOptio
             };
         }, Promise<null>>;
     };
+    reconcile: (ctx: WriteCtx, args: {
+        subject: string;
+        runId: string;
+    }) => Promise<null>;
     prune: (ctx: WriteCtx, args: {
         before: number;
         limit?: number;
@@ -43,6 +47,27 @@ export declare function defineMeter(component: ComponentApi, options: MeterOptio
         key: string;
         subject: string;
     }) => Promise<null>;
+    usageView: (ctx: import("./types.js").ReadCtx, args: import("../../../client/slots.js").UsageViewArgs) => Promise<{
+        total: {
+            inputTokens: number | null;
+            outputTokens: number | null;
+            estimatedUsd: number;
+            settledUsd: number;
+            unknown: number;
+            reporting: "partial" | "available";
+        };
+        nodes: {
+            nodeId: string | null;
+            usage: {
+                inputTokens: number | null;
+                outputTokens: number | null;
+                estimatedUsd: number;
+                settledUsd: number;
+                unknown: number;
+                reporting: "partial" | "available";
+            };
+        }[];
+    }>;
     threadCost: (ctx: import("./types.js").ReadCtx, args: {
         threadId: string;
         cursors?: Partial<Record<"agent" | "model" | "provider", string>>;

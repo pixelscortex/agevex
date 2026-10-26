@@ -5,6 +5,8 @@
  * is mounted separately through agevex/meter/convex.config.
  */
 export { defineMeter, inline } from "./client.js";
+export { openRouterProvider } from "./openrouter.js";
+export { tokenEstimate } from "./pricing.js";
 export { BreakdownDisabledError } from "../shared/breakdowns.js";
 export { openRouterCost, observeProviderOutcome, usageHandlerFor } from "./helpers.js";
 export { polarSink, webhookSink, SinkDeliveryError } from "./sinks.js";

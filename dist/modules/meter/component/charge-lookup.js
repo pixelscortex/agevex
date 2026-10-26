@@ -27,39 +27,46 @@ export async function attachCharge(ctx, args) {
     if (row.providerRequestId) {
         if (row.providerRequestId !== args.requestId)
             throw new Error("REQUEST_ID_CONFLICT");
-        return await remember(ctx, row, args.operationKey);
     }
-    const until = args.jobs.lookup && !resolved(row) ? Date.now() + args.lookupMs : undefined;
-    await ctx.db.patch("charges", row._id, {
-        providerRequestId: args.requestId,
+    const next = await startLookup(ctx, row, args.requestId, args.lookupMs, args.jobs);
+    return await remember(ctx, next, args.operationKey);
+}
+/** Shared admission for attach and the run sweep. The stored window is never reset. */
+export async function startLookup(ctx, row, requestId, lookupMs, jobs) {
+    if (row.lookupUntil)
+        return row;
+    if (resolved(row)) {
+        await ctx.db.patch("charges", row._id, { providerRequestId: requestId });
+        return { ...row, providerRequestId: requestId };
+    }
+    const until = jobs.lookup ? Date.now() + lookupMs : undefined;
+    const patch = {
+        providerRequestId: requestId,
         lookupUntil: until,
         lookupAttempt: until ? 0 : undefined,
-    });
-    if (until && args.jobs.lookup) {
-        await pool.enqueueAction(ctx, actionHandle(args.jobs.lookup), {
+        reconciliation: until ? "running" : "unavailable",
+    };
+    await ctx.db.patch("charges", row._id, patch);
+    if (until && jobs.lookup) {
+        await pool.enqueueAction(ctx, actionHandle(jobs.lookup), {
             key: row.key,
             provider: row.provider,
-            requestId: args.requestId,
+            requestId,
             until,
             attempt: 0,
-            jobs: args.jobs,
+            jobs,
         }, { retry: false });
         // A separate one-shot deadline survives a crashed lookup worker. It does
         // no provider work, and reads the exact recorded id rather than scanning.
         await ctx.scheduler.runAt(until, internal.charges.expire, { id: row._id });
     }
-    return await remember(ctx, {
-        ...row,
-        providerRequestId: args.requestId,
-        lookupUntil: until,
-        lookupAttempt: until ? 0 : undefined,
-    }, args.operationKey);
+    return { ...row, ...patch };
 }
-/** Mark unresolved evidence unknown at its recorded one-shot deadline. */
+/** Finish unresolved evidence while retaining the last estimate at its recorded one-shot deadline. */
 export async function expireCharge(ctx, { id }) {
     const row = await ctx.db.get("charges", id);
-    if (row?.lookupUntil && Date.now() >= row.lookupUntil && !resolved(row))
-        await change(ctx, row, { status: "unknown" }, { maxAttempts: LIMITS.maxAttempts });
+    if (row?.lookupUntil && Date.now() >= row.lookupUntil && row.reconciliation !== "complete")
+        await change(ctx, row, { reconciliation: "exhausted" }, { maxAttempts: LIMITS.maxAttempts });
 }
 /** Retain late evidence but fence duplicate empty callbacks before scheduling another lookup. */
 export async function recordLookupResult(ctx, args) {
@@ -67,6 +74,7 @@ export async function recordLookupResult(ctx, args) {
     integer(args.attempt, LIMITS.maxAttempts, "ATTEMPT");
     const row = await find(ctx, args.key);
     if (!row ||
+        row.reconciliation === "complete" ||
         row.status === "settled" ||
         row.provider !== args.provider ||
         row.lookupUntil !== args.until ||
@@ -82,19 +90,19 @@ export async function recordLookupResult(ctx, args) {
         if (args.credits !== undefined)
             integer(args.credits, LIMITS.maxQuantity, "CREDITS");
         await change(ctx, row, {
-            status: over ? "unknown" : "settled",
+            status: over || row.reason === "THREAD_CAPACITY" ? "unknown" : "settled",
             source: "lookup",
             nanos: args.nanos,
             ...(args.credits === undefined ? {} : { credits: args.credits }),
             // THREAD_CAPACITY routes projections and must never change.
-            ...(over && row.reason !== "THREAD_CAPACITY" ? { reason: "OVER_CAP" } : {}),
+            ...(row.reason === "THREAD_CAPACITY" ? {} : over ? { reason: "OVER_CAP" } : {}),
         }, args.jobs);
     }
-    else if (row.status === "unknown" || args.attempt !== row.lookupAttempt) {
+    else if (row.reconciliation !== "running" || args.attempt !== row.lookupAttempt) {
         return null;
     }
     else if (Date.now() >= args.until) {
-        await change(ctx, row, { status: "unknown" }, args.jobs);
+        await change(ctx, row, { reconciliation: "exhausted" }, args.jobs);
     }
     else if (args.attempt + 1 < args.jobs.maxAttempts && args.jobs.lookup) {
         // Duplicate callbacks cannot admit another retry chain.
@@ -104,7 +112,10 @@ export async function recordLookupResult(ctx, args) {
         await pool.enqueueAction(ctx, actionHandle(args.jobs.lookup), { ...job, attempt: args.attempt + 1 }, { retry: false, runAt: Math.min(Date.now() + delay, args.until) });
     }
     else {
-        await ctx.db.patch("charges", row._id, { lookupAttempt: args.attempt + 1 });
+        await ctx.db.patch("charges", row._id, {
+            lookupAttempt: args.attempt + 1,
+            reconciliation: "exhausted",
+        });
     }
     return null;
 }

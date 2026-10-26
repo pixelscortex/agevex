@@ -1,6 +1,6 @@
 import { authorize, jobs, registered } from "./configuration.js";
 import { LIMITS, integer, text } from "../shared/limits.js";
-import { priceEstimate, priceInline } from "./pricing.js";
+import { priceEstimate, priceRecord, usageTokens } from "./pricing.js";
 import { chargeHandle } from "./handles.js";
 /** Cache attribution, preserving per-call authorization and the trusted core boundary. */
 function binding(meter, ctx, attributed, trusted) {
@@ -56,17 +56,22 @@ function recordWriter(bound, resolve) {
         const name = resolve(requested);
         const provider = registered(meter, name);
         text(args.key, "KEY", LIMITS.maxKeyBytes);
-        const priced = priceInline(provider, {
+        const priced = priceRecord(provider, {
             usage: args.usage,
             providerMetadata: args.providerMetadata,
+            model: attribution.model,
         });
+        if (args.requestId !== undefined)
+            text(args.requestId, "REQUEST_ID");
+        const tokens = usageTokens(args.usage);
         await ctx.runMutation(component.charges.create, {
             key: args.key,
             attribution,
             provider: name,
             breakdowns,
-            status: priced.reason ? "unknown" : "settled",
-            source: "inline",
+            status: priced.reason ? "unknown" : priced.source === "estimate" ? "estimate" : "settled",
+            ...(args.requestId !== undefined ? { requestId: args.requestId } : {}),
+            ...(tokens ? { tokens } : {}),
             ...priced,
             sinks: sinks.map((s) => s.name),
             maxThreadCharges: limits.maxThreadCharges,

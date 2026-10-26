@@ -18,6 +18,7 @@ import { finishTurn } from "./finish.js";
 import { generateTurn } from "./generation.js";
 import { completeRouting } from "./routing.js";
 import { flushTelemetry } from "./slots.js";
+import { reconcileUsage } from "./usage.js";
 
 /** Build the registered `runTurn` action for one registration. */
 export function buildRunTurn(rt: RuntimeContext): RegisteredAction<"internal", TurnArgs, null> {
@@ -44,6 +45,7 @@ async function runTurn(rt: RuntimeContext, ctx: RunnerCtx, args: TurnArgs): Prom
   try {
     return await executeTurn(rt, turn);
   } finally {
+    await reconcileUsage(rt, turn);
     await flushTelemetry(rt.config, turn.facts, turn.turnKey);
   }
 }

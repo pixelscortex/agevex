@@ -1,6 +1,7 @@
 import type { GenericActionCtx, GenericDataModel, GenericMutationCtx } from "convex/server";
 import type { ComponentApi } from "../../component/_generated/component.js";
 import { type Limits } from "../../component/limits.js";
+import { type SettingsSnapshot } from "../../component/run-settings.js";
 import type { AgentEvent, Registration } from "../types.js";
 import { type Graph } from "./graph.js";
 /** Mutation context the coordinator runs with; also what native saves accept. */
@@ -14,6 +15,7 @@ export type RuntimeContext = {
     /** Host limits merged over `LIMITS` and validated. */
     limits: Limits;
     graph: Graph;
+    settings: SettingsSnapshot;
     /** Stable index per agent name (sorted), used by per-agent model routing. */
     agentIndexes: Map<string, number>;
     /** Whether any agent has side agents, so native saves must be captured for review deltas. */

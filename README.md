@@ -24,6 +24,40 @@ types, the Convex lint gate and docs types. `bun run fmt` applies Oxfmt;
 `bun run test` runs the offline suite with two workers and no build.
 `bun run test:live` uses the opt-in provider keys in the main checkout.
 
+## Run policy
+
+Set `run` on each `new Agent(native, options)`:
+`{ mode: "generate", maxOutputTokens: 2048, modelTimeoutMs: 45_000, toolTimeoutMs: 15_000, stepsPerTurn: 6 }`.
+Defaults are streaming, 4,096 tokens, separate 90-second model/tool deadlines,
+and 16 steps (one model call per action). Bounds are 1–32,768 tokens,
+1,000–300,000 ms per deadline and 1–64 steps. The combined watchdog budget
+`modelTimeoutMs + 16 * toolTimeoutMs + 60_000` must fit 30 minutes.
+Native generate saves messages, usage, tools and approvals without deltas.
+Run `runTurn` in the default Convex runtime, never a `"use node"` module
+(the Node action limit is ten minutes). 32k output tokens may require a longer
+model timeout. The client slice has a five-minute cap and the server watchdog
+allows another 30 seconds for clean timeout finalization.
+At most 16 new model tool calls execute serially per slice; approval resumes
+do not consume that allowance; timeouts fence late managed writes
+and never retry unknown effects. Settings are fixed at request acceptance and
+shared by children; registration changes affect new runs.
+
+Existing registration `limits.rootLane / childLane` default to 2 / 4,
+maximum 4 / 4 (8 total slots). All registrations sharing a mount must agree;
+sleeping workflows use no slot. See
+[the runtime contract](docs/site/content/docs/concepts/runtime.mdx).
+
+## Usage and budgets
+
+Optional `agevex/meter` records each saved model step and app-reported tool cost
+while a run works. `openRouterProvider` reconciles exact generation ids on those
+same charges; `Provider.lookup` supports other billing adapters. Configure
+`Provider.estimate` or `tokenEstimate` for costs unavailable inline. Its bounded
+`usageView` reads exclusive node and run totals from existing aggregates.
+`budgetSlot` stops the next model/tool boundary on observed spend; in-flight work
+may overshoot. No credit reservations or resumable pause are added. See
+[meter wiring](src/modules/meter/README.md).
+
 ## Optional sandboxes
 
 `agevex/sandbox` binds a provider sandbox to trusted thread, run or subject
