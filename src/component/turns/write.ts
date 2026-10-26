@@ -89,7 +89,12 @@ export async function fencedWrite(ctx: MutationCtx, args: WriteArgs): Promise<un
   if (
     args.nativeMessages &&
     (countPauseRequests(args.args.messages, deferredTools) > LIMITS.approvalsPerPause ||
-      oversizedDecisionInput(args.args.messages, deferredTools))
+      oversizedDecisionInput(
+        args.args.messages,
+        deferredTools,
+        { threadId: row.threadId, agent: row.agent },
+        args.askUserTools,
+      ))
   )
     return rejectApprovalOverflow(ctx, row);
 

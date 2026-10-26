@@ -2,17 +2,15 @@
 import { ConvexError } from "convex/values";
 import { DECISION_LIMITS, decisionBytes } from "./decisions.js";
 
-/** Drop optional undefined fields/items, preserving invalid values for assertJson
- * to reject. Never JSON.stringify first: it hides NaN, Dates and other non-JSON
+/** Drop optional undefined fields; map undefined array items to null (as JSON
+ * does) so indices are kept. Preserve invalid values for assertJson to reject. Never JSON.stringify first: it hides NaN, Dates and other non-JSON
  * values. Bound recursion before walking callback output (including cycles).
  */
 export function definedAskValue(value: unknown, depth = 0): unknown {
   if (depth > DECISION_LIMITS.valueDepth) throw new ConvexError({ code: "INVALID_VALUE" });
 
   if (Array.isArray(value))
-    return value
-      .filter((item) => item !== undefined)
-      .map((item) => definedAskValue(item, depth + 1));
+    return value.map((item) => (item === undefined ? null : definedAskValue(item, depth + 1)));
 
   if (value && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype)
     return Object.fromEntries(

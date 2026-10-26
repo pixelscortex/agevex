@@ -79,11 +79,20 @@ async function prepareAsk(tool: Tool, input: unknown) {
   try {
     const configured = askUserMarker(tool)?.answerSchema;
 
-    const answerSchema = definedAskValue(
+    const derived =
       typeof configured === "function"
         ? configured(JSON.parse(JSON.stringify(validated)))
-        : configured,
-    ) as JsonSchema | undefined;
+        : configured;
+
+    // Derivation is synchronous. A returned Promise is never awaited, so swallow
+    // its eventual rejection (no unhandled rejection) and fail closed below.
+    if (typeof (derived as { then?: unknown } | undefined)?.then === "function") {
+      (derived as unknown as PromiseLike<unknown>).then(undefined, () => undefined);
+
+      return { error: "INVALID_FORM_SCHEMA" };
+    }
+
+    const answerSchema = definedAskValue(derived) as JsonSchema | undefined;
 
     if (typeof configured === "function" || answerSchema !== undefined)
       assertFormSchema(answerSchema!);

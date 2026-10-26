@@ -8,6 +8,7 @@ import { assertFormSchema, DECISION_LIMITS, type JsonSchema } from "../../src/sh
 import { main, helper } from "./fixture/host.js";
 import { setup, api, state, child } from "./setup.js";
 import { requireReceipt } from "../receipt.js";
+import { definedAskValue } from "../../src/shared/ask-values.js";
 
 const inputSchema = z.strictObject({
   question: z.string().trim(),
@@ -360,6 +361,33 @@ it("an ask exceeding the pending item budget returns ASK_TOO_LARGE and the model
   expect(JSON.stringify(state.calls[1].prompt)).toContain("ASK_TOO_LARGE");
 });
 
+it("an answerSchema callback returning a Promise fails closed without an unhandled rejection", async () => {
+  const t = setup();
+  const unhandled = vi.fn();
+
+  process.on("unhandledRejection", unhandled);
+
+  main.declaredTools.ask_human = createAskUserTool({
+    inputSchema,
+    // A plain function returning a Promise passes the factory's native-async guard.
+    answerSchema: (() => Promise.reject(new Error("async derivation failed"))) as unknown as (
+      value: Input,
+    ) => JsonSchema,
+  });
+
+  state.steps.push([call("async-form", input)]);
+  const { pending } = await open(t);
+
+  vi.useRealTimers();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  vi.useFakeTimers();
+  process.off("unhandledRejection", unhandled);
+
+  expect(await pending()).toEqual([]);
+  expect(JSON.stringify(state.calls[1].prompt)).toContain("INVALID_FORM_SCHEMA");
+  expect(unhandled).not.toHaveBeenCalled();
+});
+
 it.each(["café", "$ref", "q\n1", "x".repeat(2000)])(
   "invalid Convex property name %s denies a derived form and the paid turn continues",
   async (id) => {
@@ -482,4 +510,10 @@ it("async answerSchema callbacks fail at registration with a synchronous callbac
       answerSchema: (async () => ({ type: "string" })) as unknown as () => JsonSchema,
     }),
   ).toThrow("answerSchema must be synchronous");
+});
+
+it("normalizing an ask value drops undefined fields and keeps undefined array items as null at their index", () => {
+  expect(definedAskValue({ a: undefined, b: [1, undefined, { c: undefined, d: 2 }] })).toEqual({
+    b: [1, null, { d: 2 }],
+  });
 });

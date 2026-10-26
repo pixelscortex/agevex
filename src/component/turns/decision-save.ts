@@ -51,6 +51,10 @@ export async function prepareDecisions(
       );
 
       const error =
+        (part.toolCallId.length > DECISION_LIMITS.identifierChars ||
+        part.toolName.length > DECISION_LIMITS.identifierChars
+          ? "ASK_TOO_LARGE"
+          : undefined) ??
         checked?.error ??
         checkPreparedAsk(checked) ??
         (oversizedAskItem({
@@ -133,8 +137,18 @@ function denyAsk(
 /** Only pending input is bounded. Reasoning/text stays in native Agent storage.
  * The caller commits APPROVAL_LIMIT before native save rather than rolling back
  * a paid model step with an untyped generation failure.
+ *
+ * Every unresulted deferred call must also be answerable: the pending read marks
+ * an item truncated (unanswerable) when its identifiers or full projection exceed
+ * the item bound, so refuse here what could never be answered once saved. Factory
+ * asks are checked on their normalized form in `prepareDecisions` instead.
  */
-export function oversizedDecisionInput(messages: NativeSave["messages"], deferred: Set<string>) {
+export function oversizedDecisionInput(
+  messages: NativeSave["messages"],
+  deferred: Set<string>,
+  owner: { threadId: string; agent: string },
+  asks: Record<string, PreparedAskUser> = {},
+) {
   const resulted = new Set(
     messages.flatMap(({ message }) =>
       message?.role === "tool"
@@ -152,12 +166,45 @@ export function oversizedDecisionInput(messages: NativeSave["messages"], deferre
       ),
     );
 
-    return message.content.some(
-      (part) =>
-        part.type === "tool-call" &&
-        (!deferred.has(part.toolName) || part.providerExecuted || !resulted.has(part.toolCallId)) &&
-        (approvals.has(part.toolCallId) || deferred.has(part.toolName)) &&
-        decisionBytes(part.input) > DECISION_LIMITS.valueBytes,
-    );
+    return message.content.some((part) => {
+      if (part.type !== "tool-call") return false;
+
+      const pending =
+        deferred.has(part.toolName) && !part.providerExecuted && !resulted.has(part.toolCallId);
+
+      return (
+        ((!deferred.has(part.toolName) ||
+          part.providerExecuted ||
+          !resulted.has(part.toolCallId)) &&
+          (approvals.has(part.toolCallId) || deferred.has(part.toolName)) &&
+          decisionBytes(part.input) > DECISION_LIMITS.valueBytes) ||
+        (pending && unanswerablePending(part, owner, asks))
+      );
+    });
+  });
+}
+
+/** A pending read would project this deferred call as a truncated stub. */
+function unanswerablePending(
+  part: { toolCallId: string; toolName: string; input?: unknown },
+  owner: { threadId: string; agent: string },
+  asks: Record<string, PreparedAskUser>,
+) {
+  if (
+    part.toolCallId.length > DECISION_LIMITS.identifierChars ||
+    part.toolName.length > DECISION_LIMITS.identifierChars
+  )
+    return true;
+
+  if (Object.prototype.hasOwnProperty.call(asks, part.toolName)) return false;
+
+  return oversizedAskItem({
+    id: part.toolCallId,
+    toolCallId: part.toolCallId,
+    tool: part.toolName,
+    input: part.input ?? null,
+    providerExecuted: false,
+    ...owner,
+    kind: "ask",
   });
 }
