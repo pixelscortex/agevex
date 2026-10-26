@@ -1,0 +1,25 @@
+docs/site/content/docs/modules/extract.mdx
+  s_d863bd773ba186::t_425749b32cc301 123
+docs/site/content/docs/modules/meter.mdx
+  s_d863bd773ba186::t_623df8bda0f219 192,199,201
+docs/site/content/docs/modules/sandbox.mdx
+  s_d863bd773ba186::t_8a67dd6f990778 154,169
+docs/site/content/docs/modules/tools.mdx
+  s_d863bd773ba186::t_f8e3e9df06f57b 116-122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "851bacc451394685da78aa511f607bc67770d8fa",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
