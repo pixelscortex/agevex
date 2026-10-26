@@ -1,0 +1,23 @@
+docs/site/content/docs/concepts/limits.mdx
+  s_d863bd773ba186::t_c36a1d6114599b 82-92
+docs/site/content/docs/concepts/runtime.mdx
+  s_d863bd773ba186::t_81522984e1e71b 166-175
+src/client/README.md
+  s_d863bd773ba186::t_d357e90db4905d 71-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "22c759ca8f9ce1cfa975fb1567347211f45db737",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
