@@ -1,0 +1,264 @@
+README.md
+  h_51b7a781d7f2c3 565-597,612,764,767-768,770-772,926-942
+dist/client/agent.d.ts
+  h_51b7a781d7f2c3 29-30,46-47
+dist/client/agent.js
+  h_51b7a781d7f2c3 20-21,38
+dist/client/endpoints/access.d.ts
+  h_51b7a781d7f2c3 16
+dist/client/endpoints/access.js
+  h_51b7a781d7f2c3 8,46,58,65,81,84
+dist/client/endpoints/controls.d.ts
+  h_51b7a781d7f2c3 6-14,21
+dist/client/endpoints/controls.js
+  h_51b7a781d7f2c3 9-10,18,27-28,37,45
+dist/client/endpoints/decisions.d.ts
+  h_51b7a781d7f2c3 1-19
+dist/client/endpoints/decisions.js
+  h_51b7a781d7f2c3 1-50
+dist/client/endpoints/index.d.ts
+  h_51b7a781d7f2c3 11,115-123,128-144,146,231-232
+dist/client/endpoints/index.js
+  h_51b7a781d7f2c3 11,27
+dist/client/endpoints/pending.d.ts
+  h_51b7a781d7f2c3 1-19
+dist/client/endpoints/pending.js
+  h_51b7a781d7f2c3 1-60
+dist/client/endpoints/reads.d.ts
+  h_51b7a781d7f2c3 103-104
+dist/client/endpoints/text.d.ts
+  h_51b7a781d7f2c3 7
+dist/client/index.d.ts
+  h_51b7a781d7f2c3 16
+dist/client/index.js
+  h_51b7a781d7f2c3 11
+dist/client/keys.js
+  h_51b7a781d7f2c3 14
+dist/client/once.d.ts
+  h_51b7a781d7f2c3 23-24,32-34
+dist/client/once.js
+  h_51b7a781d7f2c3 14-17,27
+dist/client/registration/context.js
+  h_51b7a781d7f2c3 26-29
+dist/client/registration/graph.d.ts
+  h_51b7a781d7f2c3 26,28-29
+dist/client/registration/graph.js
+  h_51b7a781d7f2c3 41,43-44,53,79,82
+dist/client/runtime.d.ts
+  h_51b7a781d7f2c3 34,138-146,151-167,169,254-255
+dist/client/turn/fence.js
+  h_51b7a781d7f2c3 17,190
+dist/client/turn/tools.js
+  h_51b7a781d7f2c3 9,18,43-49,82-91,99-100,124-125
+dist/client/types.d.ts
+  h_51b7a781d7f2c3 101,265
+dist/component/_generated/api.d.ts
+  h_51b7a781d7f2c3 26,54
+dist/component/_generated/component.d.ts
+  h_51b7a781d7f2c3 24,53
+dist/component/cancellation/cleanup.d.ts
+  h_51b7a781d7f2c3 56
+dist/component/cancellation/cleanup.js
+  h_51b7a781d7f2c3 103
+dist/component/files/attachments.d.ts
+  h_51b7a781d7f2c3 21-33,49,57-69,85,121-122,129-130
+dist/component/hooks/notes.d.ts
+  h_51b7a781d7f2c3 530
+dist/component/hooks/origins.d.ts
+  h_51b7a781d7f2c3 30
+dist/component/hooks/reviews.d.ts
+  h_51b7a781d7f2c3 7,22-23
+dist/component/hooks/routing.d.ts
+  h_51b7a781d7f2c3 56
+dist/component/hooks/state.d.ts
+  h_51b7a781d7f2c3 36,41
+dist/component/receipts/effects.d.ts
+  h_51b7a781d7f2c3 97,144,158
+dist/component/receipts/records.d.ts
+  h_51b7a781d7f2c3 8-9,16-17
+dist/component/receipts/records.js
+  h_51b7a781d7f2c3 3-4
+dist/component/run-settings.d.ts
+  h_51b7a781d7f2c3 37,44,50,57,67,77,84,90-91
+dist/component/run-settings.js
+  h_51b7a781d7f2c3 25,39,48-49
+dist/component/schema.d.ts
+  h_51b7a781d7f2c3 12-13,18,22-23,28-29,33,37-38,46,49-50,58,60,63-64,77,81-82,109,113-114,120,127-128,134,138,158-159,164-165,172-173,220,282,322,325,350-351,353-354,358,380,515,520,527,626,629,642,645,651,654,661,665-666,671,688,708,716,738,748,758,765,771-772,783-793,805,811-840,862,874,887,893,897-898,906,917,957-958,960-961,966-967
+dist/component/schema.js
+  h_51b7a781d7f2c3 7,18,196-198,211-212,282-283,286-289
+dist/component/subagents/history.d.ts
+  h_51b7a781d7f2c3 12,19-20,41
+dist/component/subagents/launch.d.ts
+  h_51b7a781d7f2c3 135,151-152,206
+dist/component/subagents/messages.d.ts
+  h_51b7a781d7f2c3 39,101,141,144,169-170,172-173,177,197,259,299,302,327-328,330-331,335,350,356,360-361,369,380,396,458,498,501,526-527,529-530,534,554,616,656,659,684-685,687-688,692,704,774,797,805
+dist/component/subagents/runs.d.ts
+  h_51b7a781d7f2c3 25,31,35-36,44,55,64-65,100,106,110-111,119,130
+dist/component/subagents/settle.d.ts
+  h_51b7a781d7f2c3 62,77
+dist/component/subagents/views.d.ts
+  h_51b7a781d7f2c3 85-86
+dist/component/text/state.d.ts
+  h_51b7a781d7f2c3 12,54,122
+dist/component/turns/approvals.d.ts
+  h_51b7a781d7f2c3 3,22-23,41,51,54,56-64,72,74
+dist/component/turns/approvals.js
+  h_51b7a781d7f2c3 6-7,22-25,39,51,62,66-70,75-81,102,105,119-121,125,128,160,178-179,192,197-224
+dist/component/turns/assignments.d.ts
+  h_51b7a781d7f2c3 32,94,134,137,162-163,165-166,170
+dist/component/turns/cancel.d.ts
+  h_51b7a781d7f2c3 16
+dist/component/turns/claim.d.ts
+  h_51b7a781d7f2c3 26,35-36,40,48,59,66,72,83,93,108,113
+dist/component/turns/decision-proposals.d.ts
+  h_51b7a781d7f2c3 1-30
+dist/component/turns/decision-proposals.js
+  h_51b7a781d7f2c3 1-45
+dist/component/turns/decision-reads.d.ts
+  h_51b7a781d7f2c3 1-82
+dist/component/turns/decision-reads.js
+  h_51b7a781d7f2c3 1-117
+dist/component/turns/decision-save.d.ts
+  h_51b7a781d7f2c3 1-20
+dist/component/turns/decision-save.js
+  h_51b7a781d7f2c3 1-74
+dist/component/turns/failures.d.ts
+  h_51b7a781d7f2c3 4,11,16
+dist/component/turns/inbox.d.ts
+  h_51b7a781d7f2c3 33,53
+dist/component/turns/pause.d.ts
+  h_51b7a781d7f2c3 16,37-39
+dist/component/turns/pause.js
+  h_51b7a781d7f2c3 1,7,57-59,64-66,68-69,72,85-87,91,102-103,122,126,143,145
+dist/component/turns/send.d.ts
+  h_51b7a781d7f2c3 74,84,94,101,107-108,185,208,250-251,276
+dist/component/turns/slices.d.ts
+  h_51b7a781d7f2c3 20,25,34-35,39,47,59,89-91,100,108,114,119
+dist/component/turns/write.d.ts
+  h_51b7a781d7f2c3 13-19
+dist/component/turns/write.js
+  h_51b7a781d7f2c3 4,21,39-40,42-43,137
+dist/component/workflows/worker.d.ts
+  h_51b7a781d7f2c3 4
+dist/modules/meter/component/charge-contracts.d.ts
+  h_51b7a781d7f2c3 65,103
+dist/modules/meter/component/schema.d.ts
+  h_51b7a781d7f2c3 19,578,607-608,628,657,732,739
+dist/modules/meter/test.d.ts
+  h_51b7a781d7f2c3 430,459-460,480,509,577,584
+dist/modules/sandbox/component/schema.d.ts
+  h_51b7a781d7f2c3 38,70
+dist/modules/sandbox/component/state.d.ts
+  h_51b7a781d7f2c3 120,148
+dist/modules/sandbox/test.d.ts
+  h_51b7a781d7f2c3 49,81
+dist/modules/tools/registry/ask-user/askUser.d.ts
+  h_51b7a781d7f2c3 1-6,15-17,19-21,23-27
+dist/modules/tools/registry/ask-user/askUser.js
+  h_51b7a781d7f2c3 6,13-15,17-21,23
+dist/modules/tools/registry/continue-budget/continueBudget.d.ts
+  h_51b7a781d7f2c3 26-28
+dist/modules/tools/registry/continue-budget/continueBudget.js
+  h_51b7a781d7f2c3 30-32,48
+dist/modules/tools/registry/continue-budget/continueBudgetSchema.d.ts
+  h_51b7a781d7f2c3 23,32,41,50
+dist/modules/tools/registry/continue-budget/continueBudgetState.d.ts
+  h_51b7a781d7f2c3 3,16,31,47
+dist/modules/tools/registry/continue-budget/continueBudgetState.js
+  h_51b7a781d7f2c3 32
+dist/modules/tools/registry/goals/goalsSchema.d.ts
+  h_51b7a781d7f2c3 17,23,30,36
+dist/modules/tools/registry/goals/goalsState.d.ts
+  h_51b7a781d7f2c3 4,11
+dist/modules/tools/registry/todo/todoSchema.d.ts
+  h_51b7a781d7f2c3 15,37,44,66
+dist/modules/tools/registry/todo/todoState.d.ts
+  h_51b7a781d7f2c3 4,15
+dist/shared/decisions.d.ts
+  h_51b7a781d7f2c3 1-70
+dist/shared/decisions.js
+  h_51b7a781d7f2c3 1-171
+dist/shared/tool-markers.d.ts
+  h_51b7a781d7f2c3 1-9
+dist/shared/tool-markers.js
+  h_51b7a781d7f2c3 1-13
+dist/test.d.ts
+  h_51b7a781d7f2c3 21,83,123,126,151-152,154-155,159,181,316,321,328,427,430,443,446,452,455,462,466-467,472,489,509,517,539,549,559,566,572-573,584-594,606,612-641,663,675,688,694,698-699,707,718,758-759,761-762,767-768
+dist/testing/bridge.d.ts
+  h_51b7a781d7f2c3 79
+src/client/agent.ts
+  h_51b7a781d7f2c3 41-42,73-74,92
+src/client/endpoints/access.ts
+  h_51b7a781d7f2c3 10,29,84,102,116,135,139
+src/client/endpoints/controls.ts
+  h_51b7a781d7f2c3 10-11,20,30-31,41,50
+src/client/endpoints/decisions.ts
+  h_51b7a781d7f2c3 1-68
+src/client/endpoints/index.ts
+  h_51b7a781d7f2c3 15,45
+src/client/endpoints/pending.ts
+  h_51b7a781d7f2c3 1-74
+src/client/index.ts
+  h_51b7a781d7f2c3 63-64
+src/client/keys.ts
+  h_51b7a781d7f2c3 17
+src/client/once.ts
+  h_51b7a781d7f2c3 36-40,48,65
+src/client/registration/context.ts
+  h_51b7a781d7f2c3 56-59
+src/client/registration/graph.ts
+  h_51b7a781d7f2c3 58,60-61,72,105
+src/client/turn/fence.ts
+  h_51b7a781d7f2c3 18,253
+src/client/turn/tools.ts
+  h_51b7a781d7f2c3 11,22,62-69,109-120,131-134,165-167,182-190
+src/client/types.ts
+  h_51b7a781d7f2c3 101,292
+src/component/_generated/api.ts
+  h_51b7a781d7f2c3 28,63
+src/component/_generated/component.ts
+  h_51b7a781d7f2c3 25,66
+src/component/cancellation/cleanup.ts
+  h_51b7a781d7f2c3 173-174
+src/component/receipts/records.ts
+  h_51b7a781d7f2c3 8-9,19-20
+src/component/run-settings.ts
+  h_51b7a781d7f2c3 30,51,65-67
+src/component/schema.ts
+  h_51b7a781d7f2c3 7,20,289-291,304-305,385-386,391-393
+src/component/turns/approvals.ts
+  h_51b7a781d7f2c3 20-28,47-50,72-73,89-90,103,121-122,129-133,142-148,172,178,183-189,211-214,219,224-225,252,268,288-289,303,308-349
+src/component/turns/decision-proposals.ts
+  h_51b7a781d7f2c3 1-62
+src/component/turns/decision-reads.ts
+  h_51b7a781d7f2c3 1-165
+src/component/turns/decision-save.ts
+  h_51b7a781d7f2c3 1-124
+src/component/turns/pause.ts
+  h_51b7a781d7f2c3 14,22-23,114-116,122-129,132-133,138-143,158-163,167,182-189,221,226,250,252
+src/component/turns/write.ts
+  h_51b7a781d7f2c3 22,45,73-74,77-78,205
+src/modules/tools/README.md
+  h_51b7a781d7f2c3 16-19,21
+src/modules/tools/registry/ask-user/askUser.ts
+  h_51b7a781d7f2c3 6,15-17,19-28
+src/modules/tools/registry/continue-budget/continueBudget.ts
+  h_51b7a781d7f2c3 32-34,52-53
+src/modules/tools/registry/continue-budget/continueBudgetState.ts
+  h_51b7a781d7f2c3 40
+src/shared/decisions.ts
+  h_51b7a781d7f2c3 1-255
+src/shared/tool-markers.ts
+  h_51b7a781d7f2c3 1-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "426ea0d823767134a1cb8fa9fefcfa735b6d2bdb",
+  "prompts": {},
+  "humans": {
+    "h_51b7a781d7f2c3": {
+      "author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
