@@ -136,7 +136,17 @@ export const fillHookMetadata = internalMutationGeneric({
   args: { assignmentId: v.id("assignments") },
   returns: v.null(),
   handler: async (ctx, { assignmentId }) => {
+    const row = await ctx.db.get("assignments", assignmentId);
+
     await ctx.db.patch("assignments", assignmentId, {
+      turnReport: {
+        promptMessageId: "p".repeat(LIMITS.messageIdBytes),
+        messageIds: Array.from({ length: RUN_LIMITS.stepsPerTurn.max - 1 }, (_, i) =>
+          String(i).padStart(LIMITS.messageIdBytes, "m"),
+        ),
+        maxMessages: RUN_LIMITS.stepsPerTurn.max,
+        resumeInboxId: row?.inboxId,
+      },
       contextMessages: Array.from({ length: LIMITS.contextMessages }, (_, order) => ({
         id: crypto.randomUUID(),
         order,

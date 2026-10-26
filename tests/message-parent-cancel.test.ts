@@ -1,9 +1,11 @@
 // @vitest-environment edge-runtime
 /** Cancel must remove every row in the enlarged, conservative ready-work envelope. */
+import { getConvexSize } from "convex/values";
 import { componentsGeneric, type FunctionReference } from "convex/server";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
-import { HOST_LIMITS, readyRowLimit } from "../src/component/limits.js";
+import { HOST_LIMITS, LIMITS, readyRowLimit } from "../src/component/limits.js";
 import { v2, text } from "./delegation-v2.host.js";
+import { fillNativeHeads } from "./native-heads.fixture.js";
 import {
   setup,
   open,
@@ -79,7 +81,15 @@ it("cancel clears 2,432 ready rows and 168 maximum-size budgets across sixteen a
         turnToken: row.turnToken!,
       });
 
+    await fillNativeHeads(t, row.threadId, row.promptMessageId!);
     await t.mutation(fillCancelQueue, { assignmentId });
+    const filled = await t.query(rawAssignment, { assignmentId });
+
+    expect(filled?.turnReport?.messageIds).toHaveLength(HOST_LIMITS.slicesPerTurn.max);
+    expect(getConvexSize(filled)).toBe(LIMITS.assignmentBytes);
+    expect(getConvexSize(filled?.turnReport)).toBeLessThanOrEqual(LIMITS.turnReportBytes);
+    expect(filled?.hookContinue).toBe(true);
+    expect(filled?.notesPending).toBe(HOST_LIMITS.notesPending.max);
   }
 
   const queuedWork = componentsGeneric().agevex.agevexTest
@@ -87,12 +97,12 @@ it("cancel clears 2,432 ready rows and 168 maximum-size budgets across sixteen a
     "query",
     "internal",
     Record<string, never>,
-    { inbox: unknown[]; runs: { cancelled: boolean }[] }
+    { inbox: { passive?: boolean }[]; runs: { cancelled: boolean; routingAgents: bigint }[] }
   >;
 
   const before = await t.query(queuedWork, {});
 
-  expect(before.inbox).toHaveLength(
+  expect(before.inbox.filter((row) => row.passive !== true)).toHaveLength(
     ids.length *
       readyRowLimit({
         queueLength: HOST_LIMITS.queueLength.max,
@@ -108,14 +118,20 @@ it("cancel clears 2,432 ready rows and 168 maximum-size budgets across sixteen a
     return ctx.meta.getTransactionMetrics();
   });
 
-  expect(metrics.bytesRead.used).toBeLessThan(16 << 20);
-  expect(metrics.bytesWritten.used).toBeLessThan(16 << 20);
+  expect(metrics.bytesRead.used).toBeLessThanOrEqual(15_820 << 10);
+  expect(metrics.bytesWritten.used).toBeLessThanOrEqual(12_206 << 10);
+  // Regression tripwires well inside the documented limits.ts ceilings:
+  // measured 10,642 KiB read / 3,032 KiB written, plus 25%.
+  expect(metrics.bytesRead.used).toBeLessThan(13_305 << 10);
+  expect(metrics.bytesWritten.used).toBeLessThan(3_790 << 10);
   expect(metrics.documentsRead.used).toBeLessThan(32_000);
   expect(metrics.documentsWritten.used).toBeLessThan(16_000);
   const after = await t.query(queuedWork, {});
 
-  expect(after.inbox).toEqual([]);
+  expect(after.inbox.filter((row) => row.passive !== true)).toEqual([]);
+  expect(after.inbox).toHaveLength(ids.length * HOST_LIMITS.notesPending.max);
   expect(after.runs.every((run) => run.cancelled)).toBe(true);
+  expect(after.runs.every((run) => run.routingAgents === 0n)).toBe(true);
 
   for (const assignmentId of ids) {
     const row = await t.query(rawAssignment, { assignmentId });
@@ -126,6 +142,10 @@ it("cancel clears 2,432 ready rows and 168 maximum-size budgets across sixteen a
     });
 
     expect(row?.routingAgentIndex).toBeUndefined();
+
+    expect(
+      await t.mutation(components.agevex.subagents.deliver.releaseGroups, { assignmentId }),
+    ).toBe(false);
   }
 
   held.release();

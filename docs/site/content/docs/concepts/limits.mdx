@@ -36,7 +36,7 @@ own validated defaults, hard ceilings and combined action budget.
 | `filesPerMessage`        | 8             | 8             |
 | `factBytes`              | 128           | 128           |
 | `fileIdLength`           | 200           | 200           |
-| `functionHandleLength`   | 1,024         | 1,024         |
+| `functionHandleBytes`    | 256           | 256           |
 | `sandboxExitCode`        | 2,147,483,647 | 2,147,483,647 |
 | `fileMetadataBytes`      | 4 KiB         | 4 KiB         |
 | `taskRepairs`            | 1             | 1             |
@@ -46,10 +46,11 @@ own validated defaults, hard ceilings and combined action budget.
 | `cadence`                | 1,000,000     | 1,000,000     |
 | `minuteMs`               | 60,000        | 60,000        |
 | `contextMessages`        | 24            | 24            |
-| `assignmentBytes`        | 32 KiB        | 32 KiB        |
+| `assignmentBytes`        | 34 KiB        | 34 KiB        |
 | `contextBytes`           | 48 KiB        | 48 KiB        |
 | `contextReadBytes`       | 2 MiB         | 2 MiB         |
 | `groupLength`            | 200           | 200           |
+| `nameLength`             | 200           | 200           |
 | `turnsPerLoop`           | 50            | 50            |
 | `workflowVersion`        | 1             | 1             |
 | `cancelPollMs`           | 1 second      | 1 second      |
@@ -77,6 +78,17 @@ own validated defaults, hard ceilings and combined action budget.
 | `modelOverridesBytes`    | 512           | 512           |
 | `modelIdLength`          | 200           | 200           |
 | `modelAllowlist`         | 100           | 100           |
+
+Subjects and agent names are at most `nameLength` UTF-16 units, and every
+stored function handle at most `functionHandleBytes` UTF-8 bytes (real Convex
+handles are about 60–100). Sends, delegations and native writes beyond them
+fail with `INVALID_SUBJECT`, `INVALID_AGENT` or `INVALID_FUNCTION_HANDLE`
+before anything is saved. With every field at its cap, an assignment stays
+under its 34 KiB envelope.
+
+`slicesPerTurn` and `stepsPerTurn` also bound approval resumes, which keep the
+turn's step count; see
+[approvals and the step allowance](/docs/concepts/runtime#approvals-and-the-step-allowance).
 
 Policy rows can be lowered even when their default equals their maximum;
 non-policy rows are fixed. `PLATFORM` adds

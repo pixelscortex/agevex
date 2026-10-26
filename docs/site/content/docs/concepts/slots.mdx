@@ -16,6 +16,14 @@ a native `createTool` also gets the facts on its injected context and
 128 UTF-8 bytes; `nativeToolCallId` preserves the provider id, while `signal`
 and `meter` are objects.
 
+`promptMessageId?: string` is the trusted native request anchor returned by
+the component's turn claim, never model input. For a root request it identifies
+the saved user message; for a child it identifies the saved task message. Tool-step
+slices and approval resumes retain that request id. An `afterTurn` continuation
+starts a new reporting turn and uses its own staged prompt. Side reviews use
+their own task message. Contexts without a
+managed prompt may omit it. Hooks receive it too, through `HookContext`.
+
 ```ts title="convex/budget.ts"
 import type { BudgetSlot } from "agevex";
 

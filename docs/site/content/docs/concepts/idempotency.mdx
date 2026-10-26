@@ -45,6 +45,13 @@ trusted `ToolContext`; calling its unbound execute throws
 `MANAGED_TOOL_CONTEXT_REQUIRED`. `run` returns a Convex-serializable value.
 A thrown tool body saves a sanitized `TOOL_FAILED` result when its claim is valid.
 
+`tc.promptMessageId` identifies the native request this turn answers (the task
+message in a child). Core supplies it from the trusted turn claim, including
+across tool continuations and approval resumes. An `afterTurn` continuation
+uses its staged prompt; children and side reviews use their own task message.
+The field is optional for contexts without a prompt.
+Use that id directly when associating an effect with its request.
+
 `key(input, tc)` can define an effect identity across tool calls. Keep it
 stable. `repeatSafe` defaults to false. `leaseMs` defaults to ten minutes;
 the registration default may be raised up to one day. A tool-specific

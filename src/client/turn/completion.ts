@@ -54,15 +54,15 @@ export async function completeGeneration(
   )
     return null;
 
-  const completedTurn = await fence.ctx.runMutation(rt.component.hooks.state.hookState, {
+  const completed = await fence.ctx.runMutation(rt.component.hooks.state.hookState, {
     assignmentId: turn.claimed.assignmentId,
     executionId: args.turnToken,
     complete: true,
   });
 
-  const after = await runAfterTurn(gen, completedTurn, result);
+  const after = await runAfterTurn(gen, completed.turn, completed.messageIds, result);
 
-  await launchSideReviews(rt, gen, completedTurn);
+  await launchSideReviews(rt, gen, completed.turn);
 
   if (await continueFromHook(rt, gen, after)) return null;
 
@@ -95,8 +95,17 @@ async function continueAfterToolCalls(rt: RuntimeContext, turn: Turn, result: St
   return true;
 }
 
-/** Run `afterTurn` with the completed turn number and the step's saved text. */
-function runAfterTurn(gen: Generation, completedTurn: number, result: StepResult) {
+/** Report all committed assistant ids in this reporting turn. Text retains its
+ * existing final-slice semantics: successful assistant text joined by newlines.
+ * Earlier tool narration can be read by exact id without enlarging assignment
+ * rows with response content. Approval pauses emit no event until completion.
+ */
+function runAfterTurn(
+  gen: Generation,
+  completedTurn: number,
+  messageIds: string[],
+  result: StepResult,
+) {
   const { managed } = gen.turn;
 
   const savedText = savedAssistantMessages(result)
@@ -105,7 +114,8 @@ function runAfterTurn(gen: Generation, completedTurn: number, result: StepResult
 
   return gen.hook(
     managed.hooks?.afterTurn
-      ? () => managed.hooks!.afterTurn!(gen.hc, { turn: completedTurn, text: savedText })
+      ? () =>
+          managed.hooks!.afterTurn!(gen.hc, { turn: completedTurn, text: savedText, messageIds })
       : undefined,
   );
 }

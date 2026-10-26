@@ -27,6 +27,24 @@ the output with `output`; a streaming output is reshaped value by value. A
 throwing hook fails the turn with `HOOK_FAILED`, and its details stay outside
 the transcript.
 
+## Saved reply identities
+
+`afterTurn(hc, { turn, text, messageIds })` receives every successful assistant
+message id saved by the reporting turn, in save order across tool continuations
+and approval pauses/resumes. Assistant tool-call messages qualify even without
+text; tool-role results, pending/failed placeholders and fenced-out saves are
+excluded. Ids are recorded atomically with native saves, without transcript reads.
+
+`text` keeps its existing scope: successful assistant text from the completing
+slice, joined with newlines. Earlier narration is available by exact message id.
+Tool continuations and approval pauses emit no hook until completion. A staged
+`afterTurn.continue` prompt starts a new reporting turn with a fresh id list.
+
+Each slice saves at most one assistant row. Run `stepsPerTurn` and any non-default
+host `slicesPerTurn` cap bound the list, including approval resumes: at most
+64 ids, each at most 37 ASCII characters. Reporting state reserves 3 KiB within the
+assignment's 34 KiB envelope.
+
 ## Model routing at run start
 
 `beforeTurn` may return `model` only when `isRunStart` is true. The id must be

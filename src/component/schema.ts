@@ -276,6 +276,16 @@ export default defineSchema({
     // Claim returns it; the host reads it for beforeTurn and anchors native
     // generation context on it.
     promptMessageId: v.optional(v.string()),
+    // Reporting identity survives approval anchors; claim resets it for new
+    // work/afterTurn prompts, write appends saves, completion reads exact ids.
+    turnReport: v.optional(
+      v.object({
+        promptMessageId: v.string(),
+        messageIds: v.array(v.string()),
+        maxMessages: v.number(),
+        resumeInboxId: v.optional(v.id("inbox")),
+      }),
+    ),
     // Set by wake with the reserved head; read by claim and write.
     turnOrigin: v.optional(turnOrigin),
     inboxId: v.optional(v.id("inbox")),

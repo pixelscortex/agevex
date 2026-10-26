@@ -5,6 +5,7 @@ import { call, delegate, text, v2, v2api as api } from "../delegation-v2.host.js
 import { gate } from "../message-parent.fixture.js";
 import { requireReceipt } from "../receipt.js";
 import { setup, evidence, node } from "./work.fixture.js";
+import type { MessageDoc } from "@convex-dev/agent";
 
 type Test = ReturnType<typeof setup>;
 const owner = (t: Test) => t.withIdentity({ subject: "alice" });
@@ -249,6 +250,24 @@ it("Main → Builder → Reviewer delivers one note before the result, fences Bu
   expect(done.nodes.every((node) => node.usage?.reporting === "available")).toBe(true);
   expect(done.usage!.inputTokens).toBeGreaterThan(0);
   expect(done.usage!.settledUsd).toBeGreaterThan(0);
+
+  // Conservation alone permits attributing every charge to Main. Compare each
+  // node with its own native evidence, including the provider's per-step cost.
+  for (const agent of ["Main", "Builder", "Reviewer"]) {
+    const own = evidence.filter((entry) => entry.facts.agent === agent);
+    const usage = done.nodes.find((entry) => entry.agent === agent)!.usage!;
+    const tokens = own.map((entry) => entry.usage as NonNullable<MessageDoc["usage"]>);
+
+    expect(usage.inputTokens).toBe(tokens.reduce((sum, entry) => sum + entry.promptTokens!, 0));
+
+    expect(usage.outputTokens).toBe(
+      tokens.reduce((sum, entry) => sum + entry.completionTokens!, 0),
+    );
+
+    expect(usage.settledUsd).toBeCloseTo(own.length * 0.01);
+    expect(usage.estimatedUsd).toBe(0);
+    expect(usage.unknown).toBe(0);
+  }
 
   for (const metric of [
     "inputTokens",

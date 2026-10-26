@@ -54,6 +54,7 @@ export async function releaseGroup(
   parent: Doc<"assignments">,
   root: Doc<"assignments">,
   members: Doc<"subagentRuns">[],
+  persistCounters = true,
 ) {
   if (
     !members.length ||
@@ -82,10 +83,14 @@ export async function releaseGroup(
 
   await ctx.db.insert("inbox", joinedRelease(parent, accepted, members[0].parentRunId));
 
-  await ctx.db.patch("assignments", parent._id, {
-    queuedMessages: parent.queuedMessages + 1,
-    nextSequence: parent.nextSequence + 1,
-  });
+  parent.queuedMessages += 1;
+  parent.nextSequence += 1;
+
+  if (persistCounters)
+    await ctx.db.patch("assignments", parent._id, {
+      queuedMessages: parent.queuedMessages,
+      nextSequence: parent.nextSequence,
+    });
 
   return true;
 }
@@ -182,14 +187,15 @@ export async function sealGroups(ctx: MutationCtx, parent: Doc<"assignments">) {
 export async function releaseReadyCohort(
   ctx: MutationCtx,
   args: { assignmentId: Id<"assignments">; parentRunId?: Id<"runs"> },
+  claiming?: { parent: Doc<"assignments">; root: Doc<"assignments"> },
 ) {
-  const parent = await ctx.db.get("assignments", args.assignmentId);
+  const parent = claiming?.parent ?? (await ctx.db.get("assignments", args.assignmentId));
 
   if (!parent || parent.cancelled) return false;
 
-  const root = parent.rootAssignmentId
-    ? await ctx.db.get("assignments", parent.rootAssignmentId)
-    : parent;
+  const root =
+    claiming?.root ??
+    (parent.rootAssignmentId ? await ctx.db.get("assignments", parent.rootAssignmentId) : parent);
 
   if (!root || root.cancelled) return false;
 
@@ -217,11 +223,16 @@ export async function releaseReadyCohort(
     root.limits.activeChildrenPerRoot,
   );
 
-  const released = await releaseGroup(ctx, parent, root, members);
+  const released = await releaseGroup(ctx, parent, root, members, !claiming);
 
-  if (released) await settleIdleParent(ctx, (await ctx.db.get("assignments", parent._id))!);
+  // Claim owns these loaded rows and is about to mark the parent running.
+  // Neither its run nor an ancestor fenced by it can settle during this drain.
+  // Reuse the updated counters instead of rereading two full assignments per
+  // cohort; ordinary wake/delivery calls still perform the settlement checks.
+  if (released && !claiming)
+    await settleIdleParent(ctx, (await ctx.db.get("assignments", parent._id))!);
 
-  if (released) await closeRootRun(ctx, root, candidate.parentRunId);
+  if (released && !claiming) await closeRootRun(ctx, root, candidate.parentRunId);
 
   return released;
 }
