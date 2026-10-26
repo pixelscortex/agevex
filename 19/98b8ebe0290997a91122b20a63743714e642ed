@@ -1,0 +1,48 @@
+src/component/subagents/deliver.ts
+  s_3975ff6ffba011::t_9d05e86fd4fcec 3-4,12-14,30,33-34,51-54,64-65,75-76,250-262,296-298
+  s_d863bd773ba186::t_a8f2d2cc8d5b41 299-347
+src/component/schema.ts
+  s_3975ff6ffba011::t_9d05e86fd4fcec 41,53,520-521
+  s_d863bd773ba186::t_e53cb0df82266d 522-527
+src/component/subagents/expiry.ts
+  s_d863bd773ba186::t_35df00f2b07836 1-94
+  s_d863bd773ba186::t_0ad9224dc0e97f 95
+docs/site/content/docs/concepts/delegation.mdx
+  s_3975ff6ffba011::t_6d641f92fe7312 42-46,48-51
+  s_3975ff6ffba011::t_0267cd16a8762c 47
+  s_d863bd773ba186::t_01331a472ff9a6 52-58
+src/client/coordinate/delivery.ts
+  s_3975ff6ffba011::t_9d05e86fd4fcec 294-296
+  s_d863bd773ba186::t_62bf9fb3cc01ec 293,297,305-313,320,322-324
+docs/site/content/docs/concepts/message-parent.mdx
+  s_3975ff6ffba011::t_6d641f92fe7312 37-44
+src/component/subagents/settle.ts
+  s_3975ff6ffba011::t_9d05e86fd4fcec 11-14,30,119-125
+  s_d863bd773ba186::t_abcade2479919d 129,160-162,164,169-170,179-181
+src/component/README.md
+  s_d863bd773ba186::t_13c0ee87b9d49d 133-134
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1998b8ebe0290997a91122b20a63743714e642ed",
+  "prompts": {},
+  "sessions": {
+    "s_3975ff6ffba011": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17a43-c121-7002-b93f-91ab65799086",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
