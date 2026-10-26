@@ -1,7 +1,7 @@
 // @vitest-environment edge-runtime
 /** Public hook/tool message identities follow native saves and slice fences. */
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
-import type { MessageDoc } from "@convex-dev/agent";
+import { listMessages, type MessageDoc } from "@convex-dev/agent";
 import type { ToolContext } from "../src/client/index.js";
 import { getConvexSize } from "convex/values";
 import { HOST_LIMITS, LIMITS } from "../src/component/limits.js";
@@ -564,3 +564,65 @@ it.each(["run", "host"] as const)(
     expect(row?.turnReport?.messageIds).toHaveLength(2);
   },
 );
+
+it("an exhausted step allowance ends the turn before its staged afterTurn continuation is saved", async () => {
+  // The host workflow allows two slices per execution, the run allows the
+  // maximum. The approval resume spends the turn's second (last) model step
+  // and its afterTurn hook stages a continuation, so the Workflow still offers
+  // a slice the step allowance no longer has.
+  fixture.approval = true;
+  fixture.run.Main = { stepsPerTurn: RUN_LIMITS.stepsPerTurn.max };
+
+  fixture.steps.Main = (n) =>
+    n === 0 ? call("echo", { text: "approved effect" }) : text("approved reply");
+
+  const events: Event[] = [];
+
+  fixture.hooks.afterTurn = (_hc, event) => {
+    events.push(event);
+
+    return { continue: "staged continuation" };
+  };
+
+  const { t } = setup({ slicesPerTurn: 2 });
+  const receipt = await open(t);
+
+  await drain(t);
+  const paused = await t.query(rawAssignment, { assignmentId: receipt.assignmentId });
+
+  const [request] = await t.query(components.agent.messages.getMessagesByIds, {
+    messageIds: [paused!.approvals!.requests[0].messageId],
+  });
+
+  const content = request!.message!.content;
+
+  const part = Array.isArray(content)
+    ? content.find((p) => p.type === "tool-approval-request")
+    : undefined;
+
+  if (part?.type !== "tool-approval-request") throw new Error("APPROVAL_MISSING");
+
+  await owner(t).mutation(api.agents.respond, {
+    threadId: receipt.threadId,
+    approvalId: part.approvalId,
+    decision: { kind: "approve" },
+  });
+
+  await drain(t);
+  const row = await t.query(rawAssignment, { assignmentId: receipt.assignmentId });
+
+  expect(events).toHaveLength(1);
+  expect(fixture.calls).toHaveLength(2);
+  expect(row).toMatchObject({ errorCode: "SLICE_LIMIT", turnStatus: "recovery_required" });
+  expect(row?.hookContinue).toBeFalsy();
+  expect(row?.inboxId).toBeUndefined();
+
+  const page = await t.run((ctx) =>
+    listMessages(ctx, components.agent, {
+      threadId: receipt.threadId,
+      paginationOpts: { cursor: null, numItems: 50 },
+    }),
+  );
+
+  expect(page.page.some((message) => message.text === "staged continuation")).toBe(false);
+});

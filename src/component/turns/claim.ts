@@ -113,7 +113,6 @@ export async function claimSlice(ctx: MutationCtx, args: ClaimArgs): Promise<Cla
   const resume = first && row.inboxId === row.turnReport?.resumeInboxId;
   const noteAnchor = first && row.inboxId ? await consumeHead(ctx, row) : row.promptMessageId;
 
-  await flushNotes(ctx, row, first, noteAnchor, args.notes);
   const budget = row.runId ? await ctx.db.get("runs", row.runId) : null;
 
   const settings =
@@ -122,13 +121,12 @@ export async function claimSlice(ctx: MutationCtx, args: ClaimArgs): Promise<Cla
   const maxMessages = turnStepLimit(settings, row.limits.slicesPerTurn);
 
   // Approval resumes mint a new execution token, not a new step allowance.
-  // Finish an exhausted resume instead of leaving its consumed head queued.
-  if ((!first || resume) && (row.modelSteps ?? 0) >= maxMessages) {
-    await ctx.db.patch("assignments", row._id, { turnStatus: "running", inboxId: undefined });
-    await finishTurn(ctx, { assignmentId, turnToken, errorCode: "SLICE_LIMIT" });
+  // Decide BEFORE flushNotes: an exhausted turn must not save notes or a
+  // staged afterTurn continuation natively and then end with SLICE_LIMIT.
+  if ((!first || resume) && (row.modelSteps ?? 0) >= maxMessages)
+    return finishExhausted(ctx, row, turnToken, !first && !!row.hookContinue);
 
-    return null;
-  }
+  await flushNotes(ctx, row, first, noteAnchor, args.notes);
 
   if ((first && !resume) || row.hookContinue)
     row.turnReport = {
@@ -160,6 +158,34 @@ export async function claimSlice(ctx: MutationCtx, args: ClaimArgs): Promise<Cla
   };
 
   return row.childRunId ? claimChild(ctx, row, first, claim) : claim;
+}
+
+/** End a turn whose step allowance is spent with SLICE_LIMIT, before any
+ * native write. A later slice can reach this after an approval resume spent
+ * the last step: the host Workflow allows `slicesPerTurn` slices per
+ * execution, but the resume keeps the turn's `modelSteps`. If afterTurn staged
+ * a continuation (`staged`), delete its unsaved inbox row and clear
+ * `hookContinue` in the same patch, as cancel and deferChildFailure do;
+ * otherwise the turn would end with a dangling continuation pointer. A
+ * resume's own head was already consumed by consumeHead, so only the pointer
+ * is cleared. Posted notes stay pending for the next turn's claim. */
+async function finishExhausted(
+  ctx: MutationCtx,
+  row: Doc<"assignments">,
+  turnToken: string,
+  staged: boolean,
+) {
+  if (staged && row.inboxId) await ctx.db.delete("inbox", row.inboxId);
+
+  await ctx.db.patch("assignments", row._id, {
+    turnStatus: "running",
+    inboxId: undefined,
+    hookContinue: false,
+  });
+
+  await finishTurn(ctx, { assignmentId: row._id, turnToken, errorCode: "SLICE_LIMIT" });
+
+  return null;
 }
 
 /** Delete the reserved head and, for result/note/parent work, merge the
