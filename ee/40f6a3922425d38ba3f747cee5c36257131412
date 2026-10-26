@@ -1,0 +1,54 @@
+tests/react/docs.test.ts
+  s_2646657c2f5e35::t_fd6f7bf5a4a1c7 1-2,4-7,13-22,32-34,39-47,52-59
+  s_2646657c2f5e35::t_094830aea6896e 3,8-11,23-31,35-37,48-51
+  s_2646657c2f5e35::t_5c0081f4147429 12,38
+src/react/index.ts
+  s_2646657c2f5e35::t_7d0fd448b94100 17-18,72-73
+  s_2646657c2f5e35::t_25874ffb1bc754 74-77
+tests/react/pagination.test.ts
+  s_2646657c2f5e35::t_90ce7df460e254 1-111,113-114
+  s_2646657c2f5e35::t_15bb6916404165 112,115-173
+package.json
+  s_2646657c2f5e35::t_7d0fd448b94100 143
+src/react/combine.ts
+  s_2646657c2f5e35::t_7a5b6100f7ea40 15
+  s_2646657c2f5e35::t_7d0fd448b94100 1-14,16-46
+  s_2646657c2f5e35::t_755e22fbc00265 47-60
+tests/delegation-v2.host.ts
+  s_2646657c2f5e35::t_363e90f346e197 117-127
+  s_2646657c2f5e35::t_a13aab5c68c526 128,137
+docs/site/content/docs/concepts/react-hooks.mdx
+  s_2646657c2f5e35::t_7d0fd448b94100 38-53,66,69-71,74-79,87-89,93-96
+src/react/messages.ts
+  s_2646657c2f5e35::t_094830aea6896e 62
+  s_2646657c2f5e35::t_7d0fd448b94100 8,63-66,85,101-102,143-146,148-149
+tests/react/hooks.test.ts
+  s_2646657c2f5e35::t_90ce7df460e254 236,243-244,246-247,254-262,265-266
+tests/acceptance/work.fixture.ts
+  s_2646657c2f5e35::t_7a5b6100f7ea40 15-21,87
+  s_2646657c2f5e35::t_7ca6b1a682e292 93,103-104
+tests/react/package.test.ts
+  s_2646657c2f5e35::t_90ce7df460e254 1-10
+tests/acceptance/main-builder-reviewer.test.ts
+  s_2646657c2f5e35::t_b95017aa6cacf3 211,236-275,285-286,288
+  s_2646657c2f5e35::t_363e90f346e197 218-224
+  s_2646657c2f5e35::t_6cf3842f50b5a3 225-228,280-283,287,289,292
+bun.lock
+  s_2646657c2f5e35::t_1d4b854547b899 45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ee40f6a3922425d38ba3f747cee5c36257131412",
+  "prompts": {},
+  "sessions": {
+    "s_2646657c2f5e35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17988-e94c-7cb2-82ae-96110cfb0ece",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
