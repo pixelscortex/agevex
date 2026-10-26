@@ -1,0 +1,376 @@
+README.md
+  h_51b7a781d7f2c3 27-60
+dist/client/agent.d.ts
+  h_51b7a781d7f2c3 4,19-29,42
+dist/client/agent.js
+  h_51b7a781d7f2c3 18,33
+dist/client/endpoints/access.d.ts
+  h_51b7a781d7f2c3 3,11,27
+dist/client/endpoints/access.js
+  h_51b7a781d7f2c3 20,34
+dist/client/endpoints/index.d.ts
+  h_51b7a781d7f2c3 2,6,135,172,176
+dist/client/endpoints/index.js
+  h_51b7a781d7f2c3 15-16
+dist/client/endpoints/reads.d.ts
+  h_51b7a781d7f2c3 47,100,104
+dist/client/endpoints/requests.js
+  h_51b7a781d7f2c3 65
+dist/client/index.d.ts
+  h_51b7a781d7f2c3 1,11
+dist/client/once.js
+  h_51b7a781d7f2c3 68-70,79
+dist/client/registration/context.d.ts
+  h_51b7a781d7f2c3 4,18
+dist/client/registration/context.js
+  h_51b7a781d7f2c3 11,24-32,42
+dist/client/runtime.d.ts
+  h_51b7a781d7f2c3 158,195,199
+dist/client/runtime.js
+  h_51b7a781d7f2c3 40
+dist/client/slots.d.ts
+  h_51b7a781d7f2c3 14-16,18-40,74,81-86,144
+dist/client/turn/admission.d.ts
+  h_51b7a781d7f2c3 3-6
+dist/client/turn/admission.js
+  h_51b7a781d7f2c3 10-27
+dist/client/turn/claim.js
+  h_51b7a781d7f2c3 60
+dist/client/turn/completion.js
+  h_51b7a781d7f2c3 24-25
+dist/client/turn/context.d.ts
+  h_51b7a781d7f2c3 20-21,35-37
+dist/client/turn/deadlines.d.ts
+  h_51b7a781d7f2c3 1-10
+dist/client/turn/deadlines.js
+  h_51b7a781d7f2c3 1-114
+dist/client/turn/fence.d.ts
+  h_51b7a781d7f2c3 11-14
+dist/client/turn/fence.js
+  h_51b7a781d7f2c3 15,35-47,75-76,78-79,141-150,198-216
+dist/client/turn/generation.js
+  h_51b7a781d7f2c3 5,13,25-26,41,45,47-64,68-71,87,96,98,108,119-120,122-126,136-140,146-155,157-158,160,164,166-171
+dist/client/turn/provider-evidence.d.ts
+  h_51b7a781d7f2c3 1-7
+dist/client/turn/provider-evidence.js
+  h_51b7a781d7f2c3 1-7
+dist/client/turn/run-turn.js
+  h_51b7a781d7f2c3 18,42
+dist/client/turn/slots.d.ts
+  h_51b7a781d7f2c3 8
+dist/client/turn/slots.js
+  h_51b7a781d7f2c3 15,17-18,35-41,43-47,52,56
+dist/client/turn/tools.js
+  h_51b7a781d7f2c3 14,16,39,42,66,78
+dist/client/turn/usage.d.ts
+  h_51b7a781d7f2c3 1-14
+dist/client/turn/usage.js
+  h_51b7a781d7f2c3 1-50
+dist/client/types.d.ts
+  h_51b7a781d7f2c3 6,250,267,282-311,326-332
+dist/component/hooks/routing.d.ts
+  h_51b7a781d7f2c3 25
+dist/component/hooks/routing.js
+  h_51b7a781d7f2c3 29
+dist/component/hooks/state.js
+  h_51b7a781d7f2c3 14,29-31
+dist/component/limits.d.ts
+  h_51b7a781d7f2c3 83-87,102-103,105-109,111,123-125
+dist/component/limits.js
+  h_51b7a781d7f2c3 60-64,79-80,82-86,88,100-102
+dist/component/models.d.ts
+  h_51b7a781d7f2c3 3-4
+dist/component/models.js
+  h_51b7a781d7f2c3 10-11
+dist/component/run-settings.d.ts
+  h_51b7a781d7f2c3 1-95
+dist/component/run-settings.js
+  h_51b7a781d7f2c3 1-86
+dist/component/schema.d.ts
+  h_51b7a781d7f2c3 4-5,13,17,77,95,127,132,153,158,164,171,206,236,274,395,420,427,482,524-533,535,544-578,587,657,663,667,702,705,711,722,726,730
+dist/component/schema.js
+  h_51b7a781d7f2c3 14,19,146-147,243-246
+dist/component/subagents/deliver.d.ts
+  h_51b7a781d7f2c3 45,57
+dist/component/subagents/history.d.ts
+  h_51b7a781d7f2c3 16,20
+dist/component/subagents/messages.d.ts
+  h_51b7a781d7f2c3 55,93,154,192,237,243,247,294,332,393,431,465-474,476
+dist/component/subagents/runs.d.ts
+  h_51b7a781d7f2c3 30,36,40,65,105,111,115
+dist/component/subagents/settle.d.ts
+  h_51b7a781d7f2c3 74,82
+dist/component/subagents/views.d.ts
+  h_51b7a781d7f2c3 52,74,82,86
+dist/component/turns/assignments.d.ts
+  h_51b7a781d7f2c3 48,86
+dist/component/turns/boundaries.js
+  h_51b7a781d7f2c3 1-2,59-67
+dist/component/turns/cancel.js
+  h_51b7a781d7f2c3 8,24,26-32,60,66,70,75,79
+dist/component/turns/claim.d.ts
+  h_51b7a781d7f2c3 25-31,57-69,110
+dist/component/turns/claim.js
+  h_51b7a781d7f2c3 4,29,68-71,82,111,113,179,182,188
+dist/component/turns/runs.d.ts
+  h_51b7a781d7f2c3 14
+dist/component/turns/runs.js
+  h_51b7a781d7f2c3 1-2,5-8,19,21-26
+dist/component/turns/send.d.ts
+  h_51b7a781d7f2c3 71-104,180-189,250
+dist/component/turns/send.js
+  h_51b7a781d7f2c3 22,39,86
+dist/component/turns/slices.d.ts
+  h_51b7a781d7f2c3 24-30,56,117-125
+dist/component/turns/slices.js
+  h_51b7a781d7f2c3 97-114
+dist/component/turns/views.d.ts
+  h_51b7a781d7f2c3 10
+dist/component/workflows/lanes.js
+  h_51b7a781d7f2c3 21,96
+dist/modules/extract/client/access.d.ts
+  h_51b7a781d7f2c3 29,40,55
+dist/modules/extract/client/context.d.ts
+  h_51b7a781d7f2c3 79,90,111,122,142,153
+dist/modules/extract/client/files.d.ts
+  h_51b7a781d7f2c3 14,42
+dist/modules/extract/client/index.d.ts
+  h_51b7a781d7f2c3 27,54
+dist/modules/extract/client/reads.d.ts
+  h_51b7a781d7f2c3 9,20
+dist/modules/extract/component/artifacts.d.ts
+  h_51b7a781d7f2c3 55,66,88,99,126,137
+dist/modules/extract/component/schema.d.ts
+  h_51b7a781d7f2c3 3,10,33,44,76,83,89
+dist/modules/extract/test.d.ts
+  h_51b7a781d7f2c3 12,23,55,62,68
+dist/modules/meter/client/client.d.ts
+  h_51b7a781d7f2c3 16,35-38,50-70
+dist/modules/meter/client/index.d.ts
+  h_51b7a781d7f2c3 8-9
+dist/modules/meter/client/index.js
+  h_51b7a781d7f2c3 8-9
+dist/modules/meter/client/maintenance.d.ts
+  h_51b7a781d7f2c3 9-13,16-20
+dist/modules/meter/client/maintenance.js
+  h_51b7a781d7f2c3 8-19,24-28
+dist/modules/meter/client/openrouter.d.ts
+  h_51b7a781d7f2c3 1-9
+dist/modules/meter/client/openrouter.js
+  h_51b7a781d7f2c3 1-66
+dist/modules/meter/client/pricing.d.ts
+  h_51b7a781d7f2c3 36-59
+dist/modules/meter/client/pricing.js
+  h_51b7a781d7f2c3 85-132
+dist/modules/meter/client/reads.d.ts
+  h_51b7a781d7f2c3 3,30-50
+dist/modules/meter/client/reads.js
+  h_51b7a781d7f2c3 39-42
+dist/modules/meter/client/scope.js
+  h_51b7a781d7f2c3 3,59,62,64-66,72-74
+dist/modules/meter/client/slots.js
+  h_51b7a781d7f2c3 6,42-43
+dist/modules/meter/client/types.d.ts
+  h_51b7a781d7f2c3 34-38,111
+dist/modules/meter/client/workers.d.ts
+  h_51b7a781d7f2c3 7
+dist/modules/meter/client/workers.js
+  h_51b7a781d7f2c3 23-24,27
+dist/modules/meter/component/aggregates.d.ts
+  h_51b7a781d7f2c3 25,30,57-60
+dist/modules/meter/component/aggregates.js
+  h_51b7a781d7f2c3 10,96,108-111,120-124
+dist/modules/meter/component/charge-contracts.d.ts
+  h_51b7a781d7f2c3 12,16-19,30-31,50-51,60-62,72-79,91,127,149,164,189
+dist/modules/meter/component/charge-contracts.js
+  h_51b7a781d7f2c3 9,24-25
+dist/modules/meter/component/charge-creation.js
+  h_51b7a781d7f2c3 16-20,67-73,87-88
+dist/modules/meter/component/charge-lookup.d.ts
+  h_51b7a781d7f2c3 2-3,8-111
+dist/modules/meter/component/charge-lookup.js
+  h_51b7a781d7f2c3 31-44,47-51,54,57,63,65,68-69,77,93,98,101,105,115-118
+dist/modules/meter/component/charge-records.d.ts
+  h_51b7a781d7f2c3 19-23,40-41,53-57,76-77,119,134-138,155-156,168-172,191-192,244-248,267-268
+dist/modules/meter/component/charge-records.js
+  h_51b7a781d7f2c3 24,26,53
+dist/modules/meter/component/charge-updates.d.ts
+  h_51b7a781d7f2c3 34-38,55-56,68-72,91-92
+dist/modules/meter/component/charge-updates.js
+  h_51b7a781d7f2c3 11-12,47-48,56-60
+dist/modules/meter/component/charges.d.ts
+  h_51b7a781d7f2c3 9,13-16,27-28,57,76,119-120,182-209
+dist/modules/meter/component/charges.js
+  h_51b7a781d7f2c3 15,75-86
+dist/modules/meter/component/outbox.d.ts
+  h_51b7a781d7f2c3 34-38,55-56,68-72,91-92
+dist/modules/meter/component/reads.d.ts
+  h_51b7a781d7f2c3 1-27
+dist/modules/meter/component/reads.js
+  h_51b7a781d7f2c3 13-15
+dist/modules/meter/component/reconciliation.d.ts
+  h_51b7a781d7f2c3 1-34
+dist/modules/meter/component/reconciliation.js
+  h_51b7a781d7f2c3 1-51
+dist/modules/meter/component/schema.d.ts
+  h_51b7a781d7f2c3 7-8,17-27,132-136,153-154,166-170,189-190,271-275,294-295,323-327,346-347,375-379,398-399,469-470,479-481,491-498,510-511,519-520,529-531,541-548,560,562,590-591,617-618,627-629,636
+dist/modules/meter/component/schema.js
+  h_51b7a781d7f2c3 16-17,19-20,58-59,85
+dist/modules/meter/component/usage-projections.d.ts
+  h_51b7a781d7f2c3 1-12
+dist/modules/meter/component/usage-projections.js
+  h_51b7a781d7f2c3 1-32
+dist/modules/meter/component/usage-views.d.ts
+  h_51b7a781d7f2c3 1-126
+dist/modules/meter/component/usage-views.js
+  h_51b7a781d7f2c3 1-65
+dist/modules/meter/shared/limits.d.ts
+  h_51b7a781d7f2c3 15-18
+dist/modules/meter/shared/limits.js
+  h_51b7a781d7f2c3 15-18
+dist/modules/meter/test.d.ts
+  h_51b7a781d7f2c3 22-26,43-44,56-60,79-80,161-165,184-185,213-217,236-237,265-269,288-289,359-360,369-371,381-388,400-401,409-410,419-421,431-438,450,452,473-474,500-501,510-512,519
+dist/test.d.ts
+  h_51b7a781d7f2c3 37,75,196,221,228,283,325-334,336,345-379,388,458,464,468,503,506,512,523,527,531
+dist/test.js
+  h_51b7a781d7f2c3 26-32
+dist/testing/bridge.d.ts
+  h_51b7a781d7f2c3 41-86
+dist/testing/bridge.js
+  h_51b7a781d7f2c3 11,91-115
+src/client/README.md
+  h_51b7a781d7f2c3 16-17,26-28,33-35,74-75
+src/client/agent.ts
+  h_51b7a781d7f2c3 12,31-41,69,85
+src/client/endpoints/access.ts
+  h_51b7a781d7f2c3 12,21,49,66
+src/client/endpoints/index.ts
+  h_51b7a781d7f2c3 12,28-33
+src/client/endpoints/requests.ts
+  h_51b7a781d7f2c3 106
+src/client/index.ts
+  h_51b7a781d7f2c3 7,48-50
+src/client/once.ts
+  h_51b7a781d7f2c3 122-125,134-135
+src/client/registration/context.ts
+  h_51b7a781d7f2c3 14-18,35,54-64,78
+src/client/runtime.ts
+  h_51b7a781d7f2c3 63
+src/client/slots.ts
+  h_51b7a781d7f2c3 24-26,28-47,64,69-71,112
+src/client/turn/admission.ts
+  h_51b7a781d7f2c3 14-37
+src/client/turn/claim.ts
+  h_51b7a781d7f2c3 76
+src/client/turn/completion.ts
+  h_51b7a781d7f2c3 38-39
+src/client/turn/context.ts
+  h_51b7a781d7f2c3 39-40,55-57
+src/client/turn/deadlines.ts
+  h_51b7a781d7f2c3 1-148
+src/client/turn/fence.ts
+  h_51b7a781d7f2c3 16,31-34,60-77,110-111,113-114,196-206,261-284
+src/client/turn/generation.ts
+  h_51b7a781d7f2c3 5,14,34-35,52,56-57,59-76,79-85,103,113-115,118,129-134,148,154,157-199,201-202,207-213,216-224
+src/client/turn/provider-evidence.ts
+  h_51b7a781d7f2c3 1-16
+src/client/turn/run-turn.ts
+  h_51b7a781d7f2c3 21,48
+src/client/turn/slots.ts
+  h_51b7a781d7f2c3 22,29,31,54-57,59-63,65-67,70-74,79,82
+src/client/turn/tools.ts
+  h_51b7a781d7f2c3 17,20,57,62,91,107
+src/client/turn/usage.ts
+  h_51b7a781d7f2c3 1-86
+src/client/types.ts
+  h_51b7a781d7f2c3 19,278,296,306-326,343-349
+src/component/hooks/routing.ts
+  h_51b7a781d7f2c3 32
+src/component/hooks/state.ts
+  h_51b7a781d7f2c3 15,42-44
+src/component/limits.ts
+  h_51b7a781d7f2c3 63-67,82-83,85-89,91,103-105
+src/component/models.ts
+  h_51b7a781d7f2c3 12-13
+src/component/run-settings.ts
+  h_51b7a781d7f2c3 1-117
+src/component/schema.ts
+  h_51b7a781d7f2c3 15,32,237-238,346-349
+src/component/turns/boundaries.ts
+  h_51b7a781d7f2c3 14-15,96-108
+src/component/turns/cancel.ts
+  h_51b7a781d7f2c3 23,51-59,100-104,113,118,124,128
+src/component/turns/claim.ts
+  h_51b7a781d7f2c3 20-25,52,111-117,129,164,166,273,277,286
+src/component/turns/runs.ts
+  h_51b7a781d7f2c3 11-12,17-24,35,37-53
+src/component/turns/send.ts
+  h_51b7a781d7f2c3 22,40,103-107
+src/component/turns/slices.ts
+  h_51b7a781d7f2c3 106-125
+src/component/workflows/lanes.ts
+  h_51b7a781d7f2c3 22,116
+src/modules/meter/API.md
+  h_51b7a781d7f2c3 60,92,118-120,122,205-244,247-248,250,394
+src/modules/meter/README.md
+  h_51b7a781d7f2c3 41-69,78,91,96-98,118
+src/modules/meter/client/index.ts
+  h_51b7a781d7f2c3 8-9
+src/modules/meter/client/maintenance.ts
+  h_51b7a781d7f2c3 9-25,32-37
+src/modules/meter/client/openrouter.ts
+  h_51b7a781d7f2c3 1-95
+src/modules/meter/client/pricing.ts
+  h_51b7a781d7f2c3 107-178
+src/modules/meter/client/reads.ts
+  h_51b7a781d7f2c3 11,51-55
+src/modules/meter/client/scope.ts
+  h_51b7a781d7f2c3 10,95,98,101-104,110-112
+src/modules/meter/client/slots.ts
+  h_51b7a781d7f2c3 14,59-60
+src/modules/meter/client/types.ts
+  h_51b7a781d7f2c3 31-32,83
+src/modules/meter/client/workers.ts
+  h_51b7a781d7f2c3 27-28,31
+src/modules/meter/component/aggregates.ts
+  h_51b7a781d7f2c3 13,45-51,122,135-138,152-157
+src/modules/meter/component/charge-contracts.ts
+  h_51b7a781d7f2c3 9,25-26
+src/modules/meter/component/charge-creation.ts
+  h_51b7a781d7f2c3 27-31,100-107,125-127
+src/modules/meter/component/charge-lookup.ts
+  h_51b7a781d7f2c3 9-10,37-52,54-57,60,62-63,66-69,71,74,78,81,91,94,98-99,110,132,137,141,144,163-166
+src/modules/meter/component/charge-records.ts
+  h_51b7a781d7f2c3 36,38,81
+src/modules/meter/component/charge-updates.ts
+  h_51b7a781d7f2c3 26-28,74-75,89-94
+src/modules/meter/component/charges.ts
+  h_51b7a781d7f2c3 20,103-115
+src/modules/meter/component/reads.ts
+  h_51b7a781d7f2c3 22-25
+src/modules/meter/component/reconciliation.ts
+  h_51b7a781d7f2c3 1-65
+src/modules/meter/component/schema.ts
+  h_51b7a781d7f2c3 17-26,28-35,104-105,134
+src/modules/meter/component/usage-projections.ts
+  h_51b7a781d7f2c3 1-44
+src/modules/meter/component/usage-views.ts
+  h_51b7a781d7f2c3 1-80
+src/modules/meter/shared/limits.ts
+  h_51b7a781d7f2c3 15-18
+src/test.ts
+  h_51b7a781d7f2c3 38-46
+src/testing/bridge.ts
+  h_51b7a781d7f2c3 17,122-150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a9c443e75c84789bf85267654b76864c8190ffbd",
+  "prompts": {},
+  "humans": {
+    "h_51b7a781d7f2c3": {
+      "author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
