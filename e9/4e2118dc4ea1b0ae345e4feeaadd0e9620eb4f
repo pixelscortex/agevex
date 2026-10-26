@@ -1,0 +1,82 @@
+README.md
+  h_51b7a781d7f2c3 285-287,303-305,494,505-510,630-653
+dist/client/endpoints/access.d.ts
+  h_51b7a781d7f2c3 36-38,40-57
+dist/client/endpoints/access.js
+  h_51b7a781d7f2c3 4-7,49-51,53,58-63,86-91
+dist/client/endpoints/index.d.ts
+  h_51b7a781d7f2c3 43-51,78-86
+dist/client/endpoints/requests.d.ts
+  h_51b7a781d7f2c3 10-18,46-54
+dist/client/endpoints/requests.js
+  h_51b7a781d7f2c3 4-9,20,48-90,137-143,149,186-190,192-199,211
+dist/client/runtime.d.ts
+  h_51b7a781d7f2c3 66-74,101-109
+dist/client/tasks.d.ts
+  h_51b7a781d7f2c3 13-15
+dist/client/tasks.js
+  h_51b7a781d7f2c3 3-4,37-39,125-130,144,150-152,162,233
+dist/client/text/options.d.ts
+  h_51b7a781d7f2c3 8-10
+dist/client/text/options.js
+  h_51b7a781d7f2c3 2,16-20
+dist/client/text/task.js
+  h_51b7a781d7f2c3 85,112-113
+dist/client/types.d.ts
+  h_51b7a781d7f2c3 68-72,88-93,101,365,369-387
+dist/component/turns/send.d.ts
+  h_51b7a781d7f2c3 153-159
+dist/component/turns/send.js
+  h_51b7a781d7f2c3 123-129
+dist/modules/meter/client/client.d.ts
+  h_51b7a781d7f2c3 134,171
+dist/modules/meter/client/reads.d.ts
+  h_51b7a781d7f2c3 17,115,152
+dist/modules/meter/client/reads.js
+  h_51b7a781d7f2c3 5-6,31-33
+dist/modules/meter/component/aggregates.d.ts
+  h_51b7a781d7f2c3 85-88
+dist/modules/meter/component/aggregates.js
+  h_51b7a781d7f2c3 33-38,75-76,176-184
+dist/modules/meter/component/reads.d.ts
+  h_51b7a781d7f2c3 99
+dist/modules/meter/component/reads.js
+  h_51b7a781d7f2c3 9,104-113
+src/client/README.md
+  h_51b7a781d7f2c3 16-18,72
+src/client/endpoints/access.ts
+  h_51b7a781d7f2c3 4-7,88-90,92,102-103,105-112,114,142-154
+src/client/endpoints/requests.ts
+  h_51b7a781d7f2c3 4-9,26-27,70-145,214-215,217-218,220,222-223,232-233,274-275,277-282,284-286,288,290-291,307-308
+src/client/tasks.ts
+  h_51b7a781d7f2c3 3-4,36-38,92-94,115-116,245-255,270,277-279,290,382
+src/client/text/options.ts
+  h_51b7a781d7f2c3 6,12-14,38-42
+src/client/text/task.ts
+  h_51b7a781d7f2c3 127,161-163
+src/client/types.ts
+  h_51b7a781d7f2c3 78-82,96-97,382,387-408
+src/component/turns/send.ts
+  h_51b7a781d7f2c3 156-162
+src/modules/meter/API.md
+  h_51b7a781d7f2c3 74-76,145,150-158,161-162
+src/modules/meter/README.md
+  h_51b7a781d7f2c3 4-5
+src/modules/meter/client/reads.ts
+  h_51b7a781d7f2c3 5-6,41-43
+src/modules/meter/component/aggregates.ts
+  h_51b7a781d7f2c3 45-51,99-100,231-240
+src/modules/meter/component/reads.ts
+  h_51b7a781d7f2c3 13,138-149
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e94e2118dc4ea1b0ae345e4feeaadd0e9620eb4f",
+  "prompts": {},
+  "humans": {
+    "h_51b7a781d7f2c3": {
+      "author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
