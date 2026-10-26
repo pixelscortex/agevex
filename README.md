@@ -616,6 +616,22 @@ stored subject against current host policy. `authorizeExecution` runs before
 every model slice. Optional `observe` receives metadata-only lifecycle events;
 observer failures do not change execution.
 
+For `open` and `send`, `AuthorizationScope` also includes `requestKey` and
+`replay`. A retained receipt for the same subject, key and fingerprint sets
+`replay: true`; fresh or conflicting input sets it to false. Authorization runs
+on every retry, so hosts can refuse fresh work when out of balance and still
+allow receipt replays:
+
+```ts
+if ((scope.operation === "open" || scope.operation === "send") && !scope.replay) {
+  if (!(await hasBalance(ctx, subject))) throw new Error("OUT_OF_BALANCE");
+}
+return { subject }; // Resolve and authorize the caller before this balance check.
+```
+
+These two endpoints use `ctx.auth.getUserIdentity().subject` for receipt lookup;
+the host must return that same subject. Other endpoints retain their existing scopes.
+
 `LIMITS`, exported from `agevex`, is the single source of runtime bounds,
 including lane sizes, model output/deadline, slices, run budgets, queue size,
 ledger retention. Registration accepts `limits?: Partial<Limits>` for lanes,

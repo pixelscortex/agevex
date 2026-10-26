@@ -75,6 +75,13 @@ export type TurnOrigin = "user" | "subagent_result";
  * Authorization request handed to the host policy for every public read, write,
  * launch and delivery.
  *
+ * `open` and `send` include the request key and `replay`: true only when this
+ * subject already has a retained receipt with the same input fingerprint.
+ * Authorization still runs for duplicates; hosts may allow replays while
+ * refusing fresh paid work. A conflicting key has `replay: false`.
+ * These two endpoints resolve the ledger subject from `ctx.auth` before
+ * authorization; the returned subject must match that authenticated subject.
+ *
  * Public operations identify the thread being accessed: `messages` supplies
  * that thread's own agent name and id for both roots and children. `open`,
  * `send` and `activity` remain root-only. Background delegation and result
@@ -88,7 +95,8 @@ export type TurnOrigin = "user" | "subagent_result";
  * authorization.
  */
 export type AuthorizationScope =
-  | { operation: "open"; agent: string }
+  | { operation: "open"; agent: string; requestKey: string; replay: boolean }
+  | { operation: "send"; agent: string; threadId: string; requestKey: string; replay: boolean }
   | { operation: "sandbox"; agent: string; threadId: string; subject: string; runId: string }
   | {
       operation:
@@ -97,7 +105,6 @@ export type AuthorizationScope =
         | "summary"
         | "summarize"
         | "note"
-        | "send"
         | "respond"
         | "answer"
         | "cancel"

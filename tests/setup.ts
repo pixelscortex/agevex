@@ -178,6 +178,9 @@ export function setup(
   state.observerFails = false;
   state.fail = false;
   state.revoke = false;
+  state.denyFreshRequests = false;
+  state.denyAllRequests = false;
+  state.requestScopes.length = 0;
   state.hang = false;
   state.tools = false;
   state.approval = false;

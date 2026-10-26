@@ -1,10 +1,10 @@
 // Shared context and ownership checks for the public endpoints.
 //
 // `createEndpointContext` indexes every registered agent once; `rootAgent`
-// resolves a public root for `open`; `ownedThread` is the authorization gate every
-// thread-scoped endpoint runs first: it loads the persisted assignment
-// (`turns.send.assignment`), runs the host `authorize` policy, requires the returned
-// subject to own the thread, and enforces which operations a child thread allows.
+// resolves a public root for `open`. `threadScope` loads one assignment and
+// `ownedScope` enforces ownership and the persisted root/child role. Ordinary
+// endpoints use `ownedThread` to run host policy between those checks; `send`
+// resolves the caller's receipt first so policy receives accurate replay facts.
 
 import type { GenericDataModel, GenericMutationCtx, GenericQueryCtx } from "convex/server";
 import type { ComponentApi } from "../../component/_generated/component.js";
@@ -85,26 +85,33 @@ export function rootAgent(ep: EndpointContext, name: string) {
 }
 
 /**
- * Authorize one thread-scoped operation and return the owned assignment plus its
- * native agent. Throws `FORBIDDEN` for an unmanaged thread, a subject that does
- * not own it, or a root-only operation on a child thread.
+ * Load one bounded assignment projection, without granting access. Request
+ * endpoints need its agent before resolving replay; every caller must still
+ * authorize and pass `ownedScope` before returning data or saving messages.
  */
-export async function ownedThread(
+export async function threadScope(
   ep: EndpointContext,
   ctx: GenericQueryCtx<GenericDataModel>,
   threadId: string,
-  operation: ThreadOperation,
 ) {
   assertFact(threadId, "threadId");
   const row = await ctx.runQuery(ep.component.turns.send.assignment, { threadId });
 
   if (!row) throw new Error("FORBIDDEN");
 
-  const trusted = await ep.config.authorize(ctx, { operation, agent: row.agent, threadId });
+  return row;
+}
 
-  assertFact(trusted.subject, "subject");
+/** Enforce ownership and the persisted root/child role after host authorization. */
+export function ownedScope(
+  ep: EndpointContext,
+  row: Awaited<ReturnType<typeof threadScope>>,
+  subject: string,
+  operation: ThreadOperation,
+) {
+  assertFact(subject, "subject");
 
-  if (trusted.subject !== row.subject) throw new Error("FORBIDDEN");
+  if (subject !== row.subject) throw new Error("FORBIDDEN");
 
   // Ownership permits reading a child's transcript and resolving its recorded
   // approvals. Child turns belong to the coordinator's bounded delegation and
@@ -130,6 +137,19 @@ export async function ownedThread(
   if (!native) throw new Error("UNKNOWN_AGENT");
 
   return { ...row, native };
+}
+
+/** Authorize ordinary thread operations; request endpoints resolve replay first. */
+export async function ownedThread(
+  ep: EndpointContext,
+  ctx: GenericQueryCtx<GenericDataModel>,
+  threadId: string,
+  operation: Exclude<ThreadOperation, "send">,
+) {
+  const row = await threadScope(ep, ctx, threadId);
+  const trusted = await ep.config.authorize(ctx, { operation, agent: row.agent, threadId });
+
+  return ownedScope(ep, row, trusted.subject, operation);
 }
 
 /** Report one lifecycle event to the host; never changes the request outcome. */

@@ -22,6 +22,7 @@ import {
   type CoordinateResult,
   type TurnArgs,
   type Registration,
+  type AuthorizationScope,
   type RunSettings,
 } from "../src/client/index.js";
 import { scriptedModel } from "../src/test.js";
@@ -72,6 +73,10 @@ export const state = {
   observerFails: false,
   fail: false,
   revoke: false,
+  /** Admission can deny fresh paid work while preserving authorized receipt replays. */
+  denyFreshRequests: false,
+  denyAllRequests: false,
+  requestScopes: [] as Extract<AuthorizationScope, { operation: "open" | "send" }>[],
   hang: false,
   tools: false,
   approval: false,
@@ -459,6 +464,13 @@ export function fixtureRuntime(limits?: Registration["limits"]) {
       const identity = await ctx.auth.getUserIdentity();
 
       if (!identity) throw new Error("UNAUTHENTICATED");
+
+      if (scope.operation === "open" || scope.operation === "send") {
+        state.requestScopes.push(scope);
+
+        if (state.denyAllRequests || (state.denyFreshRequests && !scope.replay))
+          throw new Error("OUT_OF_BALANCE");
+      }
 
       return { subject: identity.subject };
     },

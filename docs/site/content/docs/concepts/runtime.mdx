@@ -37,6 +37,23 @@ persisted, capability-checked facts; recheck them against current host policy.
 Do not require an interactive identity on a background call or blindly echo its
 subject.
 
+For `open` and `send`, `AuthorizationScope` includes `requestKey` and `replay`.
+`replay` is true only for a retained receipt with the same subject, key and
+fingerprint. Authorization still runs on every retry. After authenticating and
+authorizing the caller, a host can refuse fresh paid work when out of balance
+while allowing receipt replays:
+
+```ts
+if ((scope.operation === "open" || scope.operation === "send") && !scope.replay) {
+  if (!(await hasBalance(ctx, subject))) throw new Error("OUT_OF_BALANCE");
+}
+return { subject };
+```
+
+Conflicting input has `replay: false`; when authorized, it returns `KEY_CONFLICT`.
+These two endpoints look up receipts using `ctx.auth.getUserIdentity().subject`
+and require the host's returned subject to match. Other scopes are unchanged.
+
 `authorizeExecution(actionCtx, scope)` runs before every model generation,
 including children and result turns. It returns void or throws. It receives
 server-derived assignment, thread, run-origin and optional child facts.

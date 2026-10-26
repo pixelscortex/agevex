@@ -39,6 +39,22 @@ replays the stored receipt. The same key with changed input returns
 `KEY_CONFLICT` before any native write. The fingerprint covers the operation,
 the agent or thread, the text, the model map and the file ids.
 
+Before returning a duplicate, `open` and `send` still call the host's
+`authorize(ctx, scope)` with `requestKey` and `replay: true`. Fresh keys and
+conflicting fingerprints have `replay: false`; another subject's receipt never
+makes a call a replay. A host can keep retries available after a balance is
+exhausted by applying its balance check only to fresh work:
+
+```ts
+if ((scope.operation === "open" || scope.operation === "send") && !scope.replay) {
+  if (!(await hasBalance(ctx, subject))) throw new Error("OUT_OF_BALANCE");
+}
+return { subject }; // Authenticate and authorize this caller first.
+```
+
+A host that denies a replay still causes the call to throw. Purged receipts
+cannot grant replay status.
+
 ## Approvals
 
 A pending native tool approval blocks generation and leaves the inbox row
