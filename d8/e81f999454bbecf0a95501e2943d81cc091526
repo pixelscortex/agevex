@@ -1,0 +1,57 @@
+src/component/turns/pause.ts
+  s_8b6ac41436b8fd::t_a8caec0f5179b6 23,128,142,188
+tests/tools/model-authored-asks.test.ts
+  s_8b6ac41436b8fd::t_14ac165cba4a2b 202-203,223,249-257,259-261,268-273,277,279-284
+  s_8b6ac41436b8fd::t_9fdc94ece0beb6 24,26,35,44,51,56,66,95,99,104,114-118,123,130,137,142,162,177,186,193,233,240,258,278,314,324,347
+  s_8b6ac41436b8fd::t_4c9884b28fbf68 287-301
+  s_8b6ac41436b8fd::t_d049df30c18002 13-22,40-42,46-49,67-73,77-84,93-94,96-97,105-113,124-129,139-140,163-169,184-185,195-197,204-222,224-232,234-239,241-248,262-267,274-276,307-309,318-323
+  s_8b6ac41436b8fd::t_fc6ebfb0aee1b0 1-12,23,25,27-34,36-39,43,45,50,52-55,57-65,74-76,85-92,98,100-103,119-122,131-136,138,141,143-161,170-176,178-183,187-192,194,198-201,285-286,302-306,310-313,315-317,325-346,348-353
+  s_8b6ac41436b8fd::t_5328b97baaf981 354-357
+src/component/turns/decision-proposals.ts
+  s_8b6ac41436b8fd::t_a8caec0f5179b6 6,45,47-48,53
+  s_8b6ac41436b8fd::t_895cae176cc96c 55,61
+src/component/turns/decision-save.ts
+  s_8b6ac41436b8fd::t_a8caec0f5179b6 5-11,24,48-50,52,54,59-77,122-126
+  s_8b6ac41436b8fd::t_27bc1b05f9e817 127-129,142
+src/client/turn/fence.ts
+  s_8b6ac41436b8fd::t_06ee4823748848 18,253
+src/client/index.ts
+  s_8b6ac41436b8fd::t_06ee4823748848 64
+  s_8b6ac41436b8fd::t_218b7b2af447e1 65-69
+src/shared/tool-markers.ts
+  s_8b6ac41436b8fd::t_4c9884b28fbf68 2,6-9,24-26,33-37,59,71-75
+  s_8b6ac41436b8fd::t_14ac165cba4a2b 77-78
+  s_8b6ac41436b8fd::t_06ee4823748848 3-4,10-14,22-23,28-32,38-58,60-70,76,79-83
+docs/site/content/docs/tools/ask-user.mdx
+  s_8b6ac41436b8fd::t_8fa9595d3dcdf0 25,31,58,79-122
+  s_8b6ac41436b8fd::t_0058df1b2b96f7 123-128
+README.md
+  s_8b6ac41436b8fd::t_8fa9595d3dcdf0 931-941
+src/client/endpoints/pending.ts
+  s_8b6ac41436b8fd::t_a8caec0f5179b6 48-49,51,55
+src/modules/tools/registry/ask-user/askUser.ts
+  s_8b6ac41436b8fd::t_8a121c53ea67b6 6,15-20,24-30,55-62,64-74
+  s_8b6ac41436b8fd::t_4c9884b28fbf68 7,31,36,38,41-54
+  s_8b6ac41436b8fd::t_a62903972211dc 63
+src/component/turns/write.ts
+  s_8b6ac41436b8fd::t_06ee4823748848 45-52
+  s_8b6ac41436b8fd::t_9b7586b38ff1a3 53-59
+docs/site/public/r/ask-user.json
+  s_8b6ac41436b8fd::t_65baa73398d46f 14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d8e81f999454bbecf0a95501e2943d81cc091526",
+  "prompts": {},
+  "sessions": {
+    "s_8b6ac41436b8fd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a178c7-44a6-7603-a004-fe91ae1abef5",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
