@@ -31,6 +31,19 @@ function newDelivery(
   };
 }
 
+/**
+ * Whether this sink already holds the charge's current state. A classification
+ * change at an unchanged amount is a $0 revision that only sinks which opted
+ * into estimates want; others (e.g. Polar) would receive meaningless $0 events.
+ */
+function delivered(row: Doc<"charges">, sink: Doc<"charges">["sinkState"][number]) {
+  return (
+    sink.deliveredNanos === row.nanos &&
+    (!sink.estimates ||
+      (sink.deliveredStatus === row.status && sink.deliveredSource === row.source))
+  );
+}
+
 /** Outbox snapshots are immutable until acknowledged, including on uncertain
  * delivery. A pending event exists on the charge exactly while its outbox row
  * exists; the row is the copy delivery jobs read. */
@@ -43,9 +56,9 @@ export async function prepareSinks(
   const sinkState = row.sinkState.map((sink) => ({ ...sink }));
   const due: string[] = [];
 
-  if (billable(row) && row.nanos !== undefined)
+  if (row.nanos !== undefined)
     for (const sink of sinkState) {
-      if (sink.pending || sink.deliveredNanos === row.nanos) continue;
+      if (!billable(row, sink.estimates) || sink.pending || delivered(row, sink)) continue;
 
       sink.revision++;
 
@@ -57,6 +70,9 @@ export async function prepareSinks(
         revision: sink.revision,
         nanos: row.nanos - (sink.deliveredNanos ?? 0),
         totalNanos: row.nanos,
+        // Freeze classification alongside amount: delivery never consults the charge.
+        status: row.status,
+        source: row.source,
       };
 
       await ctx.db.insert("deliveries", newDelivery(row, sink.name, sink.pending));

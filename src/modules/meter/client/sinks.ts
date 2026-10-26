@@ -144,6 +144,8 @@ export function polarSink(options: {
 
   return {
     name: options.name ?? "polar",
+    // Never opts into estimates: Polar bills what it ingests, so only final
+    // amounts may reach it (an estimate would be charged before correction).
     deliver: async (batch) => {
       const accessToken = await resolveCredential(options.accessToken, "POLAR_TOKEN_REQUIRED");
 
@@ -194,6 +196,7 @@ export function polarSink(options: {
 export function webhookSink(options: {
   url: string;
   name?: string;
+  estimates?: boolean;
   headers?: Record<string, string>;
   fetch?: typeof fetch;
 }): Sink {
@@ -203,6 +206,7 @@ export function webhookSink(options: {
 
   return {
     name: options.name ?? "webhook",
+    estimates: options.estimates,
     deliver: async (batch) => {
       for (const entries of batches(batch)) {
         const response = await (options.fetch ?? fetch)(options.url, {
