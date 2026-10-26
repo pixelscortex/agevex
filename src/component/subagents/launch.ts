@@ -18,6 +18,7 @@ import { type MutationCtx, mutation, query } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
 import { denialCode } from "../schema.js";
 import { LIMITS } from "../limits.js";
+import { assertFunctionHandle, assertName } from "../facts.js";
 import { taskPreview } from "../run-tree-values.js";
 import { approvalKey } from "../approvals.js";
 import { assertRunMetadata, groupMembers, newSubagentRun, runById } from "./runs.js";
@@ -59,6 +60,11 @@ const denied = <Code extends Denial["code"]>(code: Code) => ({ kind: "denied" as
  * parent run, so a shared child definition cannot bypass the configured bound.
  */
 export async function reserveRun(ctx: MutationCtx, args: ReserveArgs) {
+  // The agent name becomes the child assignment's `agent`; the handle is
+  // stored on the run row. Bound both before any read or write.
+  assertName(args.agent, "agent");
+  assertFunctionHandle(args.coordinateHandle, "coordinateHandle");
+
   const scope = await reservationScope(ctx, args);
 
   if (scope.kind === "denied") return scope;

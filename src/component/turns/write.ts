@@ -19,6 +19,7 @@ import { internal } from "../_generated/api.js";
 import type { MutationCtx } from "../_generated/server.js";
 import type { Doc } from "../_generated/dataModel.js";
 import { LIMITS } from "../limits.js";
+import { assertFunctionHandle } from "../facts.js";
 import { appendTurnMessages } from "./message-ids.js";
 import { prepareDecisions, oversizedDecisionInput } from "./decision-save.js";
 import { recordMessages } from "../hooks/refs.js";
@@ -72,6 +73,8 @@ type WriteArgs = ObjectType<typeof writeArgs>;
  * coordination facts. Returns the native mutation's result, or null (or a
  * typed CANCELLED error with `rejectStale`) when the caller lost the turn. */
 export async function fencedWrite(ctx: MutationCtx, args: WriteArgs): Promise<unknown> {
+  assertWriteHandles(args);
+
   const loaded = await ctx.db.get("assignments", args.assignmentId);
   const row = await liveWriter(ctx, loaded, args);
 
@@ -122,14 +125,37 @@ export async function fencedWrite(ctx: MutationCtx, args: WriteArgs): Promise<un
   if (args.nativeMessages || args.nativeStream) {
     const saved = (await ctx.db.get("assignments", row._id))!;
 
-    // Assert the complete persisted value after refs, report, usage, pending
-    // generation and approval metadata have all grown. A failure rolls back
-    // the native write too; ids can never escape their creating transaction.
+    // Pure invariant, unreachable given the writer bounds: every growth during
+    // a save is reserved (report, refs, usage step, pending generation, a full
+    // approval pause), and every fixed host string is bounded where it enters
+    // (names and handles: send.ts, assertWriteHandles, launch.ts, refs.ts).
+    // tests/save-bounds.test.ts builds the largest row production can write
+    // and proves it fits. If it ever fired, the throw rolls back the paid
+    // native row WITH its id rather than committing a row nothing references.
     if (getConvexSize(saved) > LIMITS.assignmentBytes)
       throw new Error("ASSIGNMENT_METADATA_TOO_LARGE");
   }
 
   return result;
+}
+
+/** Bound every handle this write can store, before the native mutation runs:
+ * `handle` becomes `approvals.addMessages`, `nativeMessages` becomes
+ * `pendingGeneration`/`approvals.getMessages`, and `nativeStream` becomes
+ * `pendingGeneration.stream.abort`. Throwing here commits nothing, so no
+ * native row can exist without its recorded id. The client creates these
+ * handles from the native component's own functions; real ones are ~60-100
+ * bytes (limits.ts `functionHandleBytes`), so this guards the stored row
+ * against a hand-rolled caller rather than failing a real turn. */
+function assertWriteHandles(args: WriteArgs) {
+  assertFunctionHandle(args.handle, "handle");
+
+  if (args.nativeStream !== undefined) assertFunctionHandle(args.nativeStream, "nativeStream");
+
+  if (args.nativeMessages) {
+    assertFunctionHandle(args.nativeMessages.getMessages, "nativeMessages.getMessages");
+    assertFunctionHandle(args.nativeMessages.finalizeMessage, "nativeMessages.finalizeMessage");
+  }
 }
 
 /** The row if the caller still owns a running turn at its token and epoch,

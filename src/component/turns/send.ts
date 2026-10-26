@@ -27,6 +27,7 @@ import { wake } from "./wake.js";
 import { taskPreview } from "../run-tree-values.js";
 import { activity as vActivity, receipt as vReceipt, scope } from "../schema.js";
 import { activityView, assignmentScope } from "./views.js";
+import { assertFunctionHandle, assertName } from "../facts.js";
 
 export const acceptArgs = {
   subject: v.string(),
@@ -70,7 +71,7 @@ export async function requestReceipt(
 /** Admit one host send; see the file header. Throws (rolling back the native
  * save) for a foreign thread, recovery_required or a full ready queue. */
 export async function acceptSend(ctx: MutationCtx, args: ObjectType<typeof acceptArgs>) {
-  if (args.models && !validModelOverrides(args.models)) throw new Error("INVALID_MODELS");
+  assertAdmissible(args);
 
   const duplicate = await requestReceipt(ctx, args.subject, args.requestKey, args.fingerprint);
 
@@ -228,6 +229,23 @@ export const activity = query({
     return activityView(row);
   },
 });
+
+/** Validate the send before any write: the model map, then every host string
+ * it can store on the assignment (the subject, the agent name and the four
+ * function handles: runTurn plus textConfig's three). Both `open` and `send`
+ * admit through here, and a child inherits its root's subject and runTurn, so
+ * these are the only writers. A throw rolls back the host's native prompt save. */
+function assertAdmissible(args: ObjectType<typeof acceptArgs>) {
+  if (args.models && !validModelOverrides(args.models)) throw new Error("INVALID_MODELS");
+
+  assertName(args.subject, "subject");
+  assertName(args.agent, "agent");
+  assertFunctionHandle(args.runTurn, "runTurn");
+
+  if (args.textConfig)
+    for (const field of ["worker", "updateThread", "getThread"] as const)
+      assertFunctionHandle(args.textConfig[field], `textConfig.${field}`);
+}
 
 /** Configure the bounded exact-message ring before recording the accepted prompt. */
 async function configureText(

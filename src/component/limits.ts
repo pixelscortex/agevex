@@ -107,15 +107,27 @@ export const HOST_LIMITS = {
  * 1 MiB placeholder) are NEVER read by cancel; cleanup runs separately.
  * Subagent rows stay <=4 KiB: names/subjects/groups <=200 UTF-16 units,
  * hashed tool-call dedup keys, ids, counters and <=4 small events. Assignments
- * allow <=34 KiB: the original <=8 KiB (16 approval/deferred-call keys),
- * <=4 KiB exact message references, <=6 KiB side-review boundaries, two
- * prompt ids and scalar counters. Root text metadata adds <=9 KiB summary/
- * boundary and <=4 KiB job/config refs: 8+4+6+9+4=31 KiB. Reporting adds
- * <=64*(37+2)=2,496 bytes of native ids plus prompt/cap/resume metadata:
- * <=2,653 bytes within a 3 KiB reservation, making the envelope 34 KiB.
- * The old envelope was conservative after removing the <=10 KiB control-id replay
- * list. Notes have their own bounded queue N; each raw row stays <=17 KiB
- * and is read only by separate per-assignment cleanup transactions (<=850 KiB including ownership).
+ * allow <=34 KiB (34,816 bytes). The largest row the writer bounds admit, with
+ * EVERY field at its cap (tests/save-bounds.test.ts, Convex bytes including
+ * system fields and field names), is 29,810 bytes:
+ *   textSummary <=8 KiB text + boundary                         8,303
+ *   reviewed: 8 side agents, 200-unit (<=600-byte) names        5,234
+ *   approvals: 16 SHA-256 keys/ids/proposals + 2 handles        4,802
+ *   contextMessages: 24 exact refs                              2,666
+ *   turnReport: 64*37-byte ids + prompt/cap/resume (3 KiB cap)  2,635
+ *   handles <=256 B: pendingGeneration (3) 988, textConfig (3) 842,
+ *     runTurn 258; approvals' two are counted above            2,088
+ *   subject + agent: <=200 UTF-16 units each                    1,204
+ *   title/summary jobs 592, models <=512 B 510, limits 358      1,460
+ *   remaining ids, scalars, literals and object overhead        1,418
+ * leaving 5,006 bytes (~4.9 KiB) of headroom. Names and handles are bounded
+ * where they enter (facts.ts: send, reserve, markReviewed and every native
+ * write), so this sum never depends on host string lengths. activeTools is
+ * excluded: write clears it before a save grows the row, and its own writer
+ * (turns/tools.ts) refuses a marker that would cross the envelope.
+ * Notes have their own bounded queue N; each raw row stays <=17 KiB and is
+ * read only by separate per-assignment cleanup transactions (<=850 KiB
+ * including ownership).
  * Saved control rows retain <=1 KiB of exact-id origin metadata and are excluded
  * from every ready/cancel index range. Runs carry a <=15 KiB settings map,
  * <=512-byte model map, scalar counters and two 64-bit start/routing masks.
@@ -146,7 +158,19 @@ export const LIMITS = {
   factBytes: 128,
   attachmentBytes: HOST_LIMITS.attachmentBytes.default,
   fileIdLength: 200,
-  functionHandleLength: 1024,
+  // Every function handle we store (runTurn, textConfig, pendingGeneration,
+  // approvals, subagent coordinators, attachment natives), in UTF-8 bytes.
+  // Convex 1.47 serializes a handle as `function://<id>#<udf path>`
+  // (crates/common/src/bootstrap_model/components/handles.rs:83-90): an 11-byte
+  // prefix, a <=37-byte base32 document id (value/src/id_v6.rs:35-49) and the
+  // advisory path, e.g. `messages.js:addMessages`. Real agevex/Agent handles are
+  // ~60-100 bytes, so 256 leaves 2.5x margin while keeping the nine handles an
+  // assignment may hold to <=2.25 KiB of its envelope.
+  functionHandleBytes: 256,
+  // Subjects and agent names stored on assignments (and agent names on side
+  // review entries). The host client already narrows both to 128 UTF-8 bytes
+  // (facts.ts); the component bounds its own writers independently.
+  nameLength: 200,
   sandboxExitCode: 2 ** 31 - 1,
   fileMetadataBytes: 4 << 10,
   taskRepairs: 1,
