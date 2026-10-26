@@ -1155,9 +1155,9 @@ it("the 15-descendant cap includes grandchildren and cancel fences maximum queue
   ).toMatchObject({ status: "denied", code: "ACTIVE_LIMIT" });
 
   expect(await tree(t, root.threadId)).toHaveLength(HOST_LIMITS.activeChildrenPerRoot.max);
-  // All maxima are configured: 15 launches +83 parent messages +2 questions
-  // spend the entire 100-hop budget. Per-child messages remain capped at eight.
-  const followups = HOST_LIMITS.runHops.max - HOST_LIMITS.activeChildrenPerRoot.max - 2;
+  // Reserve 15 final results and two eventual answers as well as the
+  // 15 launches +66 messages +two questions: all 100 hops are committed.
+  const followups = HOST_LIMITS.runHops.max - 2 * HOST_LIMITS.activeChildrenPerRoot.max - 4;
 
   for (let i = 0; i < followups; i++) {
     const child = descendants[1 + Math.floor(i / 8)];
@@ -1189,7 +1189,7 @@ it("the 15-descendant cap includes grandchildren and cancel fences maximum queue
       op: "message",
       assignmentId: root.assignmentId,
       turnToken: root.turnToken,
-      runId: descendants[descendants.length - 2].runId,
+      runId: descendants[descendants.length - 3].runId,
       text: "budget exhausted",
     }),
   ).toMatchObject({ status: "denied", code: "RUN_BUDGET" });
@@ -1746,8 +1746,8 @@ it("cancel bounds every descendant inbox across fourteen independent maximum-lau
     }
   }
 
-  // 1 parent launch +49 grandchild launches +49 results +1 question =100
-  // hops in EACH of the fourteen budgets, rather than one shared counter.
+  // Each old budget has 50 launches +49 results +one reserved parent result.
+  // A new question also needs its answer and must not consume that last hop.
   for (const parent of parents.slice(0, -1))
     expect(
       await t.mutation(api.agents.coordinate, {
@@ -1756,9 +1756,19 @@ it("cancel bounds every descendant inbox across fourteen independent maximum-lau
         turnToken: parent.turnToken,
         question: "one final hop",
       }),
-    ).toMatchObject({ status: "accepted" });
+    ).toMatchObject({ status: "denied", code: "RUN_BUDGET" });
 
-  for (let i = parents.length - 1; i < HOST_LIMITS.queueLength.max; i++)
+  // The fresh fifteenth budget can still exercise open-question cancellation.
+  expect(
+    await t.mutation(api.agents.coordinate, {
+      op: "ask",
+      assignmentId: parents[parents.length - 1].assignmentId,
+      turnToken: parents[parents.length - 1].turnToken,
+      question: "fresh budget question",
+    }),
+  ).toMatchObject({ status: "accepted" });
+
+  for (let i = 1; i < HOST_LIMITS.queueLength.max; i++)
     await owner(t).mutation(api.agents.send, {
       threadId: root.threadId,
       text: "full backlog",
@@ -2793,9 +2803,10 @@ it.each(
 );
 
 it.each(["each", "all"] as const)(
-  "a two-hop Main → Builder → Reviewer run settles every idle ancestor with wait=%s",
+  "a four-hop Main → Builder → Reviewer run settles every idle ancestor with wait=%s",
   async (wait) => {
-    const t = setup({ runHops: 2 });
+    // Two launches and their two final results each own a hop.
+    const t = setup({ runHops: 4 });
 
     v2.steps.Main = (n) => (n === 0 ? [delegate("Builder")] : text("Main finished"));
 

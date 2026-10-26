@@ -40,7 +40,7 @@ export function parentNoteFits(text: string) {
  * expiry-head receipt probe keep admission metadata below 1 MiB.
  * The host's one native save reads <=1 MiB tail (Agent messages.ts:298-322).
  * post/wake adds bounded group recovery (<2.25 MiB); combined <6 MiB.
- * Including the pending-delivery reservation scan (messages.ts), the whole
+ * Including the pending-delivery reservation scan (headroom.ts), the whole
  * host transaction stays below 10 MiB /1,500 reads /128 writes. Notes add
  * no queue rows beyond the existing <=100 backlog + reserved head/answer envelope.
  */

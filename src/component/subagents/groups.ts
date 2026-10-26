@@ -15,6 +15,7 @@ import type { MutationCtx } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
 import { groupMembers, isSettled } from "./runs.js";
 import { settleIdleParent } from "./settle.js";
+import { deliveryQueueLimit } from "./headroom.js";
 
 /** Readiness belongs to one sealed cohort, never a prefix of historical runs.
  * One representative is sufficient for indexed discovery; release marks every
@@ -73,7 +74,8 @@ export async function releaseGroup(
     .filter((member) => member.deliveryStatus === "accepted" && member.resultMessageId)
     .sort((a, b) => (a.resultSequence ?? 0) - (b.resultSequence ?? 0));
 
-  if (accepted.length && parent.queuedMessages >= root.limits.queueLength) return false;
+  if (accepted.length && parent.queuedMessages >= (await deliveryQueueLimit(ctx, parent)))
+    return false;
 
   // Mark all <=15 members "joined" so the by_join fence probes retire the
   // entire cohort, including failures. No delivered body is read or copied.
@@ -186,7 +188,11 @@ export async function releaseReadyCohort(
 ) {
   const parent = await ctx.db.get("assignments", args.assignmentId);
 
-  if (!parent || parent.cancelled || parent.queuedMessages >= parent.limits.queueLength)
+  if (
+    !parent ||
+    parent.cancelled ||
+    parent.queuedMessages >= (await deliveryQueueLimit(ctx, parent))
+  )
     return false;
 
   const root = parent.rootAssignmentId

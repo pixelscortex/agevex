@@ -621,6 +621,28 @@ it("five reviewers with four notes five seconds apart cannot starve any final re
     });
   }
 
+  // The reported reproduction used an ask and answer to steal two of the
+  // five owed result hops after the fourteen accepted notes.
+  expect(
+    await t.mutation(api.agents.coordinate, {
+      op: "ask",
+      ...(await sender(t, receipt.threadId)),
+      question: "would steal a reserved final hop",
+    }),
+  ).toMatchObject({ status: "denied", code: "RUN_BUDGET" });
+
+  const parent = (await t.query(rawAssignment, { assignmentId: receipt.assignmentId }))!;
+
+  expect(
+    await t.mutation(api.agents.coordinate, {
+      op: "message",
+      assignmentId: parent._id,
+      turnToken: parent.turnToken!,
+      runId: (await tree(t, receipt.threadId))[0].runId,
+      text: "would also steal a reserved final hop",
+    }),
+  ).toMatchObject({ status: "denied", code: "RUN_BUDGET" });
+
   children[0].release();
   await waitFor(t, () => calls("Reviewer").length === 5);
 

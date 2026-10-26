@@ -23,6 +23,7 @@ import { messageRef, recordRefs } from "../hooks/refs.js";
 import { newChildAssignment } from "../turns/assignments.js";
 import { wake } from "../turns/wake.js";
 import { delegateScope } from "./views.js";
+import { reserveFor } from "./headroom.js";
 
 export const reserveArgs = {
   assignmentId: v.id("assignments"),
@@ -84,6 +85,12 @@ export async function reserveRun(ctx: MutationCtx, args: ReserveArgs) {
 
   if (!budget || budget.cancelled || budgetSpent(budget, row, args.side))
     return denied("RUN_BUDGET");
+
+  if (!args.side) {
+    const refusal = await reserveFor(ctx, "launch", root, budget);
+
+    if (refusal) return refusal;
+  }
 
   const wait = args.wait ?? "each";
   const group = args.group ?? (wait === "all" ? "" : undefined);
@@ -167,11 +174,12 @@ async function reservationScope(ctx: MutationCtx, args: ReserveArgs) {
 }
 
 /** Whether this launch would exceed the run budget: side reviews spend
- * `sideRuns`; ordinary launches spend one launch and one hop. */
+ * `sideRuns`; ordinary launches spend one launch and one hop, with final-result
+ * headroom checked by reserveFor before any write. */
 function budgetSpent(budget: Doc<"runs">, row: Doc<"assignments">, side: boolean | undefined) {
   return side
     ? budget.sideRuns >= row.limits.sideRunsPerRun
-    : budget.launches >= row.limits.runLaunches || budget.hops >= row.limits.runHops;
+    : budget.launches >= row.limits.runLaunches;
 }
 
 /** A named group is a closed cohort, capped INCLUDING settled members. Refuse

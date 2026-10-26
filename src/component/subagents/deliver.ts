@@ -26,6 +26,7 @@ import type { FunctionReference } from "convex/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api.js";
 import { runErrorCode } from "../schema.js";
+import { deliveryQueueLimit } from "./headroom.js";
 import { deliveryContextFields, terminalContext } from "./views.js";
 
 type Delivery = {
@@ -91,7 +92,7 @@ export async function applyDelivery(ctx: MutationCtx, args: Delivery) {
 
   if (run.join) await deliverJoinMember(ctx, run, parent, root, args);
   else if (args.deliveryStatus === "accepted" && args.parentMessageId)
-    await enqueueResult(ctx, run, parent, root, args.parentMessageId);
+    await enqueueResult(ctx, run, parent, args.parentMessageId);
   else await wake(ctx, parent);
 
   return null;
@@ -166,10 +167,10 @@ async function enqueueResult(
   ctx: MutationCtx,
   run: Doc<"subagentRuns">,
   parent: Doc<"assignments">,
-  root: Doc<"assignments">,
   parentMessageId: string,
 ) {
-  if (parent.queuedMessages >= root.limits.queueLength) throw new Error("QUEUE_LIMIT");
+  if (parent.queuedMessages >= (await deliveryQueueLimit(ctx, parent)))
+    throw new Error("QUEUE_LIMIT");
 
   await ctx.db.insert("inbox", {
     assignmentId: parent._id,

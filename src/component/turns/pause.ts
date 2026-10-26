@@ -256,6 +256,8 @@ export async function suspendForApprovals(
   // answer/respond update this exact row instead of admitting more work;
   // 100 ordinary rows + one parent-answer slot + this continuation remain
   // within the 102-row per-assignment cancel bound in limits.ts.
+  // Final-result delivery exempts this exact ready control row from its queue
+  // check (subagents/headroom.ts), so pausing cannot steal a reserved result slot.
   // The response continuation must precede unrelated queued sends.
   const head = await firstReady(ctx, row._id);
 

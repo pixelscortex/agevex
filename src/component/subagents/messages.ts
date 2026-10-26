@@ -4,7 +4,7 @@
  * question to its parent (`askParent`, authenticated by `questionContext`).
  * Non-blocking progress uses the same admission and post helpers from parent-notes.ts.
  *
- * `interaction` is the constant-size admission check shared by the trusted
+ * `interaction` is the bounded admission check shared by the trusted
  * context queries (`interactionContext`, `interactionTarget`, parentNoteContext) and writes
  * (`sendToChild`, `askParentRun`), which rerun it inside the host's
  * native-save transaction. `post` then enqueues the saved native message on
@@ -19,6 +19,7 @@ import { wake } from "../turns/wake.js";
 import { hasPendingChildren } from "./settle.js";
 import { denialCode } from "../schema.js";
 import { LIMITS } from "../limits.js";
+import { reserveFor } from "./headroom.js";
 
 export const interactionArgs = {
   assignmentId: v.id("assignments"),
@@ -49,7 +50,7 @@ const denied = (
     | "MESSAGE_RATE_LIMIT",
 ) => ({ kind: "denied" as const, code });
 
-/** Constant-size admission: actor + root + target + child + shared budget.
+/** Bounded admission: actor + root + target + child + shared budget.
  * No native payload is read here. All writes below rerun this check inside
  * the native-save transaction, so neither a stale turn nor root cancellation
  * can admit a question/message after its fence.
@@ -117,61 +118,16 @@ export async function interaction(
 
   const budget = await ctx.db.get("runs", run.parentRunId);
 
-  if (!budget || budget.cancelled || (!replay && budget.hops >= root.limits.runHops))
-    return denied("RUN_BUDGET");
+  if (!budget || budget.cancelled) return denied("RUN_BUDGET");
 
-  if (args.op === "message_parent" && !replay) {
-    const refusal = await noteHeadroom(ctx, run, root, parent, budget);
+  if (!replay) {
+    const kind = args.op === "message_parent" ? "note" : answering ? "answer" : args.op;
+    const refusal = await reserveFor(ctx, kind, root, budget, target);
 
     if (refusal) return refusal;
   }
 
   return { kind: "ready" as const, actor, root, run, child, parent, budget };
-}
-
-/** Reserve final-result capacity before spending on optional progress. Settlement
- * decrements activeRuns BEFORE delivery, so count pending deliveries instead.
- * Hops belong to one user budget, shared by queued children and descendants.
- * The parent's queue spans user requests, so its reservation also includes
- * pending results from older budgets. Side reviews spend neither resource.
- * One slot per pending result is conservative for joins; taking queueLength
- * rows is enough to refuse when reservations alone fill the whole queue.
- * by_group reads <=58 rows and by_parent_delivery <=100 rows *4 KiB=632 KiB;
- * <=5 admission passes add <=3,160 KiB and 790 reads, keeping the host's
- * native-save transaction below 10 MiB /1,500 reads at every hard maximum.
- */
-async function noteHeadroom(
-  ctx: QueryCtx | MutationCtx,
-  run: Doc<"subagentRuns">,
-  root: Doc<"assignments">,
-  parent: Doc<"assignments">,
-  budget: Doc<"runs">,
-) {
-  const runs = await ctx.db
-    .query("subagentRuns")
-    .withIndex("by_group", (q) => q.eq("parentRunId", budget._id))
-    .take(root.limits.runLaunches + root.limits.sideRunsPerRun);
-
-  const pending = runs.filter(
-    (child) =>
-      !child.side &&
-      child.deliveryStatus === "pending" &&
-      child.rootCancellationEpoch === run.rootCancellationEpoch,
-  ).length;
-
-  const parentPending = await ctx.db
-    .query("subagentRuns")
-    .withIndex("by_parent_delivery", (q) =>
-      q.eq("actorAssignmentId", parent._id).eq("side", undefined).eq("deliveryStatus", "pending"),
-    )
-    .take(root.limits.queueLength);
-
-  if (parent.queuedMessages + 1 + parentPending.length > root.limits.queueLength)
-    return denied("QUEUE_LIMIT");
-
-  if (budget.hops + 1 + pending > root.limits.runHops) return denied("RUN_BUDGET");
-
-  return null;
 }
 
 /** The calling turn, its root and the delegation being addressed: for "ask"
