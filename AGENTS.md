@@ -29,6 +29,8 @@ Use `bun`/`bunx` only. Install dependencies with `bun install` and
 - `bun run check`: Oxfmt check, Oxlint, library/test/docs types and Convex lint gate.
 - `bun run fmt`: format; `bun run lint`: lint with type-aware checks.
 - `bun run test`: offline fake backends, two workers, no prior build required.
+- `bun run check:deploy`: push the built package to a local anonymous Convex
+  backend (no cloud); `release:git` runs it before publishing.
 - `bun run test:live`: opt-in OpenRouter, Daytona, Firecrawl and telemetry checks.
   Keys come from `/Volumes/mypixel/pxc/agevex/.env.local`: `OPENROUTER_API_KEY`,
   `DAYTONA_API_KEY`, `FIRECRAWL_API_KEY`; telemetry also needs the Langfuse keys
@@ -47,6 +49,10 @@ keys for paid effects; never automatically retry an unknown paid outcome.
 Record exact native message/stream IDs in the creating transaction; never scan
 transcripts. Host wrappers own authorization and environment access. Public
 functions need args and returns validators; use indexed, bounded queries.
+
+Files inside any `component/` folder are Convex modules: name them with
+letters, digits and `_` only (`decision_reads.ts`, never `decision-reads.ts`).
+Convex rejects other characters at deploy; `tests/module-paths.test.ts` guards it.
 
 Tests assert promised behavior, with a title naming each guarantee. Keep
 functions at most 90 lines; report existing oversized functions for the next

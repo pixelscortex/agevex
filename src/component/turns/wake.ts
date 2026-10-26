@@ -19,7 +19,7 @@ import { laneManager, startLoop } from "../workflows/lanes.js";
 import { firstReady } from "./inbox.js";
 import { runById } from "../subagents/runs.js";
 import { settleIdleParent } from "../subagents/settle.js";
-import { closeRootRun } from "./run-lifecycle.js";
+import { closeRootRun } from "./run_lifecycle.js";
 import {
   armRecovery,
   cancelIfPending,

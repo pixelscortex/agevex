@@ -11,7 +11,7 @@
  */
 import type { MutationCtx } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
-import { resolveRunSettings } from "../run-settings.js";
+import { resolveRunSettings } from "../run_settings.js";
 import { finishTurn } from "./finish.js";
 import { settleRouting } from "../hooks/routing.js";
 import { sealGroups } from "../subagents/groups.js";

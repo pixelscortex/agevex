@@ -15,7 +15,7 @@ import type { MutationCtx } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
 import { groupMembers, isSettled } from "./runs.js";
 import { settleIdleParent } from "./settle.js";
-import { closeRootRun } from "../turns/run-lifecycle.js";
+import { closeRootRun } from "../turns/run_lifecycle.js";
 
 /** Readiness belongs to one sealed cohort, never a prefix of historical runs.
  * One representative is sufficient for indexed discovery; release marks every

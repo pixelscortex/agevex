@@ -12,12 +12,12 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v, type Validator } from "convex/values";
 
-import { settingsSnapshot } from "./run-settings.js";
+import { settingsSnapshot } from "./run_settings.js";
 import { modelOverrides } from "./models.js";
 
 import { limitsValidator } from "./limits.js";
 import { textConfig, textJob, textBoundary, storedSummary } from "./text/values.js";
-import { storedProposal } from "./turns/decision-proposals.js";
+import { storedProposal } from "./turns/decision_proposals.js";
 
 export const turnOrigin = v.union(v.literal("user"), v.literal("subagent_result"));
 export const turnStatus = v.union(

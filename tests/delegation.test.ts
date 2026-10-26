@@ -4,7 +4,7 @@ import { requireReceipt } from "./receipt.js";
 // Every case runs against the real registered coordinator, the real component
 // mutations and the native Agent transcripts, with mock models only. Nothing
 // here contacts a provider, reads a key or reaches the network.
-import { sliceWatchdogMs, resolveRunSettings } from "../src/component/run-settings.js";
+import { sliceWatchdogMs, resolveRunSettings } from "../src/component/run_settings.js";
 import { it, expect, vi, afterEach, beforeEach } from "vite-plus/test";
 import { createThread, listMessages, saveMessage } from "@convex-dev/agent";
 import { createFunctionHandle } from "convex/server";

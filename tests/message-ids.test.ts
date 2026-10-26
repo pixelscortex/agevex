@@ -5,7 +5,7 @@ import { listMessages, type MessageDoc } from "@convex-dev/agent";
 import type { ToolContext } from "../src/client/index.js";
 import { getConvexSize } from "convex/values";
 import { HOST_LIMITS, LIMITS } from "../src/component/limits.js";
-import { RUN_LIMITS } from "../src/component/run-settings.js";
+import { RUN_LIMITS } from "../src/component/run_settings.js";
 import { fixture, reset, api, call, text, builder, critic } from "./hooks.host.js";
 import { components, rawAssignment } from "./fixture/api.js";
 import { setup } from "./message-ids.fixture.js";

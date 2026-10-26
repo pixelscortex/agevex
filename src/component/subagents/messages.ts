@@ -2,7 +2,7 @@
  * Parent/child conversation while a delegation runs: follow-up messages from
  * a parent to its running (or asking) child (`messageChild`), and a child's
  * question to its parent (`askParent`, authenticated by `questionContext`).
- * Non-blocking progress uses the same admission and post helpers from parent-notes.ts.
+ * Non-blocking progress uses the same admission and post helpers from parent_notes.ts.
  *
  * `interaction` is the bounded admission check shared by the trusted
  * context queries (`interactionContext`, `interactionTarget`, parentNoteContext) and writes

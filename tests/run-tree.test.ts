@@ -14,10 +14,10 @@ import {
 } from "./run-tree.fixture.js";
 import { waitFor } from "./message-parent.fixture.js";
 import { components, rawAssignment } from "./fixture/api.js";
-import { TREE_LIMITS } from "../src/component/run-tree-values.js";
+import { TREE_LIMITS } from "../src/component/run_tree_values.js";
 import { HOST_LIMITS, LIMITS } from "../src/component/limits.js";
 import { seedUsage } from "./run-tree-meter.seed.js";
-import { RUN_LIMITS } from "../src/component/run-settings.js";
+import { RUN_LIMITS } from "../src/component/run_settings.js";
 
 beforeEach(() => vi.useFakeTimers());
 

@@ -9,12 +9,12 @@ import type { MutationCtx } from "./_generated/server.js";
 import type { Doc } from "./_generated/dataModel.js";
 import type { Jobs } from "./jobs.js";
 import { internal } from "./_generated/api.js";
-import type { AttachArgs, ExpireArgs, LookupResultArgs } from "./charge-contracts.js";
+import type { AttachArgs, ExpireArgs, LookupResultArgs } from "./charge_contracts.js";
 import { lookupJob } from "../shared/contracts.js";
 import { LIMITS, integer, text } from "../shared/limits.js";
-import { find, resolved, replay, remember, type Outcome } from "./charge-records.js";
+import { find, resolved, replay, remember, type Outcome } from "./charge_records.js";
 import { pool, actionHandle, validateJobs } from "./jobs.js";
-import { change } from "./charge-updates.js";
+import { change } from "./charge_updates.js";
 
 /** Attach one immutable provider request, then admit lookup and its independent deadline. */
 export async function attachCharge(ctx: MutationCtx, args: AttachArgs): Promise<Outcome> {

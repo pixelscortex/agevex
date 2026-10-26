@@ -103,14 +103,14 @@ Paths below are relative to this module. Internal builders are not package expor
 - `component/convex.config.ts`: two aggregate children and Workpool registration.
 - `component/schema.ts`: `charges`, `deliveries`, `claims` and their indexed fields.
 - `component/charges.ts`: stable charge, lookup, delivery and retention function registrations.
-- `component/charge-contracts.ts`: lifecycle argument validators and inferred handler inputs.
-- `component/charge-creation.ts`: creation validation, replay ownership and initial charge rows.
-- `component/charge-records.ts`: bounded key reads, charge views, terminal predicates and receipt snapshots.
-- `component/charge-updates.ts`: amount transitions, correction/settlement precedence and projection replacement.
-- `component/charge-lookup.ts`: request attachment, one-shot expiry and fenced lookup results.
+- `component/charge_contracts.ts`: lifecycle argument validators and inferred handler inputs.
+- `component/charge_creation.ts`: creation validation, replay ownership and initial charge rows.
+- `component/charge_records.ts`: bounded key reads, charge views, terminal predicates and receipt snapshots.
+- `component/charge_updates.ts`: amount transitions, correction/settlement precedence and projection replacement.
+- `component/charge_lookup.ts`: request attachment, one-shot expiry and fenced lookup results.
 - `component/reconciliation.ts`: finite four-charge batches discovered through the run index.
-- `component/usage-projections.ts`: exclusive node costs and run/node token contributions.
-- `component/usage-views.ts`: bounded reactive views without charge scans.
+- `component/usage_projections.ts`: exclusive node costs and run/node token contributions.
+- `component/usage_views.ts`: bounded reactive views without charge scans.
 - `component/outbox.ts`: immutable delivery row builders and charge/sink synchronization.
 - `component/delivery.ts`: claims, acknowledgements, retry/crash accounting and explicit reset.
 - `component/jobs.ts`: Workpool admission, handle typing and retry ceilings.

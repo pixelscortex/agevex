@@ -17,7 +17,7 @@ import type {
 import type { Infer } from "convex/values";
 import type { AgentComponent, MessageDoc } from "@convex-dev/agent";
 import type { LanguageModelV4 } from "@ai-sdk/provider";
-import type { RunSettings } from "../component/run-settings.js";
+import type { RunSettings } from "../component/run_settings.js";
 import type { LanguageModel, ToolSet } from "ai";
 import type { ToolContext } from "./once.js";
 import type { activity, receipt, runErrorCode } from "../component/schema.js";

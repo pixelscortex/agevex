@@ -19,7 +19,7 @@ import { approvalKey, callKey, keyString } from "../approvals.js";
 import { firstReady } from "./inbox.js";
 import { disarmRecovery } from "./recovery.js";
 import { disarmSlice } from "./boundaries.js";
-import { saveProposal } from "./decision-proposals.js";
+import { saveProposal } from "./decision_proposals.js";
 import type { PreparedAskUser } from "../../shared/tool-markers.js";
 
 type PauseRequest = NonNullable<Doc<"assignments">["approvals"]>["requests"][number];

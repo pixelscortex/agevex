@@ -6,9 +6,9 @@ import { newRootAssignment } from "../src/component/turns/assignments.js";
 import { newRun } from "../src/component/turns/runs.js";
 import { newSubagentRun } from "../src/component/subagents/runs.js";
 import { HOST_LIMITS, LIMITS, resolveLimits } from "../src/component/limits.js";
-import { TREE_LIMITS, taskPreview } from "../src/component/run-tree-values.js";
-import { resolveRunSettings } from "../src/component/run-settings.js";
-import { closeRootRun, endRootTurn } from "../src/component/turns/run-lifecycle.js";
+import { TREE_LIMITS, taskPreview } from "../src/component/run_tree_values.js";
+import { resolveRunSettings } from "../src/component/run_settings.js";
+import { closeRootRun, endRootTurn } from "../src/component/turns/run_lifecycle.js";
 
 /** Fill opaque handles/fingerprints, never returned content, to their row caps. */
 function padded<T extends Record<string, Value | undefined>>(

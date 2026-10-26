@@ -1,15 +1,15 @@
 /**
  * Stable component API registrations for the meter charge lifecycle.
  * Host client calls and Workpool callbacks keep their original charges paths.
- * Wire validators live in charge-contracts; concept handlers own the same
+ * Wire validators live in charge_contracts; concept handlers own the same
  * transactional reads/writes, fences and bounds behind these entry points.
  */
 import { v } from "convex/values";
 import { query, mutation, internalMutation } from "./_generated/server.js";
-import { find, outcome } from "./charge-records.js";
-import { createCharge } from "./charge-creation.js";
-import { updateCharge } from "./charge-updates.js";
-import { attachCharge, expireCharge, recordLookupResult } from "./charge-lookup.js";
+import { find, outcome } from "./charge_records.js";
+import { createCharge } from "./charge_creation.js";
+import { updateCharge } from "./charge_updates.js";
+import { attachCharge, expireCharge, recordLookupResult } from "./charge_lookup.js";
 import {
   claimDeliveryBatch,
   recordDeliveryResult,
@@ -29,7 +29,7 @@ import {
   deliveryCompleteArgs,
   retrySinksArgs,
   pruneArgs,
-} from "./charge-contracts.js";
+} from "./charge_contracts.js";
 
 /** Return one charge with bounded delivery state; callers authorize in the host client. */
 export const get = query({

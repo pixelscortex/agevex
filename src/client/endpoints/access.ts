@@ -10,7 +10,7 @@ import type { GenericDataModel, GenericMutationCtx, GenericQueryCtx } from "conv
 import { ConvexError } from "convex/values";
 import type { ComponentApi } from "../../component/_generated/component.js";
 import { assertFact } from "../../component/facts.js";
-import type { SettingsSnapshot } from "../../component/run-settings.js";
+import type { SettingsSnapshot } from "../../component/run_settings.js";
 import { resolveLimits, type Limits } from "../../component/limits.js";
 import type { AgentEvent, ManagedAgent, Registration } from "../types.js";
 

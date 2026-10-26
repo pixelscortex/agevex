@@ -7,7 +7,7 @@
 import type { Doc } from "./_generated/dataModel.js";
 import type { MutationCtx } from "./_generated/server.js";
 import { LIMITS } from "../shared/limits.js";
-import { billable, isTerminal } from "./charge-records.js";
+import { billable, isTerminal } from "./charge_records.js";
 import { enqueueDrain, type Jobs } from "./jobs.js";
 
 /** Build one small outbox row at admission; event identity is frozen until acknowledgement. */

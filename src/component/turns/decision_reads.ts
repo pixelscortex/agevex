@@ -4,7 +4,7 @@ import { query, type QueryCtx } from "../_generated/server.js";
 import type { Doc } from "../_generated/dataModel.js";
 import { approvalKey, keyString } from "../approvals.js";
 import { findReceipt } from "../receipts/records.js";
-import { proposal } from "./decision-proposals.js";
+import { proposal } from "./decision_proposals.js";
 import { DECISION_LIMITS, decisionBytes } from "../../shared/decisions.js";
 import { oversizedAskItem } from "../../shared/ask-values.js";
 

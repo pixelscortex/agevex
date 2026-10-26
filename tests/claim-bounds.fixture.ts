@@ -5,7 +5,7 @@ import { HOST_LIMITS, LIMITS, resolveLimits } from "../src/component/limits.js";
 import { newRootAssignment } from "../src/component/turns/assignments.js";
 import { newRun } from "../src/component/turns/runs.js";
 import { newSubagentRun } from "../src/component/subagents/runs.js";
-import { resolveRunSettings } from "../src/component/run-settings.js";
+import { resolveRunSettings } from "../src/component/run_settings.js";
 import { fillAssignment, fillNotes, fullReport } from "./assignment-envelope.fixture.js";
 
 export const seed = mutation({

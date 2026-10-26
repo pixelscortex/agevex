@@ -11,9 +11,9 @@ import type {
   DeliveryResultArgs,
   DeliveryCompleteArgs,
   RetrySinksArgs,
-} from "./charge-contracts.js";
+} from "./charge_contracts.js";
 import { LIMITS, integer, text, chargeKey } from "../shared/limits.js";
-import { find } from "./charge-records.js";
+import { find } from "./charge_records.js";
 import { enqueueDrain, backoff, validateJobs, type Jobs } from "./jobs.js";
 import { prepareSinks } from "./outbox.js";
 

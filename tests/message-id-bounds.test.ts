@@ -4,7 +4,7 @@ import { getConvexSize } from "convex/values";
 import type { MessageDoc } from "@convex-dev/agent";
 import type { Doc, Id } from "../src/component/_generated/dataModel.js";
 import { LIMITS } from "../src/component/limits.js";
-import { appendTurnMessages } from "../src/component/turns/message-ids.js";
+import { appendTurnMessages } from "../src/component/turns/message_ids.js";
 import { fullReport } from "./assignment-envelope.fixture.js";
 
 it("a complete 64-id report with maximum native ids fits its 3 KiB reservation", () => {

@@ -20,7 +20,7 @@ import {
 import { integer, text, LIMITS } from "../shared/limits.js";
 import { requireBreakdown, resolveBreakdowns } from "../shared/breakdowns.js";
 import { breakdowns } from "./schema.js";
-import { readUsage, usageViewArgs, usageProjection } from "./usage-views.js";
+import { readUsage, usageViewArgs, usageProjection } from "./usage_views.js";
 
 /** Existing aggregates, exclusive node attribution, no ledger scan. */
 export const usage = query({ args: usageViewArgs, returns: usageProjection, handler: readUsage });

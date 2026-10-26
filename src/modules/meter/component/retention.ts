@@ -6,7 +6,7 @@
  */
 import { getDocumentSize } from "convex/values";
 import type { MutationCtx } from "./_generated/server.js";
-import type { PruneArgs } from "./charge-contracts.js";
+import type { PruneArgs } from "./charge_contracts.js";
 import { LIMITS, integer } from "../shared/limits.js";
 import { deleteAggregates, deleteCost } from "./aggregates.js";
 

@@ -137,8 +137,8 @@ the definition, the schema and helpers used across folders and by the client.
 | `subagents/groups.ts`     | Wait-"all" cohorts: seal, ready, release.                                                           |
 | `subagents/views.ts`      | Trusted contexts and delegation history page.                                                       |
 | `subagents/tree.ts`       | Root-inclusive reactive tree, projected status and message links.                                   |
-| `run-tree-values.ts`      | Tree/usage validators and hard byte/count ceilings.                                                 |
-| `turns/run-lifecycle.ts`  | Request-scoped ready/delivery/group fences and root closure snapshots.                              |
+| `run_tree_values.ts`      | Tree/usage validators and hard byte/count ceilings.                                                 |
+| `turns/run_lifecycle.ts`  | Request-scoped ready/delivery/group fences and root closure snapshots.                              |
 | `turns/tools.ts`          | Fenced start/end markers for bounded concurrent local tools.                                        |
 | `hooks/notes.ts`          | Registered: `addNote`, `beforeTurnNote`, `cancelNotes`; claim-time note saving.                     |
 | `hooks/state.ts`          | Registered: `hookState`, `continueAdmission`.                                                       |
@@ -153,7 +153,7 @@ the definition, the schema and helpers used across folders and by the client.
 | `workflows/lanes.ts`      | Registered: root/child `Turn`/`Loop`/`Done`; lane managers and `startLoop`.                         |
 | `workflows/worker.ts`     | Registered: `dispatch`, one non-retried paid slice.                                                 |
 
-`subagents/parent-notes.ts` exposes `parentNoteContext` and `messageParent` for
+`subagents/parent_notes.ts` exposes `parentNoteContext` and `messageParent` for
 live-fenced progress admission and atomic native note/receipt publication.
 
 ## Tables
