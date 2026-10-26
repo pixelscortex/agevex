@@ -1,0 +1,333 @@
+README.md
+  s_3753d5f573a6c8::t_041928dd064f94 247,252,264-267,276-303,788-794
+dist/client/agent.d.ts
+  s_3753d5f573a6c8::t_0498856d859faf 42-43
+dist/client/agent.js
+  s_3753d5f573a6c8::t_1b6afefd3a55a7 18-19,35
+dist/client/endpoints/access.d.ts
+  s_3753d5f573a6c8::t_f9a9df6b789868 16
+dist/client/endpoints/controls.d.ts
+  s_3753d5f573a6c8::t_86faed7b3ddc1b 15
+dist/client/endpoints/index.d.ts
+  s_3753d5f573a6c8::t_08acb3e1e39ce4 7-35,41,75,120
+dist/client/endpoints/index.js
+  s_3753d5f573a6c8::t_5449fed7f7696f 13,19-22
+dist/client/endpoints/requests.d.ts
+  s_3753d5f573a6c8::t_e87da48319eaa4 8,43
+dist/client/endpoints/requests.js
+  s_3753d5f573a6c8::t_01401a5c4008d2 18,61-62
+dist/client/endpoints/text.d.ts
+  s_3753d5f573a6c8::t_51976d67a00d80 1-34
+dist/client/endpoints/text.js
+  s_3753d5f573a6c8::t_1d10ef4ff25789 1-97
+dist/client/index.d.ts
+  s_3753d5f573a6c8::t_a23b27290bbb76 15
+dist/client/native-saves.d.ts
+  s_3753d5f573a6c8::t_46fcd2b87bf768 17,20
+dist/client/native-saves.js
+  s_3753d5f573a6c8::t_4b4aca2df1ec77 7,25,28
+dist/client/registration/context.d.ts
+  s_3753d5f573a6c8::t_37569dd8dd7433 21
+dist/client/registration/context.js
+  s_3753d5f573a6c8::t_20559ec5d8803f 12,37,43
+dist/client/runtime.d.ts
+  s_3753d5f573a6c8::t_9adc487d14dc4a 30-58,64,98,143,247,251-255
+dist/client/runtime.js
+  s_3753d5f573a6c8::t_c33be39bfe1f5e 4,16,42,46
+dist/client/tasks.d.ts
+  s_3753d5f573a6c8::t_32192048b0f8d2 24-28
+dist/client/tasks.js
+  s_3753d5f573a6c8::t_b88c80c5be9311 10,12,16-19,108-116,119,182-185,217,223-242,244,246,250,260,270,277-289
+dist/client/text/options.d.ts
+  s_3753d5f573a6c8::t_2238ea623bbe0f 1-57
+dist/client/text/options.js
+  s_3753d5f573a6c8::t_d49cc5dc766e5b 1-43
+dist/client/text/task.d.ts
+  s_3753d5f573a6c8::t_b8544009098ca4 1-7
+dist/client/text/task.js
+  s_3753d5f573a6c8::t_0ad49b8d95a6b3 1-169
+dist/client/turn/claim.d.ts
+  s_3753d5f573a6c8::t_1d66c64e561d19 20
+dist/client/turn/generation.js
+  s_3753d5f573a6c8::t_0e4a3027a16a1d 150-152
+dist/client/turn/tools.js
+  s_3753d5f573a6c8::t_9c0920f681e6af 78
+dist/client/types.d.ts
+  s_3753d5f573a6c8::t_c95d2430d31916 1,90,122-123,253,318,345
+dist/component/_generated/api.d.ts
+  s_3753d5f573a6c8::t_ecf8846d1387fd 10-13,37-40
+dist/component/_generated/component.d.ts
+  s_3753d5f573a6c8::t_67f4b30f5ef86e 10-11,38-39
+dist/component/cancellation/cleanup.d.ts
+  s_3753d5f573a6c8::t_ba48ed04076e4f 25,42,53
+dist/component/hooks/notes.d.ts
+  s_3753d5f573a6c8::t_48258095d7f1ab 521,527,536
+dist/component/limits.d.ts
+  s_3753d5f573a6c8::t_dc92ec8dc4be88 119-122
+dist/component/limits.js
+  s_3753d5f573a6c8::t_afeca4a523e581 96-99
+dist/component/schema.d.ts
+  s_3753d5f573a6c8::t_2521c5b38614b3 109,125,133,156,162,172-173,188,206,211-267,270,300,362-483,486,490,581,599,656,661,672,675,677,698,846,848,911
+dist/component/schema.js
+  s_3753d5f573a6c8::t_c79e21bac1ba85 17,101-111
+dist/component/subagents/deliver.d.ts
+  s_3753d5f573a6c8::t_f553649b66b907 58
+dist/component/subagents/launch.d.ts
+  s_3753d5f573a6c8::t_9cfb509474b52f 58
+dist/component/subagents/messages.d.ts
+  s_3753d5f573a6c8::t_94b89436e68b0d 30-86,89,119,186-242,245,275,361,363,383-439,442,472,539-595,598,628,786
+dist/component/subagents/runs.d.ts
+  s_3753d5f573a6c8::t_4a8d46898aa9ce 40,42,115,117
+dist/component/subagents/settle.d.ts
+  s_3753d5f573a6c8::t_236266441a100e 61,74
+dist/component/text/jobs.d.ts
+  s_3753d5f573a6c8::t_52d331087d9411 1-24
+dist/component/text/jobs.js
+  s_3753d5f573a6c8::t_8d5d7a2ce7f195 1-93
+dist/component/text/requests.d.ts
+  s_3753d5f573a6c8::t_20e8761170f627 1-27
+dist/component/text/requests.js
+  s_3753d5f573a6c8::t_8bb346ddf599fe 1-64
+dist/component/text/state.d.ts
+  s_3753d5f573a6c8::t_208ee1d983b631 1-132
+dist/component/text/state.js
+  s_3753d5f573a6c8::t_083993814514f5 1-191
+dist/component/text/values.d.ts
+  s_3753d5f573a6c8::t_437076f283fe0e 1-106
+dist/component/text/values.js
+  s_3753d5f573a6c8::t_55a60594e38e28 1-55
+dist/component/text/window.d.ts
+  s_3753d5f573a6c8::t_8bcf0cd34aa688 1-29
+dist/component/text/window.js
+  s_3753d5f573a6c8::t_a9ac4ec76c8018 1-44
+dist/component/text/worker.d.ts
+  s_3753d5f573a6c8::t_7588bc9d8924e2 1-25
+dist/component/text/worker.js
+  s_3753d5f573a6c8::t_83c29734f7d578 1-46
+dist/component/turns/approvals.d.ts
+  s_3753d5f573a6c8::t_1fda90d01ff794 63
+dist/component/turns/assignments.d.ts
+  s_3753d5f573a6c8::t_cc8c11d32748b5 23-79,82,112
+dist/component/turns/claim.d.ts
+  s_3753d5f573a6c8::t_c1d83a2db89e97 32,110
+dist/component/turns/finish.js
+  s_3753d5f573a6c8::t_827b58e9b90fda 19,43
+dist/component/turns/inbox.d.ts
+  s_3753d5f573a6c8::t_bc119f68a6bd7e 27,30,32,47,50,52
+dist/component/turns/send.d.ts
+  s_3753d5f573a6c8::t_963936b3fb27ca 105-119,205-212
+dist/component/turns/send.js
+  s_3753d5f573a6c8::t_7593b45319b3b4 24-25,42,66,73,112-113,176-188
+dist/component/turns/slices.d.ts
+  s_3753d5f573a6c8::t_f0a95019f251e9 31,73
+dist/component/turns/views.d.ts
+  s_3753d5f573a6c8::t_67c1da8b52e990 30,50,54,56,72
+dist/component/turns/write.js
+  s_3753d5f573a6c8::t_f625ee3ae3b66a 115
+dist/modules/extract/client/access.d.ts
+  s_3753d5f573a6c8::t_37d8b0f418577e 35-39,44
+dist/modules/extract/client/context.d.ts
+  s_3753d5f573a6c8::t_3dd54d0214b5ab 68,85-89,94,104,117-121,126,147-152
+dist/modules/extract/client/reads.d.ts
+  s_3753d5f573a6c8::t_d3495c97f34bd2 15-19,24
+dist/modules/extract/component/artifacts.d.ts
+  s_3753d5f573a6c8::t_f08b9b2f0ae3e8 43,61-65,70,81,94-98,103,131-136
+dist/modules/extract/component/schema.d.ts
+  s_3753d5f573a6c8::t_efa855ab847724 39-43,48,89
+dist/modules/extract/test.d.ts
+  s_3753d5f573a6c8::t_75eb986e17b613 18-22,27,68
+dist/modules/meter/client/client.d.ts
+  s_3753d5f573a6c8::t_612f48397c2feb 21-22,32
+dist/modules/meter/client/credential.d.ts
+  s_3753d5f573a6c8::t_bd6e45a2601929 1-4
+dist/modules/meter/client/credential.js
+  s_3753d5f573a6c8::t_24da85f2534a6a 1-16
+dist/modules/meter/client/index.d.ts
+  s_3753d5f573a6c8::t_3de0d016820397 13
+dist/modules/meter/client/sinks.d.ts
+  s_3753d5f573a6c8::t_49b8894bcf33dc 8,17-19,22
+dist/modules/meter/client/sinks.js
+  s_3753d5f573a6c8::t_59b5b3d3a138f2 2,95-97,100-101,107,113
+dist/modules/meter/client/workers.d.ts
+  s_3753d5f573a6c8::t_072b545b78e908 12-13,23
+dist/modules/meter/component/charge-contracts.d.ts
+  s_3753d5f573a6c8::t_8c0f81eaf951bc 12,24-28,32,35,47,50,60,62,91,103-104,122,132-133,149,169-170,189,199,212,224-225,243,263,276,291,317
+dist/modules/meter/component/charge-lookup.d.ts
+  s_3753d5f573a6c8::t_cf5be21c3e9b75 36,39,72,75
+dist/modules/meter/component/charge-records.d.ts
+  s_3753d5f573a6c8::t_f397754c594527 37,40,73,76,152,155,188,191,264,267
+dist/modules/meter/component/charge-updates.d.ts
+  s_3753d5f573a6c8::t_9d22fe22a9b892 52,55,88,91
+dist/modules/meter/component/charges.d.ts
+  s_3753d5f573a6c8::t_7fd9c5064e45ed 9,21-25,29,32,50-51,62-63,81-82,93,116,119,137-138,159
+dist/modules/meter/component/outbox.d.ts
+  s_3753d5f573a6c8::t_27a916b87bd542 52,55,88,91
+dist/modules/meter/component/schema.d.ts
+  s_3753d5f573a6c8::t_fbe6cb1a936f36 4,7,17,19,150,153,186,189,291,294,343,346,395,398,466,469,479,481,510-511,516,519,529,531,560,587,590,614,617,627,629,636
+dist/modules/meter/shared/limits.d.ts
+  s_3753d5f573a6c8::t_2730055e7cbf38 23
+dist/modules/meter/shared/limits.js
+  s_3753d5f573a6c8::t_6af8a14f7b67bf 23-24
+dist/modules/meter/test.d.ts
+  s_3753d5f573a6c8::t_eea4068e6014a6 40,43,76,79,181,184,233,236,285,288,356,359,369,371,400-401,406,409,419,421,450,470,473,497,500,510,512,519
+dist/modules/sandbox/client/credential.d.ts
+  s_3753d5f573a6c8::t_7631307e5e8937 1-4
+dist/modules/sandbox/client/credential.js
+  s_3753d5f573a6c8::t_aa7949eb2df1a1 1-14
+dist/modules/sandbox/client/daytona-context.d.ts
+  s_3753d5f573a6c8::t_da87256ef3d6c5 6-7,9-15,17-19,23-31
+dist/modules/sandbox/client/daytona-context.js
+  s_3753d5f573a6c8::t_891f69e4046456 6-7,10-22,33
+dist/modules/sandbox/client/daytona-files.js
+  s_3753d5f573a6c8::t_39a8e8bb4b314f 26,51,75,81
+dist/modules/sandbox/client/daytona-lifecycle.js
+  s_3753d5f573a6c8::t_68e2fc35634b8e 29,40,46,69,79,89
+dist/modules/sandbox/client/daytona.d.ts
+  s_3753d5f573a6c8::t_7ce4750dd2c77c 1-2,4-5
+dist/modules/sandbox/client/daytona.js
+  s_3753d5f573a6c8::t_1ce0838f215a97 9-10,33-38
+dist/modules/sandbox/client/index.d.ts
+  s_3753d5f573a6c8::t_855dc9c4c603a6 674
+dist/modules/sandbox/client/lifecycle.d.ts
+  s_3753d5f573a6c8::t_63132388180c5d 17
+dist/modules/sandbox/component/schema.d.ts
+  s_3753d5f573a6c8::t_b3f3a7acf68df7 37,70
+dist/modules/sandbox/component/state.d.ts
+  s_3753d5f573a6c8::t_a3fb73056d7066 119,147
+dist/modules/sandbox/shared/limits.d.ts
+  s_3753d5f573a6c8::t_2e59c19182c66d 40
+dist/modules/sandbox/shared/limits.js
+  s_3753d5f573a6c8::t_c2a5f53f2e3cd3 61-62
+dist/modules/sandbox/test.d.ts
+  s_3753d5f573a6c8::t_69df8191e1a666 48,81
+dist/modules/telemetry/client/credential.d.ts
+  s_3753d5f573a6c8::t_2aca6182496214 1-6
+dist/modules/telemetry/client/credential.js
+  s_3753d5f573a6c8::t_c5e4f26f182b41 1-18
+dist/modules/telemetry/client/exporters.d.ts
+  s_3753d5f573a6c8::t_d02496e361d327 1-6,18-21,24-25,27-28,30
+dist/modules/telemetry/client/exporters.js
+  s_3753d5f573a6c8::t_81b38ffadaf8f9 6,60-62,65,77-80,82-84,93-99,102-103,105,107-108,110
+dist/modules/telemetry/client/index.d.ts
+  s_3753d5f573a6c8::t_4dafd23538a8eb 9
+dist/modules/tools/registry/continue-budget/continueBudgetSchema.d.ts
+  s_3753d5f573a6c8::t_af986694007f9d 22,32,40,50
+dist/modules/tools/registry/continue-budget/continueBudgetState.d.ts
+  s_3753d5f573a6c8::t_563e3b3572d469 15,30
+dist/modules/tools/registry/todo/todoSchema.d.ts
+  s_3753d5f573a6c8::t_64770993a2e3d2 19,27,31,36,48,56,60,65
+dist/modules/tools/registry/todo/todoState.d.ts
+  s_3753d5f573a6c8::t_669bbebc1775af 19
+dist/test.d.ts
+  s_3753d5f573a6c8::t_038fe02e99bc64 12-68,71,101,163-284,287,291,382,400,457,462,473,476,478,499,647,649,712
+src/client/README.md
+  s_3753d5f573a6c8::t_3466f3b4ec3f68 14,40-52
+src/client/agent.ts
+  s_3753d5f573a6c8::t_c52850e05db9da 69-70,87
+src/client/endpoints/access.ts
+  s_3753d5f573a6c8::t_9459236216d4b7 28-31
+src/client/endpoints/index.ts
+  s_3753d5f573a6c8::t_f5caf5b9fd5113 23,37-40
+src/client/endpoints/requests.ts
+  s_3753d5f573a6c8::t_b614dbd10fa0c6 24,102-104
+src/client/endpoints/text.ts
+  s_3753d5f573a6c8::t_f4094858ef247e 1-118
+src/client/index.ts
+  s_3753d5f573a6c8::t_d17c204af08558 61-62
+src/client/native-saves.ts
+  s_3753d5f573a6c8::t_8f3a68c9fee95b 7,32,35
+src/client/registration/context.ts
+  s_3753d5f573a6c8::t_f9f1f20f77f1e9 19,39,69,79-81
+src/client/runtime.ts
+  s_3753d5f573a6c8::t_be17f6fca96dbc 4,27,65,70
+src/client/tasks.ts
+  s_3753d5f573a6c8::t_84e2a7670bdc40 11-17,23,46-50,57-60,218-230,234,308-311,355-388,394-402,421,434,440-455
+src/client/text/options.ts
+  s_3753d5f573a6c8::t_4ab689ffbc04cf 1-71
+src/client/text/task.ts
+  s_3753d5f573a6c8::t_a1ead60d81b6e6 1-241
+src/client/turn/generation.ts
+  s_3753d5f573a6c8::t_662365c7e62d4c 188-190
+src/client/turn/tools.ts
+  s_3753d5f573a6c8::t_abcac123380a6f 107
+src/client/types.ts
+  s_3753d5f573a6c8::t_292c9a9a220a51 8,95-98,141-142,285,318-320,341,368
+src/component/README.md
+  s_3753d5f573a6c8::t_d7ef71d9bf9f94 5,10,43-74
+src/component/_generated/api.ts
+  s_3753d5f573a6c8::t_91b1664beafbe5 12-15,46-50
+src/component/_generated/component.ts
+  s_3753d5f573a6c8::t_17803628c0fcd2 11-12,51-52
+src/component/limits.ts
+  s_3753d5f573a6c8::t_c5597356337605 99-102
+src/component/schema.ts
+  s_3753d5f573a6c8::t_b79d499bc5e6d0 19,184-194
+src/component/text/jobs.ts
+  s_3753d5f573a6c8::t_8ce0a5dc3b27c0 1-134
+src/component/text/requests.ts
+  s_3753d5f573a6c8::t_be296715390800 1-81
+src/component/text/state.ts
+  s_3753d5f573a6c8::t_51bad22572f7ca 1-254
+src/component/text/values.ts
+  s_3753d5f573a6c8::t_1f219f8849189c 1-68
+src/component/text/window.ts
+  s_3753d5f573a6c8::t_b93cf4537f469b 1-61
+src/component/text/worker.ts
+  s_3753d5f573a6c8::t_75030b9ceaeb76 1-53
+src/component/turns/finish.ts
+  s_3753d5f573a6c8::t_184434ba1f0aa2 21,54
+src/component/turns/send.ts
+  s_3753d5f573a6c8::t_209fae679f0824 24-25,43,79-80,89,142-144,218-238
+src/component/turns/write.ts
+  s_3753d5f573a6c8::t_5c69e38892b0c3 179-182
+src/modules/meter/API.md
+  s_3753d5f573a6c8::t_f8dc60d43302d3 21,34-39
+src/modules/meter/client/credential.ts
+  s_3753d5f573a6c8::t_8e22fa5ccb48ed 1-24
+src/modules/meter/client/index.ts
+  s_3753d5f573a6c8::t_ce95d28fe2d272 13
+src/modules/meter/client/sinks.ts
+  s_3753d5f573a6c8::t_21e3d39d6127b6 9,126-128,131,138-140,148-149,155
+src/modules/meter/shared/limits.ts
+  s_3753d5f573a6c8::t_49e32910acd14e 23-24
+src/modules/sandbox/README.md
+  s_3753d5f573a6c8::t_4b74fc801f13bb 14-17
+src/modules/sandbox/client/credential.ts
+  s_3753d5f573a6c8::t_e595b2a1a1e441 1-20
+src/modules/sandbox/client/daytona-context.ts
+  s_3753d5f573a6c8::t_720dc770ed995d 6-7,11-18,20-22,26-50,68
+src/modules/sandbox/client/daytona-files.ts
+  s_3753d5f573a6c8::t_9062f550afc342 31,71,107,114
+src/modules/sandbox/client/daytona-lifecycle.ts
+  s_3753d5f573a6c8::t_c26086b7b0324a 33,48,55,87,100,113
+src/modules/sandbox/client/daytona.ts
+  s_3753d5f573a6c8::t_be02e9405562d4 20-21,25-26,66-71
+src/modules/sandbox/client/index.ts
+  s_3753d5f573a6c8::t_2963501fdeef8f 132
+src/modules/sandbox/shared/limits.ts
+  s_3753d5f573a6c8::t_2af38369579473 61-62
+src/modules/telemetry/README.md
+  s_3753d5f573a6c8::t_7d381e7b9834c8 14-16
+src/modules/telemetry/client/credential.ts
+  s_3753d5f573a6c8::t_d9741529df3fcc 1-24
+src/modules/telemetry/client/exporters.ts
+  s_3753d5f573a6c8::t_346ed6830a81fc 6,75,79-82,85,98-101,104-105,107-109,124-131,135-138,141-142,144
+src/modules/telemetry/client/index.ts
+  s_3753d5f573a6c8::t_1096c40180af72 12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ab206de1f59772eee270eec2bec3d1aec1551d49",
+  "prompts": {},
+  "sessions": {
+    "s_3753d5f573a6c8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1787a-8849-7b10-b888-b49cb9013562",
+        "model": "unknown"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
