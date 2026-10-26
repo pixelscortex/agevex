@@ -1,0 +1,21 @@
+package.json
+  s_7b0a90e375055d::t_d76596b8ed27fa 84
+scripts/release-git.sh
+  s_7b0a90e375055d::t_82769a14ef17be 1-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9db7cb6bcc27fdf0fa8c6a6cb0371c6ee3030883",
+  "prompts": {},
+  "sessions": {
+    "s_7b0a90e375055d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1782b-a94f-76c0-92ba-fa20852c376c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
