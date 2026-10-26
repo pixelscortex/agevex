@@ -1,0 +1,21 @@
+tests/decisions-bounds.fixture.ts
+  s_7a747c6a433cc0::t_6cf95c1361c1e4 49,107
+tests/message-parent.test.ts
+  s_7a747c6a433cc0::t_792f0a91f88f0b 479,499
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1f40f0b5a79e4be1098285f5ac4a26a368bb72d0",
+  "prompts": {},
+  "sessions": {
+    "s_7a747c6a433cc0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1786d-0de7-7820-aaed-9b7d63261cec",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
