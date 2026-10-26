@@ -361,6 +361,7 @@ const watched = new Agent(native, {
 });
 
 const runtime = registerAgent(agevex, {
+  title: false,
   agents: [main, watched],
   usage: fakeUsage,
   modelAllowlist: [modelId],

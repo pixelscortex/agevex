@@ -185,7 +185,9 @@ async function nativeGeneration(
 
   if (turn.claimed.settings.mode === "generate") {
     const result = await fence.wait(
-      turn.managed.generateText(fence.ctx, target, args, { storageOptions }),
+      turn.managed.generateText(fence.ctx, target, args, {
+        storageOptions,
+      }),
     );
 
     const reason = result.finishReason;

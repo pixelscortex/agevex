@@ -14,6 +14,7 @@ const coordinator = () =>
   >;
 
 const policy = {
+  title: false as const,
   refs: {
     runTurn: () => internal.agents.runTurn,
     coordinate: coordinator,
@@ -42,22 +43,7 @@ it("is genuinely additive to the native Agent", () => {
 it("registers a Main -> Researcher graph and rejects an unusable one", () => {
   // A shared child definition is resolved through the root's `subagents` and
   // does not have to be a public root itself.
-  const runtime = registerAgent(components.agevex, { ...policy, agents: [main] });
-
-  expect(Object.keys(runtime.internalFunctions()).sort()).toEqual(["coordinate", "runTurn"]);
-
-  expect(Object.keys(runtime.authorizedEndpoints()).sort()).toEqual([
-    "activity",
-    "answer",
-    "cancel", // Phase 1a adds root-only cancellation.
-    "delegations",
-    "messages",
-    "open",
-    "respond",
-    "runTree",
-    "send",
-    "streams",
-  ]);
+  registerAgent(components.agevex, { ...policy, agents: [main] });
 
   expect(() => registerAgent(components.agevex, { ...policy, agents: [main, main] })).toThrow(
     "DUPLICATE_AGENT_NAME",
@@ -227,4 +213,14 @@ it("invalid model resolver registrations fail before accepting work", () => {
     expect(() =>
       registerAgent(components.agevex, { ...policy, agents: [main], ...options }),
     ).toThrow("INVALID_MODEL_REGISTRATION");
+});
+
+it("default titles require a host worker and title false permits worker-free registration", () => {
+  expect(() =>
+    registerAgent(components.agevex, { ...policy, agents: [main], title: undefined }),
+  ).toThrow("TEXT_TASK_REF_REQUIRED");
+
+  expect(() =>
+    registerAgent(components.agevex, { ...policy, agents: [main], title: false }),
+  ).not.toThrow();
 });

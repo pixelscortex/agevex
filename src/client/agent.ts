@@ -66,6 +66,8 @@ export class Agent<
   /** Type-only marker: managed registration cannot supply required custom context. */
   declare readonly _agevexContext: (ctx: CustomCtx) => void;
   readonly name: string;
+  /** Default model for tool-free background text tasks. */
+  readonly textModel: AgentOptions<AgentTools>["languageModel"];
   readonly run?: RunSettings;
   readonly sandbox: boolean;
   readonly subagents: readonly ManagedAgent[];
@@ -82,6 +84,7 @@ export class Agent<
   constructor(component: AgentComponent, options: AgentOptions<AgentTools>) {
     super(component, options);
     this.name = options.name;
+    this.textModel = options.languageModel;
     this.run = options.run;
     this.sandbox = options.sandbox ?? false;
     this.subagents = options.subagents ?? [];

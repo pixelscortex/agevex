@@ -211,6 +211,7 @@ export function reset() {
 }
 export function registration(limits?: Registration["limits"]) {
   return registerAgent(components.agevex, {
+    title: false,
     agents: [main],
     ...fixture.slots,
     limits,

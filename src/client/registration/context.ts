@@ -16,6 +16,7 @@ import {
   resolveRunSettings,
   type SettingsSnapshot,
 } from "../../component/run-settings.js";
+import { assertTextOptions } from "../text/options.js";
 import type { AgentEvent, Registration } from "../types.js";
 import { deferredToolNames, resolveGraph, type Graph } from "./graph.js";
 
@@ -35,7 +36,7 @@ export type RuntimeContext = {
   settings: SettingsSnapshot;
   /** Stable index per agent name (sorted), used by per-agent model routing. */
   agentIndexes: Map<string, number>;
-  /** Whether any agent has side agents, so native saves must be captured for review deltas. */
+  /** Whether native saves must be captured for side-review deltas or root summaries. */
   watching: boolean;
 };
 
@@ -65,6 +66,7 @@ export function createRuntimeContext(component: ComponentApi, config: Registrati
   assertSlots(config);
   assertModelRegistration(config);
   assertDeferredTools(graph);
+  assertTextOptions(config);
 
   const collaboration =
     [...graph.edges.values()].some((allowed) => allowed.size > 0) ||
@@ -74,7 +76,9 @@ export function createRuntimeContext(component: ComponentApi, config: Registrati
 
   if (collaboration && !config.refs.coordinate) throw new Error("COORDINATE_REF_REQUIRED");
 
-  const watching = [...graph.byName.values()].some((agent) => agent.sideAgents?.length);
+  const watching =
+    !!config.summary || [...graph.byName.values()].some((agent) => agent.sideAgents?.length);
+
   const rt: RuntimeContext = { component, config, limits, graph, agentIndexes, watching, settings };
 
   return rt;

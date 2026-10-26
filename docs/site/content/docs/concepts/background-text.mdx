@@ -1,0 +1,72 @@
+---
+title: Background text
+description: Default titles, optional summaries, rename fences and dispatch leases.
+status: Available
+---
+
+Titles run once after the first user message commits, without waiting for an
+assistant answer. Their default model is the root Agent model, including its
+accepted model override. `title: { model, prompt }` configures that call;
+`title: false` disables it. Outputs fit 120 Unicode code points and 512 UTF-8 bytes.
+
+The [getting-started registration](/docs/getting-started) exports `textTask` from
+`runtime.internalFunctions()` and supplies `refs.textTask`. That reference is
+required when either titles or summaries are enabled. Both disabled permits a
+registration with only the foreground references. Generated-reference inference
+cycles can use `RegisteredAction<"internal", TextTaskArgs, null>` from
+`convex/server`, with `TextTaskArgs` imported from `agevex`.
+
+## User titles
+
+`title({ threadId })` returns `{ text: string | null, source: "auto" | "user" |
+null, version: number }`. Call `rename({ threadId, text, expectedVersion })` with
+that version. A user rename or title already set directly on the native thread always wins
+over a late generated title. An identical
+retry replays; competing text at an outdated version throws `VERSION_CONFLICT`.
+The shared `{ messageId, replayed }` response receipt identifies the native thread
+in `messageId`; renaming creates no transcript message. All four metadata
+endpoints authorize the persisted root owner through the host policy.
+
+## Opt in to summaries
+
+Leave `summary` absent or false to make no summary calls. `summary: {}` enables
+on-demand `summarize({ threadId, requestKey })`, returning `queued` or `replayed`.
+`summary: { everyTurns: 10 }` also requests work after each tenth completed root
+turn. Cadence accepts integers from 1 through 1,000,000; tools and child turns do
+not increment it. `model` and `prompt` configure summary generation separately.
+
+`summary({ threadId })` returns `{ text, throughMessageId }` or null. The exact
+boundary covers successful completed-root work, excluding active/queued prompts
+beyond it. Input uses the prior summary plus at most 24 exact recent native
+messages, 48 KiB serialized; full native document reads fit 2 MiB. Summary output
+fits 8 KiB. A delayed worker reads the newest available completed boundary when
+claimed. One summary runs per thread; later requests coalesce into one follow-up
+for newer completed work. An early on-demand request waits for the first completed
+root boundary without occupying a worker or polling.
+
+Summaries are display-only and never change native model context.
+
+## Capacity, usage and failure
+
+Workers use the child/background lane and never await a model on the foreground
+turn. Each call rechecks `authorizeExecution` with persisted ownership and
+`purpose: "title" | "summary"`, then the optional budget. No interactive identity
+is assumed. Titles use 128 output tokens; summaries use 2,048. Calls stop waiting
+after 30 seconds, including providers that ignore abort. Prompts have a 4,096
+character configuration bound. Tasks use no tools, no repairs and no paid retries.
+
+Usage passes through the ordinary usage slot with `title`/`summary` purpose,
+the triggering root run and an exact provider response id when available.
+Reconciliation can settle after that run closes. Recording failures mark usage
+partial without changing metadata or buying another call. Reconciliation scheduling
+failure alone does not mark usage partial. Cancellation blocks queued summaries
+and late summary commits; titles still describe the first accepted message even
+when its turn is cancelled. Incurred usage remains recorded.
+
+Failures preserve previous text and conversation progress. A fresh explicit
+summary request can start new work after a failed or unknown result. Repeating
+its old request key only replays scheduling. Unknown outcomes block automatic
+cadence work; known failures permit the next cadence point. A lease starts only
+when provider dispatch starts, after authorization and bounded input reads.
+Preparation cancelled before dispatch never becomes an unknown paid outcome.
+Title generation is attempted once per thread.

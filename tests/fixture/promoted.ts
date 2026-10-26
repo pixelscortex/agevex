@@ -7,6 +7,7 @@ import { components } from "./api.js";
 import { researcher } from "../host.js";
 
 const runtime = registerAgent(components.agevex, {
+  title: false,
   agents: [researcher],
   refs: {
     runTurn: () =>

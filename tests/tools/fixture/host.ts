@@ -108,6 +108,7 @@ const main = new Agent(agent, {
 });
 
 const runtime = registerAgent(component, {
+  title: false,
   agents: [main],
   refs: {
     runTurn: () =>

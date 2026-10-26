@@ -96,7 +96,7 @@ export const runtime = registerAgent(components.agevex, {
   ...registration,
   sandbox: sandbox.slot(),
 });
-export const { runTurn, coordinate } = runtime.internalFunctions();
+export const { runTurn, coordinate, textTask } = runtime.internalFunctions();
 export const {
   open,
   send,

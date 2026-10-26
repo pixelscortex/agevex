@@ -21,6 +21,8 @@ import { armPurge, findReceipt, newDoneReceipt } from "../receipts/records.js";
 import { assignmentByThread, newRootAssignment } from "./assignments.js";
 import { settingsSnapshot, resolveRunSettings } from "../run-settings.js";
 import { newRun } from "./runs.js";
+import { textConfig } from "../text/values.js";
+import { queueText } from "../text/jobs.js";
 import { wake } from "./wake.js";
 import { activity as vActivity, receipt as vReceipt, scope } from "../schema.js";
 import { activityView, assignmentScope } from "./views.js";
@@ -38,6 +40,7 @@ export const acceptArgs = {
   limits: limitsValidator,
   models: v.optional(modelOverrides),
   settings: v.optional(settingsSnapshot),
+  textConfig: v.optional(textConfig),
 };
 
 /** The typed duplicate/conflict receipt for an already accepted request, or
@@ -73,6 +76,8 @@ export async function acceptSend(ctx: MutationCtx, args: ObjectType<typeof accep
 
   let row = await assignmentByThread(ctx, args.threadId);
 
+  const first = !row;
+
   if (!row) {
     const id = await ctx.db.insert("assignments", newRootAssignment(args));
 
@@ -81,10 +86,7 @@ export async function acceptSend(ctx: MutationCtx, args: ObjectType<typeof accep
 
   if (row.subject !== args.subject || row.agent !== args.agent) throw new Error("FORBIDDEN");
 
-  if (args.trackContext && !row.contextMessages) {
-    await ctx.db.patch("assignments", row._id, { contextMessages: [] });
-    row = { ...row, contextMessages: [] };
-  }
+  row = await configureText(ctx, row, args);
 
   if (row.turnStatus === "recovery_required") throw new Error("RECOVERY_REQUIRED");
 
@@ -136,6 +138,9 @@ export async function acceptSend(ctx: MutationCtx, args: ObjectType<typeof accep
       result: { assignmentId: row._id, threadId: args.threadId, position },
     }),
   );
+
+  if (first && args.textConfig?.title)
+    await queueText(ctx, (await ctx.db.get("assignments", row._id))!, "title", runId);
 
   await wake(ctx, { ...row, queuedMessages: row.queuedMessages + 1 });
 
@@ -210,3 +215,24 @@ export const activity = query({
     return activityView(row);
   },
 });
+
+/** Configure the bounded exact-message ring before recording the accepted prompt. */
+async function configureText(
+  ctx: MutationCtx,
+  initial: import("../_generated/dataModel.js").Doc<"assignments">,
+  args: ObjectType<typeof acceptArgs>,
+) {
+  let row = initial;
+
+  if (args.textConfig) {
+    await ctx.db.patch("assignments", row._id, { textConfig: args.textConfig });
+    row = { ...row, textConfig: args.textConfig };
+  }
+
+  if (args.trackContext && !row.contextMessages) {
+    await ctx.db.patch("assignments", row._id, { contextMessages: [] });
+    row = { ...row, contextMessages: [] };
+  }
+
+  return row;
+}

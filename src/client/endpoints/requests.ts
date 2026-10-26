@@ -21,6 +21,7 @@ import { modelOverrides, validModelOverrides } from "../../component/models.js";
 import { receipt } from "../../component/schema.js";
 import { savedMessageRef } from "../native-saves.js";
 import { fingerprint } from "../once.js";
+import { persistedTextConfig } from "../text/options.js";
 import type { ManagedAgent } from "../types.js";
 import { observe, ownedThread, rootAgent, type EndpointContext } from "./access.js";
 import { attachment, recordAttachments, validateFiles } from "./attachments.js";
@@ -98,7 +99,9 @@ async function acceptRequest(
     requestKey: request.requestKey,
     fingerprint: request.fingerprint,
     promptMessageId: messageId,
-    trackContext: !!request.native.sideAgents?.length,
+    trackContext:
+      !!request.native.sideAgents?.length || ep.config.title !== false || !!ep.config.summary,
+    textConfig: await persistedTextConfig(ep.config, request.native),
     savedMessage: savedMessageRef(messageId, message),
     runTurn: request.runTurn,
     limits: ep.limits,

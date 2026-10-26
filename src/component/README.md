@@ -2,12 +2,12 @@
 
 Mount `agevex/convex.config` beside the host's native Agent component.
 Agevex internally mounts two Workflow components, each with its own nested
-Workpool: root parallelism 2, child parallelism 4. Hosts export `runTurn` and
+Workpool: root parallelism 2, child parallelism 4. Hosts export `runTurn`, `textTask` and
 `coordinate`; no host Workflow exports are required.
 
 Transcripts, tasks and result bodies stay in Agent. Workflow owns journals,
 events, nested-workflow cancellation and work dispatch. Agevex tables hold
-only ids, counters and fences.
+ids, counters, fences and one bounded optional summary. Native Agent owns titles.
 
 ## Life of a turn
 
@@ -39,6 +39,38 @@ throwing action (`ambiguous`), a failed loop (`failWorkflow`) and the slice
 cap (`sliceLimit`). `cancel` (`turns/cancel.ts`) fences the root and every
 live descendant in one transaction. `reconcile` re-rings a loop whose ping
 was lost.
+
+## Background text state and budgets
+
+No tables are added. Root `assignments` carry:
+
+- `textConfig`: child-lane worker/native-title-read/update handles and summary cadence;
+  read when accepting or completing a root turn and dispatching jobs.
+- `titleVersion/titleSource`: optimistic rename and generated-commit fences;
+  the title body stays on the native thread and commits in the same mutation.
+- `titleTask/summaryTask`: one-shot key, triggering run, epoch, captured title
+  version, dispatch marker and status; optional first-message ref, deferred-first-boundary flag or
+  coalesced next-run ref.
+  Claim, dispatch, completion and timeout read these. A fresh summary key may
+  request new work after an unknown outcome; cadence resumes after known failures.
+- `textCompleted`: exact saved boundary of the last successful root turn;
+  summary claims exclude active/queued tasks beyond this boundary.
+- `textSummary`: at most 8 KiB text and its exact boundary/sequence; read by
+  display and the next incremental summary.
+- Existing `contextMessages`: at most 24 exact identities, captured with saves.
+  Summaries and side reviews read successful user/assistant message references.
+
+A worker reads one <=32 KiB assignment plus one <=16 KiB run. Title claim/commit
+also read one exact native thread <=1 MiB to preserve app titles atomically. Exact native
+message reads total <=2 MiB, at most 24 ids; serialized messages total <=48 KiB,
+plus <=8 KiB prior summary. Both full native sizes and encoded input are checked.
+The ring stays <4 KiB, summary <9 KiB, both jobs/config <4 KiB; the existing
+8 KiB coordination/pause +6 KiB review boundaries gives 8+4+6+9+4=31 KiB,
+reserving 1 KiB under the 32 KiB assignment envelope. Hard-limit
+fixtures enforce Convex transaction budgets with a full ring of large native
+messages. No transcript discovery, copied request bodies, new indexes or billing
+ledger are introduced. The existing receipts ledger records scheduling replay
+and paid outcomes; child Workflow journals are cleaned on finite completion.
 
 ## File map
 

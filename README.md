@@ -244,11 +244,12 @@ const runtime = registerAgent(components.agevex, {
   refs: {
     runTurn: () => internal.agents.runTurn,
     coordinate: () => internal.agents.coordinate,
+    textTask: () => internal.agents.textTask,
   },
   authorize: hostPolicy,
   authorizeExecution: hostExecutionPolicy,
 });
-export const { runTurn, coordinate } = runtime.internalFunctions();
+export const { runTurn, coordinate, textTask } = runtime.internalFunctions();
 export const {
   open,
   send,
@@ -260,6 +261,10 @@ export const {
   activity,
   delegations,
   runTree,
+  title,
+  rename,
+  summary,
+  summarize,
 } = runtime.authorizedEndpoints();
 ```
 
@@ -268,7 +273,34 @@ Convex generated-reference inference cycles, annotate `runTurn` with
 `RegisteredAction<"internal", TurnArgs, null>` and `coordinate` with
 `RegisteredMutation<"internal", CoordinateArgs, CoordinateResult>` from
 `convex/server`; the argument/result types are exported by `agevex`.
-A root without children only needs `refs.runTurn`.
+A root without children needs `refs.runTurn` and `refs.textTask` by default.
+Set `title: false` and leave summary disabled to omit `refs.textTask`.
+Annotate its export with `RegisteredAction<"internal", TextTaskArgs, null>`
+when generated-reference inference needs an explicit type.
+
+## Background title and summary
+
+Titles are on by default: one tool-free background call after the first user
+message, using the root model (including an accepted model override). Configure
+`title: { model, prompt }` or disable with `title: false`. Export the supplied
+`textTask` internal action and provide `refs.textTask` when either feature is on.
+Native app titles and user `rename({ threadId, text, expectedVersion })` always
+win over late work. Titles are generated even if the first turn is cancelled.
+`title` returns `{ text, source, version }`; conflicting renames throw
+`VERSION_CONFLICT`. Rename receipts identify the native thread in `messageId`;
+renaming adds no transcript message.
+
+Summaries are off. `summary: {}` enables on-demand
+`summarize({ threadId, requestKey })`; `everyTurns: N` adds completed-root-turn
+cadence. `summary({ threadId })` returns text and an exact `throughMessageId`.
+Summaries are display-only and never change native model context. See [background text](docs/site/content/docs/concepts/background-text.mdx).
+
+Jobs use child capacity, 30-second model deadlines, no tools, no repairs and no
+paid retries. Their usage carries `title`/`summary` purpose labels on the
+triggering root run. Authorization and budget are rechecked before spend; failures
+leave the conversation and previous metadata unaffected. A fresh summary key
+can request new work after an unknown/failed result; cadence resumes after known
+failures. A job lease starts at provider dispatch, after authorization and input reads.
 
 ## Durable execution
 

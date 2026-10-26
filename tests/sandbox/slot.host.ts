@@ -153,6 +153,7 @@ function build() {
   });
 
   runtime = registerAgent(components.agevex, {
+    title: false,
     agents: [main, plain, lead],
     sandbox: sandbox.slot(),
     refs: {
