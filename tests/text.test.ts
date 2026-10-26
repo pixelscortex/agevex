@@ -8,7 +8,7 @@ import { getConvexSize } from "convex/values";
 import { components, rawAssignment } from "./fixture/api.js";
 import schema from "./fixture/schema.js";
 import { requireReceipt } from "./receipt.js";
-import { state, reset, exports, api, titleModel, summaryModel } from "./text.host.js";
+import { state, reset, exports, api, titleModel, summaryModel, registration } from "./text.host.js";
 const modules = import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]);
 
 function setup() {
@@ -441,6 +441,47 @@ it("title uses the configured prompt and rejects oversized output without a repa
     turnStatus: "idle",
     errorCode: null,
   });
+});
+
+it("a configured title or summary output cap reaches the model call", async () => {
+  state.title = { model: titleModel, maxOutputTokens: 40 };
+  state.summary = { model: summaryModel, maxOutputTokens: 300 };
+  const t = setup();
+  const receipt = await open(t);
+
+  await drain(t);
+  await owner(t).mutation(api.agents.summarize, { threadId: receipt.threadId, requestKey: "cap" });
+  await drain(t);
+  expect(state.titleCalls.map((call) => call.maxOutputTokens)).toEqual([40]);
+  expect(state.summaryCalls.map((call) => call.maxOutputTokens)).toEqual([300]);
+});
+
+it("without a configured cap the title keeps 128 output tokens and the summary 2048", async () => {
+  state.summary = { model: summaryModel };
+  const t = setup();
+  const receipt = await open(t);
+
+  await drain(t);
+
+  await owner(t).mutation(api.agents.summarize, {
+    threadId: receipt.threadId,
+    requestKey: "default",
+  });
+
+  await drain(t);
+  expect(state.titleCalls.map((call) => call.maxOutputTokens)).toEqual([128]);
+  expect(state.summaryCalls.map((call) => call.maxOutputTokens)).toEqual([2048]);
+});
+
+it("an out-of-range output cap is refused at registration", () => {
+  for (const maxOutputTokens of [0, -1, 1.5, 4097, Number.NaN]) {
+    state.title = { model: titleModel, maxOutputTokens };
+    expect(() => registration()).toThrow("INVALID_TEXT_OPTIONS");
+    reset();
+    state.summary = { model: summaryModel, maxOutputTokens };
+    expect(() => registration()).toThrow("INVALID_TEXT_OPTIONS");
+    reset();
+  }
 });
 
 it("summary hard-maximum windows bound full native reads", async () => {
