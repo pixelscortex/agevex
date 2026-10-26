@@ -1,0 +1,92 @@
+src/component/cancellation/cleanup.ts
+  s_2bea573805f01f::t_5d4fecd2fcb93c 174
+  s_2bea573805f01f::t_49b9b5bf8657cf 173
+src/client/once.ts
+  s_2bea573805f01f::t_01622ddaf0c5ae 36-40
+src/shared/decisions.ts
+  s_2bea573805f01f::t_5812f446f23bae 9-10
+  s_2bea573805f01f::t_b7d4274190f0b7 13-14,88,105,111,114,117,126,129,143,147-148
+  s_2bea573805f01f::t_01622ddaf0c5ae 8,11,232
+src/component/turns/decision-reads.ts
+  s_2bea573805f01f::t_5812f446f23bae 27
+  s_2bea573805f01f::t_49b9b5bf8657cf 7,11,17,23-25,28-35,50,66-67,73-76,89,95,99,127-128,161
+tests/tools/decisions-v2.test.ts
+  s_2bea573805f01f::t_5812f446f23bae 7-9,15-16,39-44,336,342,382-663
+src/component/receipts/records.ts
+  s_2bea573805f01f::t_fe38a37f912112 8-9,19-20
+src/client/turn/tools.ts
+  s_2bea573805f01f::t_e165055d63f06a 22,62-68,115-119,132
+src/shared/tool-markers.ts
+  s_2bea573805f01f::t_e165055d63f06a 1-17,19-21
+  s_2bea573805f01f::t_45a1afeec35a3e 18
+  s_2bea573805f01f::t_7a7c4c4a7c1904 22-23
+src/component/turns/approvals.ts
+  s_2bea573805f01f::t_45a1afeec35a3e 72-73
+  s_2bea573805f01f::t_5d4fecd2fcb93c 213
+  s_2bea573805f01f::t_49b9b5bf8657cf 47,50,224-225,310
+tests/deferred-answers.test.ts
+  s_2bea573805f01f::t_5812f446f23bae 429,444
+  s_2bea573805f01f::t_b7d4274190f0b7 410,415,423-424,432-433
+src/client/turn/fence.ts
+  s_2bea573805f01f::t_faa5833ce46ddd 18,253
+src/client/endpoints/decisions.ts
+  s_2bea573805f01f::t_01622ddaf0c5ae 7,43-44,47,51-53
+  s_2bea573805f01f::t_faa5833ce46ddd 45-46,48-50,58
+src/component/schema.ts
+  s_2bea573805f01f::t_fe38a37f912112 7,385-386
+  s_2bea573805f01f::t_3e34d4a826150e 20,289-290,391-393
+  s_2bea573805f01f::t_49b9b5bf8657cf 291
+src/component/turns/decision-save.ts
+  s_2bea573805f01f::t_45a1afeec35a3e 22,34-38,42,55,59,67-73,95,103-105,107-115,117
+  s_2bea573805f01f::t_a589bc27b2b000 5-6,19,21,116,118-123
+src/client/endpoints/pending.ts
+  s_2bea573805f01f::t_45a1afeec35a3e 2,5-6,33,35,37-39,47-48,54,56-57,59,61-62,69
+  s_2bea573805f01f::t_b7d4274190f0b7 40-46,60
+README.md
+  s_2bea573805f01f::t_3c7d8394de9800 556-557,577-583,736-737,893-895,903-905
+src/component/turns/decision-proposals.ts
+  s_2bea573805f01f::t_5812f446f23bae 25,33,39-40
+  s_2bea573805f01f::t_3e34d4a826150e 1-24,26-32,34-37,45-61
+  s_2bea573805f01f::t_45a1afeec35a3e 38,41-44
+  s_2bea573805f01f::t_a9101c8a041587 62
+src/component/turns/write.ts
+  s_2bea573805f01f::t_faa5833ce46ddd 22,45,73,77-78,205
+src/component/turns/pause.ts
+  s_2bea573805f01f::t_49b9b5bf8657cf 14,115,123-124,183
+  s_2bea573805f01f::t_3e34d4a826150e 22-23,114,116,125-129,132-133,138-143,158-163,184-189
+  s_2bea573805f01f::t_d003f079771297 122,167,182,221,226,250,252
+docs/site/public/r/continue-budget.json
+  s_2bea573805f01f::t_9597d9f193702f 14
+src/client/endpoints/access.ts
+  s_2bea573805f01f::t_96168df1f63503 10,84,103,109,128,132
+src/client/keys.ts
+  s_2bea573805f01f::t_ffffa6c3c1364c 17
+src/modules/tools/registry/continue-budget/continueBudget.ts
+  s_2bea573805f01f::t_4b9128230958ec 52-53
+tests/bounded-reads.test.ts
+  s_2bea573805f01f::t_498e7e366c320b 10-11,1816-1862
+tests/decisions-bounds.fixture.ts
+  s_2bea573805f01f::t_b14402fb200bfe 5-7,63-65,67
+tests/fixture/api.ts
+  s_2bea573805f01f::t_c7a73c5fdf5529 32,67
+tests/host.ts
+  s_2bea573805f01f::t_1194e6418c64f9 496-507
+tests/tools/decisions-bounds.test.ts
+  s_2bea573805f01f::t_ed07770adc4c42 35,62,80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "38fba721ffa5579ec70bba1397a46075cc864786",
+  "prompts": {},
+  "sessions": {
+    "s_2bea573805f01f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17897-daef-7501-bff5-a07c4439bb27",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
