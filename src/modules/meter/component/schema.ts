@@ -14,7 +14,19 @@ export const attribution = v.object({
   runId: v.optional(v.string()),
   agent: v.optional(v.string()),
   model: v.optional(v.string()),
+  purpose: v.optional(
+    v.union(v.literal("agent"), v.literal("tool"), v.literal("title"), v.literal("summary")),
+  ),
+  nodeId: v.optional(v.string()),
 });
+export const tokens = v.object({ inputTokens: v.number(), outputTokens: v.number() });
+export const reconciliation = v.union(
+  v.literal("pending"),
+  v.literal("running"),
+  v.literal("complete"),
+  v.literal("unavailable"),
+  v.literal("exhausted"),
+);
 export const status = v.union(
   v.literal("estimate"),
   v.literal("settled"),
@@ -83,6 +95,8 @@ const chargeFields = {
   nanos: v.optional(v.number()),
   credits: v.optional(v.number()),
   providerRequestId: v.optional(v.string()),
+  tokens: v.optional(tokens),
+  reconciliation,
   lookupUntil: v.optional(v.number()),
   // Amount revisions describe outcomes; replay identity comes from operation keys.
   revision: v.number(),
@@ -111,6 +125,7 @@ export default defineSchema({
     ),
   })
     .index("by_key", ["key"])
+    .index("by_run_lookup", ["attribution.subject", "attribution.runId", "reconciliation"])
     .index("by_terminal", ["terminal"]),
   /**
    * Sink outbox: one small row per pending (charge, sink) event, present

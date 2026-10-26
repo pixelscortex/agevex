@@ -104,3 +104,75 @@ export function priceEstimate(
     return unpriced(error);
   }
 }
+
+/** Price saved usage from inline evidence first, then a host's token estimate. */
+export function priceRecord(
+  provider: Provider | undefined,
+  evidence: Parameters<NonNullable<Provider["inline"]>>[0] & { model?: string },
+) {
+  const priced = priceInline(provider, evidence);
+
+  if (priced.reason !== "NO_COST" || !provider?.estimate)
+    return { ...priced, source: "inline" as const };
+
+  try {
+    const cost = provider.estimate(evidence);
+
+    return { ...(cost ? capped(costNanos(provider, cost)) : priced), source: "estimate" as const };
+  } catch {
+    return { reason: "DECODE_FAILED" as const, source: "estimate" as const };
+  }
+}
+
+/** Preserve token absence rather than fabricating zero; supports native and V4 usage. */
+export function usageTokens(usage: unknown) {
+  const value = usage as {
+    inputTokens?: number | { total?: number };
+    outputTokens?: number | { total?: number };
+    promptTokens?: number;
+    completionTokens?: number;
+  } | null;
+
+  const inputTokens =
+    typeof value?.inputTokens === "object"
+      ? value.inputTokens?.total
+      : (value?.inputTokens ?? value?.promptTokens);
+
+  const outputTokens =
+    typeof value?.outputTokens === "object"
+      ? value.outputTokens?.total
+      : (value?.outputTokens ?? value?.completionTokens);
+
+  if (inputTokens === undefined || outputTokens === undefined) return undefined;
+
+  try {
+    integer(inputTokens, LIMITS.maxTokens, "TOKENS");
+    integer(outputTokens, LIMITS.maxTokens, "TOKENS");
+
+    return { inputTokens, outputTokens };
+  } catch {
+    return undefined;
+  }
+}
+
+/** Host-configured rates, never guessed from a model name or a remote catalog. */
+export function tokenEstimate(rates: {
+  inputUsdPerMillion: number;
+  outputUsdPerMillion: number;
+}): NonNullable<Provider["estimate"]> {
+  nanos(rates.inputUsdPerMillion);
+  nanos(rates.outputUsdPerMillion);
+
+  return ({ usage }) => {
+    const tokens = usageTokens(usage);
+
+    return tokens
+      ? {
+          usd:
+            (tokens.inputTokens * rates.inputUsdPerMillion +
+              tokens.outputTokens * rates.outputUsdPerMillion) /
+            LIMITS.tokensPerMillion,
+        }
+      : undefined;
+  };
+}

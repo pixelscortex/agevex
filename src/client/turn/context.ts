@@ -50,6 +50,7 @@ export type Turn = {
 
 /** Flags generation sets while the model and its tools run. */
 export type GenerationState = {
+  budgetExceeded?: boolean;
   /** A hook threw or returned an invalid result: the turn reports HOOK_FAILED. */
   hookFailed: boolean;
   /** `beforeTurn` blocked the turn: no generation, no error code on the root. */

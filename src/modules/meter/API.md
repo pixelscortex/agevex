@@ -57,7 +57,7 @@ the longest registered dotted prefix (`google.vertex.chat` resolves to `google.v
 next slice. A model id over 128 bytes is stored as `sha256:<hex>`.
 
 `budgetSlot(policy?: MeterOptions["budgets"]): BudgetSlot` checks the run
-before each slice, using the configured policy unless overridden. Estimates
+before each next model call and local tool effect, using the configured policy unless overridden. Estimates
 count; unknown costs and authorization/read/policy errors fail closed with
 `BUDGET_EXCEEDED`. The gate is a snapshot, not a spend reservation.
 
@@ -116,10 +116,11 @@ Profile assumptions are host configuration, not provider facts. Fal and Daytona
 have no per-request cost endpoint. Firecrawl credits require an explicit plan
 rate; they are not dollars.
 
-`scoped.record(provider, { key, usage, providerMetadata })` uses the provider's
-inline decoder. The default `inline()` reads
+`scoped.record(provider, { key, usage, providerMetadata, requestId? })` uses the provider's
+inline decoder, then its optional `estimate({ usage, model })` callback when
+inline evidence is missing. The default `inline()` reads
 `providerMetadata.openrouter.usage.cost`; a valid zero settles, absent evidence
-stays unknown. Alternate decoders can return `{ usd }` or `{ credits }`.
+stays unknown unless an estimate is configured. Alternate decoders can return `{ usd }` or `{ credits }`.
 `get()` reads one charge by its exact key.
 
 `record` and `estimate` never throw for a charge they cannot price: they record
@@ -201,6 +202,45 @@ identity need an explicit scoped record. Set OpenRouter `usage: { include: true 
 error even when billing decoding or an evidence observer fails.
 
 ## Lookup and delivery
+
+Managed model calls save exact response ids in native metadata alongside usage.
+`record` stores supplied ids atomically with the charge. Core's slice-exit
+`usage.reconcile` asks meter to discover pending ids through
+`(attribution.subject, attribution.runId, reconciliation)`, including finished
+children. Each transaction admits at most four lookups and removes those rows
+from the pending index; scheduled successors stop when empty. Standalone hosts
+call `meter.reconcile(ctx, { subject, runId })` as an explicit backstop.
+
+`openRouterProvider({ apiKey, estimate?, fetch?, lookupFor? })` uses inline usage
+cost and a read-only OpenRouter generation lookup. The HTTP response is limited
+to 16 KiB and 30 seconds; the returned id must match. Other providers implement
+`Provider.lookup`. `tokenEstimate({ inputUsdPerMillion, outputUsdPerMillion })`
+prices native saved usage or SDK usage using configured rates, never a guessed
+price. Estimates and authoritative corrections use the same charge key.
+
+`meter.usageView(ctx, { subject, runId, nodeIds, partial? })` authorizes and returns
+`{ total, nodes: [{ nodeId, usage }] }`. Supply at most 59 known node ids (`null`
+is root); the root total always covers the whole run, independently of the node
+selection. Values contain input/output tokens (null if absent), estimated and
+settled USD, unknown count and reporting coverage. Core slots trust server-derived
+facts and expose the same optional view. Propagate `runs.usagePartial` via
+`turns.slices.usageReporting` as `partial`; omitted adapters report disabled.
+The node label is an exclusive delegation id, and `purpose` is agent/tool/title/summary.
+No enriched run tree or metadata worker is introduced by this contract.
+
+The existing aggregates gain at most five entries per charge: exclusive node
+cost and run/node token sums (or missing-model-token counts). At all opt-ins,
+13 projections replace <=3,061 nodes read (<6 MiB) and <=1,942 written (<3.8 MiB),
+plus bounded charge receipts/outbox. A 59-node view reads complete namespaces:
+60 × 8 aggregate operations × <=7 documents =3,360 documents, <7 MiB plus small
+query metadata, <4,096 queries; output <32 KiB. No charge/transcript scans.
+
+Charges expose reconciliation status: pending, running, complete, unavailable,
+exhausted. Missing/failed lookups retain existing amounts, and retries only read
+evidence. No request id means unavailable; a later `attach` can supply it.
+An exhausted horizon leaves the stored estimate unknown for budget admission.
+Managed observation failures are fail-open for paid outcomes and sticky partial
+for reporting. An authoritative inline zero is real evidence and skips lookup.
 
 Attaching a request id starts one Workpool lookup sequence with exponential
 backoff, capped at eight evidence reads, plus a one-shot deadline mutation.

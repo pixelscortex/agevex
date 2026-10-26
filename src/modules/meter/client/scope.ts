@@ -7,7 +7,7 @@
 import type { MeterContext } from "./configuration.js";
 import { authorize, jobs, registered } from "./configuration.js";
 import { LIMITS, integer, text } from "../shared/limits.js";
-import { priceEstimate, priceInline } from "./pricing.js";
+import { priceEstimate, priceRecord, usageTokens } from "./pricing.js";
 import { chargeHandle } from "./handles.js";
 import type { Attribution, ScopedMeter, WriteCtx } from "./types.js";
 
@@ -92,18 +92,24 @@ function recordWriter(
 
     text(args.key, "KEY", LIMITS.maxKeyBytes);
 
-    const priced = priceInline(provider, {
+    const priced = priceRecord(provider, {
       usage: args.usage,
       providerMetadata: args.providerMetadata,
+      model: attribution.model,
     });
+
+    if (args.requestId !== undefined) text(args.requestId, "REQUEST_ID");
+
+    const tokens = usageTokens(args.usage);
 
     await ctx.runMutation(component.charges.create, {
       key: args.key,
       attribution,
       provider: name,
       breakdowns,
-      status: priced.reason ? "unknown" : "settled",
-      source: "inline",
+      status: priced.reason ? "unknown" : priced.source === "estimate" ? "estimate" : "settled",
+      ...(args.requestId !== undefined ? { requestId: args.requestId } : {}),
+      ...(tokens ? { tokens } : {}),
       ...priced,
       sinks: sinks.map((s) => s.name),
       maxThreadCharges: limits.maxThreadCharges,

@@ -24,10 +24,11 @@ function lookupWorker(meter: MeterContext) {
 
       if (
         !row ||
+        row.provider !== args.provider ||
+        row.providerRequestId !== args.requestId ||
         row.lookupUntil !== args.until ||
         row.lookupAttempt !== args.attempt ||
-        row.source !== "estimate" ||
-        row.status === "unknown"
+        row.reconciliation !== "running"
       )
         return null;
 

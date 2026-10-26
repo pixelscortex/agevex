@@ -32,6 +32,7 @@ export function newRun(
     launches: 0,
     hops: 0,
     cancelled: false,
+    usagePartial: false,
   };
 
   // The 1 KiB reservation includes the native id/time envelope added on insert.

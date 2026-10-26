@@ -17,6 +17,7 @@ import {
   retryPendingSinks,
 } from "./delivery.js";
 import { pruneCharges } from "./retention.js";
+import { reconcileArgs, reconcileRun as reconcileHandler } from "./reconciliation.js";
 import {
   createArgs,
   updateArgs,
@@ -98,4 +99,17 @@ export const retrySinks = mutation({
 export const prune = mutation({
   args: pruneArgs,
   handler: pruneCharges,
+});
+
+/** Host run-close/backstop entry: discovery is idempotent on the pending index. */
+export const reconcile = mutation({
+  args: reconcileArgs,
+  returns: v.null(),
+  handler: reconcileHandler,
+});
+/** Bounded successor of an explicit sweep; never a perpetual scheduled chain. */
+export const reconcileRun = internalMutation({
+  args: reconcileArgs,
+  returns: v.null(),
+  handler: reconcileHandler,
 });

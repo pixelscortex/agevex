@@ -24,6 +24,7 @@ async function seedProjection(
   namespace: string[],
   items: Item[],
   register: boolean,
+  value: number = LIMITS.maxChargeNanos,
 ) {
   const total = items.length;
 
@@ -40,7 +41,7 @@ async function seedProjection(
       nodes.push({
         items: entries,
         children: [],
-        aggregate: { count: size, sum: size * LIMITS.maxChargeNanos },
+        aggregate: { count: size, sum: size * value },
       });
 
       return nodes.length - 1;
@@ -70,7 +71,7 @@ async function seedProjection(
     nodes.push({
       items: entries,
       children,
-      ...(root ? {} : { aggregate: { count: size, sum: size * LIMITS.maxChargeNanos } }),
+      ...(root ? {} : { aggregate: { count: size, sum: size * value } }),
     });
 
     return nodes.length - 1;
@@ -183,6 +184,11 @@ async function seedAtCapacity(t: ReturnType<typeof setup>["t"], subject: string,
       namespace: ["run", subject, subject],
       key: (_label: string, ordinal: number): Value[] => ["", ordinal],
     },
+    {
+      mount: "costBySubject",
+      namespace: ["usage", subject, subject, "node", ""],
+      key: (): Value[] => ["", 0],
+    },
     ...["agent", "model", "provider"].map((axis) => ({
       mount: "costBySubject",
       namespace: ["axis", subject, axis],
@@ -222,6 +228,27 @@ async function seedAtCapacity(t: ReturnType<typeof setup>["t"], subject: string,
     }
   }
 
+  // Token namespaces hold all steps independent of settlement group. Populate
+  // their lazy roots at the charge ceiling too, so the usage query cannot hide
+  // a per-step scan behind an otherwise tiny 59-node fixture.
+  for (const suffix of [[], ["node", ""]])
+    for (const metric of ["inputTokens", "outputTokens"]) {
+      const items: Item[] = Array.from({ length: LIMITS.maxThreadCharges - 1 }, (_, index) => {
+        const id = String(index).padStart(TEST_LIMITS.idBytes, "x");
+
+        return { k: [["", "", "", 0, ""], id, ""], v: id, s: LIMITS.maxTokens };
+      });
+
+      await seedProjection(
+        t,
+        "meter/costBySubject",
+        ["usage", subject, subject, ...suffix, "tokens", metric],
+        items,
+        false,
+        LIMITS.maxTokens,
+      );
+    }
+
   return labels;
 }
 
@@ -233,7 +260,7 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 it(
-  "all eight maximum projections support replacements and maximum axis pages within enforced budgets",
+  "maximum charge trees support thirteen projections and 59-node usage reads within enforced budgets",
   async () => {
     const label = "é".repeat(LIMITS.maxStringBytes / 2);
     const key = "é".repeat(LIMITS.maxKeyBytes / 2);
@@ -244,6 +271,7 @@ it(
       limits: { pruneMinAgeMs: 1 },
       providers: {
         [label]: {
+          estimate: () => ({ usd: LIMITS.maxChargeNanos / LIMITS.nanosPerUsd }),
           profiles: {
             [label]: {
               unit: label,
@@ -418,6 +446,35 @@ it(
     expect(await t.run((ctx) => meter.subjectCost(ctx, { subject: label }))).toMatchObject({
       totalNanos: maxTotal - LIMITS.maxChargeNanos,
     });
+
+    await t.run(async (ctx) => {
+      const charge = await meter.scope(ctx, { ...attribution, purpose: "agent" }).record(label, {
+        key: "tokens-at-capacity",
+        usage: { inputTokens: LIMITS.maxTokens, outputTokens: LIMITS.maxTokens },
+      });
+
+      await charge.settle({ usd: 0.01, key: "provider-cost" });
+    });
+
+    const result = await t.run(async (ctx) => {
+      const view = await meter.usageView(ctx, {
+        subject: label,
+        runId: label,
+        nodeIds: [
+          null,
+          ...Array.from({ length: LIMITS.maxUsageNodes - 1 }, (_, index) =>
+            String(index).padEnd(LIMITS.maxStringBytes, "n"),
+          ),
+        ],
+      });
+
+      return { view, bytes: (await ctx.meta.getTransactionMetrics()).bytesRead.used };
+    });
+
+    expect(result.bytes).toBeLessThan(8 << 20);
+    expect(result.view.nodes).toHaveLength(LIMITS.maxUsageNodes);
+    expect(result.view.total.inputTokens).toBe(LIMITS.maxThreadCharges * LIMITS.maxTokens);
+    expect(result.view.nodes[0].usage.inputTokens).toBe(result.view.total.inputTokens);
   },
   TEST_LIMITS.timeoutMs,
 );

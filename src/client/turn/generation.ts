@@ -31,6 +31,8 @@ import { hookRunner } from "./hook-runner.js";
 import { completeRouting, selectTurnModel } from "./routing.js";
 import { extractAttachedFiles, meterBackend, telemetryIntegrations } from "./slots.js";
 import { buildTurnTools } from "./tools.js";
+import { markUsagePartial } from "./usage.js";
+import { assertBudget } from "./admission.js";
 
 /**
  * Run one admitted turn's generation.
@@ -54,20 +56,24 @@ export async function generateTurn(rt: RuntimeContext, turn: Turn): Promise<Turn
     const timedOut = gen.fence.controller.signal.reason?.message === "RUN_TIMEOUT";
 
     return {
-      errorCode: state.hookFailed
-        ? "HOOK_FAILED"
-        : state.hookBlocked
-          ? null
-          : timedOut
-            ? "RUN_TIMEOUT"
-            : "GENERATION_FAILED",
-      childError: state.hookFailed
-        ? "HOOK_FAILED"
-        : state.hookBlocked
-          ? "EMPTY_RESULT"
-          : timedOut
-            ? "RUN_TIMEOUT"
-            : "GENERATION_FAILED",
+      errorCode: state.budgetExceeded
+        ? "BUDGET_EXCEEDED"
+        : state.hookFailed
+          ? "HOOK_FAILED"
+          : state.hookBlocked
+            ? null
+            : timedOut
+              ? "RUN_TIMEOUT"
+              : "GENERATION_FAILED",
+      childError: state.budgetExceeded
+        ? "BUDGET_EXCEEDED"
+        : state.hookFailed
+          ? "HOOK_FAILED"
+          : state.hookBlocked
+            ? "EMPTY_RESULT"
+            : timedOut
+              ? "RUN_TIMEOUT"
+              : "GENERATION_FAILED",
     };
   } finally {
     gen.fence.stop();
@@ -97,7 +103,9 @@ function startGeneration(rt: RuntimeContext, turn: Turn): Generation {
     },
   });
 
-  const backend = meterBackend(rt.config, fence.ctx, facts);
+  const backend = meterBackend(rt.config, turn.rawCtx, { ...facts, purpose: "tool" }, () =>
+    markUsagePartial(rt, turn),
+  );
 
   const state: GenerationState = {
     hookFailed: false,
@@ -132,6 +140,10 @@ async function nativeGeneration(
 ) {
   const { turn, fence } = gen;
   const { config } = rt;
+
+  // Admission already checked this boundary. Only pre-model host work can
+  // change observed spend before the call; do not read a policy twice otherwise.
+  if (turn.managed.hooks?.beforeTurn || config.extract) await assertBudget(rt, gen);
 
   const args = {
     promptMessageId: turn.claimed.promptMessageId,

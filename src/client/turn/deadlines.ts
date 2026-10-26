@@ -6,6 +6,7 @@ import { gateway, wrapLanguageModel, type LanguageModel, type Tool, type ToolSet
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import { RUN_LIMITS } from "../../component/run-settings.js";
 import type { Generation } from "./context.js";
+import { providerEvidence } from "./provider-evidence.js";
 
 /** Provider-only deadline, covering the entire stream, and a tool-call cap. */
 export function boundedModel(gen: Generation, model: LanguageModel): LanguageModelV4 {
@@ -27,7 +28,10 @@ export function boundedModel(gen: Generation, model: LanguageModel): LanguageMod
           )
             throw new Error("TOOL_CALL_LIMIT");
 
-          return result;
+          return {
+            ...result,
+            providerMetadata: providerEvidence(result.providerMetadata, result.response?.id),
+          };
         } finally {
           stop();
         }
@@ -36,12 +40,21 @@ export function boundedModel(gen: Generation, model: LanguageModel): LanguageMod
         const stop = fence.deadline(timeoutMs);
         const result = await fence.wait(doStream());
         let calls = 0;
+        let requestId: string | undefined;
 
         return {
           ...result,
           stream: result.stream.pipeThrough(
             new TransformStream({
               transform(part, controller) {
+                if (part.type === "response-metadata" && part.id) requestId = part.id;
+
+                if (part.type === "finish")
+                  part = {
+                    ...part,
+                    providerMetadata: providerEvidence(part.providerMetadata, requestId),
+                  };
+
                 if (part.type === "tool-call" && ++calls > RUN_LIMITS.toolsPerSlice) {
                   fence.controller.abort(new Error("TOOL_CALL_LIMIT"));
                   throw new Error("TOOL_CALL_LIMIT");
@@ -64,7 +77,11 @@ export function boundedModel(gen: Generation, model: LanguageModel): LanguageMod
  * AI SDK's supported toolCallConcurrency:1 serializes these wrappers. A timeout
  * aborts the whole slice, leaving paid receipts unknown instead of retryable.
  */
-export function boundToolDeadlines(gen: Generation, tools: ToolSet): ToolSet {
+export function boundToolDeadlines(
+  gen: Generation,
+  tools: ToolSet,
+  budget: () => Promise<void>,
+): ToolSet {
   for (const [name, declared] of Object.entries(tools)) {
     if (!declared.execute) continue;
 
@@ -74,6 +91,7 @@ export function boundToolDeadlines(gen: Generation, tools: ToolSet): ToolSet {
       ...declared,
       execute: async function (input, options) {
         await gen.fence.assertActive();
+        await budget();
 
         // Only newly emitted model calls count toward the cap above. Native
         // approval resumes execute before that step and must not consume it.
