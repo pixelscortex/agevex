@@ -191,3 +191,45 @@ it("OpenRouter cost extraction distinguishes valid zero from absent or malformed
 
   expect(openRouterCost(undefined)).toBeUndefined();
 });
+
+it("Polar resolves a lazy access token at delivery, not at construction, and sends it as the bearer", async () => {
+  const getToken = vi.fn(async () => "lazy-token");
+  const headers: unknown[] = [];
+
+  const sink = polarSink({
+    meter: "usage",
+    accessToken: getToken,
+    fetch: async (_url, init) => {
+      headers.push(init?.headers);
+
+      return Response.json({ inserted: 1, duplicates: 0 });
+    },
+  });
+
+  expect(getToken).not.toHaveBeenCalled();
+  await sink.deliver([event(0)]);
+  expect(getToken).toHaveBeenCalledTimes(1);
+  expect(headers[0]).toMatchObject({ Authorization: "Bearer lazy-token" });
+
+  // A synchronous getter and a plain string are equally accepted.
+  for (const accessToken of [() => "sync-token", "sync-token"]) {
+    await polarSink({
+      meter: "usage",
+      accessToken,
+      fetch: async (_url, init) => {
+        expect(init?.headers).toMatchObject({ Authorization: "Bearer sync-token" });
+
+        return Response.json({ inserted: 1, duplicates: 0 });
+      },
+    }).deliver([event(0)]);
+  }
+});
+
+it("Polar refuses an empty lazy token at delivery with POLAR_TOKEN_REQUIRED and sends nothing", async () => {
+  const request = vi.fn(async () => Response.json({ inserted: 1, duplicates: 0 }));
+  const sink = polarSink({ meter: "usage", accessToken: () => "", fetch: request });
+
+  await expect(sink.deliver([event(0)])).rejects.toThrow("POLAR_TOKEN_REQUIRED");
+  expect(request).not.toHaveBeenCalled();
+  expect(() => polarSink({ meter: "usage", accessToken: "" })).toThrow("POLAR_TOKEN_REQUIRED");
+});

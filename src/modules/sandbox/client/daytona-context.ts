@@ -3,16 +3,51 @@
  * Lifecycle, process and file builders share one SDK client.
  * This host-only bridge never puts credentials in component rows or scheduled args.
  */
-import { type Daytona, type DaytonaOptions } from "@daytona/convex";
+import { Daytona, type ComponentApi, type DaytonaOptions } from "@daytona/convex";
+import { resolveCredential, type Credential } from "./credential.js";
 import { type SandboxContext } from "./types.js";
 import { LIMITS, HARD_LIMITS, bounded, integer } from "../shared/limits.js";
 
+/** SDK options where the key may be a getter resolved per call, not at construction. */
+export type DaytonaSettings = Omit<DaytonaOptions, "apiKey"> & {
+  apiKey?: Credential;
+  snapshot?: string;
+  target?: string;
+};
+
+/** `client` yields an SDK client carrying the key resolved for this call. */
 export type DaytonaContext = {
-  client: Daytona;
-  opts: DaytonaOptions & { snapshot?: string; target?: string };
+  client: () => Promise<Daytona>;
+  apiKey: () => Promise<string>;
+  opts: DaytonaSettings;
   autoStopInterval: number;
   autoArchiveInterval: number;
 };
+
+/**
+ * Build the per-call key resolver and SDK client factory. Nothing reads env or
+ * calls a getter here: an unset `apiKey` keeps the SDK's own call-time env
+ * fallback, and `apiKey()` (REST recovery) falls back the same way when called.
+ */
+export function bindCredentials(component: ComponentApi, opts: DaytonaSettings) {
+  const { apiKey: configured, ...rest } = opts;
+
+  const apiKey = async () =>
+    resolveCredential(
+      configured ?? process.env.DAYTONA_API_KEY ?? "",
+      "SANDBOX_DAYTONA_KEY_REQUIRED",
+    );
+
+  const client = async () =>
+    new Daytona(
+      component,
+      configured === undefined
+        ? rest
+        : { ...rest, apiKey: await resolveCredential(configured, "SANDBOX_DAYTONA_KEY_REQUIRED") },
+    );
+
+  return { client, apiKey };
+}
 /** Quote Python source as one shell argument without interpreting embedded quotes. */
 function quote(value: string) {
   return `'${value.replace(/'/g, `'\\''`)}'`;
@@ -30,7 +65,7 @@ export async function python(
   source: string,
   timeoutS: number = LIMITS.commandTimeoutS,
 ) {
-  const { client } = runtime;
+  const client = await runtime.client();
 
   const result = await client.run(ctx, {
     sandboxId,

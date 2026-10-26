@@ -753,8 +753,13 @@ import { telemetry, langfuse, braintrust } from "agevex/telemetry";
 
 const trace = telemetry({
   exporters: [
-    langfuse({ baseUrl: "https://cloud.langfuse.com", publicKey, secretKey }),
-    // braintrust({ apiKey, projectId }),
+    // Keys may be getters: they run at each export, never at construction.
+    langfuse({
+      baseUrl: "https://cloud.langfuse.com",
+      publicKey: () => process.env.LANGFUSE_PUBLIC_KEY!,
+      secretKey: () => process.env.LANGFUSE_SECRET_KEY!,
+    }),
+    // braintrust({ apiKey: () => process.env.BRAINTRUST_API_KEY!, projectId }),
   ],
 });
 try {

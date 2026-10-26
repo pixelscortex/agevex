@@ -677,6 +677,60 @@ it("invalid registration and facts fail before attaching telemetry", () => {
   expect(() => braintrust({ apiKey: "", projectId: "project" })).toThrow("apiKey");
 });
 
+it("lazy Langfuse and Braintrust keys resolve at export time and are used for authorization", async () => {
+  const request = vi.fn(async () => new Response(null, { status: 200 }));
+
+  vi.spyOn(globalThis, "fetch").mockImplementation(request);
+
+  const publicKey = vi.fn(() => "pk");
+  const secretKey = vi.fn(async () => "sk");
+  const apiKey = vi.fn(async () => "lazy-key");
+  const { bodies, integration } = capture();
+
+  const exporters = [
+    langfuse({ baseUrl: "https://langfuse.example", publicKey, secretKey }),
+    braintrust({ apiKey, projectId: "project" }),
+  ];
+
+  expect([publicKey, secretKey, apiKey].map((getter) => getter.mock.calls.length)).toEqual([
+    0, 0, 0,
+  ]);
+
+  await scripted(integration);
+
+  for (const exporter of exporters) await exporter.export(bodies[0]);
+
+  expect([publicKey, secretKey, apiKey].map((getter) => getter.mock.calls.length)).toEqual([
+    1, 1, 1,
+  ]);
+
+  const calls = request.mock.calls as unknown as [unknown, RequestInit][];
+  const [first, second] = calls.map(([, init]) => init.headers as Record<string, string>);
+
+  expect(first.Authorization).toBe(`Basic ${Buffer.from("pk:sk").toString("base64")}`);
+  expect(second.Authorization).toBe("Bearer lazy-key");
+});
+
+it("an empty lazy key sends nothing and never throws into the agent", async () => {
+  const request = vi.fn(async () => new Response(null, { status: 200 }));
+
+  vi.spyOn(globalThis, "fetch").mockImplementation(request);
+
+  const { bodies, integration } = capture();
+
+  await scripted(integration);
+
+  const exporters = [
+    langfuse({ baseUrl: "https://langfuse.example", publicKey: () => "pk", secretKey: () => "" }),
+    braintrust({ apiKey: async () => "", projectId: "project" }),
+  ];
+
+  for (const exporter of exporters)
+    await expect(exporter.export(bodies[0])).resolves.toBeUndefined();
+
+  expect(request).not.toHaveBeenCalled();
+});
+
 it("aborted streamText calls close as errors without recording the abort reason", async () => {
   const controller = new AbortController();
   const { observer, integration, bodies } = capture();

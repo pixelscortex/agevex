@@ -35,7 +35,7 @@ Define the host workers. Inline OpenRouter evidence requires provider usage cost
 metadata; request `usage: { include: true }` on OpenRouter model calls.
 
 ```ts title="convex/billing.ts"
-import { defineMeter, openRouterProvider, tokenEstimate } from "agevex/meter";
+import { defineMeter, openRouterProvider, polarSink, tokenEstimate } from "agevex/meter";
 import { components, internal } from "./_generated/api.js";
 
 export const meter = defineMeter(components.meter, {
@@ -46,6 +46,8 @@ export const meter = defineMeter(components.meter, {
       estimate: tokenEstimate({ inputUsdPerMillion: 1, outputUsdPerMillion: 2 }),
     }),
   },
+  // The getter runs when a delivery is made, never at module load.
+  sinks: [polarSink({ meter: "ai_usage", accessToken: () => process.env.POLAR_ACCESS_TOKEN! })],
   workers: {
     lookup: internal.billing.meterLookup,
     deliver: internal.billing.meterDeliver,
@@ -54,6 +56,12 @@ export const meter = defineMeter(components.meter, {
 });
 export const { meterLookup, meterDeliver } = meter.internalFunctions();
 ```
+
+Credential options (`polarSink.accessToken`, `openRouterProvider.apiKey`) take a
+string or a getter returning a string or promise. A getter is called at each
+delivery or lookup, never at construction, so hosts that forbid reading env at
+module load can pass `() => process.env.X!`. An empty or oversized (over 4 KiB)
+`polarSink` token fails that delivery with `POLAR_TOKEN_REQUIRED`.
 
 Replace `convex/agents.ts` from [getting started](/docs/getting-started). Keep
 its `agentConfig.ts`, which supplies the agents, policies and internal refs.
@@ -173,7 +181,7 @@ Generated from the current exported TypeScript signatures in [the module entry](
 | `openRouterCost`            | `providerMetadata: unknown`                                                                                                                                                                                      | `number \| undefined`                                                                                                                                                                                                                                                                                                                                                                              | Returns undefined for absent or invalid cost evidence.                                               |
 | `observeProviderOutcome<T>` | `options: { invoke: () => Promise<T>; onSuccess: (result: T) => void \| Promise<void>; onFailure?: (error: unknown) => void \| Promise<void>; onObservationError?: (error: unknown) => void \| Promise<void>; }` | `Promise<T>`                                                                                                                                                                                                                                                                                                                                                                                       | Rethrows invoke failure; observation failures are contained.                                         |
 | `usageHandlerFor`           | `meter: Meter, options: { provider?: string; identity: (args: Parameters<UsageHandler>[1]) => Pick< Attribution, "subject" \| "rootThreadId" \| "runId" > & { messageId: string; step: number; }; }`             | `UsageHandler`                                                                                                                                                                                                                                                                                                                                                                                     | USAGE_THREAD_REQUIRED; invalid identity or metering errors.                                          |
-| `polarSink`                 | `options: { meter: string; accessToken: string; server?: "production" \| "sandbox"; name?: string; fetch?: typeof fetch; }`                                                                                      | `Sink`                                                                                                                                                                                                                                                                                                                                                                                             | SinkDeliveryError for HTTP, timeout or response failures.                                            |
+| `polarSink`                 | `options: { meter: string; accessToken: Credential; server?: "production" \| "sandbox"; name?: string; fetch?: typeof fetch; }`                                                                                  | `Sink`                                                                                                                                                                                                                                                                                                                                                                                             | SinkDeliveryError for HTTP, timeout or response failures.                                            |
 | `webhookSink`               | `options: { url: string; name?: string; headers?: Record<string, string>; fetch?: typeof fetch; }`                                                                                                               | `Sink`                                                                                                                                                                                                                                                                                                                                                                                             | SinkDeliveryError for HTTP, timeout or response failures.                                            |
 | `meter.internalFunctions`   | `—`                                                                                                                                                                                                              | `ReturnType<Meter["internalFunctions"]>`                                                                                                                                                                                                                                                                                                                                                           | Invalid configuration/arguments or host policy throws; unknown price is recorded, then denies check. |
 | `meter.reconcile`           | `ctx: WriteCtx, args: { subject: string; runId: string }`                                                                                                                                                        | `Promise<null>`                                                                                                                                                                                                                                                                                                                                                                                    | Invalid configuration/arguments or host policy throws; unknown price is recorded, then denies check. |

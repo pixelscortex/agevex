@@ -3,6 +3,7 @@
  * Calls are deadline-bounded and observer-only: no network failure can change
  * a managed action result, and unknown ingestion outcomes are never retried.
  */
+import { checkCredential, resolveCredential, type Credential } from "./credential.js";
 import { LIMITS, validateString } from "./limits.js";
 import type { OtlpPayload } from "./otlp.js";
 
@@ -71,13 +72,17 @@ function base64(value: string): string {
 }
 
 /** Build a single HTTP attempt; cancel response bodies without exposing provider diagnostics. */
-function httpExporter(url: string, headers: Record<string, string>): Exporter {
+function httpExporter(url: string, headers: () => Promise<Record<string, string>>): Exporter {
   return {
     export: (body, signal) =>
       bestEffort(async (requestSignal) => {
+        // Credentials resolve here, inside the fail-open attempt: an empty or
+        // throwing getter sends nothing and never changes the agent result.
+        const auth = await headers();
+
         const response = await fetch(url, {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...headers },
+          headers: { "Content-Type": "application/json", ...auth },
           body: JSON.stringify(body),
           signal: requestSignal,
         });
@@ -90,14 +95,18 @@ function httpExporter(url: string, headers: Record<string, string>): Exporter {
   };
 }
 
-/** Validate host credentials and construct the Langfuse v4 OTLP adapter at registration time. */
+/**
+ * Construct the Langfuse v4 OTLP adapter at registration time. The URL and any
+ * literal keys are validated now; key getters run at each export, never here.
+ */
 export function langfuse(options: {
   baseUrl: string;
-  publicKey: string;
-  secretKey: string;
+  publicKey: Credential;
+  secretKey: Credential;
 }): Exporter {
-  for (const [name, value] of Object.entries(options))
-    validateString(value, name, LIMITS.maxConfigurationBytes);
+  validateString(options.baseUrl, "baseUrl", LIMITS.maxConfigurationBytes);
+  checkCredential(options.publicKey, "publicKey");
+  checkCredential(options.secretKey, "secretKey");
 
   const base = new URL(options.baseUrl);
 
@@ -112,19 +121,25 @@ export function langfuse(options: {
 
   const endpoint = `${base.toString().replace(/\/$/, "")}/api/public/otel/v1/traces`;
 
-  return httpExporter(endpoint, {
-    Authorization: `Basic ${base64(`${options.publicKey}:${options.secretKey}`)}`,
-    "x-langfuse-ingestion-version": "4",
+  return httpExporter(endpoint, async () => {
+    const publicKey = await resolveCredential(options.publicKey, "publicKey");
+    const secretKey = await resolveCredential(options.secretKey, "secretKey");
+
+    return {
+      Authorization: `Basic ${base64(`${publicKey}:${secretKey}`)}`,
+      "x-langfuse-ingestion-version": "4",
+    };
   });
 }
 
-/** Bind a validated Braintrust project to a fail-open, one-attempt OTLP adapter. */
-export function braintrust(options: { apiKey: string; projectId: string }): Exporter {
-  validateString(options.apiKey, "apiKey", LIMITS.maxConfigurationBytes);
+/** Bind a validated Braintrust project to a fail-open, one-attempt OTLP adapter.
+ * `apiKey` may be a getter, called at each export and never at construction. */
+export function braintrust(options: { apiKey: Credential; projectId: string }): Exporter {
+  checkCredential(options.apiKey, "apiKey");
   validateString(options.projectId, "projectId", LIMITS.maxFactBytes);
 
-  return httpExporter("https://api.braintrust.dev/otel/v1/traces", {
-    Authorization: `Bearer ${options.apiKey}`,
+  return httpExporter("https://api.braintrust.dev/otel/v1/traces", async () => ({
+    Authorization: `Bearer ${await resolveCredential(options.apiKey, "apiKey")}`,
     "x-bt-parent": `project_id:${options.projectId}`,
-  });
+  }));
 }
