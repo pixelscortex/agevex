@@ -1,0 +1,65 @@
+README.md
+  s_d863bd773ba186::t_17724f339a48a5 756-762
+docs/site/content/docs/modules/meter.mdx
+  s_d863bd773ba186::t_2be453cd5784b6 38,49-50,60-65,184
+docs/site/content/docs/modules/sandbox.mdx
+  s_d863bd773ba186::t_ace37819ed5208 22-26,154
+docs/site/content/docs/modules/telemetry.mdx
+  s_d863bd773ba186::t_e6b51585eb0b92 31-32,56-62,116-123
+src/modules/meter/API.md
+  s_d863bd773ba186::t_85a6bbfc97fd34 21,34-39
+src/modules/meter/client/credential.ts
+  s_d863bd773ba186::t_0fb14ca887c26c 1-24
+src/modules/meter/client/index.ts
+  s_d863bd773ba186::t_329ac3835c4f0b 13
+src/modules/meter/client/sinks.ts
+  s_d863bd773ba186::t_7e9c8a5d47b7e7 9,126-128,131,138-140,148-149,155
+src/modules/meter/shared/limits.ts
+  s_d863bd773ba186::t_0d21de7fe682df 23-24
+src/modules/sandbox/README.md
+  s_d863bd773ba186::t_8251e573b4b739 14-17
+src/modules/sandbox/client/credential.ts
+  s_d863bd773ba186::t_7beb7c3d9a496b 1-20
+src/modules/sandbox/client/daytona-context.ts
+  s_d863bd773ba186::t_682d253b3dccf3 6-7,11-18,20-22,26-50,68
+src/modules/sandbox/client/daytona-files.ts
+  s_d863bd773ba186::t_3a0f04c80f568f 31,71,107,114
+src/modules/sandbox/client/daytona-lifecycle.ts
+  s_d863bd773ba186::t_d5a61e415a9e97 33,48,55,87,100,113
+src/modules/sandbox/client/daytona.ts
+  s_d863bd773ba186::t_71247dd1371a4f 20-21,25-26,66-71
+src/modules/sandbox/client/index.ts
+  s_d863bd773ba186::t_17493d16fc3e0e 132
+src/modules/sandbox/shared/limits.ts
+  s_d863bd773ba186::t_642b831478e65d 61-62
+src/modules/telemetry/README.md
+  s_d863bd773ba186::t_3b723430251742 14-16
+src/modules/telemetry/client/credential.ts
+  s_d863bd773ba186::t_c043e6f2a7c3c9 1-24
+src/modules/telemetry/client/exporters.ts
+  s_d863bd773ba186::t_2303f1882548c3 6,75,79-82,85,98-101,104-105,107-109,124-131,135-138,141-142,144
+src/modules/telemetry/client/index.ts
+  s_d863bd773ba186::t_0b5536de11225f 12
+tests/meter/sinks.test.ts
+  s_d863bd773ba186::t_4703724ca6a337 194-235
+tests/sandbox/credentials.test.ts
+  s_d863bd773ba186::t_2d1e0926762857 1-81
+tests/telemetry/telemetry.test.ts
+  s_d863bd773ba186::t_72f6d5ca6991e9 680-733
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3b0e106e87d1414662a8549b1ebb844c7bbc3604",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
