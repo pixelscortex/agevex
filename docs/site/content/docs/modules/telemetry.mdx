@@ -53,12 +53,33 @@ Core supplies server-derived facts and an opaque turn key. Each key owns an
 isolated buffer, flushed in `finally` with cancellation/deadline propagation.
 For Braintrust, use `braintrust({ apiKey, projectId })` instead of Langfuse.
 
+To leave tracing off for a deployment that has none configured, pass `enabled`
+(a boolean or a sync/async getter, default `true`):
+
+```ts
+telemetry.slot({
+  enabled: () => Boolean(process.env.LANGFUSE_PUBLIC_KEY),
+  exporters: [/* ... */],
+});
+```
+
+It is resolved once per turn, when that turn's buffer is created, so it can read
+env inside the handler and never runs at registration. If it resolves to anything
+but `true` (or throws, rejects or takes over three seconds), that turn records no
+spans and makes no request. An async getter makes the turn's model callbacks wait
+for its answer, so keep it quick.
+
 Keys (`publicKey`, `secretKey`, `apiKey`) take a string or a getter
 (`() => string | Promise<string>`). A getter is called at each export, never at
 construction, so hosts that forbid reading env at module load can pass
 `() => process.env.X!`. Literal keys are validated when you construct the
 exporter; a getter's value is validated when it resolves, and an empty or
 oversized one sends nothing (exports fail open).
+
+The non-secret settings follow the same rule: `braintrust({ projectId })` and
+`langfuse({ baseUrl })` take a string or a getter, resolved at each export. A
+literal is validated when you construct the exporter; a getter's value is
+validated when it resolves, and a missing or invalid one sends nothing.
 
 ## Direct AI SDK calls
 
@@ -111,16 +132,16 @@ durable delivery guarantee.
 
 Generated from the current exported TypeScript signatures in [the module entry](https://github.com/pixelscortex/agevex/blob/HEAD/src/modules/telemetry/client/index.ts). TypeScript does not encode thrown errors; the error column describes implementation behavior.
 
-Telemetry contracts are exported from `agevex/telemetry`. `Telemetry` is the AI SDK integration type from `ai`.
+Telemetry contracts are exported from `agevex/telemetry`. `Telemetry` is the AI SDK integration type from `ai`. `Setting` is `string | (() => string | Promise<string>)`; `TelemetryOptions` also takes `enabled?: boolean | (() => boolean | Promise<boolean>)` (default `true`), `exporters`, `recordInputs`, `recordOutputs` and `sanitize`.
 
-| Name                | Arguments                                                                     | Returns         | Errors / failure behavior                                 |
-| ------------------- | ----------------------------------------------------------------------------- | --------------- | --------------------------------------------------------- |
-| `telemetry`         | `options: TelemetryOptions`                                                   | `TurnTelemetry` | Invalid options throw.                                    |
-| `telemetry.slot`    | `options: TelemetryOptions`                                                   | `TelemetrySlot` | Invalid options throw; managed flush fails open.          |
-| `braintrust`        | `options: { apiKey: Credential; projectId: string }`                          | `Exporter`      | Invalid credentials/project id throw; export fails open.  |
-| `langfuse`          | `options: { baseUrl: string; publicKey: Credential; secretKey: Credential; }` | `Exporter`      | Invalid credentials or base URL throw; export fails open. |
-| `trace.integration` | `facts: Facts`                                                                | `Telemetry`     | Invalid facts throw; oversized facts export as digests.   |
-| `trace.flush`       | `signal?: AbortSignal`                                                        | `Promise<void>` | Export errors/timeouts are swallowed; no retries.         |
+| Name                | Arguments                                                                      | Returns         | Errors / failure behavior                                                                           |
+| ------------------- | ------------------------------------------------------------------------------ | --------------- | --------------------------------------------------------------------------------------------------- |
+| `telemetry`         | `options: TelemetryOptions`                                                    | `TurnTelemetry` | Invalid options throw.                                                                              |
+| `telemetry.slot`    | `options: TelemetryOptions`                                                    | `TelemetrySlot` | Invalid options throw; `enabled` resolves once per turn and fails closed; managed flush fails open. |
+| `braintrust`        | `options: { apiKey: Credential; projectId: Setting }`                          | `Exporter`      | Invalid literal credentials or project id throw; getters resolve at export, which fails open.       |
+| `langfuse`          | `options: { baseUrl: Setting; publicKey: Credential; secretKey: Credential; }` | `Exporter`      | Invalid literal credentials or base URL throw; getters resolve at export, which fails open.         |
+| `trace.integration` | `facts: Facts`                                                                 | `Telemetry`     | Invalid facts throw; oversized facts export as digests.                                             |
+| `trace.flush`       | `signal?: AbortSignal`                                                         | `Promise<void>` | Export errors/timeouts are swallowed; no retries.                                                   |
 
 {/* GENERATED_API_END */}
 

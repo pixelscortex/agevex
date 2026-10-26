@@ -168,6 +168,92 @@ it("managed flush posts OTLP JSON to the configured endpoint exactly once per tu
   }
 });
 
+it("a disabled slot sends no request and records nothing, and the managed turn still completes", async () => {
+  const request = vi.spyOn(globalThis, "fetch");
+  const sanitize = vi.fn((value: unknown) => value);
+  const enabled = vi.fn(async () => false);
+
+  fixture.slots.telemetry = telemetry.slot({
+    enabled,
+    sanitize,
+    exporters: [
+      langfuse({ baseUrl: "https://langfuse.example", publicKey: "pk", secretKey: "sk" }),
+    ],
+  });
+
+  expect(enabled).not.toHaveBeenCalled();
+
+  const t = setup();
+  const receipt = await open(t);
+
+  await drain(t);
+  expect(enabled).toHaveBeenCalledTimes(1);
+  expect(sanitize).not.toHaveBeenCalled();
+  expect(request).not.toHaveBeenCalled();
+  expect((await status(t, receipt.threadId)).errorCode).toBeNull();
+});
+
+it("an enabled getter is resolved for each managed turn and exports when it answers true", async () => {
+  const request = vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(async () => new Response(null, { status: 200 }));
+
+  const enabled = vi.fn(() => true);
+
+  fixture.slots.telemetry = telemetry.slot({
+    enabled,
+    exporters: [
+      langfuse({ baseUrl: "https://langfuse.example", publicKey: "pk", secretKey: "sk" }),
+    ],
+  });
+
+  const t = setup();
+  const receipt = await open(t);
+
+  await drain(t);
+
+  await owner(t).mutation(api.agents.send, {
+    threadId: receipt.threadId,
+    text: "another turn",
+    requestKey: "second",
+  });
+
+  await drain(t);
+  expect(request).toHaveBeenCalledTimes(2);
+  expect(enabled).toHaveBeenCalledTimes(2);
+});
+
+it("lazy exporter settings are resolved inside a managed turn, never at registration", async () => {
+  const bodies: OtlpPayload[] = [];
+
+  const request = vi.spyOn(globalThis, "fetch").mockImplementation(async (_, init) => {
+    bodies.push(JSON.parse(init!.body as string) as OtlpPayload);
+
+    return new Response(null, { status: 200 });
+  });
+
+  const baseUrl = vi.fn(() => "https://lazy.langfuse.example");
+
+  fixture.slots.telemetry = telemetry.slot({
+    exporters: [langfuse({ baseUrl, publicKey: () => "pk", secretKey: () => "sk" })],
+  });
+
+  expect(baseUrl).not.toHaveBeenCalled();
+
+  const t = setup();
+
+  await open(t);
+  await drain(t);
+  expect(baseUrl).toHaveBeenCalledTimes(1);
+
+  expect(request).toHaveBeenCalledWith(
+    expect.stringContaining("lazy.langfuse.example"),
+    expect.anything(),
+  );
+
+  expect(bodies).toHaveLength(1);
+});
+
 it("two concurrent managed turns in one action flush only their own buffers", async () => {
   const { bodies } = capture();
   const gates = [gate(), gate()];

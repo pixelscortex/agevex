@@ -1,5 +1,5 @@
 /**
- * Lazy credential option for telemetry exporters.
+ * Lazy credential and setting options for telemetry exporters.
  * Hosts whose rules forbid reading env at module init pass a getter; it runs
  * only when an export is attempted, never at construction. Each module keeps
  * its own copy because optional modules must not import one another.
@@ -9,16 +9,33 @@ import { LIMITS, validateString } from "./limits.js";
 /** A literal secret, or a getter (sync or async) called at each export. */
 export type Credential = string | (() => string | Promise<string>);
 
+/** A non-secret exporter setting (project id, base URL) with the same literal-or-getter shape. */
+export type Setting = string | (() => string | Promise<string>);
+
 /** Validate a literal at registration; a getter is validated when it resolves. */
 export function checkCredential(value: Credential, name: string): void {
-  if (typeof value !== "function") validateString(value, name, LIMITS.maxConfigurationBytes);
+  checkSetting(value, name, LIMITS.maxConfigurationBytes);
 }
 
 /** Resolve at export time and apply the registration-time string validation. */
-export async function resolveCredential(value: Credential, name: string): Promise<string> {
+export function resolveCredential(value: Credential, name: string): Promise<string> {
+  return resolveSetting(value, name, LIMITS.maxConfigurationBytes);
+}
+
+/** Validate a literal setting at construction; a getter is validated when it resolves. */
+export function checkSetting(value: Setting, name: string, maximum: number): void {
+  if (typeof value !== "function") validateString(value, name, maximum);
+}
+
+/** Resolve at export time; a missing or oversized value throws into the fail-open attempt. */
+export async function resolveSetting(
+  value: Setting,
+  name: string,
+  maximum: number,
+): Promise<string> {
   const resolved = typeof value === "function" ? await value() : value;
 
-  validateString(resolved, name, LIMITS.maxConfigurationBytes);
+  validateString(resolved, name, maximum);
 
   return resolved;
 }

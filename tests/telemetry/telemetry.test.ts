@@ -731,6 +731,147 @@ it("an empty lazy key sends nothing and never throws into the agent", async () =
   expect(request).not.toHaveBeenCalled();
 });
 
+it("lazy Braintrust projectId and Langfuse baseUrl resolve at export time and reach the request", async () => {
+  const request = vi.fn(async () => new Response(null, { status: 200 }));
+
+  vi.spyOn(globalThis, "fetch").mockImplementation(request);
+
+  const projectId = vi.fn(async () => "lazy-project");
+  const baseUrl = vi.fn(() => "https://lazy.langfuse.example/");
+  const { bodies, integration } = capture();
+
+  const exporters = [
+    braintrust({ apiKey: "key", projectId }),
+    langfuse({ baseUrl, publicKey: "pk", secretKey: "sk" }),
+  ];
+
+  expect([projectId, baseUrl].map((getter) => getter.mock.calls.length)).toEqual([0, 0]);
+
+  await scripted(integration);
+
+  for (const exporter of exporters) await exporter.export(bodies[0]);
+
+  expect([projectId, baseUrl].map((getter) => getter.mock.calls.length)).toEqual([1, 1]);
+
+  const calls = request.mock.calls as unknown as [string, RequestInit][];
+
+  expect(calls[0][1].headers).toMatchObject({ "x-bt-parent": "project_id:lazy-project" });
+  expect(calls[1][0]).toBe("https://lazy.langfuse.example/api/public/otel/v1/traces");
+});
+
+it.each([
+  ["empty", () => ""],
+  ["oversized", () => "p".repeat(LIMITS.maxFactBytes + 1)],
+  ["throwing", () => Promise.reject(new Error("env unavailable"))],
+])("a %s lazy projectId sends nothing and never throws into the agent", async (_, projectId) => {
+  const request = vi.fn(async () => new Response(null, { status: 200 }));
+
+  vi.spyOn(globalThis, "fetch").mockImplementation(request);
+
+  const { observer, integration } = capture({
+    exporters: [braintrust({ apiKey: "key", projectId })],
+  });
+
+  await scripted(integration);
+  await expect(observer.flush()).resolves.toBeUndefined();
+  expect(request).not.toHaveBeenCalled();
+});
+
+it.each(["", "file:///tmp/trace", "https://user:pw@langfuse.example"])(
+  "a lazy baseUrl of %j sends nothing and never throws into the agent",
+  async (value) => {
+    const request = vi.fn(async () => new Response(null, { status: 200 }));
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(request);
+
+    const { observer, integration } = capture({
+      exporters: [langfuse({ baseUrl: () => value, publicKey: "pk", secretKey: "sk" })],
+    });
+
+    await scripted(integration);
+    await expect(observer.flush()).resolves.toBeUndefined();
+    expect(request).not.toHaveBeenCalled();
+  },
+);
+
+it("literal projectId and baseUrl are still validated at construction", () => {
+  expect(() => braintrust({ apiKey: "key", projectId: "" })).toThrow("projectId");
+
+  expect(() => langfuse({ baseUrl: "", publicKey: "pk", secretKey: "sk" })).toThrow("baseUrl");
+});
+
+it.each([
+  ["false", false],
+  ["a sync getter returning false", () => false],
+  ["an async getter returning false", async () => false],
+  ["a throwing getter", () => Promise.reject(new Error("env unavailable"))],
+  ["a getter returning a non-boolean", (() => "yes") as unknown as () => boolean],
+])(
+  "enabled as %s records nothing, exports nothing and does not fail the turn",
+  async (_, enabled) => {
+    const exported = vi.fn();
+    const sanitize = vi.fn((value: unknown) => value);
+
+    const { observer, integration } = capture({
+      enabled,
+      sanitize,
+      exporters: [{ export: exported }],
+    });
+
+    await scripted(integration);
+    await expect(observer.flush()).resolves.toBeUndefined();
+
+    // The sanitizer sees every span name and attribute as it is recorded.
+    expect(sanitize).not.toHaveBeenCalled();
+    expect(exported).not.toHaveBeenCalled();
+  },
+);
+
+it.each([
+  ["omitted", undefined],
+  ["true", true],
+  ["a sync getter", () => true],
+  ["an async getter", async () => true],
+])("enabled as %s records and exports the turn as before", async (_, enabled) => {
+  const { observer, integration, bodies } = capture({ enabled });
+
+  await scripted(integration);
+  await observer.flush();
+  expect(bodies).toHaveLength(1);
+  expect(spansIn(bodies[0]).length).toBeGreaterThan(0);
+});
+
+it("enabled is resolved once per turn, not once per callback", async () => {
+  const enabled = vi.fn(async () => true);
+  const { observer, integration } = capture({ enabled });
+
+  await scripted(integration);
+  await observer.flush();
+  expect(enabled).toHaveBeenCalledTimes(1);
+});
+
+it("an enabled getter that never answers cannot hang the model call", async () => {
+  vi.useFakeTimers();
+
+  try {
+    const { observer, integration, bodies } = capture({ enabled: () => new Promise(() => {}) });
+    const running = scripted(integration);
+
+    await vi.advanceTimersByTimeAsync(LIMITS.exportTimeoutMs);
+    await running;
+    await observer.flush();
+    expect(bodies).toHaveLength(0);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("an invalid enabled option fails at registration", () => {
+  expect(() => telemetry({ exporters: [], enabled: "yes" as unknown as boolean })).toThrow(
+    "enabled",
+  );
+});
+
 it("aborted streamText calls close as errors without recording the abort reason", async () => {
   const controller = new AbortController();
   const { observer, integration, bodies } = capture();
