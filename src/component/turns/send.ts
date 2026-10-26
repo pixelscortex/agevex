@@ -154,8 +154,8 @@ export async function acceptSend(ctx: MutationCtx, args: ObjectType<typeof accep
 }
 
 /**
- * Replay lookup before host authorization or native saves. The host must use
- * the caller's authenticated subject, never a supplied thread's stored owner:
+ * Replay lookup after host authorization, before admission or native saves.
+ * Use the host-authorized subject, never a supplied thread's stored owner:
  * even replay metadata must not reveal another subject's receipt. The exact
  * by_scope_key lookup uses unique() / take(2), so <=2 * 1 MiB are read even if
  * corrupt duplicate rows cause it to throw. No transcript or ledger scan.

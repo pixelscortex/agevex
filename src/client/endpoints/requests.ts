@@ -1,13 +1,12 @@
 // The two public endpoints that start work: `open` (new conversation) and `send`
 // (next message in an owned root conversation).
 //
-// Both are idempotent per subject and request key: input is validated and
-// fingerprinted, then the caller's receipt is resolved before host authorization.
-// Every call supplies requestKey/replay to that policy; an authorized duplicate
-// returns its stored receipt (`turns.send.lookupReceipt`),
-// and only a fresh request saves the native prompt (with its attachments) and is
-// admitted by `turns.send.accept` in the same transaction. `send` also respects the
-// thread's admission state (`turns.send.admission`) before any native write.
+// Both authorize first: the host owns the mapping from identity to subject.
+// Validated, fingerprinted inputs resolve that subject's retained receipt before
+// fresh work reaches the optional host admit hook. All returning refusals
+// (including queue and attachment limits) precede admit. After it, native saves
+// and turns.send.accept either accept together with host writes or throw to
+// roll back the entire mutation; no non-accepting receipt can commit host writes.
 
 import { createThread, saveMessage } from "@convex-dev/agent";
 import {
@@ -24,7 +23,7 @@ import { receipt } from "../../component/schema.js";
 import { savedMessageRef } from "../native-saves.js";
 import { fingerprint } from "../once.js";
 import { persistedTextConfig } from "../text/options.js";
-import type { AuthorizationScope, ManagedAgent, Receipt } from "../types.js";
+import type { AuthorizationScope, ManagedAgent } from "../types.js";
 import { observe, ownedScope, rootAgent, threadScope, type EndpointContext } from "./access.js";
 import { attachment, recordAttachments, validateFiles } from "./attachments.js";
 
@@ -68,16 +67,14 @@ function validModels(
   );
 }
 
-type RequestScope =
-  | Omit<Extract<AuthorizationScope, { operation: "open" }>, "replay">
-  | Omit<Extract<AuthorizationScope, { operation: "send" }>, "replay">;
+type RequestScope = Extract<AuthorizationScope, { operation: "open" | "send" }>;
 type RequestInput = {
   text: string;
   models?: Record<string, string>;
   files?: string[];
 };
 
-/** Bound every fingerprint input before hashing; defer refusals until authorization. */
+/** Bound every fingerprint input before hashing, after host authorization. */
 async function prepareRequest(
   ep: EndpointContext,
   scope: RequestScope,
@@ -111,53 +108,39 @@ async function prepareRequest(
 }
 
 /**
- * Resolve replay in the acceptance transaction before host policy. Never use a
- * thread's stored owner as the lookup principal: a foreign caller could learn
- * that owner's key through replay metadata. One exact subject/key lookup uses
- * unique() (Convex implements it with take(2)): <=2 * 1 MiB even if duplicate
- * ledger rows are corrupt, independent of queue or receipt counts.
- * Deferred failures preserve authorization even when input validation throws.
+ * Authorize every call before validation or receipt lookup. Only the host's
+ * returned subject is trusted; it may differ from ctx.auth's identity subject.
  */
 async function authorizeRequest(
   ep: EndpointContext,
   ctx: GenericMutationCtx<GenericDataModel>,
   scope: RequestScope,
-  prepare: () => ReturnType<typeof prepareRequest>,
 ) {
-  const identity = await ctx.auth.getUserIdentity();
-  const subject = identity?.subject;
-  let duplicate: Receipt | null = null;
-  let prepared!: Awaited<ReturnType<typeof prepareRequest>>;
-  let failure: { cause: unknown } | undefined;
+  const { subject } = await ep.config.authorize(ctx, scope);
 
-  try {
-    prepared = await prepare();
+  assertFact(subject, "subject");
 
-    if (subject && prepared.hash) {
-      assertFact(subject, "subject");
+  return subject;
+}
 
-      duplicate = await ctx.runQuery(ep.component.turns.send.lookupReceipt, {
-        subject,
-        requestKey: scope.requestKey,
-        fingerprint: prepared.hash,
-      });
-    }
-  } catch (cause) {
-    failure = { cause };
-  }
-
-  const trusted = await ep.config.authorize(ctx, {
-    ...scope,
-    replay: duplicate?.status === "duplicate",
+/**
+ * One exact authorized subject/key lookup uses unique() (Convex implements it
+ * with take(2)): <=2 * 1 MiB even for corrupt duplicate ledger rows, independent
+ * of queue or receipt counts. Never substitute a thread's owner for the host's
+ * authorized subject: foreign callers must not learn another subject's keys.
+ */
+function lookupRequest(
+  ep: EndpointContext,
+  ctx: GenericMutationCtx<GenericDataModel>,
+  subject: string,
+  scope: RequestScope,
+  hash: string,
+) {
+  return ctx.runQuery(ep.component.turns.send.lookupReceipt, {
+    subject,
+    requestKey: scope.requestKey,
+    fingerprint: hash,
   });
-
-  assertFact(trusted.subject, "subject");
-
-  if (!subject || trusted.subject !== subject) throw new Error("FORBIDDEN");
-
-  if (failure) throw failure.cause;
-
-  return { subject, prepared, duplicate };
 }
 
 /** One admitted request, as `acceptRequest` passes it to `turns.send.accept`. */
@@ -231,19 +214,22 @@ export function openEndpoint(ep: EndpointContext) {
       const { prompt, models, files } = args;
       const scope = { operation: "open" as const, agent: args.agent, requestKey: args.requestKey };
 
-      const { subject, prepared, duplicate } = await authorizeRequest(ep, ctx, scope, () =>
-        prepareRequest(ep, scope, { text: prompt, models, files }),
-      );
+      const subject = await authorizeRequest(ep, ctx, scope);
+      const prepared = await prepareRequest(ep, scope, { text: prompt, models, files });
 
       if (prepared.rejected) return prepared.rejected;
 
+      const { native, hash } = prepared;
+      const duplicate = await lookupRequest(ep, ctx, subject, scope, hash);
+
       if (duplicate) return duplicate;
 
-      const { native, hash } = prepared;
       const attached = await attachment(ep, ctx, native, subject, prompt, files);
 
       if ("rejected" in attached)
         return { status: "rejected" as const, code: "ATTACHMENT_LIMIT" as const };
+
+      await ep.config.admit?.(ctx, { ...scope, subject });
 
       const runTurn = await createFunctionHandle(ep.config.refs.runTurn());
       const threadId = await createThread(ctx, native.component, { userId: subject });
@@ -295,17 +281,16 @@ export function sendEndpoint(ep: EndpointContext) {
         requestKey: args.requestKey,
       };
 
-      const { subject, prepared, duplicate } = await authorizeRequest(ep, ctx, scope, () =>
-        prepareRequest(ep, scope, { text, models, files }, ep.managedAgents.get(stored.agent)),
-      );
-
+      const subject = await authorizeRequest(ep, ctx, scope);
       const row = ownedScope(ep, stored, subject, "send");
+      const prepared = await prepareRequest(ep, scope, { text, models, files }, row.native);
 
       if (prepared.rejected) return prepared.rejected;
 
-      if (duplicate) return duplicate;
-
       const { hash } = prepared;
+      const duplicate = await lookupRequest(ep, ctx, subject, scope, hash);
+
+      if (duplicate) return duplicate;
 
       const refusal = await ctx.runQuery(ep.component.turns.send.admission, {
         threadId,
@@ -318,6 +303,8 @@ export function sendEndpoint(ep: EndpointContext) {
 
       if ("rejected" in attached)
         return { status: "rejected" as const, code: "ATTACHMENT_LIMIT" as const };
+
+      await ep.config.admit?.(ctx, { ...scope, subject });
 
       const saved = await saveMessage(ctx, row.native.component, {
         threadId,

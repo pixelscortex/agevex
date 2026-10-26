@@ -616,21 +616,29 @@ stored subject against current host policy. `authorizeExecution` runs before
 every model slice. Optional `observe` receives metadata-only lifecycle events;
 observer failures do not change execution.
 
-For `open` and `send`, `AuthorizationScope` also includes `requestKey` and
-`replay`. A retained receipt for the same subject, key and fingerprint sets
-`replay: true`; fresh or conflicting input sets it to false. Authorization runs
-on every retry, so hosts can refuse fresh work when out of balance and still
-allow receipt replays:
+For `open` and `send`, `authorize` runs first on every call, including
+retries, and returns the host's `{ subject }` mapping. It also receives
+`requestKey`; no identity-subject equality or replay flag is required. Retained
+receipts are then resolved privately for that subject: identical input returns
+`duplicate`, changed input returns `KEY_CONFLICT`, and neither calls `admit`.
+
+Optional registration hook `admit(ctx, { subject, operation, agent, threadId?, requestKey })`
+lets hosts refuse new paid work (e.g. exhausted balance) without breaking
+idempotent retries:
 
 ```ts
-if ((scope.operation === "open" || scope.operation === "send") && !scope.replay) {
+admit: async (ctx, { subject }) => {
   if (!(await hasBalance(ctx, subject))) throw new Error("OUT_OF_BALANCE");
-}
-return { subject }; // Resolve and authorize the caller before this balance check.
+},
 ```
 
-These two endpoints use `ctx.auth.getUserIdentity().subject` for receipt lookup;
-the host must return that same subject. Other endpoints retain their existing scopes.
+All agevex checks that can return a rejection receipt, including input, queue
+and attachment limits, run before `admit`. It receives the full host MutationCtx:
+**admit may write host state in the same transaction; those writes commit only
+if the request is accepted.** Native saves, inbox and receipt writes follow the
+hook. A thrown refusal or later failure rolls the entire mutation back; any
+non-accepting result after the hook throws. No reservation or settlement
+counterpart is required. Authorization can still deny any retry.
 
 `LIMITS`, exported from `agevex`, is the single source of runtime bounds,
 including lane sizes, model output/deadline, slices, run budgets, queue size,

@@ -3,8 +3,8 @@
 // `createEndpointContext` indexes every registered agent once; `rootAgent`
 // resolves a public root for `open`. `threadScope` loads one assignment and
 // `ownedScope` enforces ownership and the persisted root/child role. Ordinary
-// endpoints use `ownedThread` to run host policy between those checks; `send`
-// resolves the caller's receipt first so policy receives accurate replay facts.
+// endpoints use `ownedThread` to run host policy between those checks. `send`
+// supplies its request key and enforces ownership before its receipt lookup.
 
 import type { GenericDataModel, GenericMutationCtx, GenericQueryCtx } from "convex/server";
 import type { ComponentApi } from "../../component/_generated/component.js";
@@ -86,7 +86,7 @@ export function rootAgent(ep: EndpointContext, name: string) {
 
 /**
  * Load one bounded assignment projection, without granting access. Request
- * endpoints need its agent before resolving replay; every caller must still
+ * endpoints need its agent before authorization; every caller must still
  * authorize and pass `ownedScope` before returning data or saving messages.
  */
 export async function threadScope(
@@ -139,7 +139,7 @@ export function ownedScope(
   return { ...row, native };
 }
 
-/** Authorize ordinary thread operations; request endpoints resolve replay first. */
+/** Authorize ordinary thread operations; send separately includes its request key. */
 export async function ownedThread(
   ep: EndpointContext,
   ctx: GenericQueryCtx<GenericDataModel>,

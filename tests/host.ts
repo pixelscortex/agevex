@@ -77,6 +77,9 @@ export const state = {
   denyFreshRequests: false,
   denyAllRequests: false,
   requestScopes: [] as Extract<AuthorizationScope, { operation: "open" | "send" }>[],
+  admissions: [] as Parameters<NonNullable<Registration["admit"]>>[1][],
+  admit: undefined as Registration["admit"],
+  subjectPrefix: "",
   hang: false,
   tools: false,
   approval: false,
@@ -468,11 +471,16 @@ export function fixtureRuntime(limits?: Registration["limits"]) {
       if (scope.operation === "open" || scope.operation === "send") {
         state.requestScopes.push(scope);
 
-        if (state.denyAllRequests || (state.denyFreshRequests && !scope.replay))
-          throw new Error("OUT_OF_BALANCE");
+        if (state.denyAllRequests) throw new Error("FORBIDDEN");
       }
 
-      return { subject: identity.subject };
+      return { subject: state.subjectPrefix + identity.subject };
+    },
+    admit: async (ctx, input) => {
+      state.admissions.push(input);
+      await state.admit?.(ctx, input);
+
+      if (state.denyFreshRequests) throw new Error("OUT_OF_BALANCE");
     },
     authorizeExecution: async (_ctx, scope) => {
       if (state.revoke || scope.subject !== "alice") throw new Error("REVOKED");
