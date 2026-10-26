@@ -121,5 +121,5 @@ export const usageFailed = mutation({
 export const usageReporting = query({
   args: { runId: v.id("runs") },
   returns: v.boolean(),
-  handler: async (ctx, { runId }) => (await ctx.db.get("runs", runId))?.usagePartial ?? true,
+  handler: async (ctx, { runId }) => (await ctx.db.get("runs", runId))?.usagePartial ?? false,
 });

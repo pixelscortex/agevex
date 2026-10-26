@@ -21,18 +21,17 @@ export type SlotFacts = {
   threadId: string;
   runId: string;
   agent: string;
-  purpose?: "agent" | "tool" | "title" | "summary";
+  purpose?: "agent" | "hook" | "tool" | "title" | "summary";
   /** Delegation identity; absent on the root node. Never supplied by the model. */
   nodeId?: string;
 };
 export type UsageView = {
   inputTokens: number | null;
   outputTokens: number | null;
-  /** Disabled adapters expose null costs, never a fabricated free run. */
-  estimatedUsd: number | null;
-  settledUsd: number | null;
+  estimatedUsd: number;
+  settledUsd: number;
   unknown: number;
-  reporting: "available" | "partial" | "disabled";
+  reporting: "available" | "partial";
 };
 export type UsageViewArgs = {
   subject: string;

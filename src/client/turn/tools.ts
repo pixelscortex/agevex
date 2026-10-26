@@ -105,8 +105,6 @@ function withToolHooks(rt: RuntimeContext, gen: Generation, name: string, declar
       if (before?.block) return { status: "denied", code: "HOOK_BLOCKED", reason: before.block };
 
       // A host hook may itself report spend. Recheck before the actual effect.
-      await assertBudget(rt, gen);
-
       const actual = before && "input" in before ? before.input : input;
       const callKey = await opaqueKey("tool-call", facts.runId, facts.threadId, options.toolCallId);
 

@@ -102,7 +102,7 @@ it("a replayed correction key returns its original outcome without overwriting a
   expect(await t.query(setupComponent.charges.get, { key: "replay" })).toEqual(before);
 });
 
-it("expired unknown rejects corrections but accepts a late real provider result exactly once", async () => {
+it("expired estimates remain correctable and accept late provider evidence exactly once", async () => {
   const { t, meter, component } = setup({
     providers: {
       async: {
@@ -134,7 +134,7 @@ it("expired unknown rejects corrections but accepts a late real provider result 
     });
 
     await charge.correct({ quantity: 3, key: "correct-3" });
-    expect(await charge.get()).toMatchObject({ status: "unknown", nanos: 1_000_000_000 });
+    expect(await charge.get()).toMatchObject({ status: "corrected", nanos: 750_000_000 });
   });
 
   const row = (await t.query(component.charges.get, { key: "late" }))!;
@@ -471,7 +471,7 @@ it("request-id lookup resolves with backoff without repeating a paid operation",
   });
 });
 
-it("lookup expiry retains its last estimate and counts unknown even after retry exhaustion", async () => {
+it("lookup expiry keeps the estimate budgetable after retry exhaustion", async () => {
   const lookup = vi.fn(async () => undefined);
 
   const { t, meter } = setup({
@@ -499,9 +499,15 @@ it("lookup expiry retains its last estimate and counts unknown even after retry 
   await drain(t);
 
   expect(await t.run((ctx) => meter.threadCost(ctx, { threadId: "root" }))).toMatchObject({
-    unknown: 1,
-    unknownNanos: 300_000_000,
+    unknown: 0,
+    estimatedNanos: 300_000_000,
   });
+
+  expect(
+    await t.run((ctx) =>
+      meter.check(ctx, { subject: attribution.subject, runId: attribution.runId }),
+    ),
+  ).toMatchObject({ allowed: true });
 
   const before = lookup.mock.calls.length;
 

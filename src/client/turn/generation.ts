@@ -76,6 +76,13 @@ export async function generateTurn(rt: RuntimeContext, turn: Turn): Promise<Turn
               : "GENERATION_FAILED",
     };
   } finally {
+    if (
+      rt.config.usage &&
+      state.modelStarted &&
+      (gen.fence.controller.signal.aborted || !turn.usageSaved)
+    )
+      await markUsagePartial(rt, turn);
+
     gen.fence.stop();
 
     if (turn.claimed.isRunStart && turn.managed.hooks?.beforeTurn) await completeRouting(rt, turn);
@@ -93,7 +100,7 @@ function startGeneration(rt: RuntimeContext, turn: Turn): Generation {
 
   bindTaskContext(fence.ctx, {
     component: rt.component,
-    attribution: facts,
+    attribution: { ...facts, purpose: "hook" },
     turnKey,
     usage: rt.config.usage,
     fence: {
@@ -108,6 +115,7 @@ function startGeneration(rt: RuntimeContext, turn: Turn): Generation {
   );
 
   const state: GenerationState = {
+    modelStarted: false,
     hookFailed: false,
     hookBlocked: false,
     delegated: false,
@@ -118,7 +126,12 @@ function startGeneration(rt: RuntimeContext, turn: Turn): Generation {
     ctx: fence.ctx,
     ...facts,
     signal: fence.controller.signal,
-    meter: scopedMeter(backend, `${sliceKey(turn)}:hook`),
+    meter: scopedMeter(
+      meterBackend(rt.config, turn.rawCtx, { ...facts, purpose: "hook" }, () =>
+        markUsagePartial(rt, turn),
+      ),
+      `${sliceKey(turn)}:hook`,
+    ),
   };
 
   const hook = hookRunner(rt, turn, fence, state);

@@ -143,7 +143,7 @@ export const fillRunSettings = internalMutationGeneric({
 
     const rows = await ctx.db.query("runs").take(RUN_LIMITS.cancelBudgets);
 
-    for (const row of rows) await ctx.db.patch(row._id, { settings });
+    for (const row of rows) await ctx.db.patch(row._id, { settings, usagePartial: undefined });
 
     return null;
   },

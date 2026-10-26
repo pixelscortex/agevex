@@ -78,6 +78,7 @@ export async function outcome(ctx: Pick<QueryCtx, "db">, row: Doc<"charges">): P
 
   return {
     ...result,
+    reconciliation: result.reconciliation ?? "unavailable",
     sinkState: row.sinkState.map((sink) => {
       const delivery = pending.find((entry) => entry.sink === sink.name);
 

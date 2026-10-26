@@ -15,7 +15,13 @@ export const attribution = v.object({
   agent: v.optional(v.string()),
   model: v.optional(v.string()),
   purpose: v.optional(
-    v.union(v.literal("agent"), v.literal("tool"), v.literal("title"), v.literal("summary")),
+    v.union(
+      v.literal("agent"),
+      v.literal("hook"),
+      v.literal("tool"),
+      v.literal("title"),
+      v.literal("summary"),
+    ),
   ),
   nodeId: v.optional(v.string()),
 });
@@ -96,7 +102,7 @@ const chargeFields = {
   credits: v.optional(v.number()),
   providerRequestId: v.optional(v.string()),
   tokens: v.optional(tokens),
-  reconciliation,
+  reconciliation: v.optional(reconciliation),
   lookupUntil: v.optional(v.number()),
   // Amount revisions describe outcomes; replay identity comes from operation keys.
   revision: v.number(),

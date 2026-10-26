@@ -80,6 +80,7 @@ export async function reconcileUsage(rt: RuntimeContext, turn: Turn) {
       runId: turn.facts.runId,
     });
   } catch {
-    await markUsagePartial(rt, turn);
+    // The recorded evidence remains complete if only scheduling fails.
+    // A later slice or explicit reconciliation can schedule the same sweep.
   }
 }

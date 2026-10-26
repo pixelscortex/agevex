@@ -115,5 +115,5 @@ then inserts the charge and its aggregate entries. Authoritative cost prepares
 immutable sink events; delivery claims small outbox rows and acknowledges in
 bounded chunks. Corrections/settlements save their original operation outcomes.
 Attachment records an exact provider request and deadline; read-only lookup
-retries are fenced, and expiry fails the gate closed. Retention removes only
+retries are fenced, and expiry retains the estimate for budgeting. Retention removes only
 settled, fully acknowledged charges and their projections, on host demand.

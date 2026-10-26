@@ -1,4 +1,7 @@
 /** Fake provider evidence: live projections, same-charge reconciliation and bounds. */
+import { componentsGeneric, internalMutationGeneric, type FunctionReference } from "convex/server";
+import { v } from "convex/values";
+import meterTest from "../../src/modules/meter/test.js";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { LIMITS, openRouterProvider, tokenEstimate } from "../../src/modules/meter/client/index.js";
 import { setup, attribution, allBreakdowns } from "./setup.js";
@@ -353,5 +356,48 @@ it("an unavailable request id retains its estimate and can attach later without 
     _id: row!._id,
     nanos: 10_000_000,
     source: "lookup",
+  });
+});
+
+it("charges without reconciliation metadata remain readable with an unavailable default", async () => {
+  const { t, meter, component } = setup({ providers: { fake: { estimate } } });
+
+  t.registerComponent("meter", meterTest.schema, {
+    ...meterTest.modules,
+    "./component/fixture.ts": async () => ({
+      clear: internalMutationGeneric({
+        args: { key: v.string() },
+        returns: v.null(),
+        handler: async (ctx, { key }) => {
+          const row = await ctx.db
+            .query("charges")
+            .withIndex("by_key", (q) => q.eq("key", key))
+            .unique();
+
+          await ctx.db.patch(row!._id, { reconciliation: undefined });
+
+          return null;
+        },
+      }),
+    }),
+  });
+
+  await t.run(async (ctx) => {
+    await meter.scope(ctx, attribution).record("fake", { key: "optional", usage });
+  });
+
+  await t.mutation(
+    componentsGeneric().meter.fixture.clear as unknown as FunctionReference<"mutation">,
+    { key: "optional" },
+  );
+
+  expect(await t.query(component.charges.get, { key: "optional" })).toMatchObject({
+    reconciliation: "unavailable",
+    status: "estimate",
+  });
+
+  expect((await t.run((ctx) => meter.usageView(ctx, viewArgs))).total).toMatchObject({
+    inputTokens: 3,
+    estimatedUsd: 0.00023,
   });
 });

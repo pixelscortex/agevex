@@ -96,7 +96,7 @@ usage and V4 token totals are supported by `tokenEstimate`. No rate is inferred.
 ## Reconciliation and live reads
 
 Core preserves the provider response id in the same native save as usage. Charges
-carry `purpose` (`agent`, `tool`, `title`, `summary`) and an optional delegation
+carry `purpose` (`agent`, `hook`, `tool`, `title`, `summary`) and an optional delegation
 `nodeId`; ordinary model/tool calls set these from trusted runtime facts.
 Each slice exit, including early child completion, asks the usage slot to sweep
 pending request ids. Meter discovers them through its run index, four charges per
@@ -106,7 +106,7 @@ transaction. Its jobs only read billing evidence. They cannot regenerate an answ
 timeout and 16 KiB response ceiling. Other providers implement `Provider.lookup`.
 Missing/failed responses retain the estimate and retry up to eight times within
 one hour by default (maximum one day). After expiry the estimate remains on the
-row as unknown, so a budget check fails closed. The charge's `reconciliation`
+row as estimated, so lookup outages do not independently deny budget admission. The charge's `reconciliation`
 field exposes pending, running, complete, unavailable or exhausted evidence.
 An authoritative inline cost, including zero, needs no lookup.
 
@@ -123,7 +123,7 @@ reporting coverage. No charge or transcript scan occurs. Missing token evidence
 is `null`; real zero is retained. Unknown cost or missing model tokens reports
 partial coverage. Core stores a sticky `runs.usagePartial` after an observation
 failure; host projections read `turns.slices.usageReporting` and pass it as
-`partial`. Without a usage/view adapter, consumers report disabled coverage.
+`partial`. Without a usage/view adapter, no usage view is exposed.
 
 Usage recording, attach and settlement failures never repeat paid work or replace
 a successful tool result. Evidence and invoice totals are best effort.

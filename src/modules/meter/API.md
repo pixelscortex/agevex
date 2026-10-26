@@ -89,8 +89,7 @@ Replays return the same charge; conflicting provider/attribution throws
 `KEY_CONFLICT`. Repeating a correction or settlement does not add another
 contribution. `correct` reprices the quantity from the registered profile and
 marks it `source: "estimate"`; a later settlement supplies authoritative cost.
-Settlement is final: subsequent amount changes are ignored. Corrections also
-cannot revive an expired `unknown`; only real provider evidence can settle it.
+Settlement is final: subsequent amount changes are ignored. Expiry retains estimates and their correction behavior.
 Every `correct`, `attach` and `settle` call requires a stable operation `key`
 (up to 256 UTF-8 bytes), shared across these methods for one charge. Reuse it
 for retries; use a new key for each distinct operation. A repeated key returns
@@ -224,8 +223,9 @@ is root); the root total always covers the whole run, independently of the node
 selection. Values contain input/output tokens (null if absent), estimated and
 settled USD, unknown count and reporting coverage. Core slots trust server-derived
 facts and expose the same optional view. Propagate `runs.usagePartial` via
-`turns.slices.usageReporting` as `partial`; omitted adapters report disabled.
-The node label is an exclusive delegation id, and `purpose` is agent/tool/title/summary.
+`turns.slices.usageReporting` as `partial`; omitted adapters expose no usage view. Cost fields are numeric when a view is available;
+missing token evidence remains null.
+The node label is an exclusive delegation id, and `purpose` is agent/hook/tool/title/summary.
 No enriched run tree or metadata worker is introduced by this contract.
 
 The existing aggregates gain at most five entries per charge: exclusive node
@@ -238,16 +238,16 @@ query metadata, <4,096 queries; output <32 KiB. No charge/transcript scans.
 Charges expose reconciliation status: pending, running, complete, unavailable,
 exhausted. Missing/failed lookups retain existing amounts, and retries only read
 evidence. No request id means unavailable; a later `attach` can supply it.
-An exhausted horizon leaves the stored estimate unknown for budget admission.
+An exhausted horizon retains the stored estimate for budget admission.
 Managed observation failures are fail-open for paid outcomes and sticky partial
 for reporting. An authoritative inline zero is real evidence and skips lookup.
 
 Attaching a request id starts one Workpool lookup sequence with exponential
 backoff, capped at eight evidence reads, plus a one-shot deadline mutation.
-The deadline marks unresolved charges unknown even if a worker crashes or
-exhausts retries. Reattaching the same id schedules no duplicate sequence;
+The deadline marks reconciliation exhausted while retaining any estimate, even
+if a worker crashes or exhausts retries. Reattaching the same id schedules no duplicate sequence;
 a different id throws. Expiry does not restart lookup work; a real result
-already in flight may still settle the unknown exactly once. Replayed attempt
+already in flight may still settle the charge exactly once. Replayed attempt
 callbacks cannot create duplicate retry chains. No
 provider operation that incurs cost is invoked by this module.
 
@@ -391,7 +391,7 @@ Polar's ingest/dedup contract and the absence of per-request Fal/Daytona costs.
 - A delivered correction needs a new external id for its delta; reusing the
   base charge key would make Polar discard it as a duplicate.
 - Settled amounts are final; deltas apply to corrected estimates and their
-  final settlement. Expired unknowns accept real results already in flight,
+  final settlement. Expired estimates accept real results already in flight,
   without restarting provider work. Thread axes require cursor pages to stay
   bounded at arbitrary cardinality.
 - USD is represented by `nanos`, rather than the draft schema's floating `usd`.

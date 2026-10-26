@@ -18,7 +18,7 @@ export const usageView = v.object({
   estimatedUsd: v.number(),
   settledUsd: v.number(),
   unknown: v.number(),
-  reporting: v.union(v.literal("available"), v.literal("partial"), v.literal("disabled")),
+  reporting: v.union(v.literal("available"), v.literal("partial")),
 });
 export const usageProjection = v.object({
   total: usageView,

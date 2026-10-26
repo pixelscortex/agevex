@@ -17,6 +17,8 @@ export function boundedModel(gen: Generation, model: LanguageModel): LanguageMod
     model: typeof model === "string" ? gateway(model) : model,
     middleware: {
       wrapGenerate: async ({ doGenerate }) => {
+        gen.state.modelStarted = true;
+
         const stop = fence.deadline(timeoutMs);
 
         try {
@@ -37,6 +39,8 @@ export function boundedModel(gen: Generation, model: LanguageModel): LanguageMod
         }
       },
       wrapStream: async ({ doStream }) => {
+        gen.state.modelStarted = true;
+
         const stop = fence.deadline(timeoutMs);
         const result = await fence.wait(doStream());
         let calls = 0;

@@ -91,17 +91,12 @@ export async function startLookup(
   return { ...row, ...patch };
 }
 
-/** Mark unresolved evidence unknown at its recorded one-shot deadline. */
+/** Finish unresolved evidence while retaining the last estimate at its recorded one-shot deadline. */
 export async function expireCharge(ctx: MutationCtx, { id }: ExpireArgs): Promise<void> {
   const row = await ctx.db.get("charges", id);
 
   if (row?.lookupUntil && Date.now() >= row.lookupUntil && row.reconciliation !== "complete")
-    await change(
-      ctx,
-      row,
-      { status: "unknown", reconciliation: "exhausted" },
-      { maxAttempts: LIMITS.maxAttempts },
-    );
+    await change(ctx, row, { reconciliation: "exhausted" }, { maxAttempts: LIMITS.maxAttempts });
 }
 
 /** Retain late evidence but fence duplicate empty callbacks before scheduling another lookup. */
@@ -146,7 +141,7 @@ export async function recordLookupResult(ctx: MutationCtx, args: LookupResultArg
   } else if (row.reconciliation !== "running" || args.attempt !== row.lookupAttempt) {
     return null;
   } else if (Date.now() >= args.until) {
-    await change(ctx, row, { status: "unknown", reconciliation: "exhausted" }, args.jobs);
+    await change(ctx, row, { reconciliation: "exhausted" }, args.jobs);
   } else if (args.attempt + 1 < args.jobs.maxAttempts && args.jobs.lookup) {
     // Duplicate callbacks cannot admit another retry chain.
     await ctx.db.patch("charges", row._id, { lookupAttempt: args.attempt + 1 });

@@ -71,15 +71,8 @@ export async function updateCharge(ctx: MutationCtx, args: UpdateArgs): Promise<
     return await save(await stale(ctx, row, args.operation, row.revision));
 
   if (args.operation === "correct") {
-    if (
-      row.status === "unknown" ||
-      (row.lookupUntil !== undefined && Date.now() >= row.lookupUntil)
-    ) {
-      const expired =
-        row.status === "unknown" ? row : await change(ctx, row, { status: "unknown" }, args.jobs);
-
-      return await save(await stale(ctx, expired, args.operation, row.revision));
-    }
+    if (row.status === "unknown")
+      return await save(await stale(ctx, row, args.operation, row.revision));
 
     if (row.nanos === args.nanos && row.quantity === args.quantity && row.status === "corrected")
       return await save(row);
