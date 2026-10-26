@@ -783,6 +783,13 @@ declare const _default: import("convex/server").SchemaDefinition<{
         result: {
             schema?: any;
             truncated?: true | undefined;
+            approved?: {
+                toolCallId: string;
+                input: any;
+                edited: boolean;
+                originalHash: string;
+                effectiveHash: string;
+            } | undefined;
             id: string;
             providerExecuted: boolean;
             toolCallId: string;
@@ -811,6 +818,13 @@ declare const _default: import("convex/server").SchemaDefinition<{
         result: {
             schema?: any;
             truncated?: true | undefined;
+            approved?: {
+                toolCallId: string;
+                input: any;
+                edited: boolean;
+                originalHash: string;
+                effectiveHash: string;
+            } | undefined;
             id: string;
             providerExecuted: boolean;
             toolCallId: string;
@@ -823,12 +837,32 @@ declare const _default: import("convex/server").SchemaDefinition<{
         result: import("convex/values").VObject<{
             schema?: any;
             truncated?: true | undefined;
+            approved?: {
+                toolCallId: string;
+                input: any;
+                edited: boolean;
+                originalHash: string;
+                effectiveHash: string;
+            } | undefined;
             id: string;
             providerExecuted: boolean;
             toolCallId: string;
             tool: string;
             input: any;
         }, {
+            approved: import("convex/values").VObject<{
+                toolCallId: string;
+                input: any;
+                edited: boolean;
+                originalHash: string;
+                effectiveHash: string;
+            } | undefined, {
+                edited: import("convex/values").VBoolean<boolean, "required">;
+                toolCallId: import("convex/values").VString<string, "required">;
+                input: import("convex/values").VAny<any, "required", string>;
+                originalHash: import("convex/values").VString<string, "required">;
+                effectiveHash: import("convex/values").VString<string, "required">;
+            }, "optional", "toolCallId" | "input" | `input.${string}` | "edited" | "originalHash" | "effectiveHash">;
             id: import("convex/values").VString<string, "required">;
             toolCallId: import("convex/values").VString<string, "required">;
             tool: import("convex/values").VString<string, "required">;
@@ -836,8 +870,8 @@ declare const _default: import("convex/server").SchemaDefinition<{
             providerExecuted: import("convex/values").VBoolean<boolean, "required">;
             schema: import("convex/values").VAny<any, "optional", string>;
             truncated: import("convex/values").VLiteral<true | undefined, "optional">;
-        }, "required", "id" | "providerExecuted" | "toolCallId" | "tool" | "input" | "schema" | "truncated" | `input.${string}` | `schema.${string}`>;
-    }, "required", "result" | "kind" | "result.id" | "result.providerExecuted" | "result.toolCallId" | "result.tool" | "result.input" | "result.schema" | "result.truncated" | `result.input.${string}` | `result.schema.${string}`>, import("convex/values").VObject<{
+        }, "required", "id" | "providerExecuted" | "toolCallId" | "tool" | "input" | "schema" | "truncated" | `input.${string}` | `schema.${string}` | "approved" | "approved.toolCallId" | "approved.input" | `approved.input.${string}` | "approved.edited" | "approved.originalHash" | "approved.effectiveHash">;
+    }, "required", "result" | "kind" | "result.id" | "result.providerExecuted" | "result.toolCallId" | "result.tool" | "result.input" | "result.schema" | "result.truncated" | `result.input.${string}` | `result.schema.${string}` | "result.approved" | "result.approved.toolCallId" | "result.approved.input" | `result.approved.input.${string}` | "result.approved.edited" | "result.approved.originalHash" | "result.approved.effectiveHash">, import("convex/values").VObject<{
         result?: any;
         claim?: string | undefined;
         leaseUntil?: number | undefined;
@@ -871,7 +905,7 @@ declare const _default: import("convex/server").SchemaDefinition<{
         subject: import("convex/values").VString<string, "required">;
         threadId: import("convex/values").VString<string | undefined, "optional">;
         messageId: import("convex/values").VString<string | undefined, "optional">;
-    }, "required", "kind" | "messageId" | "subject" | "threadId" | "native" | "fileId">], "required", "result" | "kind" | "status" | "key" | "messageId" | "subject" | "threadId" | `result.input.${string}` | `result.schema.${string}` | "scope" | "fingerprint" | "claim" | "leaseUntil" | "expiresAt" | `result.${string}` | "native" | "fileId">, {
+    }, "required", "kind" | "messageId" | "subject" | "threadId" | "native" | "fileId">], "required", "result" | "kind" | "status" | "key" | "messageId" | "subject" | "threadId" | `result.input.${string}` | `result.schema.${string}` | `result.approved.input.${string}` | "scope" | "fingerprint" | "claim" | "leaseUntil" | "expiresAt" | `result.${string}` | "native" | "fileId">, {
         by_scope_key: ["scope", "key", "_creationTime"];
         by_expiry: ["kind", "expiresAt", "_creationTime"];
         by_file: ["native", "fileId", "subject", "threadId", "_creationTime"];

@@ -4,6 +4,7 @@
  * keeps SDK call ancestry separate. No context owns Convex rows or transactions.
  */
 import type { Telemetry } from "ai";
+import type { Enabled } from "./enabled.js";
 import type { Exporter } from "./exporters.js";
 import type { attributeWriter, Sanitize, Span } from "./otlp.js";
 export type Facts = {
@@ -15,6 +16,8 @@ export type Facts = {
     turnKey: string;
 };
 export type TelemetryOptions = {
+    /** Resolved once per turn buffer. When false nothing is recorded or exported. Default true. */
+    enabled?: Enabled;
     exporters: readonly Exporter[];
     recordInputs?: boolean;
     recordOutputs?: boolean;
@@ -54,6 +57,10 @@ export type TurnContext = {
     callOrdinal: number;
     buffer: BufferedSpan[];
     sealed: boolean;
+    /** The turn's switch resolved to off: callbacks record nothing. */
+    disabled: boolean;
+    /** Present only while an async `enabled` getter was used: callbacks wait for it. */
+    gate?: Promise<boolean>;
     flushing?: Promise<void>;
     pendingDigests: Map<string, Promise<string>>;
 };

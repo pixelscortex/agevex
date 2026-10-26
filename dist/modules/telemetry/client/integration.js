@@ -2,10 +2,15 @@ import { integrationContext } from "./attribution.js";
 import { onStart, onStepStart, onStepEnd, onEnd, onAbort, onError } from "./agent-events.js";
 import { onLanguageModelCallStart, onLanguageModelCallEnd } from "./model-events.js";
 import { onToolExecutionStart, onToolExecutionEnd } from "./tool-events.js";
-/** Ignore callbacks after flush and prevent arbitrary observer errors escaping into execution. */
+/**
+ * Ignore callbacks after flush or when the turn is switched off, and prevent
+ * arbitrary observer errors escaping into execution. While an async `enabled`
+ * getter is pending, callbacks wait on it (in order, bounded by its deadline)
+ * so a turn that resolves to off never buffers a span.
+ */
 function safe(turn, callback) {
-    return (event) => {
-        if (turn.sealed)
+    const run = (event) => {
+        if (turn.sealed || turn.disabled)
             return;
         try {
             callback(event);
@@ -13,6 +18,11 @@ function safe(turn, callback) {
         catch {
             /* Telemetry never changes paid execution. */
         }
+    };
+    return (event) => {
+        if (turn.sealed || turn.disabled)
+            return;
+        return turn.gate ? turn.gate.then(() => run(event)) : run(event);
     };
 }
 /** Validate attribution, then compose short guarded handlers with an explicit context. */

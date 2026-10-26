@@ -23,7 +23,28 @@ export declare const pendingItem: import("convex/values").VObject<{
     schema: import("convex/values").VAny<any, "optional", string>;
     truncated: import("convex/values").VLiteral<true | undefined, "optional">;
 }, "required", "id" | "kind" | "agent" | "threadId" | "providerExecuted" | "toolCallId" | "tool" | "input" | "schema" | "truncated" | `input.${string}` | `schema.${string}`>;
-/** One recorded reference reads one <=32 KiB proposal, never a native transcript. */
+/** One recorded reference reads one <=32 KiB proposal, never a native transcript.
+ * `approved` (added by respond) is split off: it is not part of the proposal's
+ * bound and is never shown in the pending projection.
+ */
+export declare function readProposal(ctx: QueryCtx, request: NonNullable<Doc<"assignments">["approvals"]>["requests"][number]): Promise<{
+    result: {
+        schema?: any;
+        truncated?: true | undefined;
+        id: string;
+        providerExecuted: boolean;
+        toolCallId: string;
+        tool: string;
+        input: any;
+    };
+    approved: {
+        toolCallId: string;
+        input: any;
+        edited: boolean;
+        originalHash: string;
+        effectiveHash: string;
+    } | undefined;
+}>;
 export declare function readPending(ctx: QueryCtx, row: Doc<"assignments">, request: NonNullable<Doc<"assignments">["approvals"]>["requests"][number]): Promise<{
     threadId: string;
     agent: string;
@@ -75,8 +96,17 @@ export declare const pending: import("convex/server").RegisteredQuery<"public", 
     tool: string;
     input: any;
 }[]>>;
-/** Edited input is retrieved only for the exact recorded call, within its assignment. */
+/** Approved input is retrieved only for the exact recorded call, within its assignment.
+ * It is stored on the request's own proposal, so it lives exactly as long as the
+ * request: one <=32 KiB proposal read, no expiring receipt.
+ */
 export declare const effective: import("convex/server").RegisteredQuery<"public", {
     assignmentId: import("convex/values").GenericId<"assignments">;
     toolCallId: string;
-}, Promise<any>>;
+}, Promise<{
+    toolCallId: string;
+    input: any;
+    edited: boolean;
+    originalHash: string;
+    effectiveHash: string;
+} | null>>;

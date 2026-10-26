@@ -23,6 +23,13 @@ export declare function uploadGrant(ctx: Pick<QueryCtx, "db">, native: string, f
     result: {
         schema?: any;
         truncated?: true | undefined;
+        approved?: {
+            toolCallId: string;
+            input: any;
+            edited: boolean;
+            originalHash: string;
+            effectiveHash: string;
+        } | undefined;
         id: string;
         providerExecuted: boolean;
         toolCallId: string;
@@ -59,6 +66,13 @@ export declare function messageBindings(ctx: Pick<QueryCtx, "db">, native: strin
     result: {
         schema?: any;
         truncated?: true | undefined;
+        approved?: {
+            toolCallId: string;
+            input: any;
+            edited: boolean;
+            originalHash: string;
+            effectiveHash: string;
+        } | undefined;
         id: string;
         providerExecuted: boolean;
         toolCallId: string;

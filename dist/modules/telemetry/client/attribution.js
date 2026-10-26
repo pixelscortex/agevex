@@ -3,6 +3,7 @@
  * Integrations validate every fact before scheduling oversized-fact digests.
  * Raw ids remain local seeds; host sanitization also applies to span names.
  */
+import { validateEnabled } from "./enabled.js";
 import { LIMITS, bytes, truncate, validateString } from "./limits.js";
 import { hash } from "./otlp.js";
 /** Validate configuration before a turn or slot can retain any mutable state. */
@@ -12,6 +13,7 @@ export function validateOptions(options) {
     for (const exporter of options.exporters)
         if (!exporter || typeof exporter.export !== "function")
             throw new Error("Invalid telemetry exporter");
+    validateEnabled(options.enabled);
     for (const flag of [options.recordInputs, options.recordOutputs])
         if (flag !== undefined && typeof flag !== "boolean")
             throw new Error("Invalid telemetry recording option");

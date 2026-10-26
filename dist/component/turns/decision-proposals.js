@@ -11,6 +11,22 @@ export const proposal = v.object({
     schema: v.optional(v.any()),
     truncated: v.optional(v.literal(true)),
 });
+/** Audit annotation for an approved call, read at execution as its effective input. */
+export const approvedInput = v.object({
+    edited: v.boolean(),
+    toolCallId: v.string(),
+    input: v.any(),
+    originalHash: v.string(),
+    effectiveHash: v.string(),
+});
+/** The stored row: the immutable proposal plus, once approved, the input to run.
+ * It lives and dies with the pause reference (no TTL), so an approved call stays
+ * executable while a sibling is undecided for longer than the receipt retention.
+ */
+export const storedProposal = v.object({
+    ...proposal.fields,
+    approved: v.optional(approvedInput),
+});
 /** Bound the copied proposal, never the containing native reasoning/text message.
  * At most 16*32 KiB extra writes per save; every proposal fits well below 1 MiB.
  * Huge native identifiers still support cancellation through the exact native

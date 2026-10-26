@@ -4,6 +4,7 @@
  * SDK call maps remain separate. Flushing seals the context before export starts.
  */
 import { validateOptions } from "./attribution.js";
+import { resolveEnabled } from "./enabled.js";
 import { createIntegration } from "./integration.js";
 import { flushTurn } from "./flush.js";
 import { attributeWriter } from "./otlp.js";
@@ -14,6 +15,9 @@ export function createTurnTelemetry(options, ownDeadline = true) {
     const recordInputs = options.recordInputs === true;
     const recordOutputs = options.recordOutputs === true;
     const write = attributeWriter(options.sanitize);
+    // One resolution per buffer, here: a slot creates its buffer lazily at the
+    // turn's first integration, so a getter never runs at construction/registration.
+    const open = resolveEnabled(options.enabled);
     // Allocate from the shared turn buffer, not from each integration. The run/turn
     // seed namespaces traces; call order namespaces their span paths across every
     // integration, independently of random SDK call ids. Repeating that order in a
@@ -31,8 +35,15 @@ export function createTurnTelemetry(options, ownDeadline = true) {
         callOrdinal: 0,
         buffer: [],
         sealed: false,
+        disabled: open === false,
         pendingDigests: new Map(),
     };
+    // An async getter gates callbacks until it answers; they record nothing if off.
+    if (typeof open !== "boolean")
+        turn.gate = open.then((enabled) => {
+            turn.disabled = !enabled;
+            return enabled;
+        });
     return {
         integration: (facts) => createIntegration(turn, facts),
         flush: (signal) => flushTurn(turn, signal),

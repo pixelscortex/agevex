@@ -37,14 +37,18 @@ export function pendingApprovalsEndpoint(ep) {
                         truncated: true,
                         editable: false,
                     };
+                // An ask's question is projected once: keep it in `question` and drop the
+                // identical copy in `input`, so a long question plus a form schema fits.
+                const question = form && typeof input?.question === "string" ? input.question : undefined;
                 const item = {
                     ...call,
+                    ...(question !== undefined ? { input: null } : {}),
                     editable: call.kind === "approval" &&
                         !call.providerExecuted &&
                         !!tool?.execute &&
                         editableApproval(tool) &&
                         !!asSchema(tool.inputSchema).validate,
-                    ...(form && typeof input?.question === "string" ? { question: input.question } : {}),
+                    ...(question !== undefined ? { question } : {}),
                     ...(form && call.schema ? { schema: call.schema } : {}),
                 };
                 return decisionBytes(item) <= DECISION_LIMITS.itemBytes - DECISION_LIMITS.arrayEnvelopeBytes

@@ -10,16 +10,27 @@ import { onLanguageModelCallStart, onLanguageModelCallEnd } from "./model-events
 import { onToolExecutionStart, onToolExecutionEnd } from "./tool-events.js";
 import type { Facts, TurnContext } from "./types.js";
 
-/** Ignore callbacks after flush and prevent arbitrary observer errors escaping into execution. */
+/**
+ * Ignore callbacks after flush or when the turn is switched off, and prevent
+ * arbitrary observer errors escaping into execution. While an async `enabled`
+ * getter is pending, callbacks wait on it (in order, bounded by its deadline)
+ * so a turn that resolves to off never buffers a span.
+ */
 function safe<E>(turn: TurnContext, callback: (event: E) => void) {
-  return (event: E) => {
-    if (turn.sealed) return;
+  const run = (event: E) => {
+    if (turn.sealed || turn.disabled) return;
 
     try {
       callback(event);
     } catch {
       /* Telemetry never changes paid execution. */
     }
+  };
+
+  return (event: E) => {
+    if (turn.sealed || turn.disabled) return;
+
+    return turn.gate ? turn.gate.then(() => run(event)) : run(event);
   };
 }
 
