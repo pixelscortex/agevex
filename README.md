@@ -206,7 +206,7 @@ claimed after the deadline kills the group and notifies the host once with
 `unknown` / `SANDBOX_JOB_DEADLINE`; only if two such attempts (counted on the job) both die unsettled
 does the next wake end the job as `unknown` without a callback.
 
-`agevex/test` exports `fakeSandboxProvider`; `agevex/sandbox/test` registers the
+`agevex/test` and `agevex/sandbox/test` export `fakeSandboxProvider`; `agevex/sandbox/test` also registers the
 optional component with convex-test. `bun run test` is offline. The sandbox
 live suite is included in `bun run test:live`, gated by `DAYTONA_API_KEY`, and
 always deletes its sandbox in `finally`.
