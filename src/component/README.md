@@ -54,6 +54,8 @@ and ready result rows. Delivery replaces a pending result; a joined row replaces
 members; claim removes rows. Only launch increases this total. The current-epoch
 `by_parent_delivery` range excludes cancelled history. This separate bound is needed
 because a root can accept new requests while older children still owe results.
+Reaching it returns `RESULTS_PENDING`: wait for or claim child results before
+launching more. `RUN_BUDGET` remains the denial for launch or hop budget exhaustion.
 
 An assignment has at most `queueLength + runLaunches + 2` ready rows, including
 one answer and the reserved head or approval continuation. At all hard maxima,

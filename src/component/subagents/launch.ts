@@ -99,7 +99,7 @@ export async function reserveRun(ctx: MutationCtx, args: ReserveArgs) {
 
     if (refusal) return refusal;
 
-    if (!(await canOweResult(ctx, row, root))) return denied("RUN_BUDGET");
+    if (!(await canOweResult(ctx, row, root))) return denied("RESULTS_PENDING");
   }
 
   const wait = args.wait ?? "each";

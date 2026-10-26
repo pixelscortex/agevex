@@ -34,6 +34,10 @@ one hop for every pending ordinary child result, including queued children and
 settled children whose delivery has not committed. Final results never wait for
 queue room, so the queue limit applies to messages only.
 
+Launches separately return `RESULTS_PENDING` when the assignment still owes
+`runLaunches` child results across requests. Wait for or claim child results before
+launching more; `RUN_BUDGET` remains the denial for launch or hop budget exhaustion.
+
 | Denial code                                 | Meaning                                                              |
 | ------------------------------------------- | -------------------------------------------------------------------- |
 | `MESSAGE_EMPTY`                             | Text is blank or whitespace only.                                    |

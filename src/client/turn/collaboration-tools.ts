@@ -72,7 +72,7 @@ function delegateTool(rt: RuntimeContext, gen: Generation) {
 
   return tool({
     description:
-      "Delegate one bounded task to a registered child agent. Its result arrives later. A result continuation may delegate again within the same run budget.",
+      "Delegate one bounded task to a registered child agent. Its result arrives later. A result continuation may delegate again within the same run budget. On RESULTS_PENDING, wait for or claim child results before launching more.",
     inputSchema: delegateInput,
     execute: async (input, options) => {
       const before = await hook(
