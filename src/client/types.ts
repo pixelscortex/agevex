@@ -40,8 +40,9 @@ export type AgentHooks = {
     hc: HookContext,
     event: {
       turn: number;
+      /** Successful assistant text from the completing slice, joined with newlines. */
       text: string;
-      /** Successful assistant saves in native order, for this completing slice only. */
+      /** All successful assistant saves in turn save order, across tool/approval slices. */
       messageIds: string[];
     },
   ) => HookResult | Promise<HookResult>;

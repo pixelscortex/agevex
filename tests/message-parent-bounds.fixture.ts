@@ -1,7 +1,7 @@
 /** Fill the bounded delivery range, including a settled-but-undelivered child. */
 import { getConvexSize, v } from "convex/values";
 import { mutation } from "../src/component/_generated/server.js";
-import { HOST_LIMITS, readyRowLimit } from "../src/component/limits.js";
+import { HOST_LIMITS, LIMITS, readyRowLimit } from "../src/component/limits.js";
 import { newRun } from "../src/component/turns/runs.js";
 import { resolveRunSettings } from "../src/component/run-settings.js";
 
@@ -99,7 +99,7 @@ export const fillQueue = mutation({
 });
 
 /** Conservative cancellation envelope, seeded ONE assignment per transaction.
- * <=152 ready rows +152 full settings snapshots +one <=32 KiB assignment
+ * <=152 ready rows +152 full settings snapshots +one <=40 KiB assignment
  * stay <3 MiB written per seed. Root rows use distinct request budgets;
  * child rows share one inherited budget. Across 16 assignments cancel must
  * clear all 2,432 ready rows and 168 distinct budgets in one transaction.
@@ -151,6 +151,13 @@ export const fillCancelQueue = mutation({
     }
 
     await ctx.db.patch("assignments", row._id, {
+      turnReport: {
+        promptMessageId: "p".repeat(LIMITS.messageIdBytes),
+        messageIds: Array.from({ length: HOST_LIMITS.slicesPerTurn.max }, (_, i) =>
+          String(i).padStart(LIMITS.messageIdBytes, "m"),
+        ),
+        maxMessages: HOST_LIMITS.slicesPerTurn.max,
+      },
       queuedMessages: count - 1,
       inboxId: head,
       turnStatus: "queued",

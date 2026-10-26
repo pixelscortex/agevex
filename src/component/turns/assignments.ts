@@ -16,7 +16,7 @@ import type { Limits } from "../limits.js";
 type AssignmentRow = WithoutSystemFields<Doc<"assignments">>;
 
 /** The assignment owning a native thread, via the unique `by_thread` index.
- * One indexed point read (<=32 KiB); used by every thread-addressed endpoint. */
+ * One indexed point read (<=40 KiB); used by every thread-addressed endpoint. */
 export function assignmentByThread(ctx: Pick<QueryCtx, "db">, threadId: string) {
   return ctx.db
     .query("assignments")

@@ -271,7 +271,7 @@ export async function saveBeforeTurnNote(
 }
 
 /** Cancellation never loads the raw note bodies across all sixteen assignments.
- * One finite job per assignment reads/deletes <=24*17 KiB twice +32 KiB
+ * One finite job per assignment reads/deletes <=24*17 KiB twice +40 KiB
  * assignment metadata =848 KiB (<864 KiB).
  * Pending notes have never entered Agent; delivered origin rows are excluded.
  * The epoch index fences a fresh send even when it precedes this job. Each

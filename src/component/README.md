@@ -59,7 +59,7 @@ An assignment has at most `queueLength + runLaunches + 2` ready rows, including
 one answer and the reserved head or approval continuation. At all hard maxima,
 cancel covers `16 × 152 = 2,432` ready rows and 384 passive notes. It deduplicates
 at most `100 + 50 + 3 + 15 = 168` request budgets. Combining assignment state
-updates keeps the conservative read/write bounds at 15,560/11,356 KiB, below
+updates keeps the conservative read/write bounds at 15,832/11,620 KiB, below
 16 MiB; native bodies are never read by cancel. Claim consumes at most 152 rows
 including its head. The complete arithmetic is in `limits.ts`.
 
@@ -83,13 +83,13 @@ No tables are added. Root `assignments` carry:
 - Existing `contextMessages`: at most 24 exact identities, captured with saves.
   Summaries and side reviews read successful user/assistant message references.
 
-A worker reads one <=32 KiB assignment plus one <=16 KiB run. Title claim/commit
+A worker reads one <=40 KiB assignment plus one <=16 KiB run. Title claim/commit
 also read one exact native thread <=1 MiB to preserve app titles atomically. Exact native
 message reads total <=2 MiB, at most 24 ids; serialized messages total <=48 KiB,
 plus <=8 KiB prior summary. Both full native sizes and encoded input are checked.
 The ring stays <4 KiB, summary <9 KiB, both jobs/config <4 KiB; the existing
 8 KiB coordination/pause +6 KiB review boundaries gives 8+4+6+9+4=31 KiB,
-reserving 1 KiB under the 32 KiB assignment envelope. Hard-limit
+plus 9 KiB for turn reporting under the 40 KiB assignment envelope. Hard-limit
 fixtures enforce Convex transaction budgets with a full ring of large native
 messages. No transcript discovery, copied request bodies, new indexes or billing
 ledger are introduced. The existing receipts ledger records scheduling replay
@@ -202,6 +202,12 @@ What each table and field holds:
   side-review boundaries and note/turn counters.
   `promptMessageId` is the turn's prompt: read by `beforeTurn` (including a
   continuation's own prompt) and the anchor of native generation context.
+  `turnReport.promptMessageId` is the reporting request returned to tools;
+  `messageIds` accumulates successful assistant ids in native save order and is
+  read by completion's `hookState`; `maxMessages` enforces the resolved run/Workflow
+  step cap; `resumeInboxId` tells claim to retain the report and step count at
+  approval resume. Claim resets it for new work and staged hook prompts.
+  <=64*(128+1)=8,256 bytes of ids plus <1 KiB metadata fit a 9 KiB reservation.
   Posted notes wait for the next turn claim with no decided approvals awaiting
   committed results; ordinary tool slices never drain them. `beforeTurn` hook
   notes are saved before the first generation.

@@ -21,6 +21,7 @@ import {
   runSettings,
   resolveRunSettings,
   sliceWatchdogMs,
+  turnStepLimit,
   type ResolvedRunSettings,
 } from "../run-settings.js";
 import { LIMITS, readyRowLimit } from "../limits.js";
@@ -30,7 +31,7 @@ import { appendEvent, runById } from "../subagents/runs.js";
 import { assertAgentIndex } from "../hooks/routing.js";
 import { disarmRecovery } from "./recovery.js";
 import { disarmSlice } from "./boundaries.js";
-import { failChild, markRecoveryRequired } from "./finish.js";
+import { failChild, finishTurn, markRecoveryRequired } from "./finish.js";
 import { awaitingApprovalResults } from "./pause.js";
 import { isAsking } from "./wake.js";
 
@@ -47,6 +48,7 @@ export const claimArgs = {
 export const vClaim = v.object({
   ...scope.fields,
   promptMessageId: v.string(),
+  requestMessageId: v.string(),
   runId: v.string(),
   modelId: v.optional(v.string()),
   settings: runSettings,
@@ -107,6 +109,7 @@ export async function claimSlice(ctx: MutationCtx, args: ClaimArgs): Promise<Cla
   )
     return null;
 
+  const resume = first && row.inboxId === row.turnReport?.resumeInboxId;
   const noteAnchor = first && row.inboxId ? await consumeHead(ctx, row) : row.promptMessageId;
 
   await flushNotes(ctx, row, first, noteAnchor, args.notes);
@@ -115,9 +118,25 @@ export async function claimSlice(ctx: MutationCtx, args: ClaimArgs): Promise<Cla
   const settings =
     budget?.settings?.find((entry) => entry.agent === row.agent)?.settings ?? resolveRunSettings();
 
-  if (!first && (row.modelSteps ?? 0) >= settings.stepsPerTurn) return null;
+  const maxMessages = turnStepLimit(settings, row.limits.slicesPerTurn);
 
-  await markRunning(ctx, row, first, args, settings);
+  // Approval resumes mint a new execution token, not a new step allowance.
+  // Finish an exhausted resume instead of leaving its consumed head queued.
+  if ((!first || resume) && (row.modelSteps ?? 0) >= maxMessages) {
+    await ctx.db.patch("assignments", row._id, { turnStatus: "running", inboxId: undefined });
+    await finishTurn(ctx, { assignmentId, turnToken, errorCode: "SLICE_LIMIT" });
+
+    return null;
+  }
+
+  if ((first && !resume) || row.hookContinue)
+    row.turnReport = {
+      promptMessageId: row.promptMessageId!,
+      messageIds: [],
+      maxMessages,
+    };
+
+  await markRunning(ctx, row, first && !resume, args, settings);
   const modelId = budget?.models?.[row.agent];
   const isRunStart = await markRunStart(ctx, row, budget, args);
 
@@ -127,6 +146,7 @@ export async function claimSlice(ctx: MutationCtx, args: ClaimArgs): Promise<Cla
     subject: row.subject,
     agent: row.agent,
     promptMessageId: row.promptMessageId!,
+    requestMessageId: row.turnReport!.promptMessageId,
     runId: row.runId!,
     modelId,
     settings,
@@ -288,6 +308,7 @@ async function markRunning(
 ) {
   await ctx.db.patch("assignments", row._id, {
     turnStatus: "running",
+    turnReport: row.turnReport,
     modelSteps: first ? 1 : (row.modelSteps ?? 0) + 1,
     hookContinue: false,
     lastSlice: args.sliceId,

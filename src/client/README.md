@@ -54,20 +54,27 @@ estimates and settled cost distinct. `delegations` retains paginated stored-stat
 history. `turn/tools.ts` records bounded progress around local tools and streams;
 slice/turn/cancellation fences clear it even if the action does not return.
 
-`afterTurn(hc, { turn, text, messageIds })` reports successful native assistant
-saves from the completing slice, in save order, with `text` from the same rows.
-Assistant tool calls count; separate native tool-result rows, pending/failed
-placeholders and fenced-out saves do not. Each slice runs one model step and
-saves at most one assistant row: at most one id, bounded to 128 UTF-8 bytes.
-Tool/approval/continuation slices never accumulate ids across events. Hook timing
-is unchanged, so a slice handed off for tool continuation or approval pause emits
-no `afterTurn`. Ids come directly from native save results, without listing history.
+`afterTurn(hc, { turn, text, messageIds })` reports every successful native
+assistant save in the reporting turn, in save order, across tool slices and
+approval pauses/resumes. Assistant tool calls count; separate native tool-result
+rows, pending/failed placeholders and fenced-out saves do not. A pause emits no
+hook until the turn completes. `text` retains its existing meaning: successful
+assistant text from the **completing slice**, joined with newlines. Read earlier
+narration by exact id. No transcript listing or text matching is involved.
+
+The assignment accumulates ids in the native save transaction. One assistant
+row per step bounds the list by run `stepsPerTurn` and any non-default host
+`slicesPerTurn` cap (matching Workflow v1): at most 64 ids × (128 UTF-8 bytes + 1 terminator) = 8,256 bytes.
+Prompt/cap/resume metadata brings the reservation to 9 KiB within the 40 KiB
+assignment envelope. New user/queued/child work and a staged `afterTurn`
+continuation start fresh lists; approval resumes retain the list and step count.
 
 `ToolContext.promptMessageId?: string` comes from the trusted component claim,
-never tool input. It identifies the root's user request or a child's task prompt
-and stays fixed across tool-step slices. Hook continuations use their own prompt;
-approval resume uses the component's current request anchor. Contexts without a
-managed prompt may omit it; hooks inherit it through `HookContext`.
+never tool input. It identifies the user request or child's task that started
+this reporting turn and stays fixed across tool continuations and approval
+resumes, including side reviews. An `afterTurn` continuation uses its staged
+prompt. The native generation anchor can advance independently to an approval
+response. Contexts without a managed prompt may omit the id; hooks inherit it.
 
 ## Background text
 

@@ -19,6 +19,7 @@ import { internal } from "../_generated/api.js";
 import type { MutationCtx } from "../_generated/server.js";
 import type { Doc } from "../_generated/dataModel.js";
 import { LIMITS } from "../limits.js";
+import { appendTurnMessages } from "./message-ids.js";
 import { prepareDecisions, oversizedDecisionInput } from "./decision-save.js";
 import { recordMessages } from "../hooks/refs.js";
 import { runById } from "../subagents/runs.js";
@@ -115,8 +116,8 @@ export async function fencedWrite(ctx: MutationCtx, args: WriteArgs): Promise<un
  * else null. A child can settle immediately before cancel, while its source
  * action still owns the turn token. It no longer occupies an active slot, so
  * cancel need not visit its assignment. The root epoch still fences every
- * late native/tool write: two <=32 KiB assignment reads plus one <=4 KiB
- * child-run reference (<72 KiB), no traversal. */
+ * late native/tool write: two <=40 KiB assignment reads plus one <=4 KiB
+ * child-run reference (<88 KiB), no traversal. */
 async function liveWriter(ctx: MutationCtx, row: Doc<"assignments"> | null, args: WriteArgs) {
   const root = row?.rootAssignmentId ? await ctx.db.get("assignments", row.rootAssignmentId) : null;
   const run = row?.childRunId ? await runById(ctx, row.childRunId) : null;
@@ -261,12 +262,14 @@ async function trackPendingGeneration(
   args: WriteArgs,
   messages: MessageDoc[],
 ) {
+  const turnReport = appendTurnMessages(row, messages);
   const pending = messages.filter((message) => message.status === "pending");
 
   if (pending.length > 1) throw new Error("MULTIPLE_PENDING_GENERATIONS");
 
   if (pending.length)
     await ctx.db.patch("assignments", row._id, {
+      turnReport,
       pendingGeneration: {
         messageId: pending[0]._id,
         executionId: args.executionId,
@@ -274,8 +277,13 @@ async function trackPendingGeneration(
         ...args.nativeMessages!,
       },
     });
-  else if (row.pendingGeneration?.messageId === args.args?.pendingMessageId)
-    await ctx.db.patch("assignments", row._id, { pendingGeneration: undefined });
+  else
+    await ctx.db.patch("assignments", row._id, {
+      turnReport,
+      ...(row.pendingGeneration?.messageId === args.args?.pendingMessageId
+        ? { pendingGeneration: undefined }
+        : {}),
+    });
 }
 
 /** Attach the native stream id to this execution's tracked placeholder, so

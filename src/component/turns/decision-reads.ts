@@ -89,8 +89,8 @@ export const detail = query({
   },
 });
 
-/** Root plus bounded live children: <=59*32 KiB assignment metadata +
- * 256*32 KiB compact proposals + <=58*4 KiB child refs <10.1 MiB.
+/** Root plus bounded live children: <=59*40 KiB assignment metadata +
+ * 256*32 KiB compact proposals + <=58*4 KiB child refs <10.6 MiB.
  * Native messages (up to 1 MiB of reasoning each) are never read here.
  * The host projects each item to <=16 KiB, giving <=4 MiB final output.
  */

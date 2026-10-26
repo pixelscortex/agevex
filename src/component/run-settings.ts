@@ -110,6 +110,19 @@ export function sliceDeadlineMs(settings: ResolvedRunSettings): number {
   );
 }
 
+/** Match Workflow v1's effective ceiling: its default argument uses the hard
+ * step maximum, allowing an explicit Agent.run.stepsPerTurn above the host's
+ * default. Registration inherits the host default only when run policy omits
+ * stepsPerTurn. A non-default host slice cap is passed explicitly to Workflow.
+ * Approval resumes start another workflow, so claim must retain this ceiling.
+ */
+export function turnStepLimit(settings: ResolvedRunSettings, slicesPerTurn: number): number {
+  return Math.min(
+    settings.stepsPerTurn,
+    slicesPerTurn === LIMITS.slicesPerTurn ? RUN_LIMITS.stepsPerTurn.max : slicesPerTurn,
+  );
+}
+
 /** The server waits beyond the client fence so timeout finalization can commit. */
 export function sliceWatchdogMs(settings: ResolvedRunSettings): number {
   return sliceDeadlineMs(settings) + RUN_LIMITS.watchdogMarginMs;

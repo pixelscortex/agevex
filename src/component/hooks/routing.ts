@@ -29,7 +29,7 @@ export function assertAgentIndex(agentIndex: number) {
  * Ownership lives on that assignment so watchdog/cancel can settle it without
  * scanning siblings or trusting a failed action to run cleanup. <=3 metadata
  * reads (get run, read run for patch, read assignment for patch) and <=2 writes:
- * (16+16+32)=64 KiB read per owner. Cancel passes clearOwner=false, folding
+ * (16+16+40)=72 KiB read per owner. Cancel passes clearOwner=false, folding
  * that assignment update into its state patch: 32 KiB read /16 KiB written
  * per owner, included in limits.ts's budget. No native content is accessed.
  */
@@ -47,7 +47,7 @@ export async function settleRouting(ctx: MutationCtx, row: Doc<"assignments">, c
     });
 
   // Cancel clears ownership with its combined state patch, avoiding another
-  // <=32 KiB assignment read/write per owner in the all-maxima transaction.
+  // <=40 KiB assignment read/write per owner in the all-maxima transaction.
   if (clearOwner) await ctx.db.patch("assignments", row._id, { routingAgentIndex: undefined });
 }
 

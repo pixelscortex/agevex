@@ -5,6 +5,7 @@ import type { MessageDoc } from "@convex-dev/agent";
 import { mutationGeneric } from "convex/server";
 import agevex from "../src/test.js";
 import schema from "./fixture/schema.js";
+import type { Registration } from "../src/client/types.js";
 import { exports } from "./hooks.host.js";
 
 const modules = import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]);
@@ -16,13 +17,16 @@ type NativeSave = {
 };
 
 /** Keep a witness of committed save batches, including tool rows/placeholders. */
-export function setup() {
+export function setup(
+  limits?: Registration["limits"],
+  onSave?: (messages: MessageDoc[]) => Promise<void>,
+) {
   const saves: MessageDoc[][] = [];
 
   const t = convexTest({
     schema,
     transactionLimits: true,
-    modules: { ...modules, "./fixture/agents.ts": async () => exports() },
+    modules: { ...modules, "./fixture/agents.ts": async () => exports(limits) },
   });
 
   t.registerComponent("agent", agent.schema, {
@@ -41,6 +45,7 @@ export function setup() {
             const result = await real.addMessages._handler(ctx, args);
 
             saves.push(result.messages);
+            await onSave?.(result.messages);
 
             return result as never;
           },

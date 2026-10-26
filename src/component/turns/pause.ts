@@ -271,6 +271,7 @@ export async function suspendForApprovals(
   // Commit the block with the native request, even if the action dies
   // immediately after this mutation. No later action owns this fact.
   await ctx.db.patch("assignments", row._id, {
+    turnReport: row.turnReport ? { ...row.turnReport, resumeInboxId: inboxId } : undefined,
     approvalBlocked: true,
     approvals: {
       inboxId,
