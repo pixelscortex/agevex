@@ -20,6 +20,13 @@ export const LIMITS = {
     exportBytes: 8 * 1024 * 1024,
     exportBytesNode: 64 * 1024 * 1024,
     exportChunkBytes: 512 * 1024,
+    // A live attempt touches its stage at least every window and is cut off by
+    // actionBudgetMs (540 s). One hour is >6x that budget, so a stage older than
+    // this can only belong to a dead action. Examining at most 4,096 directory
+    // entries and removing at most 16 files bounds each sweep's provider command.
+    writeStaleMs: 60 * 60 * 1000,
+    writeReclaimScan: 4096,
+    writeReclaimBatch: 16,
     backgroundExecTimeoutS: 10,
     backgroundKillGraceS: 0.1,
     backgroundControlWaitS: 1,

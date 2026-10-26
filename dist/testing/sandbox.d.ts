@@ -7,6 +7,8 @@ import type { SandboxProvider, JobOutcome } from "../modules/sandbox/client/type
 type FakeMachine = {
     state: "creating" | "ready" | "stopped" | "archived" | "error" | "deleted";
     files: Map<string, Uint8Array>;
+    /** Last write time (ms) of staged files, so tests can age an abandoned stage. */
+    touched: Map<string, number>;
 };
 type ExecResult = {
     exitCode: number;

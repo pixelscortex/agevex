@@ -632,6 +632,7 @@ export declare function defineSandbox(options: SandboxOptions): {
     }) => Promise<{
         content: string;
     }>;
+    writeBytes: import("./types.js").SandboxWriteBytes;
     list: (tc: SandboxCall, input: {
         path: string;
     }) => Promise<{
@@ -670,7 +671,20 @@ export declare function sandboxNodeExport(options: SandboxOptions): import("conv
     threadId: string;
     path: string;
 }, Promise<SandboxExportResult>>;
+/** Export from a host "use node" file; large writes delegate using a storage id only. */
+export declare function sandboxNodeWrite(options: SandboxOptions): import("convex/server").RegisteredAction<"internal", {
+    maxBytes?: number | undefined;
+    runId: string;
+    subject: string;
+    threadId: string;
+    source: {
+        storageId: import("convex/values").GenericId<"_storage">;
+    };
+    path: string;
+}, Promise<import("./types.js").SandboxWriteResult>>;
 export { daytona } from "./daytona.js";
+export { SandboxWriteError } from "../shared/write.js";
+export type { SandboxWriteErrorCode } from "../shared/write.js";
 export type { Credential } from "./credential.js";
 export { LIMITS, HARD_LIMITS } from "../shared/limits.js";
 export type { SandboxLimits } from "../shared/limits.js";

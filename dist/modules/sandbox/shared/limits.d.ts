@@ -15,6 +15,9 @@ export declare const LIMITS: {
     readonly exportBytes: number;
     readonly exportBytesNode: number;
     readonly exportChunkBytes: number;
+    readonly writeStaleMs: number;
+    readonly writeReclaimScan: 4096;
+    readonly writeReclaimBatch: 16;
     readonly backgroundExecTimeoutS: 10;
     readonly backgroundKillGraceS: 0.1;
     readonly backgroundControlWaitS: 1;

@@ -81,6 +81,17 @@ export interface SandboxProvider {
         limit: number;
     }): Promise<FileEntry[]>;
     upload(ctx: SandboxContext, sandboxId: string, path: string, content: Uint8Array): Promise<void>;
+    /** Append one <=512 KiB window, or accept an exact duplicate at an earlier offset. */
+    writeWindow(ctx: SandboxContext, sandboxId: string, tempPath: string, offset: number, bytes: Uint8Array): Promise<void>;
+    /** Verify size/hash and atomically replace path with the completed sibling staging file. */
+    commitWrite(ctx: SandboxContext, sandboxId: string, tempPath: string, path: string, expected: SandboxWriteResult): Promise<void>;
+    /** Remove an abandoned staging file; an absent file is already discarded. */
+    discardWrite(ctx: SandboxContext, sandboxId: string, tempPath: string): Promise<void>;
+    /**
+     * Remove stages and transport windows in `directory` whose names start with `prefix`
+     * and whose last write is older than `olderThanMs`. Fresh files belong to a live attempt.
+     */
+    reclaimWrites(ctx: SandboxContext, sandboxId: string, directory: string, prefix: string, olderThanMs: number): Promise<void>;
     download(ctx: SandboxContext, sandboxId: string, path: string, opts: {
         maxBytes: number;
         offset?: number;
@@ -122,6 +133,29 @@ export type SandboxExportArgs = {
     threadId: string;
     path: string;
 };
+export type SandboxWriteArgs = {
+    path: string;
+    source: {
+        storageId: import("convex/values").GenericId<"_storage">;
+    } | {
+        bytes: Uint8Array;
+    };
+    maxBytes?: number;
+};
+export type SandboxWriteResult = {
+    bytes: number;
+    sha256: string;
+};
+/** Node delegation carries only trusted facts and a storage reference, never a large binary argument. */
+export type SandboxNodeWriteArgs = SandboxFacts & Omit<SandboxWriteArgs, "source"> & {
+    source: {
+        storageId: import("convex/values").GenericId<"_storage">;
+    };
+};
+export type SandboxWriteBytes = {
+    (tc: SandboxCall, input: SandboxWriteArgs): Promise<SandboxWriteResult>;
+    (ctx: SandboxContext, input: SandboxWriteArgs & SandboxFacts): Promise<SandboxWriteResult>;
+};
 export type SandboxExportResult = {
     fileId: string;
     storageId: import("convex/values").GenericId<"_storage">;
@@ -156,6 +190,8 @@ export type SandboxOptions = {
     agent?: AgentComponent;
     /** Register sandboxNodeExport(options) from a host file beginning with "use node". */
     nodeExport?: FunctionReference<"action", "internal", SandboxExportArgs, SandboxExportResult>;
+    /** Register sandboxNodeWrite(options) from a host "use node" file for storage-backed writes above 8 MiB. */
+    nodeWrite?: FunctionReference<"action", "internal", SandboxNodeWriteArgs, SandboxWriteResult>;
     /** Required for run-scoped exports; resolve from host-owned rows, never transcripts. */
     resolveThread?: (ctx: SandboxContext, threadId: string) => Promise<SandboxFacts>;
     /** Runs atomically with the terminal job transition. Throwing rolls both back. */

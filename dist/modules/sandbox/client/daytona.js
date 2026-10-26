@@ -7,6 +7,7 @@ import { buildCreate, buildResume, buildStop, buildDelete } from "./daytona-life
 import { buildExec, buildStartBackground, buildPoll, buildCancelBackground, } from "./daytona-process.js";
 import { buildReadFile, buildWriteFile, buildListFiles, buildUpload, buildDownload, } from "./daytona-files.js";
 import {} from "@daytona/convex";
+import { buildWriteWindow, buildCommitWrite, buildDiscardWrite, buildReclaimWrites, } from "./daytona-write.js";
 import { bindCredentials } from "./daytona-context.js";
 import { LIMITS, bounded, integer } from "../shared/limits.js";
 import {} from "./types.js";
@@ -50,6 +51,10 @@ export function daytona(component, opts = {}) {
         writeFile: buildWriteFile(runtime),
         listFiles: buildListFiles(runtime),
         upload: buildUpload(runtime),
+        writeWindow: buildWriteWindow(runtime),
+        commitWrite: buildCommitWrite(runtime),
+        discardWrite: buildDiscardWrite(runtime),
+        reclaimWrites: buildReclaimWrites(runtime),
         download: buildDownload(runtime),
     };
 }
