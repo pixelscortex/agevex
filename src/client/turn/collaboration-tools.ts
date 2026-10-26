@@ -49,7 +49,7 @@ function messageParentTool(rt: RuntimeContext, gen: Generation) {
   const { args } = gen.turn;
 
   return tool({
-    description: `Send your immediate parent a short progress message and keep working. No answer is required. At most 2 KiB, at least 5 seconds between accepted messages, and at most ${rt.limits.parentNotesPerChild} accepted notes over this child run. Final results reserve hop and queue capacity.`,
+    description: `Send your immediate parent a short progress message and keep working. No answer is required. At most 2 KiB, at least 5 seconds between accepted messages, and at most ${rt.limits.parentNotesPerChild} accepted notes over this child run. Your final result always reaches the parent and has a hop reserved for it.`,
     inputSchema: z.object({ text: z.string() }),
     execute: (input, options) =>
       gen.fence.ctx.runMutation(coordinateRef(rt), {
@@ -114,7 +114,7 @@ function messageChildTool(rt: RuntimeContext, gen: Generation) {
 
   return tool({
     description:
-      "Send a bounded follow-up or answer to a child run in this root. Finished runs refuse messages.",
+      "Send a bounded follow-up or answer to one of your own child runs. Finished runs refuse messages.",
     inputSchema: z.object({
       runId: z.string(),
       text: z.string().max(rt.limits.taskLength),
