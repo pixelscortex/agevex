@@ -44,6 +44,7 @@ const denied = (
     | "ASK_WITH_CHILDREN"
     | "RUN_BUDGET"
     | "QUEUE_LIMIT"
+    | "SIDE_RUN"
     | "NO_PARENT"
     | "MESSAGE_RATE_LIMIT",
 ) => ({ kind: "denied" as const, code });
@@ -65,6 +66,8 @@ export async function interaction(
   if (scope.kind === "denied") return scope;
 
   const { actor, root, run } = scope;
+
+  if (args.op === "message_parent" && run.side) return denied("SIDE_RUN");
 
   const child = await ctx.db.get("assignments", run.childAssignmentId!);
   const parent = await ctx.db.get("assignments", run.actorAssignmentId);
@@ -117,7 +120,58 @@ export async function interaction(
   if (!budget || budget.cancelled || (!replay && budget.hops >= root.limits.runHops))
     return denied("RUN_BUDGET");
 
+  if (args.op === "message_parent" && !replay) {
+    const refusal = await noteHeadroom(ctx, run, root, parent, budget);
+
+    if (refusal) return refusal;
+  }
+
   return { kind: "ready" as const, actor, root, run, child, parent, budget };
+}
+
+/** Reserve final-result capacity before spending on optional progress. Settlement
+ * decrements activeRuns BEFORE delivery, so count pending deliveries instead.
+ * Hops belong to one user budget, shared by queued children and descendants.
+ * The parent's queue spans user requests, so its reservation also includes
+ * pending results from older budgets. Side reviews spend neither resource.
+ * One slot per pending result is conservative for joins; taking queueLength
+ * rows is enough to refuse when reservations alone fill the whole queue.
+ * by_group reads <=58 rows and by_parent_delivery <=100 rows *4 KiB=632 KiB;
+ * <=5 admission passes add <=3,160 KiB and 790 reads, keeping the host's
+ * native-save transaction below 10 MiB /1,500 reads at every hard maximum.
+ */
+async function noteHeadroom(
+  ctx: QueryCtx | MutationCtx,
+  run: Doc<"subagentRuns">,
+  root: Doc<"assignments">,
+  parent: Doc<"assignments">,
+  budget: Doc<"runs">,
+) {
+  const runs = await ctx.db
+    .query("subagentRuns")
+    .withIndex("by_group", (q) => q.eq("parentRunId", budget._id))
+    .take(root.limits.runLaunches + root.limits.sideRunsPerRun);
+
+  const pending = runs.filter(
+    (child) =>
+      !child.side &&
+      child.deliveryStatus === "pending" &&
+      child.rootCancellationEpoch === run.rootCancellationEpoch,
+  ).length;
+
+  const parentPending = await ctx.db
+    .query("subagentRuns")
+    .withIndex("by_parent_delivery", (q) =>
+      q.eq("actorAssignmentId", parent._id).eq("side", undefined).eq("deliveryStatus", "pending"),
+    )
+    .take(root.limits.queueLength);
+
+  if (parent.queuedMessages + 1 + parentPending.length > root.limits.queueLength)
+    return denied("QUEUE_LIMIT");
+
+  if (budget.hops + 1 + pending > root.limits.runHops) return denied("RUN_BUDGET");
+
+  return null;
 }
 
 /** The calling turn, its root and the delegation being addressed: for "ask"

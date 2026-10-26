@@ -19,6 +19,8 @@ import {
   components,
   rawAssignment,
   evidence,
+  hops,
+  addHeadroomFixture,
 } from "./message-parent.fixture.js";
 
 beforeEach(() => vi.useFakeTimers());
@@ -149,10 +151,16 @@ it.each([4, 8])(
     await waitFor(t, () => calls("Reviewer").length === 1);
     const actor = await sender(t, receipt.threadId);
 
+    for (const blank of ["", " \n\t"])
+      expect(await send(t, actor, blank)).toMatchObject({
+        status: "denied",
+        code: "MESSAGE_EMPTY",
+      });
+
     for (const oversized of [
       "a".repeat(LIMITS.parentNoteBytes),
       "😀".repeat(600),
-      "\n".repeat(1100),
+      "x" + "\n".repeat(1100),
     ])
       expect(await send(t, actor, oversized)).toMatchObject({
         status: "denied",
@@ -262,7 +270,13 @@ it("cancellation fences late messages and retries while committed progress remai
 
   held.release();
   await drain(t);
-  const history = JSON.stringify(await transcript(t, receipt.threadId));
+  const page = await transcript(t, receipt.threadId);
+  const history = JSON.stringify(page);
+
+  expect(page.page.find((entry) => entry.text?.includes("committed progress"))).toMatchObject({
+    origin: "note",
+    from: "Reviewer",
+  });
 
   expect(history).toContain("committed progress");
   expect(history).not.toContain("late progress");
@@ -270,9 +284,9 @@ it("cancellation fences late messages and retries while committed progress remai
 });
 
 it.each(["queue", "hop"])(
-  "the %s cap refuses fresh progress before native save while accepted retries replay",
+  "the %s cap reserves the child final result while refusing fresh progress and replaying accepted retries",
   async (cap) => {
-    const t = setup(cap === "queue" ? { queueLength: 1 } : { runHops: 2 });
+    const t = setup(cap === "queue" ? { queueLength: 2 } : { runHops: 3 });
     const childHeld = gate();
     const parentHeld = gate();
 
@@ -287,7 +301,7 @@ it.each(["queue", "hop"])(
     v2.steps.Reviewer = async () => {
       await childHeld.promise;
 
-      return text("done");
+      return text("reserved final result");
     };
 
     const receipt = await open(t);
@@ -318,9 +332,26 @@ it.each(["queue", "hop"])(
 
     expect(await send(t, actor, "first", "first")).toEqual(first);
     expect(JSON.stringify(await transcript(t, receipt.threadId))).not.toContain("denied by cap");
-    parentHeld.release();
     childHeld.release();
+
+    await waitFor(t, async () =>
+      JSON.stringify(await transcript(t, receipt.threadId)).includes("reserved final result"),
+    );
+
+    expect(await hops(t, receipt.assignmentId)).toBeLessThanOrEqual(
+      cap === "hop" ? 3 : HOST_LIMITS.runHops.default,
+    );
+
+    expect(
+      (await t.query(rawAssignment, { assignmentId: receipt.assignmentId }))!.queuedMessages,
+    ).toBeLessThanOrEqual(cap === "queue" ? 2 : HOST_LIMITS.queueLength.default);
+
+    parentHeld.release();
     await drain(t);
+
+    expect(JSON.stringify(calls("Main")[calls("Main").length - 1].args.prompt)).toContain(
+      "reserved final result",
+    );
   },
 );
 
@@ -547,4 +578,273 @@ it("nested progress reaches only the immediate persisted parent before the desce
   held.release();
   await drain(t);
   expect((await tree(t, receipt.threadId)).every((run) => run.status === "completed")).toBe(true);
+});
+
+it("five reviewers with four notes five seconds apart cannot starve any final result across four child lanes", async () => {
+  const t = setup();
+  const children = Array.from({ length: 5 }, () => gate());
+  const parentHeld = gate();
+  const responses: Awaited<ReturnType<typeof send>>[] = [];
+
+  v2.steps.Main = async (n) => {
+    if (n === 0) return children.map(() => delegate("Reviewer"));
+
+    if (n === 1) await parentHeld.promise;
+
+    return text("read every final");
+  };
+
+  v2.steps.Reviewer = async (n) => {
+    await children[n].promise;
+
+    return text(`reviewer final ${n}`);
+  };
+
+  const receipt = await open(t);
+
+  await waitFor(t, () => calls("Reviewer").length === 4);
+
+  expect((await tree(t, receipt.threadId)).filter((run) => run.status === "queued")).toHaveLength(
+    1,
+  );
+
+  // Send four notes from each running reviewer while the parent holds its
+  // progress turn. The fifth child is queued but already owns a future result.
+  for (let round = 0; round < 4; round++) {
+    for (let child = 0; child < 4; child++)
+      responses.push(
+        await send(t, await sender(t, receipt.threadId, child), `note ${child}/${round}`),
+      );
+
+    await t.action(async () => {
+      await vi.advanceTimersByTimeAsync(LIMITS.parentNoteIntervalMs);
+    });
+  }
+
+  children[0].release();
+  await waitFor(t, () => calls("Reviewer").length === 5);
+
+  for (let round = 0; round < 4; round++) {
+    responses.push(await send(t, await sender(t, receipt.threadId, 4), `note 4/${round}`));
+
+    await t.action(async () => {
+      await vi.advanceTimersByTimeAsync(LIMITS.parentNoteIntervalMs);
+    });
+  }
+
+  expect(responses.filter((result) => result?.status === "accepted")).toHaveLength(14);
+  expect(responses.filter((result) => result?.status === "denied")).toHaveLength(6);
+
+  expect(
+    responses
+      .filter((result) => result?.status === "denied")
+      .every((result) => result.code === "RUN_BUDGET" || result.code === "QUEUE_LIMIT"),
+  ).toBe(true);
+
+  for (const child of children) child.release();
+
+  await waitFor(
+    t,
+    async () =>
+      (await transcript(t, receipt.threadId)).page.filter((entry) => entry.origin === "result")
+        .length === 5,
+  );
+
+  expect(await hops(t, receipt.assignmentId)).toBe(HOST_LIMITS.runHops.default);
+
+  expect(
+    (await t.query(rawAssignment, { assignmentId: receipt.assignmentId }))!.queuedMessages,
+  ).toBeLessThanOrEqual(HOST_LIMITS.queueLength.default);
+
+  parentHeld.release();
+  await drain(t);
+  const prompt = JSON.stringify(calls("Main")[calls("Main").length - 1].args.prompt);
+  const history = await transcript(t, receipt.threadId);
+
+  for (let child = 0; child < 5; child++) {
+    expect(prompt).toContain(`reviewer final ${child}`);
+
+    expect(
+      history.page.filter(
+        (entry) => entry.origin === "result" && entry.text?.includes(`reviewer final ${child}`),
+      ),
+    ).toHaveLength(1);
+  }
+});
+
+it("a side reviewer has no message_parent and a forced call spends no hop or parent wake", async () => {
+  const t = setup(undefined, undefined, true);
+  const held = gate();
+
+  v2.steps.Main = () => text("watched result");
+
+  v2.steps.Reviewer = async () => {
+    await held.promise;
+
+    return text("NONE");
+  };
+
+  const receipt = await open(t);
+
+  await waitFor(t, () => calls("Reviewer").length === 1);
+  expect((await tree(t, receipt.threadId))[0].side).toBe(true);
+
+  expect(calls("Reviewer")[0].args.tools?.map((entry) => entry.name)).not.toContain(
+    "agevex_message_parent",
+  );
+
+  const before = await hops(t, receipt.assignmentId);
+  const parent = await t.query(rawAssignment, { assignmentId: receipt.assignmentId });
+
+  expect(await send(t, await sender(t, receipt.threadId), "forced side progress")).toMatchObject({
+    status: "denied",
+    code: "SIDE_RUN",
+  });
+
+  expect(await hops(t, receipt.assignmentId)).toBe(before);
+  expect(await t.query(rawAssignment, { assignmentId: receipt.assignmentId })).toEqual(parent);
+
+  expect(JSON.stringify(await transcript(t, receipt.threadId))).not.toContain(
+    "forced side progress",
+  );
+
+  held.release();
+  await drain(t);
+  expect(calls("Main")).toHaveLength(1);
+});
+
+it("the full 58-row delivery range reserves a settled child's final hop after activeRuns drops", async () => {
+  const maxima = Object.fromEntries(
+    Object.entries(HOST_LIMITS).map(([key, value]) => [key, value.max]),
+  );
+
+  const t = setup(maxima);
+  const { seed } = addHeadroomFixture(t);
+  const held = gate();
+
+  v2.steps.Main = (n) => (n === 0 ? [delegate("Reviewer")] : text("read final"));
+
+  v2.steps.Reviewer = async () => {
+    await held.promise;
+
+    return text("done");
+  };
+
+  const receipt = await open(t);
+
+  await waitFor(t, () => calls("Reviewer").length === 1);
+  const actor = await sender(t, receipt.threadId);
+
+  await t.mutation(seed, { assignmentId: receipt.assignmentId });
+
+  expect((await t.query(rawAssignment, { assignmentId: receipt.assignmentId }))!.activeRuns).toBe(
+    1,
+  );
+
+  expect(await send(t, actor, "last optional progress hop")).toMatchObject({ status: "accepted" });
+
+  await waitFor(t, () => calls("Main").length === 2);
+
+  await t.action(async () => {
+    await vi.advanceTimersByTimeAsync(LIMITS.parentNoteIntervalMs);
+  });
+
+  expect(await send(t, actor, "would spend the terminal child's reserved hop")).toMatchObject({
+    status: "denied",
+    code: "RUN_BUDGET",
+  });
+
+  expect(await hops(t, receipt.assignmentId)).toBe(HOST_LIMITS.runHops.max - 2);
+  expect(JSON.stringify(await transcript(t, receipt.threadId))).not.toContain("reserved hop");
+  expect(calls("Main")).toHaveLength(2);
+  await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
+  held.release();
+  await drain(t);
+});
+
+it("notes reserve parent queue slots for results from older user requests too", async () => {
+  const t = setup({ queueLength: 2 });
+  const held = gate();
+
+  v2.steps.Main = (n) => (n < 2 ? [delegate("Reviewer")] : text("read both requests"));
+
+  v2.steps.Reviewer = async (n) => {
+    await held.promise;
+
+    return text(`request final ${n}`);
+  };
+
+  const receipt = await open(t);
+
+  await waitFor(
+    t,
+    async () =>
+      calls("Reviewer").length === 1 &&
+      (await t.query(rawAssignment, { assignmentId: receipt.assignmentId }))?.turnStatus === "idle",
+  );
+
+  await owner(t).mutation(api.agents.send, {
+    threadId: receipt.threadId,
+    text: "another request while the first reviewer works",
+    requestKey: "second-request",
+  });
+
+  await waitFor(t, () => calls("Reviewer").length === 2);
+
+  expect(
+    await send(t, await sender(t, receipt.threadId), "would crowd the old final result"),
+  ).toMatchObject({ status: "denied", code: "QUEUE_LIMIT" });
+
+  expect(await hops(t, receipt.assignmentId)).toBe(1);
+  held.release();
+  await drain(t);
+  const history = await transcript(t, receipt.threadId);
+  const prompt = JSON.stringify(calls("Main")[calls("Main").length - 1].args.prompt);
+
+  for (let request = 0; request < 2; request++) {
+    expect(
+      history.page.filter(
+        (entry) => entry.origin === "result" && entry.text?.includes(`request final ${request}`),
+      ),
+    ).toHaveLength(1);
+
+    expect(prompt).toContain(`request final ${request}`);
+  }
+});
+
+it("100 pending parent results across budgets leave no optional note slot under real transaction limits", async () => {
+  const maxima = Object.fromEntries(
+    Object.entries(HOST_LIMITS).map(([key, value]) => [key, value.max]),
+  );
+
+  const t = setup(maxima);
+  const { fillQueue } = addHeadroomFixture(t);
+  const held = gate();
+
+  v2.steps.Main = () => [delegate("Reviewer")];
+
+  v2.steps.Reviewer = async () => {
+    await held.promise;
+
+    return text("done");
+  };
+
+  const receipt = await open(t);
+
+  await waitFor(t, () => calls("Reviewer").length === 1);
+  const actor = await sender(t, receipt.threadId);
+
+  await t.mutation(fillQueue, { assignmentId: receipt.assignmentId });
+
+  expect(await send(t, actor, "no space beyond reserved results")).toMatchObject({
+    status: "denied",
+    code: "QUEUE_LIMIT",
+  });
+
+  expect(await hops(t, receipt.assignmentId)).toBe(1);
+  expect(JSON.stringify(await transcript(t, receipt.threadId))).not.toContain("reserved results");
+  expect(calls("Main")).toHaveLength(1);
+  await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
+  held.release();
+  await drain(t);
 });

@@ -1,4 +1,5 @@
 /** Fake native models and real Workflow lanes for child progress guarantees. */
+import { componentsGeneric, type FunctionReference } from "convex/server";
 import { convexTest } from "convex-test";
 import native from "@convex-dev/agent/test";
 import { tool, type ToolSet } from "ai";
@@ -9,7 +10,7 @@ import { Agent, registerAgent, type Registration, type SlotFacts } from "../src/
 import schema from "./fixture/schema.js";
 import { components, rawAssignment } from "./fixture/api.js";
 import { coordinateReference, runTurnReference } from "./host.js";
-import { main, reset, v2, v2api as api } from "./delegation-v2.host.js";
+import { main, reviewer, reset, v2, v2api as api } from "./delegation-v2.host.js";
 import { requireReceipt } from "./receipt.js";
 
 const modules = import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]);
@@ -25,7 +26,11 @@ const charge = {
 };
 
 /** Registration adds native approval/deferred tools only for boundary tests. */
-function runtime(limits?: Registration["limits"], boundary?: "approval" | "deferred") {
+function runtime(
+  limits?: Registration["limits"],
+  boundary?: "approval" | "deferred",
+  sideReview = false,
+) {
   const tools: ToolSet = boundary
     ? {
         human:
@@ -43,6 +48,7 @@ function runtime(limits?: Registration["limits"], boundary?: "approval" | "defer
     name: "Main",
     languageModel: main.textModel,
     subagents: main.subagents,
+    sideAgents: sideReview ? [{ agent: reviewer, every: { turns: 1 }, sees: "delta" }] : [],
     tools,
   });
 
@@ -79,7 +85,11 @@ function runtime(limits?: Registration["limits"], boundary?: "approval" | "defer
 }
 
 /** Enforce real transaction ceilings; callers can select every hard host maximum. */
-export function setup(limits?: Registration["limits"], boundary?: "approval" | "deferred") {
+export function setup(
+  limits?: Registration["limits"],
+  boundary?: "approval" | "deferred",
+  sideReview = false,
+) {
   reset();
   evidence.length = 0;
 
@@ -89,7 +99,7 @@ export function setup(limits?: Registration["limits"], boundary?: "approval" | "
     modules: {
       ...modules,
       "./fixture/agents.ts": async () => {
-        const rt = runtime(limits, boundary);
+        const rt = runtime(limits, boundary, sideReview);
 
         return { ...rt.internalFunctions(), ...rt.authorizedEndpoints() };
       },
@@ -160,4 +170,28 @@ export const send = (
   text: string,
   toolCallId: string = crypto.randomUUID(),
 ) => t.mutation(api.agents.coordinate, { op: "message_parent", ...actor, toolCallId, text });
+/** Read the real shared hop counter without exposing another production endpoint. */
+export async function hops(t: Test, assignmentId: string) {
+  const ref = componentsGeneric().agevex.agevexTest.runMetadata as unknown as FunctionReference<
+    "query",
+    "internal",
+    { assignmentId: string },
+    { run: { hops: number } | null }
+  >;
+
+  return (await t.query(ref, { assignmentId })).run!.hops;
+}
 export { api, components, rawAssignment };
+
+/** Keep the real component and lanes, adding only the maximum-range seed helper. */
+export function addHeadroomFixture(t: Test) {
+  t.registerComponent("agevex", agevex.schema, {
+    ...agevex.modules,
+    "./component/headroomFixture.ts": () => import("./message-parent-bounds.fixture.js"),
+  });
+
+  return componentsGeneric().agevex.headroomFixture as unknown as Record<
+    "seed" | "fillQueue",
+    FunctionReference<"mutation", "internal", { assignmentId: string }, null>
+  >;
+}

@@ -67,6 +67,9 @@ export const vClaim = v.object({
       rootThreadId: v.string(),
       childThreadId: v.string(),
       deliveryToken: v.string(),
+      // Tool installation reads this persisted run discriminator; side reviews
+      // must never inject progress into the watched parent's execution.
+      side: v.boolean(),
     }),
   ),
 });
@@ -380,6 +383,7 @@ async function claimChild(
       rootThreadId: root.threadId,
       childThreadId: row.threadId,
       deliveryToken: run.deliveryToken,
+      side: !!run.side,
     },
   };
 }

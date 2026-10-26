@@ -122,7 +122,12 @@ async function cancelAssignment(
 
   for (const item of inbox) {
     runIds.add(item.runId);
-    await ctx.db.delete("inbox", item._id);
+
+    // Retain only the exact-id label of saved progress, as claim does. It is
+    // no longer ready work and carries no body or new cancellation budget.
+    if (item.kind === "note" && item.from)
+      await ctx.db.patch("inbox", item._id, { passive: false });
+    else await ctx.db.delete("inbox", item._id);
   }
 
   if (row.runId) runIds.add(row.runId);

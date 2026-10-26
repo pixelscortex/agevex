@@ -40,7 +40,8 @@ export function installCollaborationTools(
 
   if (gen.turn.child) tools[ASK_PARENT_TOOL_NAME] = askParentTool(rt, gen);
 
-  if (gen.turn.child) tools[MESSAGE_PARENT_TOOL_NAME] = messageParentTool(rt, gen);
+  if (gen.turn.child && !gen.turn.child.side)
+    tools[MESSAGE_PARENT_TOOL_NAME] = messageParentTool(rt, gen);
 }
 
 /** Report progress without changing the child's continuation or completion state. */
@@ -48,8 +49,7 @@ function messageParentTool(rt: RuntimeContext, gen: Generation) {
   const { args } = gen.turn;
 
   return tool({
-    description:
-      "Send your immediate parent a short progress message and keep working. No answer is required. At most 2 KiB, with at least 5 seconds between accepted messages.",
+    description: `Send your immediate parent a short progress message and keep working. No answer is required. At most 2 KiB, at least 5 seconds between accepted messages, and at most ${rt.limits.parentNotesPerChild} accepted notes over this child run. Final results reserve hop and queue capacity.`,
     inputSchema: z.object({ text: z.string() }),
     execute: (input, options) =>
       gen.fence.ctx.runMutation(coordinateRef(rt), {

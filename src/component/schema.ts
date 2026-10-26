@@ -66,6 +66,8 @@ export const denialCode = v.union(
   v.literal("CHILD_FINISHED"),
   v.literal("MESSAGE_LIMIT"),
   v.literal("MESSAGE_TOO_LARGE"),
+  v.literal("MESSAGE_EMPTY"),
+  v.literal("SIDE_RUN"),
   v.literal("MESSAGE_RATE_LIMIT"),
   v.literal("KEY_CONFLICT"),
   v.literal("NO_PARENT"),

@@ -15,6 +15,8 @@ export async function messageParent(
   ctx: CoordinatorCtx,
   args: Extract<CoordinateArgs, { op: "message_parent" }>,
 ) {
+  if (!args.text.trim()) return { status: "denied" as const, code: "MESSAGE_EMPTY" as const };
+
   if (!parentNoteFits(args.text))
     return { status: "denied" as const, code: "MESSAGE_TOO_LARGE" as const };
 
