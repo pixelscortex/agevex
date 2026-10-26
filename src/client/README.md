@@ -54,6 +54,21 @@ estimates and settled cost distinct. `delegations` retains paginated stored-stat
 history. `turn/tools.ts` records bounded progress around local tools and streams;
 slice/turn/cancellation fences clear it even if the action does not return.
 
+`afterTurn(hc, { turn, text, messageIds })` reports successful native assistant
+saves from the completing slice, in save order, with `text` from the same rows.
+Assistant tool calls count; separate native tool-result rows, pending/failed
+placeholders and fenced-out saves do not. Each slice runs one model step and
+saves at most one assistant row: at most one id, bounded to 128 UTF-8 bytes.
+Tool/approval/continuation slices never accumulate ids across events. Hook timing
+is unchanged, so a slice handed off for tool continuation or approval pause emits
+no `afterTurn`. Ids come directly from native save results, without listing history.
+
+`ToolContext.promptMessageId?: string` comes from the trusted component claim,
+never tool input. It identifies the root's user request or a child's task prompt
+and stays fixed across tool-step slices. Hook continuations use their own prompt;
+approval resume uses the component's current request anchor. Contexts without a
+managed prompt may omit it; hooks inherit it through `HookContext`.
+
 ## Background text
 
 `text/options.ts` validates default-on title policy and opt-in summary/cadence

@@ -38,7 +38,12 @@ export type AgentHooks = {
   ) => HookResult | Promise<HookResult>;
   afterTurn?: (
     hc: HookContext,
-    event: { turn: number; text: string },
+    event: {
+      turn: number;
+      text: string;
+      /** Successful assistant saves in native order, for this completing slice only. */
+      messageIds: string[];
+    },
   ) => HookResult | Promise<HookResult>;
   beforeTool?: (
     hc: HookContext,

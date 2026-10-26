@@ -27,6 +27,22 @@ the output with `output`; a streaming output is reshaped value by value. A
 throwing hook fails the turn with `HOOK_FAILED`, and its details stay outside
 the transcript.
 
+## Saved reply identities
+
+`afterTurn(hc, { turn, text, messageIds })` receives the exact native ids of
+the successful assistant messages saved by the completing model slice, in save
+order. `text` joins those same messages' text with newlines. Assistant tool-call
+messages qualify even without text; native tool-result rows use the separate
+`tool` role and are excluded, as are pending/failed placeholders and fenced-out
+saves. No transcript listing or text matching is involved.
+
+Each slice runs exactly one model step, which saves at most one assistant row,
+so `messageIds` contains at most one id (at most 128 UTF-8 bytes). A turn can
+span multiple tool, approval-resume or continuation slices; an event contains
+only its own completing slice's messages, never earlier slices. Existing hook
+timing is unchanged: slices handed off for tool continuation or approval pause
+do not emit `afterTurn`.
+
 ## Model routing at run start
 
 `beforeTurn` may return `model` only when `isRunStart` is true. The id must be

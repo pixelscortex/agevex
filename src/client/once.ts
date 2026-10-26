@@ -25,6 +25,8 @@ export type ToolContext = {
   agent: string;
   threadId: string;
   runId: string;
+  /** Trusted native request anchor; absent outside a managed prompt. */
+  promptMessageId?: string;
   /** Bounded opaque id; the provider id remains available for attribution. */
   toolCallId: string;
   nativeToolCallId?: string;

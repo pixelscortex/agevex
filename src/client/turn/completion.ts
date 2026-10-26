@@ -95,17 +95,26 @@ async function continueAfterToolCalls(rt: RuntimeContext, turn: Turn, result: St
   return true;
 }
 
-/** Run `afterTurn` with the completed turn number and the step's saved text. */
+/**
+ * Run `afterTurn` with this slice's successful native assistant saves.
+ * Agent 0.7.7 vercel/client/start.ts:382-412 returns the committed native ids;
+ * no reference-ring or transcript read is needed. nativeGeneration stops after
+ * one model step per slice; AI SDK to-response-messages.ts:151-156 emits at most
+ * one assistant row per step (including tool calls), so <=1 id *128 bytes.
+ * Tool results have their own native tool-role row and are excluded. Neither
+ * pending/failed placeholders nor earlier tool/approval/continuation slices
+ * are accumulated. Text and ids deliberately share the same saved subset.
+ */
 function runAfterTurn(gen: Generation, completedTurn: number, result: StepResult) {
   const { managed } = gen.turn;
-
-  const savedText = savedAssistantMessages(result)
-    .map((message) => message.text ?? "")
-    .join("\n");
+  const saved = savedAssistantMessages(result);
+  const savedText = saved.map((message) => message.text ?? "").join("\n");
+  const messageIds = saved.map((message) => String(message._id));
 
   return gen.hook(
     managed.hooks?.afterTurn
-      ? () => managed.hooks!.afterTurn!(gen.hc, { turn: completedTurn, text: savedText })
+      ? () =>
+          managed.hooks!.afterTurn!(gen.hc, { turn: completedTurn, text: savedText, messageIds })
       : undefined,
   );
 }

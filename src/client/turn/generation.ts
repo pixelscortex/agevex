@@ -125,6 +125,7 @@ function startGeneration(rt: RuntimeContext, turn: Turn): Generation {
   const hc: HookContext = {
     ctx: fence.ctx,
     ...facts,
+    promptMessageId: claimed.promptMessageId,
     signal: fence.controller.signal,
     meter: scopedMeter(
       meterBackend(rt.config, turn.rawCtx, { ...facts, purpose: "hook" }, () =>
