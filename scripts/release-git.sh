@@ -16,6 +16,8 @@ test -z "$(git status --porcelain)" || { echo "release:git: working tree is not 
 source_sha=$(git rev-parse --short HEAD)
 
 # Refuse to publish a build Convex would reject at deploy (scripts/check-deploy.sh).
+# `build` starts from an empty dist/, so files renamed or deleted in src/ never
+# linger in the published payload.
 sh scripts/check-deploy.sh
 bun run build
 
