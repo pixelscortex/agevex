@@ -1,0 +1,55 @@
+README.md
+  s_715bb270e2f4be::t_e71416267f3399 34,36-41
+docs/site/content/docs/concepts/runtime.mdx
+  s_715bb270e2f4be::t_9392845a248039 104-105,109-111,117-119,121,132-133
+src/client/agent.ts
+  s_715bb270e2f4be::t_005172f590d90e 35,37-39
+src/client/endpoints/access.ts
+  s_715bb270e2f4be::t_6968970e587114 12,21,49
+src/client/registration/context.ts
+  s_715bb270e2f4be::t_5f956dcbafc2d3 17,35,54-55,57-59,61-62
+src/client/turn/deadlines.ts
+  s_715bb270e2f4be::t_7e8c9c00289d37 78-79
+src/client/turn/fence.ts
+  s_715bb270e2f4be::t_68d9b8b3d070d5 16,77
+src/client/turn/generation.ts
+  s_715bb270e2f4be::t_bc010f8336605a 54-55,57-63,68-70
+src/component/run-settings.ts
+  s_715bb270e2f4be::t_80247101361dee 1,14-15,41-42,79-85,91-95,97-98,102-106,108,110,116
+src/component/schema.ts
+  s_715bb270e2f4be::t_d74d81ed9b7ec1 32,347
+src/component/turns/boundaries.ts
+  s_715bb270e2f4be::t_88f4527db11e1d 96-97
+src/component/turns/claim.ts
+  s_715bb270e2f4be::t_417871197f0dcd 111-113
+src/component/turns/runs.ts
+  s_715bb270e2f4be::t_3906248b374d5a 19
+src/component/turns/send.ts
+  s_715bb270e2f4be::t_3ec7194dc99fde 106
+src/testing/bridge.ts
+  s_715bb270e2f4be::t_03a7beea92b740 140,142-143
+tests/live/config.ts
+  s_715bb270e2f4be::t_60a3bf5d19f36f 5
+tests/managed-bounds.test.ts
+  s_715bb270e2f4be::t_40030f2f8ccd30 139
+tests/run-settings.test.ts
+  s_715bb270e2f4be::t_ce45d481cb65f3 118,126-134,147-149,151,154-160,163-164,267,304,316,333-337,481-484,550,561-616
+tests/review-regressions.test.ts
+  s_715bb270e2f4be::t_df316f43f11305 822,825-828
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "760481284f828ae0b648c571d7a99c236b99a5d2",
+  "prompts": {},
+  "sessions": {
+    "s_715bb270e2f4be": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17843-db3a-7c31-bab0-a2fd1de67405",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
