@@ -12,3 +12,4 @@ export type { SlotFacts, SlotActionCtx, ChargeCost, UsageSlot, UsageView, UsageV
 export type { SandboxCompletion } from "./runtime.js";
 export { defineTask, runTask } from "./tasks.js";
 export type { Task, TaskOptions, TaskOutcome } from "./tasks.js";
+export type { ThreadTextOptions, TextTaskOptions, TextTaskArgs } from "./text/options.js";

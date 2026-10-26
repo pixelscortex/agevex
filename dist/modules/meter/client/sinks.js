@@ -1,4 +1,5 @@
 import { LIMITS, integer, text } from "../shared/limits.js";
+import { resolveCredential } from "./credential.js";
 /** Polar documents a decimal NUMBER in cents, at most 17 digits / 12 places:
  * https://polar.sh/docs/features/cost-insights/cost-events#cost-metadata-schema
  * Emit an unquoted JSON number from integer arithmetic. Float division then
@@ -91,21 +92,25 @@ function batches(batch) {
     return output;
 }
 /** Thin REST adapter: @convex-dev/polar 0.9 has no event-ingestion API. The
- * delivery job hands it <=100 events (LIMITS.sinkBatch), one ingest request. */
+ * delivery job hands it <=100 events (LIMITS.sinkBatch), one ingest request.
+ * `accessToken` may be a getter, called at delivery time and never at
+ * construction, so hosts need not read env at module init. */
 export function polarSink(options) {
     text(options.meter, "POLAR_METER");
-    if (!options.accessToken)
+    // A literal is checked now; a getter is checked on the value it returns.
+    if (typeof options.accessToken === "string" && !options.accessToken)
         throw new Error("POLAR_TOKEN_REQUIRED");
     const base = options.server === "sandbox" ? "https://sandbox-api.polar.sh" : "https://api.polar.sh";
     return {
         name: options.name ?? "polar",
         deliver: async (batch) => {
+            const accessToken = await resolveCredential(options.accessToken, "POLAR_TOKEN_REQUIRED");
             for (const entries of batches(batch)) {
                 const response = await (options.fetch ?? fetch)(`${base}/v1/events/ingest`, {
                     method: "POST",
                     signal: AbortSignal.timeout(LIMITS.requestTimeoutMs),
                     headers: {
-                        Authorization: `Bearer ${options.accessToken}`,
+                        Authorization: `Bearer ${accessToken}`,
                         "Content-Type": "application/json",
                     },
                     body: `{"events":[${entries

@@ -102,6 +102,21 @@ export declare const acceptArgs: {
             stepsPerTurn: import("convex/values").VFloat64<number, "required">;
         }, "required", "mode" | "maxOutputTokens" | "modelTimeoutMs" | "toolTimeoutMs" | "stepsPerTurn">;
     }, "required", "agent" | "settings" | "settings.mode" | "settings.maxOutputTokens" | "settings.modelTimeoutMs" | "settings.toolTimeoutMs" | "settings.stepsPerTurn">, "optional">;
+    textConfig: import("convex/values").VObject<{
+        everyTurns?: number | undefined;
+        worker: string;
+        title: boolean;
+        summary: boolean;
+        updateThread: string;
+        getThread: string;
+    } | undefined, {
+        worker: import("convex/values").VString<string, "required">;
+        updateThread: import("convex/values").VString<string, "required">;
+        getThread: import("convex/values").VString<string, "required">;
+        title: import("convex/values").VBoolean<boolean, "required">;
+        summary: import("convex/values").VBoolean<boolean, "required">;
+        everyTurns: import("convex/values").VFloat64<number | undefined, "optional">;
+    }, "optional", "worker" | "title" | "summary" | "updateThread" | "getThread" | "everyTurns">;
 };
 /** The typed duplicate/conflict receipt for an already accepted request, or
  * null for a new one. Shares the `request:<subject>` ledger scope. */
@@ -187,6 +202,14 @@ export declare const accept: import("convex/server").RegisteredMutation<"public"
             stepsPerTurn: number;
         };
     }[] | undefined;
+    textConfig?: {
+        everyTurns?: number | undefined;
+        worker: string;
+        title: boolean;
+        summary: boolean;
+        updateThread: string;
+        getThread: string;
+    } | undefined;
     models?: Record<string, string> | undefined;
     savedMessage?: {
         order: number;

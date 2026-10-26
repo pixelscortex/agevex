@@ -57,8 +57,8 @@ export declare function escalateRun(ctx: MutationCtx, runId: string, code: Doc<"
  * Null unless this exact token owns the running child turn of a live run;
  * see `settlementScope` in subagents/views.ts. */
 export declare const settlementContext: import("convex/server").RegisteredQuery<"public", {
-    assignmentId: import("convex/values").GenericId<"assignments">;
     runId: string;
+    assignmentId: import("convex/values").GenericId<"assignments">;
     turnToken: string;
 }, Promise<{
     runId: string;
@@ -71,9 +71,9 @@ export declare const settlementContext: import("convex/server").RegisteredQuery<
 /** Record a child turn's host-verified outcome and settle its run when
  * nothing fences it; see `recordTurnOutcome`. */
 export declare const settle: import("convex/server").RegisteredMutation<"public", {
+    runId: string;
     errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
     assignmentId: import("convex/values").GenericId<"assignments">;
-    runId: string;
     turnToken: string;
     childResultMessageId: string | null;
 }, Promise<null>>;

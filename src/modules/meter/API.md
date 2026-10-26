@@ -18,7 +18,7 @@ export const meter = defineMeter(components.meter, {
     // A lookup must only read billing evidence; never repeat a paid operation.
     // asynchronous: { lookup: async (ctx, requestId) => ..., lookupFor: "1h" },
   },
-  sinks: [polarSink({ meter: "ai_usage", accessToken: process.env.POLAR_ACCESS_TOKEN! })],
+  sinks: [polarSink({ meter: "ai_usage", accessToken: () => process.env.POLAR_ACCESS_TOKEN! })],
   workers: { deliver: internal.billing.meterDeliver, lookup: internal.billing.meterLookup },
   budgets: () => ({ maxUsd: 5 }),
 });
@@ -30,6 +30,12 @@ credentials remain in host code. A lookup provider requires its lookup worker;
 sinks require the delivery worker. Custom sinks accept `{ deliver(batch) }`,
 optionally `name`; keep unnamed sinks in stable array order across deployments.
 Built-in sinks and custom sinks may be named explicitly.
+
+`polarSink({ accessToken })` takes a string or a getter
+(`() => string | Promise<string>`). A getter is called at each delivery, never at
+construction, so hosts that forbid reading env at module load can pass
+`() => process.env.POLAR_ACCESS_TOKEN!`. An empty or oversized resolved value
+fails that delivery with `POLAR_TOKEN_REQUIRED`.
 
 ## Wire it into agevex
 

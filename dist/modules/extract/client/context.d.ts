@@ -64,8 +64,8 @@ export declare function resolveRuntime(component: ComponentApi, options: Extract
                 callback?: "stored" | "dropped" | undefined;
             }, string | undefined>;
             reject: FunctionReference<"mutation", "internal", {
-                fileId: string;
                 version: string;
+                fileId: string;
                 failure: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED";
                 backend: string;
                 optionsHash: string;
@@ -75,11 +75,6 @@ export declare function resolveRuntime(component: ComponentApi, options: Extract
             }, {
                 _id: string;
                 _creationTime: number;
-                usage?: {
-                    credits?: number | undefined;
-                    inputTokens?: number | undefined;
-                    outputTokens?: number | undefined;
-                } | undefined;
                 summary?: {
                     language?: string | undefined;
                     kind: "document" | "text" | "image";
@@ -87,31 +82,31 @@ export declare function resolveRuntime(component: ComponentApi, options: Extract
                     pages: number;
                     preview: string;
                 } | undefined;
+                usage?: {
+                    credits?: number | undefined;
+                    inputTokens?: number | undefined;
+                    outputTokens?: number | undefined;
+                } | undefined;
                 failure?: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED" | undefined;
                 payloadStorageId?: string | undefined;
                 callbacks?: string[] | undefined;
                 status: "failed" | "running" | "pending" | "unknown" | "ready" | "released";
+                version: string;
                 claim: string;
                 leaseUntil: number;
                 fileId: string;
-                version: string;
                 backend: string;
                 attempt: number;
                 optionsHash: string;
             } | null, string | undefined>;
             lookup: FunctionReference<"query", "internal", {
-                fileId: string;
                 version: string;
+                fileId: string;
                 backend: string;
                 optionsHash: string;
             }, {
                 _id: string;
                 _creationTime: number;
-                usage?: {
-                    credits?: number | undefined;
-                    inputTokens?: number | undefined;
-                    outputTokens?: number | undefined;
-                } | undefined;
                 summary?: {
                     language?: string | undefined;
                     kind: "document" | "text" | "image";
@@ -119,14 +114,19 @@ export declare function resolveRuntime(component: ComponentApi, options: Extract
                     pages: number;
                     preview: string;
                 } | undefined;
+                usage?: {
+                    credits?: number | undefined;
+                    inputTokens?: number | undefined;
+                    outputTokens?: number | undefined;
+                } | undefined;
                 failure?: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED" | undefined;
                 payloadStorageId?: string | undefined;
                 callbacks?: string[] | undefined;
                 status: "failed" | "running" | "pending" | "unknown" | "ready" | "released";
+                version: string;
                 claim: string;
                 leaseUntil: number;
                 fileId: string;
-                version: string;
                 backend: string;
                 attempt: number;
                 optionsHash: string;
@@ -137,18 +137,18 @@ export declare function resolveRuntime(component: ComponentApi, options: Extract
                 artifactId: string;
             }, boolean, string | undefined>;
             complete: FunctionReference<"mutation", "internal", {
-                unknown?: boolean | undefined;
-                usage?: {
-                    credits?: number | undefined;
-                    inputTokens?: number | undefined;
-                    outputTokens?: number | undefined;
-                } | undefined;
                 summary?: {
                     language?: string | undefined;
                     kind: "document" | "text" | "image";
                     textBytes: number;
                     pages: number;
                     preview: string;
+                } | undefined;
+                unknown?: boolean | undefined;
+                usage?: {
+                    credits?: number | undefined;
+                    inputTokens?: number | undefined;
+                    outputTokens?: number | undefined;
                 } | undefined;
                 failure?: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED" | undefined;
                 payloadStorageId?: string | undefined;

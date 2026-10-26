@@ -1,7 +1,7 @@
 // `registerAgent`: the host's single entry point to the managed runtime.
 //
 // It resolves one registration into a `RuntimeContext` (`registration/`) and
-// returns what the host exports: the public endpoints (`endpoints/`), the two
+// returns what the host exports: the public endpoints (`endpoints/`), the
 // internal functions the component dispatches to (`runTurn` from `turn/` and the
 // collaboration coordinator from `coordinate/`), and trusted server-side helpers
 // (`host/`, `tasks.ts`). Nothing here reads or writes tables directly; every
@@ -13,6 +13,7 @@ import { fileAttached, registerFile, } from "./host/files.js";
 import { note, sandboxComplete } from "./host/notes.js";
 import { createRuntimeContext, } from "./registration/context.js";
 import { runTask } from "./tasks.js";
+import { buildTextTask } from "./text/task.js";
 import { buildRunTurn } from "./turn/run-turn.js";
 export { ASK_PARENT_TOOL_NAME, DELEGATE_TOOL_NAME, MESSAGE_CHILD_TOOL_NAME } from "./tool-names.js";
 /**
@@ -38,11 +39,11 @@ export function registerAgent(component, config) {
         note: (ctx, args) => note(rt, ctx, args),
         /** The subject-authorized public queries and mutations the host exports. */
         authorizedEndpoints: () => authorizedEndpoints(component, config, rt.settings),
-        /** The internal functions the host exports as `refs.runTurn` and `refs.coordinate`. */
+        /** The host exports these as refs.runTurn, refs.coordinate and refs.textTask. */
         internalFunctions: () => {
             const coordinate = buildCoordinate(rt);
             const runTurn = buildRunTurn(rt);
-            return { runTurn, coordinate };
+            return { runTurn, coordinate, textTask: buildTextTask(rt) };
         },
     };
 }

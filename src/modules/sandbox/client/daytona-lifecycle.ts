@@ -30,7 +30,7 @@ export function buildCreate(runtime: DaytonaContext): SandboxProvider["create"] 
         labels: { agevexScope: scopeKey },
       };
 
-      const created = await client.createSandbox(ctx, args);
+      const created = await (await client()).createSandbox(ctx, args);
 
       return { sandboxId: created.sandboxId };
     },
@@ -45,16 +45,14 @@ export function buildResume(runtime: DaytonaContext): SandboxProvider["resume"] 
 
   const operation: Pick<SandboxProvider, "resume"> = {
     async resume(ctx, sandboxId) {
-      const known = await client.refreshSandbox(ctx, { sandboxId });
+      const known = await (await client()).refreshSandbox(ctx, { sandboxId });
 
       if (!known || known.state === "destroyed") throw new Error("SANDBOX_GONE");
 
       if (known.state === "error") {
         // Narrow bridge matching the SDK's recover route. Confirm recoverable
         // first; never delete/recreate to hide an error and lose the files.
-        const apiKey = opts.apiKey ?? process.env.DAYTONA_API_KEY;
-
-        if (!apiKey) throw new Error("SANDBOX_DAYTONA_KEY_REQUIRED");
+        const apiKey = await runtime.apiKey();
 
         const root = (
           opts.apiUrl ??
@@ -86,7 +84,7 @@ export function buildResume(runtime: DaytonaContext): SandboxProvider["resume"] 
         if (!recovered.ok) throw new Error("SANDBOX_RECOVERY_UNKNOWN");
       }
 
-      await client.startSandbox(ctx, { sandboxId, waitTimeoutMs: LIMITS.daytonaReadyMs });
+      await (await client()).startSandbox(ctx, { sandboxId, waitTimeoutMs: LIMITS.daytonaReadyMs });
     },
   };
 
@@ -99,7 +97,7 @@ export function buildStop(runtime: DaytonaContext): SandboxProvider["stop"] {
 
   const operation: Pick<SandboxProvider, "stop"> = {
     async stop(ctx, sandboxId) {
-      await client.stopSandbox(ctx, { sandboxId, waitTimeoutMs: LIMITS.daytonaReadyMs });
+      await (await client()).stopSandbox(ctx, { sandboxId, waitTimeoutMs: LIMITS.daytonaReadyMs });
     },
   };
 
@@ -112,7 +110,7 @@ export function buildDelete(runtime: DaytonaContext): SandboxProvider["delete"] 
 
   const operation: Pick<SandboxProvider, "delete"> = {
     async delete(ctx, sandboxId) {
-      await client.deleteSandbox(ctx, { sandboxId });
+      await (await client()).deleteSandbox(ctx, { sandboxId });
     },
   };
 

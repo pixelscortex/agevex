@@ -60,9 +60,9 @@ export declare const respond: import("convex/server").RegisteredMutation<"public
 /** Save a deferred native result and release its continuation atomically.
  * See `answerDeferredCall` for the read budget. */
 export declare const answer: import("convex/server").RegisteredMutation<"public", {
+    text: string;
     assignmentId: import("convex/values").GenericId<"assignments">;
     subject: string;
-    text: string;
     toolCallId: string;
 }, Promise<{
     messageId: string;

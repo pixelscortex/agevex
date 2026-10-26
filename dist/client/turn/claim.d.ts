@@ -16,8 +16,8 @@ export declare function loadExecution(rt: RuntimeContext, ctx: RunnerCtx, args: 
         cancelled: boolean;
         approvalBlocked: boolean;
         modelStep: {
-            messageId: string;
             stepOrder: number;
+            messageId: string;
         } | undefined;
         attachmentBytes: number;
     };

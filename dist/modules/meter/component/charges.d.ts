@@ -5,8 +5,8 @@ export declare const get: import("convex/server").RegisteredQuery<"public", {
 /** Admit or replay an immutable charge key and update its aggregate/outbox state. */
 export declare const create: import("convex/server").RegisteredMutation<"public", {
     reason?: "NO_COST" | "DECODE_FAILED" | "INVALID_COST" | "OVER_CAP" | "PROVIDER_NOT_REGISTERED" | "PROFILE_NOT_REGISTERED" | "THREAD_CAPACITY" | undefined;
-    credits?: number | undefined;
     requestId?: string | undefined;
+    credits?: number | undefined;
     nanos?: number | undefined;
     profile?: string | undefined;
     quantity?: number | undefined;
@@ -18,49 +18,49 @@ export declare const create: import("convex/server").RegisteredMutation<"public"
     key: string;
     provider: string;
     source: "lookup" | "estimate" | "inline" | "settlement";
-    attribution: {
-        agent?: string | undefined;
-        threadId?: string | undefined;
-        runId?: string | undefined;
-        model?: string | undefined;
-        rootThreadId?: string | undefined;
-        nodeId?: string | undefined;
-        purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
-        subject: string;
-    };
-    breakdowns: ("thread.model" | "thread.provider" | "subject.agent" | "subject.model" | "subject.provider")[];
-    maxThreadCharges: number;
-    sinks: string[];
     jobs: {
         deliver?: string | undefined;
         lookup?: string | undefined;
         maxAttempts: number;
     };
+    attribution: {
+        agent?: string | undefined;
+        runId?: string | undefined;
+        threadId?: string | undefined;
+        model?: string | undefined;
+        rootThreadId?: string | undefined;
+        purpose?: "agent" | "title" | "summary" | "tool" | "hook" | undefined;
+        nodeId?: string | undefined;
+        subject: string;
+    };
+    breakdowns: ("thread.model" | "thread.provider" | "subject.agent" | "subject.model" | "subject.provider")[];
+    maxThreadCharges: number;
+    sinks: string[];
 }, Promise<null>>;
 /** Apply one idempotent correction or authoritative settlement. */
 export declare const update: import("convex/server").RegisteredMutation<"public", {
     credits?: number | undefined;
     quantity?: number | undefined;
     key: string;
-    operation: "settle" | "correct";
-    nanos: number;
     jobs: {
         deliver?: string | undefined;
         lookup?: string | undefined;
         maxAttempts: number;
     };
+    operation: "settle" | "correct";
+    nanos: number;
     operationKey: string;
 }, Promise<import("./charge-records.js").Outcome>>;
 /** Attach provider evidence identity and schedule its bounded lookup window. */
 export declare const attach: import("convex/server").RegisteredMutation<"public", {
     key: string;
-    requestId: string;
-    lookupMs: number;
     jobs: {
         deliver?: string | undefined;
         lookup?: string | undefined;
         maxAttempts: number;
     };
+    requestId: string;
+    lookupMs: number;
     operationKey: string;
 }, Promise<import("./charge-records.js").Outcome>>;
 /** One-shot deadline for unresolved lookup evidence. */
@@ -73,24 +73,24 @@ export declare const lookupResult: import("convex/server").RegisteredMutation<"p
     nanos?: number | undefined;
     key: string;
     provider: string;
-    requestId: string;
-    attempt: number;
     jobs: {
         deliver?: string | undefined;
         lookup?: string | undefined;
         maxAttempts: number;
     };
+    requestId: string;
+    attempt: number;
     until: number;
 }, Promise<null>>;
 /** Claim one bounded sink batch without reading large charge documents. */
 export declare const claimDeliveries: import("convex/server").RegisteredMutation<"public", {
     claim: string;
-    sink: string;
     jobs: {
         deliver?: string | undefined;
         lookup?: string | undefined;
         maxAttempts: number;
     };
+    sink: string;
 }, Promise<({
     externalId: string;
     revision: number;
@@ -112,12 +112,12 @@ export declare const claimDeliveries: import("convex/server").RegisteredMutation
     provider: string;
     attribution: {
         agent?: string | undefined;
-        threadId?: string | undefined;
         runId?: string | undefined;
+        threadId?: string | undefined;
         model?: string | undefined;
         rootThreadId?: string | undefined;
+        purpose?: "agent" | "title" | "summary" | "tool" | "hook" | undefined;
         nodeId?: string | undefined;
-        purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
         subject: string;
     };
     sink: string;
@@ -129,13 +129,13 @@ export declare const deliveryResult: import("convex/server").RegisteredMutation<
     retryAfterMs?: number | undefined;
     keys: string[];
     claim: string;
-    ok: boolean;
-    sink: string;
     jobs: {
         deliver?: string | undefined;
         lookup?: string | undefined;
         maxAttempts: number;
     };
+    ok: boolean;
+    sink: string;
     rateLimited: boolean;
 }, Promise<null>>;
 /** Workpool completion fence for delivery crashes and claim cleanup. */
@@ -151,12 +151,12 @@ export declare const deliveryComplete: import("convex/server").RegisteredMutatio
     };
     context: {
         claim: string;
-        sink: string;
         jobs: {
             deliver?: string | undefined;
             lookup?: string | undefined;
             maxAttempts: number;
         };
+        sink: string;
         crashes: number;
     };
     workId: import("@convex-dev/workpool").WorkId;

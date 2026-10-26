@@ -15,6 +15,8 @@ const EMPTY_TOOLS = {};
 /** Native Agent plus metadata; generation, tools, threads and streams stay native. */
 export class Agent extends NativeBase {
     name;
+    /** Default model for tool-free background text tasks. */
+    textModel;
     run;
     sandbox;
     subagents;
@@ -30,6 +32,7 @@ export class Agent extends NativeBase {
     constructor(component, options) {
         super(component, options);
         this.name = options.name;
+        this.textModel = options.languageModel;
         this.run = options.run;
         this.sandbox = options.sandbox ?? false;
         this.subagents = options.subagents ?? [];

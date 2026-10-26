@@ -32,12 +32,12 @@ export declare function startLookup(ctx: MutationCtx, row: Doc<"charges">, reque
     source: "lookup" | "estimate" | "inline" | "settlement";
     attribution: {
         agent?: string | undefined;
-        threadId?: string | undefined;
         runId?: string | undefined;
+        threadId?: string | undefined;
         model?: string | undefined;
         rootThreadId?: string | undefined;
+        purpose?: "agent" | "title" | "summary" | "tool" | "hook" | undefined;
         nodeId?: string | undefined;
-        purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
         subject: string;
     };
     operations: {
@@ -68,12 +68,12 @@ export declare function startLookup(ctx: MutationCtx, row: Doc<"charges">, reque
             source: "lookup" | "estimate" | "inline" | "settlement";
             attribution: {
                 agent?: string | undefined;
-                threadId?: string | undefined;
                 runId?: string | undefined;
+                threadId?: string | undefined;
                 model?: string | undefined;
                 rootThreadId?: string | undefined;
+                purpose?: "agent" | "title" | "summary" | "tool" | "hook" | undefined;
                 nodeId?: string | undefined;
-                purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
                 subject: string;
             };
             revision: number;

@@ -58,6 +58,8 @@ export const LIMITS = {
   cleanupBatch: 32,
   actionBudgetMs: 540_000,
   identityChars: 256,
+  // Provider keys are far shorter; the bound only stops a runaway getter.
+  credentialChars: 4096,
   pathChars: 4096,
   commandChars: 16_000,
   providerChars: 64,

@@ -29,9 +29,9 @@ export declare const vClaim: import("convex/values").VObject<{
         toolTimeoutMs: number;
         stepsPerTurn: number;
     };
+    runId: string;
     assignmentId: string;
     threadId: string;
-    runId: string;
     subject: string;
     turn: number;
     cancellationEpoch: number;
@@ -107,7 +107,7 @@ export declare const vClaim: import("convex/values").VObject<{
     threadId: import("convex/values").VString<string, "required">;
     subject: import("convex/values").VString<string, "required">;
     agent: import("convex/values").VString<string, "required">;
-}, "required", "agent" | "settings" | "settings.mode" | "settings.maxOutputTokens" | "settings.modelTimeoutMs" | "settings.toolTimeoutMs" | "settings.stepsPerTurn" | "assignmentId" | "threadId" | "runId" | "subject" | "turn" | "cancellationEpoch" | "promptMessageId" | "turnOrigin" | "modelId" | "isTurnStart" | "isRunStart" | "subagent" | "subagent.agent" | "subagent.runId" | "subagent.subject" | "subagent.childThreadId" | "subagent.rootAssignmentId" | "subagent.actorAgent" | "subagent.deliveryToken" | "subagent.rootAgent" | "subagent.rootThreadId">;
+}, "required", "agent" | "settings" | "settings.mode" | "settings.maxOutputTokens" | "settings.modelTimeoutMs" | "settings.toolTimeoutMs" | "settings.stepsPerTurn" | "runId" | "assignmentId" | "threadId" | "subject" | "turn" | "cancellationEpoch" | "promptMessageId" | "turnOrigin" | "modelId" | "isTurnStart" | "isRunStart" | "subagent" | "subagent.agent" | "subagent.runId" | "subagent.subject" | "subagent.childThreadId" | "subagent.rootAssignmentId" | "subagent.actorAgent" | "subagent.deliveryToken" | "subagent.rootAgent" | "subagent.rootThreadId">;
 type ClaimArgs = {
     assignmentId: Id<"assignments">;
     turnToken: string;

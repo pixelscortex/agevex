@@ -28,7 +28,7 @@ export function buildWriteFile(runtime: DaytonaContext): SandboxProvider["writeF
 
       if (content.length > HARD_LIMITS.writeChars) throw new Error("SANDBOX_WRITE_TOO_LARGE");
 
-      await client.writeFile(ctx, { sandboxId, path, content });
+      await (await client()).writeFile(ctx, { sandboxId, path, content });
     },
   };
 
@@ -68,7 +68,7 @@ export function buildUpload(runtime: DaytonaContext): SandboxProvider["upload"] 
 
       if (content.byteLength > LIMITS.exportChunkBytes) throw new Error("SANDBOX_UPLOAD_TOO_LARGE");
 
-      await client.writeFileBytes(ctx, { sandboxId, path, content });
+      await (await client()).writeFileBytes(ctx, { sandboxId, path, content });
     },
   };
 
@@ -104,14 +104,14 @@ export function buildDownload(runtime: DaytonaContext): SandboxProvider["downloa
 
       try {
         const bytes = new Uint8Array(
-          await client.readFileBytes(ctx, { sandboxId, path: windowPath }),
+          await (await client()).readFileBytes(ctx, { sandboxId, path: windowPath }),
         );
 
         if (bytes.byteLength > maxBytes) throw new Error("SANDBOX_EXPORT_WINDOW_TOO_LARGE");
 
         return bytes;
       } finally {
-        await client.deleteFile(ctx, { sandboxId, path: windowPath });
+        await (await client()).deleteFile(ctx, { sandboxId, path: windowPath });
       }
     },
   };

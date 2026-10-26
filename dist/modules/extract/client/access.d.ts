@@ -25,11 +25,6 @@ export declare function identity(runtime: RuntimeContext, ctx: ActionCtx, args: 
 export declare function raw(runtime: RuntimeContext, ctx: ActionCtx, args: ArtifactArgs, operation?: Scope["operation"], namespace?: string): Promise<{
     _id: string;
     _creationTime: number;
-    usage?: {
-        credits?: number | undefined;
-        inputTokens?: number | undefined;
-        outputTokens?: number | undefined;
-    } | undefined;
     summary?: {
         language?: string | undefined;
         kind: "document" | "text" | "image";
@@ -37,14 +32,19 @@ export declare function raw(runtime: RuntimeContext, ctx: ActionCtx, args: Artif
         pages: number;
         preview: string;
     } | undefined;
+    usage?: {
+        credits?: number | undefined;
+        inputTokens?: number | undefined;
+        outputTokens?: number | undefined;
+    } | undefined;
     failure?: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED" | undefined;
     payloadStorageId?: string | undefined;
     callbacks?: string[] | undefined;
     status: "failed" | "running" | "pending" | "unknown" | "ready" | "released";
+    version: string;
     claim: string;
     leaseUntil: number;
     fileId: string;
-    version: string;
     backend: string;
     attempt: number;
     optionsHash: string;

@@ -18,8 +18,8 @@ import { type DataModelFromSchemaDefinition } from "convex/server";
  */
 export declare const consentTables: {
     agevexBudgetConsents: import("convex/server").TableDefinition<import("convex/values").VObject<{
-        threadId: string;
         runId: string;
+        threadId: string;
         subject: string;
         approvalId: string;
         spent: boolean;
@@ -29,15 +29,15 @@ export declare const consentTables: {
         approvalId: import("convex/values").VString<string, "required">;
         runId: import("convex/values").VString<string, "required">;
         spent: import("convex/values").VBoolean<boolean, "required">;
-    }, "required", "threadId" | "runId" | "subject" | "approvalId" | "spent">, {
+    }, "required", "runId" | "threadId" | "subject" | "approvalId" | "spent">, {
         by_consent: ["subject", "threadId", "approvalId", "_creationTime"];
         by_thread: ["subject", "threadId", "_creationTime"];
     }, {}, {}>;
 };
 declare const schema: import("convex/server").SchemaDefinition<{
     agevexBudgetConsents: import("convex/server").TableDefinition<import("convex/values").VObject<{
-        threadId: string;
         runId: string;
+        threadId: string;
         subject: string;
         approvalId: string;
         spent: boolean;
@@ -47,7 +47,7 @@ declare const schema: import("convex/server").SchemaDefinition<{
         approvalId: import("convex/values").VString<string, "required">;
         runId: import("convex/values").VString<string, "required">;
         spent: import("convex/values").VBoolean<boolean, "required">;
-    }, "required", "threadId" | "runId" | "subject" | "approvalId" | "spent">, {
+    }, "required", "runId" | "threadId" | "subject" | "approvalId" | "spent">, {
         by_consent: ["subject", "threadId", "approvalId", "_creationTime"];
         by_thread: ["subject", "threadId", "_creationTime"];
     }, {}, {}>;

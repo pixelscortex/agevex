@@ -26,8 +26,8 @@ export declare function assignmentScope(row: Doc<"assignments">, threadId: strin
 /** Validator of `executionView`; each field names its reader. */
 export declare const vExecution: import("convex/values").VObject<{
     modelStep?: {
-        messageId: string;
         stepOrder: number;
+        messageId: string;
     } | undefined;
     turnToken?: string | undefined;
     attachmentBytes: number;
@@ -46,14 +46,14 @@ export declare const vExecution: import("convex/values").VObject<{
     cancelled: import("convex/values").VBoolean<boolean, "required">;
     approvalBlocked: import("convex/values").VBoolean<boolean, "required">;
     modelStep: import("convex/values").VObject<{
-        messageId: string;
         stepOrder: number;
+        messageId: string;
     } | undefined, {
         messageId: import("convex/values").VString<string, "required">;
         stepOrder: import("convex/values").VFloat64<number, "required">;
-    }, "optional", "messageId" | "stepOrder">;
+    }, "optional", "stepOrder" | "messageId">;
     attachmentBytes: import("convex/values").VFloat64<number, "required">;
-}, "required", "attachmentBytes" | "agent" | "turnStatus" | "modelStep" | "runTurn" | "cancellationEpoch" | "cancelled" | "turnToken" | "approvalBlocked" | "modelStep.messageId" | "modelStep.stepOrder">;
+}, "required", "attachmentBytes" | "agent" | "turnStatus" | "modelStep" | "runTurn" | "cancellationEpoch" | "cancelled" | "turnToken" | "approvalBlocked" | "modelStep.stepOrder" | "modelStep.messageId">;
 /** Read execution metadata outside the Workflow journal; only ids cross steps.
  * The host polls this during generation, so it returns only the fields its
  * readers use (workflows/worker.ts dispatch; in src/client/turn/, runTurn's
@@ -68,8 +68,8 @@ export declare function executionView(row: Doc<"assignments">): {
     cancelled: boolean;
     approvalBlocked: boolean;
     modelStep: {
-        messageId: string;
         stepOrder: number;
+        messageId: string;
     } | undefined;
     attachmentBytes: number;
 };

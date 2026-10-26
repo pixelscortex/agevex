@@ -1,3 +1,4 @@
+import type { ThreadTextOptions, TextTaskArgs } from "./text/options.js";
 import type { UsageSlot, BudgetSlot, TelemetrySlot, SandboxSlot, ExtractSlot } from "./slots.js";
 import type { GenericActionCtx, GenericDataModel, GenericMutationCtx, GenericQueryCtx, FunctionReference } from "convex/server";
 import type { Infer } from "convex/values";
@@ -86,7 +87,7 @@ export type AuthorizationScope = {
     subject: string;
     runId: string;
 } | {
-    operation: "note" | "send" | "respond" | "answer" | "cancel" | "messages" | "streams" | "activity";
+    operation: "title" | "rename" | "summary" | "summarize" | "note" | "send" | "respond" | "answer" | "cancel" | "messages" | "streams" | "activity";
     agent: string;
     threadId: string;
 } | {
@@ -118,6 +119,8 @@ export type AuthorizationScope = {
  * field in it is read back from persisted state.
  */
 export type ExecutionScope = {
+    /** Background text uses the same persisted-principal policy without a user connection. */
+    purpose?: "title" | "summary";
     subject: string;
     agent: string;
     assignmentId: string;
@@ -247,6 +250,7 @@ export type CoordinateResult = DelegationResult | {
 } | null;
 export type ManagedAgent = {
     name: string;
+    textModel?: Extract<LanguageModel, string | LanguageModelV4>;
     run?: RunSettings;
     sandbox?: boolean;
     hooks?: AgentHooks;
@@ -311,7 +315,7 @@ export type ManagedGenerationArgs = {
     };
 };
 import type { Limits } from "../component/limits.js";
-export type Registration = {
+export type Registration = ThreadTextOptions & {
     /** Absent: ignore usage, allow budgets, export nothing, omit sandbox tools,
      * and pass attachments as native Agent file parts. */
     usage?: UsageSlot;
@@ -338,6 +342,7 @@ export type Registration = {
      */
     agents: readonly ManagedAgent[];
     refs: {
+        textTask?: () => FunctionReference<"action", "internal", TextTaskArgs, null>;
         runTurn: () => FunctionReference<"action", "internal", TurnArgs, null>;
         /**
          * Required only when collaboration is configured. Supplied so the managed

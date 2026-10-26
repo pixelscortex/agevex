@@ -6,7 +6,8 @@
 import { buildCreate, buildResume, buildStop, buildDelete } from "./daytona-lifecycle.js";
 import { buildExec, buildStartBackground, buildPoll, buildCancelBackground, } from "./daytona-process.js";
 import { buildReadFile, buildWriteFile, buildListFiles, buildUpload, buildDownload, } from "./daytona-files.js";
-import { Daytona } from "@daytona/convex";
+import {} from "@daytona/convex";
+import { bindCredentials } from "./daytona-context.js";
 import { LIMITS, bounded, integer } from "../shared/limits.js";
 import {} from "./types.js";
 /**
@@ -29,8 +30,12 @@ export function daytona(component, opts = {}) {
         bounded(opts.snapshot, LIMITS.identityChars, "SNAPSHOT");
     if (opts.target !== undefined)
         bounded(opts.target, LIMITS.identityChars, "TARGET");
-    const client = new Daytona(component, opts);
-    const runtime = { client, opts, autoStopInterval, autoArchiveInterval };
+    const runtime = {
+        ...bindCredentials(component, opts),
+        opts,
+        autoStopInterval,
+        autoArchiveInterval,
+    };
     return {
         id: "daytona",
         create: buildCreate(runtime),

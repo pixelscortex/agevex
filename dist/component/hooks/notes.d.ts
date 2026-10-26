@@ -517,21 +517,21 @@ export declare function dropCancelledNotes(ctx: MutationCtx, assignmentId: Id<"a
 /** Queue a note for the next safe claim; see `queueNote`. */
 export declare const addNote: import("convex/server").RegisteredMutation<"public", {
     from: string;
-    assignmentId: import("convex/values").GenericId<"assignments">;
     text: string;
+    assignmentId: import("convex/values").GenericId<"assignments">;
 }, Promise<boolean>>;
 /** Save a beforeTurn note now, or queue it behind outstanding approval
  * results; see `saveBeforeTurnNote`. */
 export declare const beforeTurnNote: import("convex/server").RegisteredMutation<"public", {
     from: string;
+    text: string;
     assignmentId: import("convex/values").GenericId<"assignments">;
     getMessages: string;
     addMessages: string;
-    text: string;
 }, Promise<void>>;
 /** Delete a cancelled epoch's unsaved note bodies; one finite job per
  * assignment, scheduled by turns.cancel.cancel. */
 export declare const cancelNotes: import("convex/server").RegisteredMutation<"internal", {
-    assignmentId: import("convex/values").GenericId<"assignments">;
     epoch: number;
+    assignmentId: import("convex/values").GenericId<"assignments">;
 }, Promise<void>>;

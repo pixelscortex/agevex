@@ -16,6 +16,7 @@ import { settlementBlocked } from "../subagents/settle.js";
 import { sealGroups } from "../subagents/groups.js";
 import { disarmRecovery } from "./recovery.js";
 import { disarmSlice } from "./boundaries.js";
+import { completeTextTurn } from "../text/jobs.js";
 import { wake } from "./wake.js";
 /** End the running turn `turnToken`: success idles the thread and wakes
  * queued work; a failure code is deferred behind the settlement fence
@@ -39,6 +40,7 @@ export async function finishTurn(ctx, args) {
             turnToken: undefined,
             promptMessageId: undefined,
         });
+        await completeTextTurn(ctx, row);
         await wake(ctx, { ...row, turnStatus: "idle" });
     }
     return null;

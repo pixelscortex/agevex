@@ -18,7 +18,7 @@ export type RuntimeContext = {
     settings: SettingsSnapshot;
     /** Stable index per agent name (sorted), used by per-agent model routing. */
     agentIndexes: Map<string, number>;
-    /** Whether any agent has side agents, so native saves must be captured for review deltas. */
+    /** Whether native saves must be captured for side-review deltas or root summaries. */
     watching: boolean;
 };
 /**

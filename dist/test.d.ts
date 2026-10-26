@@ -9,9 +9,66 @@ declare const _default: {
         assignments: import("convex/server").TableDefinition<import("convex/values").VObject<{
             workflowId?: string | undefined;
             runId?: import("convex/values").GenericId<"runs"> | undefined;
-            modelStep?: {
-                messageId: string;
+            textConfig?: {
+                everyTurns?: number | undefined;
+                worker: string;
+                title: boolean;
+                summary: boolean;
+                updateThread: string;
+                getThread: string;
+            } | undefined;
+            titleVersion?: number | undefined;
+            titleSource?: "user" | "auto" | undefined;
+            titleTask?: {
+                dispatched?: boolean | undefined;
+                again?: import("convex/values").GenericId<"runs"> | undefined;
+                deferred?: boolean | undefined;
+                titleRef?: {
+                    order: number;
+                    bytes: number;
+                    id: string;
+                    stepOrder: number;
+                } | undefined;
+                status: "failed" | "running" | "queued" | "done" | "unknown";
+                key: string;
+                runId: import("convex/values").GenericId<"runs">;
+                epoch: number;
+                version: number;
+            } | undefined;
+            summaryTask?: {
+                dispatched?: boolean | undefined;
+                again?: import("convex/values").GenericId<"runs"> | undefined;
+                deferred?: boolean | undefined;
+                titleRef?: {
+                    order: number;
+                    bytes: number;
+                    id: string;
+                    stepOrder: number;
+                } | undefined;
+                status: "failed" | "running" | "queued" | "done" | "unknown";
+                key: string;
+                runId: import("convex/values").GenericId<"runs">;
+                epoch: number;
+                version: number;
+            } | undefined;
+            textCompleted?: {
+                order: number;
+                id: string;
                 stepOrder: number;
+                sequence: number;
+            } | undefined;
+            textSummary?: {
+                text: string;
+                through: {
+                    order: number;
+                    id: string;
+                    stepOrder: number;
+                    sequence: number;
+                };
+            } | undefined;
+            modelStep?: {
+                stepOrder: number;
+                messageId: string;
             } | undefined;
             contextMessages?: {
                 order: number;
@@ -41,9 +98,9 @@ declare const _default: {
                     id: string;
                     abort: string;
                 } | undefined;
+                epoch: number;
                 messageId: string;
                 executionId: string;
-                epoch: number;
                 getMessages: string;
                 finalizeMessage: string;
             } | undefined;
@@ -103,13 +160,135 @@ declare const _default: {
             activeRuns: number;
             nextRunSequence: number;
         }, {
-            modelStep: import("convex/values").VObject<{
-                messageId: string;
+            textConfig: import("convex/values").VObject<{
+                everyTurns?: number | undefined;
+                worker: string;
+                title: boolean;
+                summary: boolean;
+                updateThread: string;
+                getThread: string;
+            } | undefined, {
+                worker: import("convex/values").VString<string, "required">;
+                updateThread: import("convex/values").VString<string, "required">;
+                getThread: import("convex/values").VString<string, "required">;
+                title: import("convex/values").VBoolean<boolean, "required">;
+                summary: import("convex/values").VBoolean<boolean, "required">;
+                everyTurns: import("convex/values").VFloat64<number | undefined, "optional">;
+            }, "optional", "worker" | "title" | "summary" | "updateThread" | "getThread" | "everyTurns">;
+            titleVersion: import("convex/values").VFloat64<number | undefined, "optional">;
+            titleSource: import("convex/values").VUnion<"user" | "auto" | undefined, [import("convex/values").VLiteral<"auto", "required">, import("convex/values").VLiteral<"user", "required">], "optional", never>;
+            titleTask: import("convex/values").VObject<{
+                dispatched?: boolean | undefined;
+                again?: import("convex/values").GenericId<"runs"> | undefined;
+                deferred?: boolean | undefined;
+                titleRef?: {
+                    order: number;
+                    bytes: number;
+                    id: string;
+                    stepOrder: number;
+                } | undefined;
+                status: "failed" | "running" | "queued" | "done" | "unknown";
+                key: string;
+                runId: import("convex/values").GenericId<"runs">;
+                epoch: number;
+                version: number;
+            } | undefined, {
+                key: import("convex/values").VString<string, "required">;
+                runId: import("convex/values").VId<import("convex/values").GenericId<"runs">, "required">;
+                epoch: import("convex/values").VFloat64<number, "required">;
+                version: import("convex/values").VFloat64<number, "required">;
+                status: import("convex/values").VUnion<"failed" | "running" | "queued" | "done" | "unknown", [import("convex/values").VLiteral<"queued", "required">, import("convex/values").VLiteral<"running", "required">, import("convex/values").VLiteral<"done", "required">, import("convex/values").VLiteral<"failed", "required">, import("convex/values").VLiteral<"unknown", "required">], "required", never>;
+                dispatched: import("convex/values").VBoolean<boolean | undefined, "optional">;
+                again: import("convex/values").VId<import("convex/values").GenericId<"runs"> | undefined, "optional">;
+                deferred: import("convex/values").VBoolean<boolean | undefined, "optional">;
+                titleRef: import("convex/values").VObject<{
+                    order: number;
+                    bytes: number;
+                    id: string;
+                    stepOrder: number;
+                } | undefined, {
+                    id: import("convex/values").VString<string, "required">;
+                    order: import("convex/values").VFloat64<number, "required">;
+                    stepOrder: import("convex/values").VFloat64<number, "required">;
+                    bytes: import("convex/values").VFloat64<number, "required">;
+                }, "optional", "order" | "bytes" | "id" | "stepOrder">;
+            }, "optional", "status" | "key" | "runId" | "epoch" | "version" | "dispatched" | "again" | "deferred" | "titleRef" | "titleRef.order" | "titleRef.bytes" | "titleRef.id" | "titleRef.stepOrder">;
+            summaryTask: import("convex/values").VObject<{
+                dispatched?: boolean | undefined;
+                again?: import("convex/values").GenericId<"runs"> | undefined;
+                deferred?: boolean | undefined;
+                titleRef?: {
+                    order: number;
+                    bytes: number;
+                    id: string;
+                    stepOrder: number;
+                } | undefined;
+                status: "failed" | "running" | "queued" | "done" | "unknown";
+                key: string;
+                runId: import("convex/values").GenericId<"runs">;
+                epoch: number;
+                version: number;
+            } | undefined, {
+                key: import("convex/values").VString<string, "required">;
+                runId: import("convex/values").VId<import("convex/values").GenericId<"runs">, "required">;
+                epoch: import("convex/values").VFloat64<number, "required">;
+                version: import("convex/values").VFloat64<number, "required">;
+                status: import("convex/values").VUnion<"failed" | "running" | "queued" | "done" | "unknown", [import("convex/values").VLiteral<"queued", "required">, import("convex/values").VLiteral<"running", "required">, import("convex/values").VLiteral<"done", "required">, import("convex/values").VLiteral<"failed", "required">, import("convex/values").VLiteral<"unknown", "required">], "required", never>;
+                dispatched: import("convex/values").VBoolean<boolean | undefined, "optional">;
+                again: import("convex/values").VId<import("convex/values").GenericId<"runs"> | undefined, "optional">;
+                deferred: import("convex/values").VBoolean<boolean | undefined, "optional">;
+                titleRef: import("convex/values").VObject<{
+                    order: number;
+                    bytes: number;
+                    id: string;
+                    stepOrder: number;
+                } | undefined, {
+                    id: import("convex/values").VString<string, "required">;
+                    order: import("convex/values").VFloat64<number, "required">;
+                    stepOrder: import("convex/values").VFloat64<number, "required">;
+                    bytes: import("convex/values").VFloat64<number, "required">;
+                }, "optional", "order" | "bytes" | "id" | "stepOrder">;
+            }, "optional", "status" | "key" | "runId" | "epoch" | "version" | "dispatched" | "again" | "deferred" | "titleRef" | "titleRef.order" | "titleRef.bytes" | "titleRef.id" | "titleRef.stepOrder">;
+            textCompleted: import("convex/values").VObject<{
+                order: number;
+                id: string;
                 stepOrder: number;
+                sequence: number;
+            } | undefined, {
+                id: import("convex/values").VString<string, "required">;
+                order: import("convex/values").VFloat64<number, "required">;
+                stepOrder: import("convex/values").VFloat64<number, "required">;
+                sequence: import("convex/values").VFloat64<number, "required">;
+            }, "optional", "order" | "id" | "stepOrder" | "sequence">;
+            textSummary: import("convex/values").VObject<{
+                text: string;
+                through: {
+                    order: number;
+                    id: string;
+                    stepOrder: number;
+                    sequence: number;
+                };
+            } | undefined, {
+                text: import("convex/values").VString<string, "required">;
+                through: import("convex/values").VObject<{
+                    order: number;
+                    id: string;
+                    stepOrder: number;
+                    sequence: number;
+                }, {
+                    id: import("convex/values").VString<string, "required">;
+                    order: import("convex/values").VFloat64<number, "required">;
+                    stepOrder: import("convex/values").VFloat64<number, "required">;
+                    sequence: import("convex/values").VFloat64<number, "required">;
+                }, "required", "order" | "id" | "stepOrder" | "sequence">;
+            }, "optional", "text" | "through" | "through.order" | "through.id" | "through.stepOrder" | "through.sequence">;
+            modelStep: import("convex/values").VObject<{
+                stepOrder: number;
+                messageId: string;
             } | undefined, {
                 messageId: import("convex/values").VString<string, "required">;
                 stepOrder: import("convex/values").VFloat64<number, "required">;
-            }, "optional", "messageId" | "stepOrder">;
+            }, "optional", "stepOrder" | "messageId">;
             contextMessages: import("convex/values").VArray<{
                 order: number;
                 bytes: number;
@@ -200,9 +379,9 @@ declare const _default: {
                     id: string;
                     abort: string;
                 } | undefined;
+                epoch: number;
                 messageId: string;
                 executionId: string;
-                epoch: number;
                 getMessages: string;
                 finalizeMessage: string;
             } | undefined, {
@@ -218,7 +397,7 @@ declare const _default: {
                     id: import("convex/values").VString<string, "required">;
                     abort: import("convex/values").VString<string, "required">;
                 }, "optional", "id" | "abort">;
-            }, "optional", "stream" | "messageId" | "executionId" | "epoch" | "getMessages" | "finalizeMessage" | "stream.id" | "stream.abort">;
+            }, "optional", "stream" | "epoch" | "messageId" | "executionId" | "getMessages" | "finalizeMessage" | "stream.id" | "stream.abort">;
             cancellationEpoch: import("convex/values").VFloat64<number, "required">;
             cancelled: import("convex/values").VBoolean<boolean, "required">;
             runId: import("convex/values").VId<import("convex/values").GenericId<"runs"> | undefined, "optional">;
@@ -275,12 +454,12 @@ declare const _default: {
                     providerExecuted: import("convex/values").VBoolean<boolean, "required">;
                     toolCallKey: import("convex/values").VBytes<ArrayBuffer, "required">;
                     resolved: import("convex/values").VLiteral<true | undefined, "optional">;
-                }, "required", "key" | "messageId" | "deferred" | "providerExecuted" | "toolCallKey" | "resolved">, "required">;
+                }, "required", "key" | "deferred" | "messageId" | "providerExecuted" | "toolCallKey" | "resolved">, "required">;
             }, "optional", "epoch" | "getMessages" | "inboxId" | "addMessages" | "cleanupPending" | "requests">;
             lastSlice: import("convex/values").VString<string | undefined, "optional">;
             activeRuns: import("convex/values").VFloat64<number, "required">;
             nextRunSequence: import("convex/values").VFloat64<number, "required">;
-        }, "required", "workflowId" | "notesPending" | "agent" | "errorCode" | "threadId" | "turnStatus" | "queuedMessages" | "runId" | "subject" | "limits" | "modelStep" | "contextMessages" | "reviewed" | "completedTurns" | "routingAgentIndex" | "hookContinue" | "models" | "runTurn" | "loopWaiting" | "pinged" | "recoveryAt" | "recoveryJobId" | "recoveryDelayMs" | "modelSteps" | "watchdogId" | "pendingGeneration" | "cancellationEpoch" | "cancelled" | "childRunId" | "rootAssignmentId" | "nextSequence" | "nextTurn" | "turnToken" | "promptMessageId" | "turnOrigin" | "inboxId" | "approvalBlocked" | "approvals" | "lastSlice" | "activeRuns" | "nextRunSequence" | "limits.attachmentBytes" | "limits.continuesPerRun" | "limits.sideRunsPerRun" | "limits.notesPending" | "limits.maxDepth" | "limits.messagesPerChild" | "limits.rootLane" | "limits.childLane" | "limits.runLaunches" | "limits.runHops" | "limits.activeChildrenPerRoot" | "limits.taskLength" | "limits.queueLength" | "limits.slicesPerTurn" | "limits.leaseMs" | "modelStep.messageId" | "modelStep.stepOrder" | `models.${string}` | "pendingGeneration.stream" | "pendingGeneration.messageId" | "pendingGeneration.executionId" | "pendingGeneration.epoch" | "pendingGeneration.getMessages" | "pendingGeneration.finalizeMessage" | "pendingGeneration.stream.id" | "pendingGeneration.stream.abort" | "approvals.epoch" | "approvals.getMessages" | "approvals.inboxId" | "approvals.addMessages" | "approvals.cleanupPending" | "approvals.requests">, {
+        }, "required", "workflowId" | "notesPending" | "agent" | "runId" | "errorCode" | "threadId" | "turnStatus" | "queuedMessages" | "subject" | "limits" | "textConfig" | "titleVersion" | "titleSource" | "titleTask" | "summaryTask" | "textCompleted" | "textSummary" | "modelStep" | "contextMessages" | "reviewed" | "completedTurns" | "routingAgentIndex" | "hookContinue" | "models" | "runTurn" | "loopWaiting" | "pinged" | "recoveryAt" | "recoveryJobId" | "recoveryDelayMs" | "modelSteps" | "watchdogId" | "pendingGeneration" | "cancellationEpoch" | "cancelled" | "childRunId" | "rootAssignmentId" | "nextSequence" | "nextTurn" | "turnToken" | "promptMessageId" | "turnOrigin" | "inboxId" | "approvalBlocked" | "approvals" | "lastSlice" | "activeRuns" | "nextRunSequence" | "limits.attachmentBytes" | "limits.continuesPerRun" | "limits.sideRunsPerRun" | "limits.notesPending" | "limits.maxDepth" | "limits.messagesPerChild" | "limits.rootLane" | "limits.childLane" | "limits.runLaunches" | "limits.runHops" | "limits.activeChildrenPerRoot" | "limits.taskLength" | "limits.queueLength" | "limits.slicesPerTurn" | "limits.leaseMs" | "textConfig.worker" | "textConfig.title" | "textConfig.summary" | "textConfig.updateThread" | "textConfig.getThread" | "textConfig.everyTurns" | "titleTask.status" | "titleTask.key" | "titleTask.runId" | "titleTask.epoch" | "titleTask.version" | "titleTask.dispatched" | "titleTask.again" | "titleTask.deferred" | "titleTask.titleRef" | "titleTask.titleRef.order" | "titleTask.titleRef.bytes" | "titleTask.titleRef.id" | "titleTask.titleRef.stepOrder" | "summaryTask.status" | "summaryTask.key" | "summaryTask.runId" | "summaryTask.epoch" | "summaryTask.version" | "summaryTask.dispatched" | "summaryTask.again" | "summaryTask.deferred" | "summaryTask.titleRef" | "summaryTask.titleRef.order" | "summaryTask.titleRef.bytes" | "summaryTask.titleRef.id" | "summaryTask.titleRef.stepOrder" | "textCompleted.order" | "textCompleted.id" | "textCompleted.stepOrder" | "textCompleted.sequence" | "textSummary.text" | "textSummary.through" | "textSummary.through.order" | "textSummary.through.id" | "textSummary.through.stepOrder" | "textSummary.through.sequence" | "modelStep.stepOrder" | "modelStep.messageId" | `models.${string}` | "pendingGeneration.stream" | "pendingGeneration.epoch" | "pendingGeneration.messageId" | "pendingGeneration.executionId" | "pendingGeneration.getMessages" | "pendingGeneration.finalizeMessage" | "pendingGeneration.stream.id" | "pendingGeneration.stream.abort" | "approvals.epoch" | "approvals.getMessages" | "approvals.inboxId" | "approvals.addMessages" | "approvals.cleanupPending" | "approvals.requests">, {
             by_thread: ["threadId", "_creationTime"];
         }, {}, {}>;
         inbox: import("convex/server").TableDefinition<import("convex/values").VObject<{
@@ -290,14 +469,14 @@ declare const _default: {
                 earliestId: string;
                 earliestSequence: number;
             } | undefined;
-            passive?: boolean | undefined;
             text?: string | undefined;
+            passive?: boolean | undefined;
             noteEpoch?: number | undefined;
             kind: "result" | "user" | "parent" | "note" | "continue";
-            assignmentId: import("convex/values").GenericId<"assignments">;
-            runId: import("convex/values").GenericId<"runs">;
-            messageId: string;
             sequence: number;
+            runId: import("convex/values").GenericId<"runs">;
+            assignmentId: import("convex/values").GenericId<"assignments">;
+            messageId: string;
         }, {
             assignmentId: import("convex/values").VId<import("convex/values").GenericId<"assignments">, "required">;
             messageId: import("convex/values").VString<string, "required">;
@@ -317,7 +496,7 @@ declare const _default: {
             }, "optional", "newestSequence" | "earliestId" | "earliestSequence">;
             runId: import("convex/values").VId<import("convex/values").GenericId<"runs">, "required">;
             kind: import("convex/values").VUnion<"result" | "user" | "parent" | "note" | "continue", [import("convex/values").VLiteral<"user", "required">, import("convex/values").VLiteral<"result", "required">, import("convex/values").VLiteral<"parent", "required">, import("convex/values").VLiteral<"note", "required">, import("convex/values").VLiteral<"continue", "required">], "required", never>;
-        }, "required", "from" | "join" | "kind" | "assignmentId" | "runId" | "messageId" | "sequence" | "passive" | "text" | "noteEpoch" | "join.newestSequence" | "join.earliestId" | "join.earliestSequence">, {
+        }, "required", "from" | "join" | "kind" | "sequence" | "runId" | "text" | "assignmentId" | "messageId" | "passive" | "noteEpoch" | "join.newestSequence" | "join.earliestId" | "join.earliestSequence">, {
             by_message: ["messageId", "_creationTime"];
             by_assignment_ready: ["assignmentId", "passive", "noteEpoch", "sequence", "_creationTime"];
         }, {}, {}>;
@@ -465,11 +644,11 @@ declare const _default: {
             }[];
             status: "failed" | "running" | "completed" | "queued" | "asking";
             agent: string;
-            errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
+            sequence: number;
             runId: string;
+            errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
             deliveryStatus: "failed" | "pending" | "accepted" | "blocked";
             createdAt: number;
-            sequence: number;
             rootAssignmentId: import("convex/values").GenericId<"assignments">;
             rootCancellationEpoch: number;
             parentRunId: import("convex/values").GenericId<"runs">;
@@ -530,7 +709,7 @@ declare const _default: {
                 at: import("convex/values").VFloat64<number, "required">;
                 errorCode: import("convex/values").VUnion<"BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null, [import("convex/values").VNull<null, "required">, import("convex/values").VLiteral<"BUDGET_EXCEEDED", "required">, import("convex/values").VLiteral<"HOOK_FAILED", "required">, import("convex/values").VLiteral<"GENERATION_FAILED", "required">, import("convex/values").VLiteral<"RUN_TIMEOUT", "required">, import("convex/values").VLiteral<"SLICE_LIMIT", "required">, import("convex/values").VLiteral<"APPROVAL_LIMIT", "required">, import("convex/values").VLiteral<"CLEANUP_FAILED", "required">, import("convex/values").VLiteral<"AUTHORIZATION_DENIED", "required">, import("convex/values").VLiteral<"EXECUTION_AMBIGUOUS", "required">, import("convex/values").VLiteral<"EMPTY_RESULT", "required">, import("convex/values").VLiteral<"RESULT_UNVERIFIED", "required">, import("convex/values").VLiteral<"ROOT_UNAVAILABLE", "required">, import("convex/values").VLiteral<"DELIVERY_FAILED", "required">], "required", never>;
             }, "required", "phase" | "at" | "errorCode">, "required">;
-        }, "required", "join" | "startedAt" | "events" | "status" | "agent" | "errorCode" | "runId" | "side" | "childThreadId" | "deliveryStatus" | "createdAt" | "resultMessageId" | "sequence" | "rootAssignmentId" | "rootCancellationEpoch" | "parentRunId" | "dedupKey" | "payloadFingerprint" | "actorAssignmentId" | "depth" | "group" | "questionMessageId" | "messagesReceived" | "childAssignmentId" | "childResultMessageId" | "lastTurnResult" | "actorAgent" | "deliveryToken" | "coordinateHandle" | "resultSequence" | "lastTurnResult.errorCode" | "lastTurnResult.messageId">, {
+        }, "required", "join" | "startedAt" | "events" | "status" | "agent" | "sequence" | "runId" | "errorCode" | "side" | "childThreadId" | "deliveryStatus" | "createdAt" | "resultMessageId" | "rootAssignmentId" | "rootCancellationEpoch" | "parentRunId" | "dedupKey" | "payloadFingerprint" | "actorAssignmentId" | "depth" | "group" | "questionMessageId" | "messagesReceived" | "childAssignmentId" | "childResultMessageId" | "lastTurnResult" | "actorAgent" | "deliveryToken" | "coordinateHandle" | "resultSequence" | "lastTurnResult.errorCode" | "lastTurnResult.messageId">, {
             by_result_message: ["resultMessageId", "_creationTime"];
             by_dedup: ["dedupKey", "_creationTime"];
             by_run: ["runId", "_creationTime"];

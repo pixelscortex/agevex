@@ -4,7 +4,7 @@
 // component must later find again (a prompt, a delivered result, a review delta),
 // it records the saved message's id, order and size in the same transaction as
 // the save. `savedMessageRef` builds that record; `saveTrackedMessage` saves and,
-// when side agents watch this registration, captures it through `hooks.reviews.capture`.
+// when reviews or summaries watch this registration, captures it through `hooks.reviews.capture`.
 // Used by the public endpoints, the coordinator and delivery.
 import { saveMessage } from "@convex-dev/agent";
 import { getConvexSize } from "convex/values";
@@ -22,10 +22,10 @@ export function savedMessageRef(messageId, message) {
     };
 }
 /**
- * Save one native message and, when any agent has side agents, capture its exact
+ * Save one native message and, when reviews or summaries are enabled, capture its exact
  * identity for that thread's review delta in the same transaction.
  *
- * Without side agents nothing reads the capture, so it is skipped entirely.
+ * Without reviews or summaries nothing reads the capture, so it is skipped entirely.
  */
 export async function saveTrackedMessage(rt, ctx, native, args) {
     const saved = await saveMessage(ctx, native, args);

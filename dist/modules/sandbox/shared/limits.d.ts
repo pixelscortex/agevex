@@ -37,6 +37,7 @@ export declare const LIMITS: {
     readonly cleanupBatch: 32;
     readonly actionBudgetMs: 540000;
     readonly identityChars: 256;
+    readonly credentialChars: 4096;
     readonly pathChars: 4096;
     readonly commandChars: 16000;
     readonly providerChars: 64;

@@ -14,6 +14,7 @@ import { v } from "convex/values";
 import { settingsSnapshot } from "./run-settings.js";
 import { modelOverrides } from "./models.js";
 import { limitsValidator } from "./limits.js";
+import { textConfig, textJob, textBoundary, storedSummary } from "./text/values.js";
 export const turnOrigin = v.union(v.literal("user"), v.literal("subagent_result"));
 export const turnStatus = v.union(v.literal("queued"), v.literal("running"), v.literal("idle"), v.literal("recovery_required"));
 export const errorCode = v.union(v.null(), v.literal("BUDGET_EXCEEDED"), v.literal("HOOK_FAILED"), v.literal("GENERATION_FAILED"), v.literal("RUN_TIMEOUT"), v.literal("SLICE_LIMIT"), v.literal("APPROVAL_LIMIT"), v.literal("CLEANUP_FAILED"), v.literal("AUTHORIZATION_DENIED"), v.literal("EXECUTION_AMBIGUOUS"));
@@ -97,6 +98,17 @@ export default defineSchema({
     // Execution identity and epoch fence every managed write. The native thread
     // owns messages; this row holds only references and coordination facts.
     assignments: defineTable({
+        // Background worker dispatch and cadence; root-only, read by text/jobs.
+        textConfig: v.optional(textConfig),
+        // Native thread owns the title body. Version/source fence generated commits.
+        titleVersion: v.optional(v.number()),
+        titleSource: v.optional(v.union(v.literal("auto"), v.literal("user"))),
+        titleTask: v.optional(textJob),
+        summaryTask: v.optional(textJob),
+        // Only a successfully completed root turn advances the safe input boundary.
+        textCompleted: v.optional(textBoundary),
+        // Read by summary endpoint and the next incremental display summary.
+        textSummary: v.optional(storedSummary),
         // Fixed-size references only: the native component continues to own bodies.
         // Exact step identity captured with the native save, consumed by usage
         // recording. Scalar reference only, never a copy of model output.

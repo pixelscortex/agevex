@@ -28,9 +28,9 @@ export declare const claim: import("convex/server").RegisteredMutation<"public",
         toolTimeoutMs: number;
         stepsPerTurn: number;
     };
+    runId: string;
     assignmentId: string;
     threadId: string;
-    runId: string;
     subject: string;
     turn: number;
     cancellationEpoch: number;
@@ -69,8 +69,8 @@ export declare const execution: import("convex/server").RegisteredQuery<"public"
     cancelled: boolean;
     approvalBlocked: boolean;
     modelStep: {
-        messageId: string;
         stepOrder: number;
+        messageId: string;
     } | undefined;
     attachmentBytes: number;
 } | null>>;

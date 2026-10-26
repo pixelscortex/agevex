@@ -10,11 +10,16 @@
 import { createEndpointContext } from "./access.js";
 import { answerEndpoint, cancelEndpoint, respondEndpoint } from "./controls.js";
 import { activityEndpoint, delegationsEndpoint, messagesEndpoint, runTreeEndpoint, streamsEndpoint, } from "./reads.js";
+import { titleEndpoint, renameEndpoint, summaryEndpoint, summarizeEndpoint } from "./text.js";
 import { openEndpoint, sendEndpoint } from "./requests.js";
 /** Build every public endpoint for one registration. */
 export function authorizedEndpoints(component, config, settings) {
     const ep = createEndpointContext(component, config, settings);
     return {
+        title: titleEndpoint(ep),
+        rename: renameEndpoint(ep),
+        summary: summaryEndpoint(ep),
+        summarize: summarizeEndpoint(ep),
         open: openEndpoint(ep),
         send: sendEndpoint(ep),
         respond: respondEndpoint(ep),

@@ -29,11 +29,6 @@ export declare const identity: {
 };
 declare const _default: import("convex/server").SchemaDefinition<{
     artifacts: import("convex/server").TableDefinition<import("convex/values").VObject<{
-        usage?: {
-            credits?: number | undefined;
-            inputTokens?: number | undefined;
-            outputTokens?: number | undefined;
-        } | undefined;
         summary?: {
             language?: string | undefined;
             kind: "document" | "text" | "image";
@@ -41,14 +36,19 @@ declare const _default: import("convex/server").SchemaDefinition<{
             pages: number;
             preview: string;
         } | undefined;
+        usage?: {
+            credits?: number | undefined;
+            inputTokens?: number | undefined;
+            outputTokens?: number | undefined;
+        } | undefined;
         failure?: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED" | undefined;
         payloadStorageId?: string | undefined;
         callbacks?: string[] | undefined;
         status: "failed" | "running" | "pending" | "unknown" | "ready" | "released";
+        version: string;
         claim: string;
         leaseUntil: number;
         fileId: string;
-        version: string;
         backend: string;
         attempt: number;
         optionsHash: string;
@@ -86,7 +86,7 @@ declare const _default: import("convex/server").SchemaDefinition<{
         backend: import("convex/values").VString<string, "required">;
         version: import("convex/values").VString<string, "required">;
         optionsHash: import("convex/values").VString<string, "required">;
-    }, "required", "status" | "claim" | "leaseUntil" | "fileId" | "usage" | "version" | "summary" | "failure" | "backend" | "attempt" | "payloadStorageId" | "callbacks" | "optionsHash" | "usage.credits" | "usage.inputTokens" | "usage.outputTokens" | "summary.kind" | "summary.textBytes" | "summary.pages" | "summary.preview" | "summary.language">, {
+    }, "required", "status" | "summary" | "version" | "claim" | "leaseUntil" | "fileId" | "usage" | "failure" | "backend" | "attempt" | "payloadStorageId" | "callbacks" | "optionsHash" | "summary.kind" | "summary.textBytes" | "summary.pages" | "summary.preview" | "summary.language" | "usage.credits" | "usage.inputTokens" | "usage.outputTokens">, {
         by_identity: ["fileId", "backend", "version", "optionsHash", "_creationTime"];
         by_file: ["fileId", "_creationTime"];
     }, {}, {}>;

@@ -20,6 +20,8 @@ export const LIMITS = {
   dayMs: 86_400_000,
   maxStringBytes: 128,
   maxKeyBytes: 256,
+  // Provider tokens are far shorter; the bound only stops a runaway getter.
+  maxCredentialBytes: 4096,
   /**
    * $90 per charge. Every namespace whose totals must stay exact holds at most
    * maxThreadCharges priced entries (see aggregates.ts), so its sum is at most

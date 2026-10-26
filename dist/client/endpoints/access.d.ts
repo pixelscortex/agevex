@@ -13,7 +13,7 @@ export type EndpointContext = {
     managedAgents: Map<string, ManagedAgent>;
 };
 /** The operations `ownedThread` authorizes; each is the host policy's `operation`. */
-export type ThreadOperation = "send" | "respond" | "answer" | "cancel" | "messages" | "streams" | "activity";
+export type ThreadOperation = "title" | "rename" | "summary" | "summarize" | "send" | "respond" | "answer" | "cancel" | "messages" | "streams" | "activity";
 /**
  * Resolve the endpoint context.
  *

@@ -26,7 +26,7 @@ export function buildCreate(runtime) {
                 userKey: scopeKey,
                 labels: { agevexScope: scopeKey },
             };
-            const created = await client.createSandbox(ctx, args);
+            const created = await (await client()).createSandbox(ctx, args);
             return { sandboxId: created.sandboxId };
         },
     };
@@ -37,15 +37,13 @@ export function buildResume(runtime) {
     const { client, opts } = runtime;
     const operation = {
         async resume(ctx, sandboxId) {
-            const known = await client.refreshSandbox(ctx, { sandboxId });
+            const known = await (await client()).refreshSandbox(ctx, { sandboxId });
             if (!known || known.state === "destroyed")
                 throw new Error("SANDBOX_GONE");
             if (known.state === "error") {
                 // Narrow bridge matching the SDK's recover route. Confirm recoverable
                 // first; never delete/recreate to hide an error and lose the files.
-                const apiKey = opts.apiKey ?? process.env.DAYTONA_API_KEY;
-                if (!apiKey)
-                    throw new Error("SANDBOX_DAYTONA_KEY_REQUIRED");
+                const apiKey = await runtime.apiKey();
                 const root = (opts.apiUrl ??
                     process.env.DAYTONA_API_URL ??
                     "https://app.daytona.io/api").replace(/\/+$/, "");
@@ -68,7 +66,7 @@ export function buildResume(runtime) {
                 if (!recovered.ok)
                     throw new Error("SANDBOX_RECOVERY_UNKNOWN");
             }
-            await client.startSandbox(ctx, { sandboxId, waitTimeoutMs: LIMITS.daytonaReadyMs });
+            await (await client()).startSandbox(ctx, { sandboxId, waitTimeoutMs: LIMITS.daytonaReadyMs });
         },
     };
     return operation.resume;
@@ -78,7 +76,7 @@ export function buildStop(runtime) {
     const { client } = runtime;
     const operation = {
         async stop(ctx, sandboxId) {
-            await client.stopSandbox(ctx, { sandboxId, waitTimeoutMs: LIMITS.daytonaReadyMs });
+            await (await client()).stopSandbox(ctx, { sandboxId, waitTimeoutMs: LIMITS.daytonaReadyMs });
         },
     };
     return operation.stop;
@@ -88,7 +86,7 @@ export function buildDelete(runtime) {
     const { client } = runtime;
     const operation = {
         async delete(ctx, sandboxId) {
-            await client.deleteSandbox(ctx, { sandboxId });
+            await (await client()).deleteSandbox(ctx, { sandboxId });
         },
     };
     return operation.delete;

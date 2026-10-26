@@ -39,8 +39,8 @@ export declare const admit: import("convex/server").RegisteredMutation<"public",
  * both < 4 KiB.
  */
 export declare const reject: import("convex/server").RegisteredMutation<"public", {
-    fileId: string;
     version: string;
+    fileId: string;
     failure: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED";
     backend: string;
     optionsHash: string;
@@ -51,11 +51,6 @@ export declare const get: import("convex/server").RegisteredQuery<"public", {
 }, Promise<{
     _id: import("convex/values").GenericId<"artifacts">;
     _creationTime: number;
-    usage?: {
-        credits?: number | undefined;
-        inputTokens?: number | undefined;
-        outputTokens?: number | undefined;
-    } | undefined;
     summary?: {
         language?: string | undefined;
         kind: "document" | "text" | "image";
@@ -63,32 +58,32 @@ export declare const get: import("convex/server").RegisteredQuery<"public", {
         pages: number;
         preview: string;
     } | undefined;
+    usage?: {
+        credits?: number | undefined;
+        inputTokens?: number | undefined;
+        outputTokens?: number | undefined;
+    } | undefined;
     failure?: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED" | undefined;
     payloadStorageId?: string | undefined;
     callbacks?: string[] | undefined;
     status: "failed" | "running" | "pending" | "unknown" | "ready" | "released";
+    version: string;
     claim: string;
     leaseUntil: number;
     fileId: string;
-    version: string;
     backend: string;
     attempt: number;
     optionsHash: string;
 } | null>>;
 /** Look up one extraction identity through its unique bounded index. */
 export declare const lookup: import("convex/server").RegisteredQuery<"public", {
-    fileId: string;
     version: string;
+    fileId: string;
     backend: string;
     optionsHash: string;
 }, Promise<{
     _id: import("convex/values").GenericId<"artifacts">;
     _creationTime: number;
-    usage?: {
-        credits?: number | undefined;
-        inputTokens?: number | undefined;
-        outputTokens?: number | undefined;
-    } | undefined;
     summary?: {
         language?: string | undefined;
         kind: "document" | "text" | "image";
@@ -96,14 +91,19 @@ export declare const lookup: import("convex/server").RegisteredQuery<"public", {
         pages: number;
         preview: string;
     } | undefined;
+    usage?: {
+        credits?: number | undefined;
+        inputTokens?: number | undefined;
+        outputTokens?: number | undefined;
+    } | undefined;
     failure?: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED" | undefined;
     payloadStorageId?: string | undefined;
     callbacks?: string[] | undefined;
     status: "failed" | "running" | "pending" | "unknown" | "ready" | "released";
+    version: string;
     claim: string;
     leaseUntil: number;
     fileId: string;
-    version: string;
     backend: string;
     attempt: number;
     optionsHash: string;
@@ -121,18 +121,18 @@ export declare const start: import("convex/server").RegisteredMutation<"public",
 }, Promise<boolean>>;
 /** Publish only the active running claim while retaining paid usage after expiry or purge. */
 export declare const complete: import("convex/server").RegisteredMutation<"public", {
-    unknown?: boolean | undefined;
-    usage?: {
-        credits?: number | undefined;
-        inputTokens?: number | undefined;
-        outputTokens?: number | undefined;
-    } | undefined;
     summary?: {
         language?: string | undefined;
         kind: "document" | "text" | "image";
         textBytes: number;
         pages: number;
         preview: string;
+    } | undefined;
+    unknown?: boolean | undefined;
+    usage?: {
+        credits?: number | undefined;
+        inputTokens?: number | undefined;
+        outputTokens?: number | undefined;
     } | undefined;
     failure?: "INVALID_OUTPUT" | "UNSUPPORTED_TYPE" | "UNREADABLE" | "EMPTY" | "TOO_LARGE" | "PROVIDER_UNAVAILABLE" | "OBJECT_UNAVAILABLE" | "CHECKSUM_FAILED" | undefined;
     payloadStorageId?: string | undefined;

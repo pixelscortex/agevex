@@ -18,6 +18,7 @@ import { settlementBlocked } from "../subagents/settle.js";
 import { sealGroups } from "../subagents/groups.js";
 import { disarmRecovery } from "./recovery.js";
 import { disarmSlice } from "./boundaries.js";
+import { completeTextTurn } from "../text/jobs.js";
 import { wake } from "./wake.js";
 
 type ErrorCode = Doc<"assignments">["errorCode"];
@@ -50,6 +51,7 @@ export async function finishTurn(
       promptMessageId: undefined,
     });
 
+    await completeTextTurn(ctx, row);
     await wake(ctx, { ...row, turnStatus: "idle" });
   }
 

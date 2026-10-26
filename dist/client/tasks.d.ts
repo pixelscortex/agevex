@@ -21,6 +21,11 @@ export type TaskOptions = {
     model?: TaskModel;
     leaseMs?: number;
     signal?: AbortSignal;
+    /** Bounded overrides for small background calls and their exact-message input. */
+    maxOutputTokens?: number;
+    maxPromptLength?: number;
+    /** Final admission immediately before each provider dispatch, after model resolution. */
+    beforeDispatch?: () => Promise<void>;
 };
 export type TaskOutcome<Output> = {
     status: "done";

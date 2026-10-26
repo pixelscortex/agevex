@@ -20,9 +20,66 @@ export declare function assignmentByThread(ctx: Pick<QueryCtx, "db">, threadId: 
     _creationTime: number;
     workflowId?: string | undefined;
     runId?: import("convex/values").GenericId<"runs"> | undefined;
-    modelStep?: {
-        messageId: string;
+    textConfig?: {
+        everyTurns?: number | undefined;
+        worker: string;
+        title: boolean;
+        summary: boolean;
+        updateThread: string;
+        getThread: string;
+    } | undefined;
+    titleVersion?: number | undefined;
+    titleSource?: "user" | "auto" | undefined;
+    titleTask?: {
+        dispatched?: boolean | undefined;
+        again?: import("convex/values").GenericId<"runs"> | undefined;
+        deferred?: boolean | undefined;
+        titleRef?: {
+            order: number;
+            bytes: number;
+            id: string;
+            stepOrder: number;
+        } | undefined;
+        status: "failed" | "running" | "queued" | "done" | "unknown";
+        key: string;
+        runId: import("convex/values").GenericId<"runs">;
+        epoch: number;
+        version: number;
+    } | undefined;
+    summaryTask?: {
+        dispatched?: boolean | undefined;
+        again?: import("convex/values").GenericId<"runs"> | undefined;
+        deferred?: boolean | undefined;
+        titleRef?: {
+            order: number;
+            bytes: number;
+            id: string;
+            stepOrder: number;
+        } | undefined;
+        status: "failed" | "running" | "queued" | "done" | "unknown";
+        key: string;
+        runId: import("convex/values").GenericId<"runs">;
+        epoch: number;
+        version: number;
+    } | undefined;
+    textCompleted?: {
+        order: number;
+        id: string;
         stepOrder: number;
+        sequence: number;
+    } | undefined;
+    textSummary?: {
+        text: string;
+        through: {
+            order: number;
+            id: string;
+            stepOrder: number;
+            sequence: number;
+        };
+    } | undefined;
+    modelStep?: {
+        stepOrder: number;
+        messageId: string;
     } | undefined;
     contextMessages?: {
         order: number;
@@ -52,9 +109,9 @@ export declare function assignmentByThread(ctx: Pick<QueryCtx, "db">, threadId: 
             id: string;
             abort: string;
         } | undefined;
+        epoch: number;
         messageId: string;
         executionId: string;
-        epoch: number;
         getMessages: string;
         finalizeMessage: string;
     } | undefined;

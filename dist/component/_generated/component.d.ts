@@ -7,6 +7,8 @@
  */
 import type { ApiFromModules, FunctionReference } from "convex/server";
 import type { GenericId } from "convex/values";
+import type * as text_state from "../text/state.js";
+import type * as text_requests from "../text/requests.js";
 import type * as files_attachments from "../files/attachments.js";
 import type * as hooks_notes from "../hooks/notes.js";
 import type * as hooks_origins from "../hooks/origins.js";
@@ -33,6 +35,8 @@ type Exposed<T, Name extends string | undefined> = {
     [K in keyof T as T[K] extends FunctionReference<any, "public"> ? K : T[K] extends FunctionReference<any, any> ? never : K]: T[K] extends FunctionReference<infer Type, "public", infer Args, infer Result> ? FunctionReference<Type, "internal", Wire<Args>, Wire<Result>, Name> : Exposed<T[K], Name>;
 };
 export type ComponentApi<Name extends string | undefined = string | undefined> = Exposed<ApiFromModules<{
+    "text/state": typeof text_state;
+    "text/requests": typeof text_requests;
     "files/attachments": typeof files_attachments;
     "hooks/notes": typeof hooks_notes;
     "hooks/origins": typeof hooks_origins;

@@ -112,7 +112,7 @@ async function recordNativeSave(ctx, row, args, messages, deferredTools) {
     // its id (vercel/client/saveInputMessages.ts). Record only coordination
     // metadata in the SAME transaction as the native placeholder creation.
     await recordMessages(ctx, row, messages);
-    const modelStep = args.trackUsage
+    const modelStep = args.trackUsage || row.textConfig?.summary
         ? messages.find((message) => message.usage && message.status === "success")
         : undefined;
     if (modelStep)

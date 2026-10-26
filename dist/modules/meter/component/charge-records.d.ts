@@ -33,12 +33,12 @@ export declare function find(ctx: Pick<QueryCtx, "db">, key: string): Promise<{
     source: "lookup" | "estimate" | "inline" | "settlement";
     attribution: {
         agent?: string | undefined;
-        threadId?: string | undefined;
         runId?: string | undefined;
+        threadId?: string | undefined;
         model?: string | undefined;
         rootThreadId?: string | undefined;
+        purpose?: "agent" | "title" | "summary" | "tool" | "hook" | undefined;
         nodeId?: string | undefined;
-        purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
         subject: string;
     };
     operations: {
@@ -69,12 +69,12 @@ export declare function find(ctx: Pick<QueryCtx, "db">, key: string): Promise<{
             source: "lookup" | "estimate" | "inline" | "settlement";
             attribution: {
                 agent?: string | undefined;
-                threadId?: string | undefined;
                 runId?: string | undefined;
+                threadId?: string | undefined;
                 model?: string | undefined;
                 rootThreadId?: string | undefined;
+                purpose?: "agent" | "title" | "summary" | "tool" | "hook" | undefined;
                 nodeId?: string | undefined;
-                purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
                 subject: string;
             };
             revision: number;
@@ -148,12 +148,12 @@ export declare function stale(ctx: MutationCtx, row: Doc<"charges">, operation: 
     source: "lookup" | "estimate" | "inline" | "settlement";
     attribution: {
         agent?: string | undefined;
-        threadId?: string | undefined;
         runId?: string | undefined;
+        threadId?: string | undefined;
         model?: string | undefined;
         rootThreadId?: string | undefined;
+        purpose?: "agent" | "title" | "summary" | "tool" | "hook" | undefined;
         nodeId?: string | undefined;
-        purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
         subject: string;
     };
     operations: {
@@ -184,12 +184,12 @@ export declare function stale(ctx: MutationCtx, row: Doc<"charges">, operation: 
             source: "lookup" | "estimate" | "inline" | "settlement";
             attribution: {
                 agent?: string | undefined;
-                threadId?: string | undefined;
                 runId?: string | undefined;
+                threadId?: string | undefined;
                 model?: string | undefined;
                 rootThreadId?: string | undefined;
+                purpose?: "agent" | "title" | "summary" | "tool" | "hook" | undefined;
                 nodeId?: string | undefined;
-                purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
                 subject: string;
             };
             revision: number;
@@ -260,12 +260,12 @@ export declare function replay(row: Doc<"charges">, key: string): {
     source: "lookup" | "estimate" | "inline" | "settlement";
     attribution: {
         agent?: string | undefined;
-        threadId?: string | undefined;
         runId?: string | undefined;
+        threadId?: string | undefined;
         model?: string | undefined;
         rootThreadId?: string | undefined;
+        purpose?: "agent" | "title" | "summary" | "tool" | "hook" | undefined;
         nodeId?: string | undefined;
-        purpose?: "agent" | "tool" | "title" | "hook" | "summary" | undefined;
         subject: string;
     };
     revision: number;

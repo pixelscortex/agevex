@@ -147,7 +147,9 @@ async function nativeGeneration(rt, gen, tools, selectedModel) {
     const target = { threadId: turn.claimed.threadId };
     const storageOptions = { saveMessages: "promptAndOutput" };
     if (turn.claimed.settings.mode === "generate") {
-        const result = await fence.wait(turn.managed.generateText(fence.ctx, target, args, { storageOptions }));
+        const result = await fence.wait(turn.managed.generateText(fence.ctx, target, args, {
+            storageOptions,
+        }));
         const reason = result.finishReason;
         assertComplete(gen, reason, false);
         return { result, reason };

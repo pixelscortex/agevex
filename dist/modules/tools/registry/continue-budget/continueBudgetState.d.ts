@@ -11,8 +11,8 @@
  * and unique() reads at most two rows (convex/src/server/impl/query_impl.ts:334-343).
  */
 export declare const record: import("convex/server").RegisteredMutation<"internal", {
-    threadId: string;
     runId: string;
+    threadId: string;
     subject: string;
     approvalId: string;
 }, Promise<null>>;
@@ -26,8 +26,8 @@ export declare const record: import("convex/server").RegisteredMutation<"interna
  * later stop; the row is kept as `spent` (see `record`).
  */
 export declare const consume: import("convex/server").RegisteredMutation<"internal", {
-    threadId: string;
     runId: string;
+    threadId: string;
     subject: string;
     approvalId: string;
 }, Promise<boolean>>;

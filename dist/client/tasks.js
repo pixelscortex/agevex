@@ -7,11 +7,16 @@
 // structured output and never a retry of an unknown paid outcome. Inside a turn, `bindTaskContext` (called by `turn/generation.ts`)
 // lets hooks call `runTask` with the turn's attribution, key and cancellation
 // fence; outside a turn `registerAgent(...).runTask` supplies the component.
-import { generateText, Output, NoObjectGeneratedError } from "ai";
+import { wrapLanguageModel, generateText, Output, NoObjectGeneratedError, } from "ai";
 import { convexToJson, getConvexSize } from "convex/values";
+import { TEXT_LIMITS } from "../component/text/values.js";
 import { HOST_LIMITS, LIMITS } from "../component/limits.js";
 import { fingerprint, opaqueKey } from "./keys.js";
 import { assertFact } from "../component/facts.js";
+// Only admission refusals use this marker. Provider errors remain uncertain
+// paid outcomes, even when their message happens to match an admission error.
+class TaskDispatchRefused extends Error {
+}
 // Action-local capabilities are never serialized into Workflow arguments. Hook
 // calls use the same receipts and cancellation fence as managed tool effects.
 const bindings = new WeakMap();
@@ -100,9 +105,18 @@ async function prepareTask(context, task, input, options) {
     const model = options.model ?? task.model;
     if (!model)
         throw new Error("TASK_MODEL_REQUIRED");
+    const maxPromptLength = options.maxPromptLength ?? LIMITS.taskPromptLength;
+    const maxOutputTokens = options.maxOutputTokens ?? LIMITS.outputTokens;
+    if (!Number.isSafeInteger(maxPromptLength) ||
+        maxPromptLength < 1 ||
+        maxPromptLength > TEXT_LIMITS.taskPromptCharacters ||
+        !Number.isSafeInteger(maxOutputTokens) ||
+        maxOutputTokens < 1 ||
+        maxOutputTokens > LIMITS.outputTokens)
+        throw new Error("INVALID_TASK_LIMITS");
     const parsed = await task.input.parseAsync(input);
     const prompt = task.prompt(parsed);
-    if (!prompt.trim() || prompt.length > LIMITS.taskPromptLength)
+    if (!prompt.trim() || prompt.length > maxPromptLength)
         throw new Error("INVALID_TASK_PROMPT");
     const signal = "ctx" in context ? context.signal : options.signal;
     return {
@@ -165,6 +179,10 @@ async function generateWithRepair(call, receipt, admission) {
                 break;
             }
             catch (error) {
+                // Middleware has not entered doGenerate when admission refuses. There
+                // is no paid attempt to meter or classify as an unknown receipt.
+                if (error instanceof TaskDispatchRefused)
+                    return { status: "failed", code: "TASK_FAILED" };
                 if (!NoObjectGeneratedError.isInstance(error)) {
                     await recordTaskUsage(call, receipt, attempt, undefined, undefined);
                     throw error;
@@ -196,20 +214,40 @@ async function generateWithRepair(call, receipt, admission) {
  * errors (handled by `generateWithRepair`).
  */
 async function generateOnce(call, receipt, attempt, repairText) {
-    const generated = await generateText({
+    const generated = await abortTask(generateText({
         model: call.model,
         output: Output.object({ schema: call.task.output }),
         prompt: repairText === undefined
             ? call.prompt
             : `${call.prompt}\n\nYour previous response did not match the output schema. Return valid JSON matching the schema.\nPrevious response:\n${repairText}`,
+        prepareStep: call.options.beforeDispatch
+            ? ({ model }) => ({
+                model: wrapLanguageModel({
+                    // AI SDK generate-text.ts:590,907 passes the already resolved
+                    // model to prepareStep; this preserves the host default provider.
+                    model: model,
+                    middleware: {
+                        wrapGenerate: async ({ doGenerate }) => {
+                            try {
+                                await call.options.beforeDispatch();
+                            }
+                            catch {
+                                throw new TaskDispatchRefused("TASK_DISPATCH_REFUSED");
+                            }
+                            return doGenerate();
+                        },
+                    },
+                }),
+            })
+            : undefined,
         maxRetries: LIMITS.modelRetries,
-        maxOutputTokens: LIMITS.outputTokens,
+        maxOutputTokens: call.options.maxOutputTokens ?? LIMITS.outputTokens,
         abortSignal: call.signal,
-    });
+    }), call.signal);
     // Output validation can throw. Read it before recording so an invalid
     // answer is charged only by the repair/error path below.
     const value = generated.output;
-    await recordTaskUsage(call, receipt, attempt, generated.usage, generated.providerMetadata);
+    await recordTaskUsage(call, receipt, attempt, generated.usage, generated.providerMetadata, generated.response.id);
     // Convex validates the serializable result and its byte bound before
     // persistence. A huge response never becomes a >1 MiB receipt document.
     convexToJson(value);
@@ -219,7 +257,7 @@ async function generateOnce(call, receipt, attempt, repairText) {
     return result;
 }
 /** Meter one attempt under an opaque per-attempt key. Never triggers another call. */
-async function recordTaskUsage(call, receipt, attempt, usage, providerMetadata) {
+async function recordTaskUsage(call, receipt, attempt, usage, providerMetadata, requestId) {
     const { model, attribution, binding, options, ctx } = call;
     try {
         const provider = typeof model === "string" ? model.split("/")[0] : model.provider;
@@ -229,9 +267,23 @@ async function recordTaskUsage(call, receipt, attempt, usage, providerMetadata) 
             key: await opaqueKey("task-usage", receipt.scope, receipt.key, attempt),
             usage,
             providerMetadata,
+            requestId,
         });
     }
     catch {
         /* Recording evidence must never trigger another paid call. */
     }
+}
+/** Bound waiting even when a provider ignores AbortSignal. The receipt records
+ * the uncertain paid attempt once; a late answer cannot commit or buy a retry. */
+function abortTask(work, signal) {
+    if (!signal)
+        return work;
+    return new Promise((resolve, reject) => {
+        const abort = () => reject(new Error("TASK_ABORTED"));
+        signal.addEventListener("abort", abort, { once: true });
+        if (signal.aborted)
+            abort();
+        void work.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+    });
 }

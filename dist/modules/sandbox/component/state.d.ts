@@ -115,8 +115,8 @@ export declare const getJob: import("convex/server").RegisteredQuery<"public", {
     exitCode?: number | undefined;
     logTail?: string | undefined;
     state: "failed" | "running" | "done" | "unknown" | "starting";
-    threadId: string;
     runId: string;
+    threadId: string;
     subject: string;
     claim: string;
     leaseUntil: number;
@@ -143,8 +143,8 @@ export declare const claimPoll: import("convex/server").RegisteredMutation<"publ
     exitCode?: number | undefined;
     logTail?: string | undefined;
     state: "failed" | "running" | "done" | "unknown" | "starting";
-    threadId: string;
     runId: string;
+    threadId: string;
     subject: string;
     leaseUntil: number;
     scopeKey: string;

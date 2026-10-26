@@ -15,8 +15,8 @@ export declare const write: import("convex/server").RegisteredMutation<"internal
     subject: string;
     todos: {
         id: string;
-        text: string;
         done: boolean;
+        text: string;
     }[];
 }, Promise<{
     todos: {

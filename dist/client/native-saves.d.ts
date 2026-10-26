@@ -14,10 +14,10 @@ export declare function savedMessageRef(messageId: string, message: SavedMessage
     bytes: number;
 };
 /**
- * Save one native message and, when any agent has side agents, capture its exact
+ * Save one native message and, when reviews or summaries are enabled, capture its exact
  * identity for that thread's review delta in the same transaction.
  *
- * Without side agents nothing reads the capture, so it is skipped entirely.
+ * Without reviews or summaries nothing reads the capture, so it is skipped entirely.
  */
 export declare function saveTrackedMessage(rt: RuntimeContext, ctx: CoordinatorCtx, native: ManagedAgent["component"], args: Parameters<typeof saveMessage>[2]): Promise<{
     messageId: string;

@@ -15,25 +15,25 @@ export declare const todoTables: {
         subject: string;
         todos: {
             id: string;
-            text: string;
             done: boolean;
+            text: string;
         }[];
     }, {
         subject: import("convex/values").VString<string, "required">;
         threadId: import("convex/values").VString<string, "required">;
         todos: import("convex/values").VArray<{
             id: string;
-            text: string;
             done: boolean;
+            text: string;
         }[], import("convex/values").VObject<{
             id: string;
-            text: string;
             done: boolean;
+            text: string;
         }, {
             id: import("convex/values").VString<string, "required">;
             text: import("convex/values").VString<string, "required">;
             done: import("convex/values").VBoolean<boolean, "required">;
-        }, "required", "id" | "text" | "done">, "required">;
+        }, "required", "id" | "done" | "text">, "required">;
     }, "required", "threadId" | "subject" | "todos">, {
         by_owner_thread: ["subject", "threadId", "_creationTime"];
     }, {}, {}>;
@@ -44,25 +44,25 @@ declare const schema: import("convex/server").SchemaDefinition<{
         subject: string;
         todos: {
             id: string;
-            text: string;
             done: boolean;
+            text: string;
         }[];
     }, {
         subject: import("convex/values").VString<string, "required">;
         threadId: import("convex/values").VString<string, "required">;
         todos: import("convex/values").VArray<{
             id: string;
-            text: string;
             done: boolean;
+            text: string;
         }[], import("convex/values").VObject<{
             id: string;
-            text: string;
             done: boolean;
+            text: string;
         }, {
             id: import("convex/values").VString<string, "required">;
             text: import("convex/values").VString<string, "required">;
             done: import("convex/values").VBoolean<boolean, "required">;
-        }, "required", "id" | "text" | "done">, "required">;
+        }, "required", "id" | "done" | "text">, "required">;
     }, "required", "threadId" | "subject" | "todos">, {
         by_owner_thread: ["subject", "threadId", "_creationTime"];
     }, {}, {}>;

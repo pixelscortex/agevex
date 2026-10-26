@@ -4,8 +4,8 @@ export declare function openEndpoint(ep: EndpointContext): import("convex/server
     models?: Record<string, string> | undefined;
     files?: string[] | undefined;
     agent: string;
-    prompt: string;
     requestKey: string;
+    prompt: string;
 }, Promise<{
     status: "rejected";
     code: "KEY_CONFLICT";
@@ -39,8 +39,8 @@ export declare function openEndpoint(ep: EndpointContext): import("convex/server
 export declare function sendEndpoint(ep: EndpointContext): import("convex/server").RegisteredMutation<"public", {
     models?: Record<string, string> | undefined;
     files?: string[] | undefined;
-    threadId: string;
     text: string;
+    threadId: string;
     requestKey: string;
 }, Promise<{
     status: "rejected";

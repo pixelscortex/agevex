@@ -5,6 +5,7 @@
  * component outbox owns durable attempt state and recipients deduplicate ids.
  */
 import type { Sink } from "./types.js";
+import { type Credential } from "./credential.js";
 /** `rateLimited` marks an HTTP 429: with `retryAfterMs`, the delivery job
  * reschedules once at that delay without consuming an attempt. */
 export declare class SinkDeliveryError extends Error {
@@ -13,10 +14,12 @@ export declare class SinkDeliveryError extends Error {
     constructor(retryAfterMs?: number | undefined, rateLimited?: boolean);
 }
 /** Thin REST adapter: @convex-dev/polar 0.9 has no event-ingestion API. The
- * delivery job hands it <=100 events (LIMITS.sinkBatch), one ingest request. */
+ * delivery job hands it <=100 events (LIMITS.sinkBatch), one ingest request.
+ * `accessToken` may be a getter, called at delivery time and never at
+ * construction, so hosts need not read env at module init. */
 export declare function polarSink(options: {
     meter: string;
-    accessToken: string;
+    accessToken: Credential;
     server?: "production" | "sandbox";
     name?: string;
     fetch?: typeof fetch;

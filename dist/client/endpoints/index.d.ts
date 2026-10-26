@@ -4,12 +4,41 @@ import type { Registration } from "../types.js";
 export type { OriginMessage } from "./reads.js";
 /** Build every public endpoint for one registration. */
 export declare function authorizedEndpoints(component: ComponentApi, config: Registration, settings: RuntimeContext["settings"]): {
+    title: import("convex/server").RegisteredQuery<"public", {
+        threadId: string;
+    }, Promise<{
+        text: string | null;
+        source: "user" | "auto" | null;
+        version: number;
+    }>>;
+    rename: import("convex/server").RegisteredMutation<"public", {
+        text: string;
+        threadId: string;
+        expectedVersion: number;
+    }, Promise<{
+        messageId: string;
+        replayed: boolean;
+    }>>;
+    summary: import("convex/server").RegisteredQuery<"public", {
+        threadId: string;
+    }, Promise<{
+        text: string;
+        throughMessageId: string;
+    } | null>>;
+    summarize: import("convex/server").RegisteredMutation<"public", {
+        threadId: string;
+        requestKey: string;
+    }, Promise<{
+        status: "replayed";
+    } | {
+        status: "queued";
+    }>>;
     open: import("convex/server").RegisteredMutation<"public", {
         models?: Record<string, string> | undefined;
         files?: string[] | undefined;
         agent: string;
-        prompt: string;
         requestKey: string;
+        prompt: string;
     }, Promise<{
         status: "rejected";
         code: "KEY_CONFLICT";
@@ -42,8 +71,8 @@ export declare function authorizedEndpoints(component: ComponentApi, config: Reg
     send: import("convex/server").RegisteredMutation<"public", {
         models?: Record<string, string> | undefined;
         files?: string[] | undefined;
-        threadId: string;
         text: string;
+        threadId: string;
         requestKey: string;
     }, Promise<{
         status: "rejected";
@@ -87,8 +116,8 @@ export declare function authorizedEndpoints(component: ComponentApi, config: Reg
         replayed: boolean;
     }>>;
     answer: import("convex/server").RegisteredMutation<"public", {
-        threadId: string;
         text: string;
+        threadId: string;
         toolCallId: string;
     }, Promise<{
         messageId: string;

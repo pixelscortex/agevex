@@ -22,9 +22,9 @@ export declare const cleanup: import("convex/server").RegisteredMutation<"intern
             id: string;
             abort: string;
         } | undefined;
+        epoch: number;
         messageId: string;
         executionId: string;
-        epoch: number;
         getMessages: string;
         finalizeMessage: string;
     } | undefined;
@@ -39,9 +39,9 @@ export declare const cleanupBatch: import("convex/server").RegisteredMutation<"i
             id: string;
             abort: string;
         } | undefined;
+        epoch: number;
         messageId: string;
         executionId: string;
-        epoch: number;
         getMessages: string;
         finalizeMessage: string;
     } | undefined;
@@ -50,9 +50,9 @@ export declare const cleanupBatch: import("convex/server").RegisteredMutation<"i
 }, Promise<null>>;
 /** The only stale write allowed: close this execution/epoch's own placeholder. */
 export declare const close: import("convex/server").RegisteredMutation<"internal", {
+    epoch: number;
     assignmentId: import("convex/values").GenericId<"assignments">;
     messageId: string;
     executionId: string;
-    epoch: number;
 }, Promise<null>>;
 export {};

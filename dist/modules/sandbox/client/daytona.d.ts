@@ -1,10 +1,10 @@
-import { type ComponentApi, type DaytonaOptions } from "@daytona/convex";
+import { type ComponentApi } from "@daytona/convex";
+import { type DaytonaSettings } from "./daytona-context.js";
 import { type SandboxProvider } from "./types.js";
-export type DaytonaSandboxOptions = DaytonaOptions & {
+/** `apiKey` may be a getter, called at each Daytona call and never at construction. */
+export type DaytonaSandboxOptions = DaytonaSettings & {
     autoStopInterval?: number;
     autoArchiveInterval?: number;
-    snapshot?: string;
-    target?: string;
 };
 /**
  * Daytona 2.1.0's host client owns lifecycle, exec and file writes

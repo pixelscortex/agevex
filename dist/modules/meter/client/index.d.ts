@@ -10,6 +10,7 @@ export { tokenEstimate } from "./pricing.js";
 export { BreakdownDisabledError, type Breakdown } from "../shared/breakdowns.js";
 export { openRouterCost, observeProviderOutcome, usageHandlerFor } from "./helpers.js";
 export { polarSink, webhookSink, SinkDeliveryError } from "./sinks.js";
+export type { Credential } from "./credential.js";
 export { LIMITS, type ResolvedLimits as MeterLimits } from "../shared/limits.js";
 export type { ActionCtx, Attribution, Charge, ChargeHandle, Cost, MeterOptions, Provider, ReadCtx, ScopedMeter, Sink, SinkEvent, UnknownReason, WriteCtx, } from "./types.js";
 export type { ComponentApi } from "../component/_generated/component.js";

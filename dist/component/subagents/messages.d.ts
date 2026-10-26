@@ -27,9 +27,66 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         _creationTime: number;
         workflowId?: string | undefined;
         runId?: import("convex/values").GenericId<"runs"> | undefined;
-        modelStep?: {
-            messageId: string;
+        textConfig?: {
+            everyTurns?: number | undefined;
+            worker: string;
+            title: boolean;
+            summary: boolean;
+            updateThread: string;
+            getThread: string;
+        } | undefined;
+        titleVersion?: number | undefined;
+        titleSource?: "user" | "auto" | undefined;
+        titleTask?: {
+            dispatched?: boolean | undefined;
+            again?: import("convex/values").GenericId<"runs"> | undefined;
+            deferred?: boolean | undefined;
+            titleRef?: {
+                order: number;
+                bytes: number;
+                id: string;
+                stepOrder: number;
+            } | undefined;
+            status: "failed" | "running" | "queued" | "done" | "unknown";
+            key: string;
+            runId: import("convex/values").GenericId<"runs">;
+            epoch: number;
+            version: number;
+        } | undefined;
+        summaryTask?: {
+            dispatched?: boolean | undefined;
+            again?: import("convex/values").GenericId<"runs"> | undefined;
+            deferred?: boolean | undefined;
+            titleRef?: {
+                order: number;
+                bytes: number;
+                id: string;
+                stepOrder: number;
+            } | undefined;
+            status: "failed" | "running" | "queued" | "done" | "unknown";
+            key: string;
+            runId: import("convex/values").GenericId<"runs">;
+            epoch: number;
+            version: number;
+        } | undefined;
+        textCompleted?: {
+            order: number;
+            id: string;
             stepOrder: number;
+            sequence: number;
+        } | undefined;
+        textSummary?: {
+            text: string;
+            through: {
+                order: number;
+                id: string;
+                stepOrder: number;
+                sequence: number;
+            };
+        } | undefined;
+        modelStep?: {
+            stepOrder: number;
+            messageId: string;
         } | undefined;
         contextMessages?: {
             order: number;
@@ -59,9 +116,9 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
                 id: string;
                 abort: string;
             } | undefined;
+            epoch: number;
             messageId: string;
             executionId: string;
-            epoch: number;
             getMessages: string;
             finalizeMessage: string;
         } | undefined;
@@ -126,9 +183,66 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         _creationTime: number;
         workflowId?: string | undefined;
         runId?: import("convex/values").GenericId<"runs"> | undefined;
-        modelStep?: {
-            messageId: string;
+        textConfig?: {
+            everyTurns?: number | undefined;
+            worker: string;
+            title: boolean;
+            summary: boolean;
+            updateThread: string;
+            getThread: string;
+        } | undefined;
+        titleVersion?: number | undefined;
+        titleSource?: "user" | "auto" | undefined;
+        titleTask?: {
+            dispatched?: boolean | undefined;
+            again?: import("convex/values").GenericId<"runs"> | undefined;
+            deferred?: boolean | undefined;
+            titleRef?: {
+                order: number;
+                bytes: number;
+                id: string;
+                stepOrder: number;
+            } | undefined;
+            status: "failed" | "running" | "queued" | "done" | "unknown";
+            key: string;
+            runId: import("convex/values").GenericId<"runs">;
+            epoch: number;
+            version: number;
+        } | undefined;
+        summaryTask?: {
+            dispatched?: boolean | undefined;
+            again?: import("convex/values").GenericId<"runs"> | undefined;
+            deferred?: boolean | undefined;
+            titleRef?: {
+                order: number;
+                bytes: number;
+                id: string;
+                stepOrder: number;
+            } | undefined;
+            status: "failed" | "running" | "queued" | "done" | "unknown";
+            key: string;
+            runId: import("convex/values").GenericId<"runs">;
+            epoch: number;
+            version: number;
+        } | undefined;
+        textCompleted?: {
+            order: number;
+            id: string;
             stepOrder: number;
+            sequence: number;
+        } | undefined;
+        textSummary?: {
+            text: string;
+            through: {
+                order: number;
+                id: string;
+                stepOrder: number;
+                sequence: number;
+            };
+        } | undefined;
+        modelStep?: {
+            stepOrder: number;
+            messageId: string;
         } | undefined;
         contextMessages?: {
             order: number;
@@ -158,9 +272,9 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
                 id: string;
                 abort: string;
             } | undefined;
+            epoch: number;
             messageId: string;
             executionId: string;
-            epoch: number;
             getMessages: string;
             finalizeMessage: string;
         } | undefined;
@@ -244,11 +358,11 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         }[];
         status: "failed" | "running" | "completed" | "queued" | "asking";
         agent: string;
-        errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
+        sequence: number;
         runId: string;
+        errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
         deliveryStatus: "failed" | "pending" | "accepted" | "blocked";
         createdAt: number;
-        sequence: number;
         rootAssignmentId: import("convex/values").GenericId<"assignments">;
         rootCancellationEpoch: number;
         parentRunId: import("convex/values").GenericId<"runs">;
@@ -266,9 +380,66 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         _creationTime: number;
         workflowId?: string | undefined;
         runId?: import("convex/values").GenericId<"runs"> | undefined;
-        modelStep?: {
-            messageId: string;
+        textConfig?: {
+            everyTurns?: number | undefined;
+            worker: string;
+            title: boolean;
+            summary: boolean;
+            updateThread: string;
+            getThread: string;
+        } | undefined;
+        titleVersion?: number | undefined;
+        titleSource?: "user" | "auto" | undefined;
+        titleTask?: {
+            dispatched?: boolean | undefined;
+            again?: import("convex/values").GenericId<"runs"> | undefined;
+            deferred?: boolean | undefined;
+            titleRef?: {
+                order: number;
+                bytes: number;
+                id: string;
+                stepOrder: number;
+            } | undefined;
+            status: "failed" | "running" | "queued" | "done" | "unknown";
+            key: string;
+            runId: import("convex/values").GenericId<"runs">;
+            epoch: number;
+            version: number;
+        } | undefined;
+        summaryTask?: {
+            dispatched?: boolean | undefined;
+            again?: import("convex/values").GenericId<"runs"> | undefined;
+            deferred?: boolean | undefined;
+            titleRef?: {
+                order: number;
+                bytes: number;
+                id: string;
+                stepOrder: number;
+            } | undefined;
+            status: "failed" | "running" | "queued" | "done" | "unknown";
+            key: string;
+            runId: import("convex/values").GenericId<"runs">;
+            epoch: number;
+            version: number;
+        } | undefined;
+        textCompleted?: {
+            order: number;
+            id: string;
             stepOrder: number;
+            sequence: number;
+        } | undefined;
+        textSummary?: {
+            text: string;
+            through: {
+                order: number;
+                id: string;
+                stepOrder: number;
+                sequence: number;
+            };
+        } | undefined;
+        modelStep?: {
+            stepOrder: number;
+            messageId: string;
         } | undefined;
         contextMessages?: {
             order: number;
@@ -298,9 +469,9 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
                 id: string;
                 abort: string;
             } | undefined;
+            epoch: number;
             messageId: string;
             executionId: string;
-            epoch: number;
             getMessages: string;
             finalizeMessage: string;
         } | undefined;
@@ -365,9 +536,66 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         _creationTime: number;
         workflowId?: string | undefined;
         runId?: import("convex/values").GenericId<"runs"> | undefined;
-        modelStep?: {
-            messageId: string;
+        textConfig?: {
+            everyTurns?: number | undefined;
+            worker: string;
+            title: boolean;
+            summary: boolean;
+            updateThread: string;
+            getThread: string;
+        } | undefined;
+        titleVersion?: number | undefined;
+        titleSource?: "user" | "auto" | undefined;
+        titleTask?: {
+            dispatched?: boolean | undefined;
+            again?: import("convex/values").GenericId<"runs"> | undefined;
+            deferred?: boolean | undefined;
+            titleRef?: {
+                order: number;
+                bytes: number;
+                id: string;
+                stepOrder: number;
+            } | undefined;
+            status: "failed" | "running" | "queued" | "done" | "unknown";
+            key: string;
+            runId: import("convex/values").GenericId<"runs">;
+            epoch: number;
+            version: number;
+        } | undefined;
+        summaryTask?: {
+            dispatched?: boolean | undefined;
+            again?: import("convex/values").GenericId<"runs"> | undefined;
+            deferred?: boolean | undefined;
+            titleRef?: {
+                order: number;
+                bytes: number;
+                id: string;
+                stepOrder: number;
+            } | undefined;
+            status: "failed" | "running" | "queued" | "done" | "unknown";
+            key: string;
+            runId: import("convex/values").GenericId<"runs">;
+            epoch: number;
+            version: number;
+        } | undefined;
+        textCompleted?: {
+            order: number;
+            id: string;
             stepOrder: number;
+            sequence: number;
+        } | undefined;
+        textSummary?: {
+            text: string;
+            through: {
+                order: number;
+                id: string;
+                stepOrder: number;
+                sequence: number;
+            };
+        } | undefined;
+        modelStep?: {
+            stepOrder: number;
+            messageId: string;
         } | undefined;
         contextMessages?: {
             order: number;
@@ -397,9 +625,9 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
                 id: string;
                 abort: string;
             } | undefined;
+            epoch: number;
             messageId: string;
             executionId: string;
-            epoch: number;
             getMessages: string;
             finalizeMessage: string;
         } | undefined;
@@ -554,8 +782,8 @@ export declare const interactionContext: import("convex/server").RegisteredQuery
 }>>;
 /** The exact native follow-up id is saved in the inbox in the same transaction. */
 export declare const messageChild: import("convex/server").RegisteredMutation<"public", {
-    assignmentId: import("convex/values").GenericId<"assignments">;
     runId: string;
+    assignmentId: import("convex/values").GenericId<"assignments">;
     messageId: string;
     turnToken: string;
 }, Promise<{

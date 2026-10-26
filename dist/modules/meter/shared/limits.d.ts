@@ -20,6 +20,7 @@ export declare const LIMITS: {
     readonly dayMs: 86400000;
     readonly maxStringBytes: 128;
     readonly maxKeyBytes: 256;
+    readonly maxCredentialBytes: 4096;
     /**
      * $90 per charge. Every namespace whose totals must stay exact holds at most
      * maxThreadCharges priced entries (see aggregates.ts), so its sum is at most

@@ -14,7 +14,7 @@ export declare function prepare(runtime: RuntimeContext, tc: SandboxCall, opts?:
  * recorded as unknown, which would strand a healthy idle sandbox. A deferred
  * row is untouched and the next sweep (with a fresh budget) takes it.
  */
-export declare function remove(runtime: RuntimeContext, ctx: SandboxContext, key: string, expiredOnly: boolean): Promise<"deferred" | "done">;
+export declare function remove(runtime: RuntimeContext, ctx: SandboxContext, key: string, expiredOnly: boolean): Promise<"done" | "deferred">;
 /** Read a bounded job snapshot, including unknown outcomes needing host reconciliation. */
 export declare function jobSnapshot(runtime: RuntimeContext, ctx: SandboxContext, input: PollArgs): Promise<{
     code?: "SANDBOX_JOB_DEADLINE" | undefined;

@@ -1,3 +1,9 @@
+/**
+ * Transport adapters for Langfuse, Braintrust and custom one-shot exporters.
+ * Calls are deadline-bounded and observer-only: no network failure can change
+ * a managed action result, and unknown ingestion outcomes are never retried.
+ */
+import { type Credential } from "./credential.js";
 import type { OtlpPayload } from "./otlp.js";
 /** One attempt only; flush never persists or retries an unknown ingestion outcome. */
 export type Exporter = {
@@ -9,14 +15,18 @@ export type Exporter = {
  * Prior art: agents/src/runtime/trace_export.ts:82-125 (3 s abort, no retries).
  */
 export declare function bestEffort(work: (signal: AbortSignal) => unknown, signal?: AbortSignal, ownDeadline?: boolean): Promise<void>;
-/** Validate host credentials and construct the Langfuse v4 OTLP adapter at registration time. */
+/**
+ * Construct the Langfuse v4 OTLP adapter at registration time. The URL and any
+ * literal keys are validated now; key getters run at each export, never here.
+ */
 export declare function langfuse(options: {
     baseUrl: string;
-    publicKey: string;
-    secretKey: string;
+    publicKey: Credential;
+    secretKey: Credential;
 }): Exporter;
-/** Bind a validated Braintrust project to a fail-open, one-attempt OTLP adapter. */
+/** Bind a validated Braintrust project to a fail-open, one-attempt OTLP adapter.
+ * `apiKey` may be a getter, called at each export and never at construction. */
 export declare function braintrust(options: {
-    apiKey: string;
+    apiKey: Credential;
     projectId: string;
 }): Exporter;

@@ -11,6 +11,9 @@ be shared: each opaque turn key gets its own buffer, and core flushes it in
 `telemetry(options)`, attach `observer.integration(facts)` to AI SDK telemetry,
 consume the stream, and `await observer.flush()` in `finally`.
 
+Exporter keys take a string or a getter such as `() => process.env.LANGFUSE_SECRET_KEY!`;
+a getter runs at each export, never at construction.
+
 Content recording is off by default. Enable `recordInputs`/`recordOutputs`
 explicitly and provide `sanitize` for host redaction; SDK recording opt-outs still
 apply. Exporters fail open and never retry unknown outcomes. Each turn admits at

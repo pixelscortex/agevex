@@ -44,8 +44,8 @@ declare const _default: {
             exitCode?: number | undefined;
             logTail?: string | undefined;
             state: "failed" | "running" | "done" | "unknown" | "starting";
-            threadId: string;
             runId: string;
+            threadId: string;
             subject: string;
             claim: string;
             leaseUntil: number;
@@ -78,7 +78,7 @@ declare const _default: {
             exitCode: import("convex/values").VFloat64<number | undefined, "optional">;
             logTail: import("convex/values").VString<string | undefined, "optional">;
             code: import("convex/values").VLiteral<"SANDBOX_JOB_DEADLINE" | undefined, "optional">;
-        }, "required", "state" | "threadId" | "code" | "runId" | "subject" | "claim" | "leaseUntil" | "scopeKey" | "sandboxId" | "providerJobId" | "directory" | "deadline" | "pollMinMs" | "pollMaxMs" | "delayMs" | "pollHandle" | "lateAttempts" | "wakeId" | "exitCode" | "logTail">, {
+        }, "required", "state" | "runId" | "threadId" | "code" | "subject" | "claim" | "leaseUntil" | "scopeKey" | "sandboxId" | "providerJobId" | "directory" | "deadline" | "pollMinMs" | "pollMaxMs" | "delayMs" | "pollHandle" | "lateAttempts" | "wakeId" | "exitCode" | "logTail">, {
             by_scope_state: ["scopeKey", "state", "_creationTime"];
         }, {}, {}>;
     }, true>;

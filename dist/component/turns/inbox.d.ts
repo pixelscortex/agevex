@@ -23,14 +23,14 @@ export declare function firstReady(ctx: Pick<QueryCtx, "db">, assignmentId: Id<"
         earliestId: string;
         earliestSequence: number;
     } | undefined;
-    passive?: boolean | undefined;
     text?: string | undefined;
+    passive?: boolean | undefined;
     noteEpoch?: number | undefined;
     kind: "result" | "user" | "parent" | "note" | "continue";
-    assignmentId: import("convex/values").GenericId<"assignments">;
-    runId: import("convex/values").GenericId<"runs">;
-    messageId: string;
     sequence: number;
+    runId: import("convex/values").GenericId<"runs">;
+    assignmentId: import("convex/values").GenericId<"assignments">;
+    messageId: string;
 } | null>;
 /** Up to `limit` ready rows in FIFO order. Only cancel reads more than the
  * head; its caller passes the per-assignment bound from limits.ts. */
@@ -43,12 +43,12 @@ export declare function readyRows(ctx: Pick<QueryCtx, "db">, assignmentId: Id<"a
         earliestId: string;
         earliestSequence: number;
     } | undefined;
-    passive?: boolean | undefined;
     text?: string | undefined;
+    passive?: boolean | undefined;
     noteEpoch?: number | undefined;
     kind: "result" | "user" | "parent" | "note" | "continue";
-    assignmentId: import("convex/values").GenericId<"assignments">;
-    runId: import("convex/values").GenericId<"runs">;
-    messageId: string;
     sequence: number;
+    runId: import("convex/values").GenericId<"runs">;
+    assignmentId: import("convex/values").GenericId<"assignments">;
+    messageId: string;
 }[]>;

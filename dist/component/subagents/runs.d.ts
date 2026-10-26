@@ -37,11 +37,11 @@ export declare function runById(ctx: QueryCtx | MutationCtx, runId: string): Pro
     }[];
     status: "failed" | "running" | "completed" | "queued" | "asking";
     agent: string;
-    errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
+    sequence: number;
     runId: string;
+    errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
     deliveryStatus: "failed" | "pending" | "accepted" | "blocked";
     createdAt: number;
-    sequence: number;
     rootAssignmentId: import("convex/values").GenericId<"assignments">;
     rootCancellationEpoch: number;
     parentRunId: import("convex/values").GenericId<"runs">;
@@ -112,11 +112,11 @@ export declare function groupMembers(ctx: QueryCtx | MutationCtx, cohort: {
     }[];
     status: "failed" | "running" | "completed" | "queued" | "asking";
     agent: string;
-    errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
+    sequence: number;
     runId: string;
+    errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null;
     deliveryStatus: "failed" | "pending" | "accepted" | "blocked";
     createdAt: number;
-    sequence: number;
     rootAssignmentId: import("convex/values").GenericId<"assignments">;
     rootCancellationEpoch: number;
     parentRunId: import("convex/values").GenericId<"runs">;

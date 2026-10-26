@@ -13,23 +13,23 @@ export declare function defineMeter(component: ComponentApi, options: MeterOptio
         meterLookup: import("convex/server").RegisteredAction<"internal", {
             key: string;
             provider: string;
-            requestId: string;
-            attempt: number;
             jobs: {
                 deliver?: string | undefined;
                 lookup?: string | undefined;
                 maxAttempts: number;
             };
+            requestId: string;
+            attempt: number;
             until: number;
         }, Promise<null>>;
         meterDeliver: import("convex/server").RegisteredAction<"internal", {
             claim: string;
-            sink: string;
             jobs: {
                 deliver?: string | undefined;
                 lookup?: string | undefined;
                 maxAttempts: number;
             };
+            sink: string;
         }, Promise<null>>;
     };
     reconcile: (ctx: WriteCtx, args: {

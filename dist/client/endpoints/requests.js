@@ -15,6 +15,7 @@ import { modelOverrides, validModelOverrides } from "../../component/models.js";
 import { receipt } from "../../component/schema.js";
 import { savedMessageRef } from "../native-saves.js";
 import { fingerprint } from "../once.js";
+import { persistedTextConfig } from "../text/options.js";
 import { observe, ownedThread, rootAgent } from "./access.js";
 import { attachment, recordAttachments, validateFiles } from "./attachments.js";
 /** A non-empty bounded message and a bounded request key; else the rejection code. */
@@ -57,7 +58,8 @@ async function acceptRequest(ep, ctx, request) {
         requestKey: request.requestKey,
         fingerprint: request.fingerprint,
         promptMessageId: messageId,
-        trackContext: !!request.native.sideAgents?.length,
+        trackContext: !!request.native.sideAgents?.length || ep.config.title !== false || !!ep.config.summary,
+        textConfig: await persistedTextConfig(ep.config, request.native),
         savedMessage: savedMessageRef(messageId, message),
         runTurn: request.runTurn,
         limits: ep.limits,
