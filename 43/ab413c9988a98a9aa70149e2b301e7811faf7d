@@ -1,0 +1,57 @@
+docs/site/content/docs/modules/sandbox.mdx
+  s_d863bd773ba186::t_2cb4d2e0907947 161-178,212
+docs/site/scripts/generate-api-reference.ts
+  s_d863bd773ba186::t_301bb31d30eeb2 113,115-120
+src/modules/sandbox/README.md
+  s_d863bd773ba186::t_fd4e03f909c8f6 33-35,44-59,61-86
+src/modules/sandbox/client/daytona-write.ts
+  s_d863bd773ba186::t_3ec5390c700a7a 7,19-20,32-33,37-38,44-52,56-64,67-72,77-81,111-113,147-189
+src/modules/sandbox/client/daytona.ts
+  s_d863bd773ba186::t_dd314d296fad7a 21-26,96
+src/modules/sandbox/client/index.ts
+  s_7e612f58858b1c::t_ce1a6e11561bba 37,125-132
+src/modules/sandbox/client/types.ts
+  s_d863bd773ba186::t_a55aaf1d724d2c 104-114
+src/modules/sandbox/client/write.ts
+  s_d863bd773ba186::t_0d7ebf078b5a39 5,7,9,23,94-99,129-192,202-203,205,207,229-240,245
+src/modules/sandbox/shared/limits.ts
+  s_d863bd773ba186::t_22402d4e77aae8 23-29
+src/modules/sandbox/shared/write.ts
+  s_d863bd773ba186::t_8892a0eee966c7 4-15
+src/testing/sandbox.ts
+  s_d863bd773ba186::t_a0882fde50ebab 18-19,79,83,101,105,117,120-141,186
+tests/sandbox/daytona.live.ts
+  s_d863bd773ba186::t_e67156eced6b55 23,130-137,161,165
+tests/sandbox/daytona.test.ts
+  s_d863bd773ba186::t_ee0bdf9c292613 3-14,91-185
+tests/sandbox/fixture/daytona.ts
+  s_d863bd773ba186::t_b33d3a1835cf82 115,169-184
+tests/sandbox/fixture/node.ts
+  s_d863bd773ba186::t_a8cb050fc795af 6,29,32-40
+tests/sandbox/write.test.ts
+  s_d863bd773ba186::t_00186f487fe801 72,81-83,96-97,103-111,113,119-189,373-393
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "43ab413c9988a98a9aa70149e2b301e7811faf7d",
+  "prompts": {},
+  "sessions": {
+    "s_7e612f58858b1c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a68123df-6cc4-4a22-bb6b-02839b77dc18",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}

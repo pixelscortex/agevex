@@ -1,0 +1,71 @@
+src/modules/sandbox/client/index.ts
+  s_12480ffc1d9402::t_e6499967c04616 37,111-120
+  s_12480ffc1d9402::t_a113a403b4f318 121-128,139,152-153
+src/modules/sandbox/client/types.ts
+  s_12480ffc1d9402::t_e6499967c04616 86-91
+  s_12480ffc1d9402::t_4ae042987344e5 92-103,143-157,195-196
+src/modules/sandbox/shared/write.ts
+  s_12480ffc1d9402::t_e6499967c04616 1-32
+  s_12480ffc1d9402::t_7bfc5d9a3cbca9 33-37
+src/testing/sandbox.ts
+  s_12480ffc1d9402::t_f9e715ec7d5d30 7-13,68,74-96,98,108,117
+  s_12480ffc1d9402::t_eba983f7961f58 97,99-107,109-116,118-120
+tests/sandbox/daytona.test.ts
+  s_12480ffc1d9402::t_6f74b890785fa5 54-58,63,68-69
+  s_12480ffc1d9402::t_f03c0eb83a8cad 14-47
+  s_12480ffc1d9402::t_fd7dbe33fca7a1 48-53,59-62,64-67,70-82,89-95,134
+tests/sandbox/fixture/node.ts
+  s_12480ffc1d9402::t_d3aa9eb86094a7 3
+  s_12480ffc1d9402::t_14c02793678502 5-12,15-17
+  s_12480ffc1d9402::t_23329f919c9bfc 18-36
+docs/site/content/docs/modules/sandbox.mdx
+  s_12480ffc1d9402::t_fabdc1eb0424f5 135-167,193,200,222
+tests/sandbox/fixture/storage.ts
+  s_12480ffc1d9402::t_fabdc1eb0424f5 3,13-25
+  s_12480ffc1d9402::t_14c02793678502 1-2,4-12,26-27
+tests/sandbox/fixture/host.ts
+  s_12480ffc1d9402::t_d3aa9eb86094a7 26-27,64,200,219
+  s_12480ffc1d9402::t_14c02793678502 30,75-86,201-218
+src/modules/sandbox/client/daytona-write.ts
+  s_12480ffc1d9402::t_b9f4393af2ee86 15,20-28,39-41,47-49,54-58,60-61,70-75,83-85,96-98,108,112-116,118-126
+  s_12480ffc1d9402::t_f9e715ec7d5d30 1-14,16-19,29-38,42-46,50-53,59,62-69,76-82,86-95,99-107,117,127-128
+  s_12480ffc1d9402::t_156649c2d78aa6 109-111
+src/modules/sandbox/client/daytona.ts
+  s_12480ffc1d9402::t_f9e715ec7d5d30 21,88-90
+tests/sandbox/write.test.ts
+  s_12480ffc1d9402::t_14c02793678502 12-15,17-39,41-60,62-93,107-116,127-129,133-145,147-160,165-167,169-171,178-180,184-188,197-199,206-209,218-241,247-252
+  s_12480ffc1d9402::t_60eabf57abe1de 1-11,16,40,61,94-106,117-126,130-132,146,161-164,168,172-177,181-183,189-196,200-205,210-217,242-246,253
+  s_12480ffc1d9402::t_8ee32b2909807c 254-307
+tests/sandbox/daytona.live.ts
+  s_12480ffc1d9402::t_156649c2d78aa6 15,121-122,124-125
+  s_12480ffc1d9402::t_f03c0eb83a8cad 108-110,112,114-117,119,127-128,151
+  s_12480ffc1d9402::t_b9f4393af2ee86 104-107,111,113,118,120,123,126
+tests/sandbox/setup.ts
+  s_12480ffc1d9402::t_14c02793678502 48-52
+  s_12480ffc1d9402::t_d3aa9eb86094a7 35
+src/modules/sandbox/README.md
+  s_12480ffc1d9402::t_fabdc1eb0424f5 4,28-49,66,72
+tests/sandbox/fixture/daytona.ts
+  s_12480ffc1d9402::t_f03c0eb83a8cad 114,116-122,153-154
+  s_12480ffc1d9402::t_244dce64b31804 155-167
+src/modules/sandbox/client/write.ts
+  s_12480ffc1d9402::t_609b72846c46d5 42,55,61,66,69,71-72,74,83,85,87,91,101,104-105,111,113,115,120,123,125,142,145,149,153,158,160,164,170,176
+  s_12480ffc1d9402::t_e6499967c04616 1-8,17,26-28,43-47,53-54,70,75-76,84,86,88,100,102,106,112,114,116,121-122,124,126-129,138-141,143-144,146-148,157,159,165-169,177-179
+  s_12480ffc1d9402::t_fabdc1eb0424f5 9-16,18-25,29-41,48-52,56-60,62-65,67-68,73,77-82,89-90,92-99,103,107-110,117-119,130-137,150-152,154-156,161-163,171-175
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c2169ce02ab563c497b5b756c6de157866298816",
+  "prompts": {},
+  "sessions": {
+    "s_12480ffc1d9402": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a178d7-30a4-77d2-b2ae-bb0f862f691f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
