@@ -1,0 +1,19 @@
+src/client/README.md
+  s_51fbc688730d1c::t_8a943a61dcfce5 16-18,72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a68f23c55b25547f01fc5c4a21f1c1656ffb406e",
+  "prompts": {},
+  "sessions": {
+    "s_51fbc688730d1c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8aca7eb0-49ce-4eb5-b17e-f885c3afbcba",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
