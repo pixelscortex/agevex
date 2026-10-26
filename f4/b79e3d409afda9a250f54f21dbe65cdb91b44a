@@ -1,0 +1,159 @@
+dist/component/_generated/api.d.ts
+  s_a09e4541e7530d::t_156b5d18da793a 33,64
+dist/component/_generated/component.d.ts
+  s_a09e4541e7530d::t_ace50eb3c6909e 30,62
+dist/component/facts.d.ts
+  s_a09e4541e7530d::t_9bb1fdb6b47e92 5-12
+dist/component/facts.js
+  s_a09e4541e7530d::t_d840257b447525 4-6,19-32
+dist/component/files/attachments.js
+  s_a09e4541e7530d::t_e1306185a5b355 25
+dist/component/hooks/notes.d.ts
+  s_a09e4541e7530d::t_05fa96426a69c9 510-511
+dist/component/hooks/notes.js
+  s_a09e4541e7530d::t_5851e2d72993e6 196-197
+dist/component/hooks/origins.d.ts
+  s_a09e4541e7530d::t_632ab184438692 18,31
+dist/component/hooks/origins.js
+  s_a09e4541e7530d::t_6564c967af9732 14
+dist/component/hooks/refs.js
+  s_a09e4541e7530d::t_ff14a34b60d280 15,100-101
+dist/component/hooks/routing.d.ts
+  s_a09e4541e7530d::t_b492b55adbfe84 25-27,29
+dist/component/hooks/routing.js
+  s_a09e4541e7530d::t_beec626cf3718e 29-31,33,41
+dist/component/hooks/state.d.ts
+  s_a09e4541e7530d::t_8eeb88930a4b73 16-17,23-26,41-44
+dist/component/hooks/state.js
+  s_a09e4541e7530d::t_69cbf11cecefa4 19-20,32-37,42-45,91
+dist/component/limits.d.ts
+  s_a09e4541e7530d::t_032ff2b64fcb76 94-95,99-100,105-115,118-123,125-128,133-153,184-185,196-197
+dist/component/limits.js
+  s_a09e4541e7530d::t_56598717186d4b 68-69,73-74,79-89,92-97,99-102,107-127,158-170,180-182,218-219
+dist/component/run-settings.d.ts
+  s_a09e4541e7530d::t_7ead4726602ad9 29,98-104
+dist/component/run-settings.js
+  s_a09e4541e7530d::t_c1553270d44074 16-18,24-25,83-91
+dist/component/run-tree-values.d.ts
+  s_a09e4541e7530d::t_6a703ecc3a0cb1 1-307
+dist/component/run-tree-values.js
+  s_a09e4541e7530d::t_993b31b8083ff9 1-56
+dist/component/schema.d.ts
+  s_a09e4541e7530d::t_2b75078d10d305 134-135,173,211-214,314-319,375-384,637-647,705,744,748,760,762-768,778-786,834-836,972-974,999,1012-1013,1064,1070
+dist/component/schema.js
+  s_a09e4541e7530d::t_eb80d9f6cd1c1d 102-104,182-189,269,274-286,307,344-346,422
+dist/component/subagents/deliver.js
+  s_a09e4541e7530d::t_e0a3350ea78e08 17,70
+dist/component/subagents/groups.d.ts
+  s_a09e4541e7530d::t_6b506e6764bc64 26,55-57
+dist/component/subagents/groups.js
+  s_a09e4541e7530d::t_a8dd2029071de6 3,25,45-51,126-127,130-131,151-156,158-159
+dist/component/subagents/history.d.ts
+  s_a09e4541e7530d::t_4b0912ada2eeb4 40,44-81
+dist/component/subagents/history.js
+  s_a09e4541e7530d::t_7a223f58737eca 13-15,29-30,35
+dist/component/subagents/launch.d.ts
+  s_a09e4541e7530d::t_cb88569282a646 112,199
+dist/component/subagents/launch.js
+  s_a09e4541e7530d::t_9b21f369ee6d0b 20-21,23,51-54,152,170,203-205,208-210
+dist/component/subagents/messages.d.ts
+  s_a09e4541e7530d::t_7a9a51feadc7e1 32-35,135-140,201-204,304-309,370-372,397,415-418,518-523,584-587,687-692,751,763,765-771
+dist/component/subagents/parent-notes.js
+  s_a09e4541e7530d::t_bf9ddb6092d0a2 30,32-33
+dist/component/subagents/runs.d.ts
+  s_a09e4541e7530d::t_e21e52c3a66ffa 21-23,48,100-102,127,163-167
+dist/component/subagents/runs.js
+  s_a09e4541e7530d::t_744da2fe937a89 2-3,68,99-110
+dist/component/subagents/settle.d.ts
+  s_a09e4541e7530d::t_4032055fa1263f 13-14,32-33
+dist/component/subagents/settle.js
+  s_a09e4541e7530d::t_48d0233c866a71 42-43,124-125
+dist/component/subagents/tree.d.ts
+  s_a09e4541e7530d::t_5b1062b9238c9f 1-16
+dist/component/subagents/tree.js
+  s_a09e4541e7530d::t_d6b53bd583b018 1-161
+dist/component/subagents/views.js
+  s_a09e4541e7530d::t_50a70a4b629d95 9
+dist/component/text/state.js
+  s_a09e4541e7530d::t_9c922f9c856211 22
+dist/component/turns/approvals.js
+  s_a09e4541e7530d::t_76f9a536b03fd8 22
+dist/component/turns/assignments.d.ts
+  s_a09e4541e7530d::t_ae0e27f26b03e0 17,23-26,126-131
+dist/component/turns/assignments.js
+  s_a09e4541e7530d::t_a1feed46f6e0dc 2
+dist/component/turns/boundaries.js
+  s_a09e4541e7530d::t_117b9dff64e8b3 18
+dist/component/turns/cancel.js
+  s_a09e4541e7530d::t_f6d2d70ff3f635 7,25-28,30,33,35-48,88,112
+dist/component/turns/claim.d.ts
+  s_a09e4541e7530d::t_a2b5941d50f6db 41,58,119
+dist/component/turns/claim.js
+  s_a09e4541e7530d::t_367bdfdc2c6788 2,4,9,13,28,70,74-87,96,109-128,152-160,170-172,174,189,191-198,241,264-269
+dist/component/turns/decision-reads.d.ts
+  s_a09e4541e7530d::t_a312af920015d9 78-80
+dist/component/turns/decision-reads.js
+  s_a09e4541e7530d::t_3b095fcafa52d9 63-65
+dist/component/turns/finish.js
+  s_a09e4541e7530d::t_545edf56ca976a 21,39,75,77
+dist/component/turns/message-ids.d.ts
+  s_a09e4541e7530d::t_c63cb5cb8241cb 1-19
+dist/component/turns/message-ids.js
+  s_a09e4541e7530d::t_535274bd4b4819 1-32
+dist/component/turns/pause.js
+  s_a09e4541e7530d::t_0e6c8c43ec324c 164
+dist/component/turns/run-lifecycle.d.ts
+  s_a09e4541e7530d::t_0b0e5311c34103 1-35
+dist/component/turns/run-lifecycle.js
+  s_a09e4541e7530d::t_53c9c24413a5e8 1-66
+dist/component/turns/runs.d.ts
+  s_a09e4541e7530d::t_d476a671909cdd 14
+dist/component/turns/runs.js
+  s_a09e4541e7530d::t_063a20fa154a33 5,8,22-23
+dist/component/turns/send.d.ts
+  s_a09e4541e7530d::t_e6452941ccb414 24,228
+dist/component/turns/send.js
+  s_a09e4541e7530d::t_6cd0ea75fce1d7 27,30,38,63,89-94,189-203
+dist/component/turns/slices.d.ts
+  s_a09e4541e7530d::t_a865abf3461105 40
+dist/component/turns/tools.d.ts
+  s_a09e4541e7530d::t_c7019f28872aaf 1-7
+dist/component/turns/tools.js
+  s_a09e4541e7530d::t_2c10306367b5c1 1-47
+dist/component/turns/wake.js
+  s_a09e4541e7530d::t_85fa359516ac70 6,35
+dist/component/turns/write.js
+  s_a09e4541e7530d::t_9cc4eddafcd840 1,4-5,11,40,49-57,71-82,85-101,106-107,153,181,190-193,196-204,210,216,224-230
+dist/modules/extract/client/files.d.ts
+  s_a09e4541e7530d::t_29474e8b0b24e8 16,44
+dist/modules/extract/component/artifacts.d.ts
+  s_a09e4541e7530d::t_d1d1ce1f6da5ad 64,97,135
+dist/modules/extract/component/indexing.d.ts
+  s_a09e4541e7530d::t_1e78d7d645bf40 102
+dist/modules/extract/component/schema.d.ts
+  s_a09e4541e7530d::t_c0b558c198f099 5,10,42,78,83,89
+dist/modules/extract/test.d.ts
+  s_a09e4541e7530d::t_6d3c8bcaa78c4d 21,57,62,68
+dist/test.d.ts
+  s_a09e4541e7530d::t_4d9b6a6673b2c2 12-15,115-120,176-185,438-448,506,545,549,561,563-569,579-587,635-637,773-775,800,813-814,865,871
+dist/testing/bridge.d.ts
+  s_a09e4541e7530d::t_6d58eb4c257a52 1-19
+dist/testing/bridge.js
+  s_a09e4541e7530d::t_a577d25510c5fd 13-46,106,108-113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f4b79e3d409afda9a250f54f21dbe65cdb91b44a",
+  "prompts": {},
+  "sessions": {
+    "s_a09e4541e7530d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a179e6-7d32-73f2-930d-4763613b42fa",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
