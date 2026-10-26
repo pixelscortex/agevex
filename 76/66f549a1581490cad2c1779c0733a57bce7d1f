@@ -1,0 +1,58 @@
+src/component/turns/runs.ts
+  s_f297ab3b4c34c9::t_50d53a6168e8f6 43-44
+src/component/run-settings.ts
+  s_f297ab3b4c34c9::t_c28162877c3fc4 26-27
+  s_f297ab3b4c34c9::t_50d53a6168e8f6 17-19
+docs/site/content/docs/concepts/runtime.mdx
+  s_f297ab3b4c34c9::t_c28162877c3fc4 159-163
+tests/run-tree.test.ts
+  s_f297ab3b4c34c9::t_1af131ffbf7a03 18,305-348,363-381
+  s_f297ab3b4c34c9::t_c921c0053df7df 20,349-357,360
+  s_f297ab3b4c34c9::t_535cb3a1101b4f 358-359,361-362,382-383,433-439
+tests/tool-progress.test.ts
+  s_f297ab3b4c34c9::t_cf08b38fc2fec3 10-13,15-17,23-37,39-48,54-67,75-106
+  s_f297ab3b4c34c9::t_1054bea053f5b0 1-9,14,18-19,21-22,38,49-53,68-74
+  s_f297ab3b4c34c9::t_294ca690b64a49 20
+  s_f297ab3b4c34c9::t_a57043d6684069 107-117
+src/component/limits.ts
+  s_f297ab3b4c34c9::t_1fc721779e2e94 71-72,76-77,82-86,92,95-100
+tests/run-settings.test.ts
+  s_f297ab3b4c34c9::t_c059f6763fe93c 480,484
+src/component/turns/cancel.ts
+  s_f297ab3b4c34c9::t_50d53a6168e8f6 60-64,66-68
+  s_f297ab3b4c34c9::t_1fc721779e2e94 58,65,130
+docs/site/content/docs/concepts/delegation.mdx
+  s_f297ab3b4c34c9::t_294ca690b64a49 122-124
+src/component/README.md
+  s_f297ab3b4c34c9::t_294ca690b64a49 175-181
+tests/run-tree.seed.ts
+  s_f297ab3b4c34c9::t_c921c0053df7df 171-174,196,227-229,238-249
+  s_f297ab3b4c34c9::t_4d512867ac315e 4,24-27,71,102-104,142-144,147-151,155-156,166-167
+  s_f297ab3b4c34c9::t_18f7dcfe1514c3 20,22-23,28,194-195,198-201
+  s_f297ab3b4c34c9::t_1f31e7286b7479 90-101,105,107-108,130-140,153-154,158-165,175-193,203-226,230-237
+  s_f297ab3b4c34c9::t_4443e65973366e 141,152,157,168-170,197,202
+tests/run-tree.fixture.ts
+  s_f297ab3b4c34c9::t_f5b7a629d49a19 10-11,110
+  s_f297ab3b4c34c9::t_1af131ffbf7a03 9,15-21,33-44,84,111-119
+  s_f297ab3b4c34c9::t_a43d40c0a2b423 45,54-57
+src/client/turn/tools.ts
+  s_f297ab3b4c34c9::t_50d53a6168e8f6 210-217
+  s_f297ab3b4c34c9::t_c059f6763fe93c 199
+  s_f297ab3b4c34c9::t_3d976fcbb3989c 200-204,218-230,245,252,256
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7666f549a1581490cad2c1779c0733a57bce7d1f",
+  "prompts": {},
+  "sessions": {
+    "s_f297ab3b4c34c9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17991-7957-7212-81a4-eb0c1694c51a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
