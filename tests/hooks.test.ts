@@ -1882,7 +1882,7 @@ it.each([true, false])(
     await owner(t).mutation(api.agents.respond, {
       threadId: receipt.threadId,
       approvalId: part.approvalId,
-      approved,
+      decision: { kind: approved ? "approve" : "reject" },
     });
 
     await drain(t);

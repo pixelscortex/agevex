@@ -170,6 +170,8 @@ export async function continueOrRelease(
   // another order/message for a replacement after cancellation.
   const remaining = approvals.requests.slice(1);
 
+  await ctx.db.delete("receipts", approvals.requests[0].proposalId);
+
   if (remaining.length) {
     await ctx.db.patch("assignments", assignmentId, {
       approvals: { ...approvals, requests: remaining },

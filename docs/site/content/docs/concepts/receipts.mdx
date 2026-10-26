@@ -71,19 +71,51 @@ admission again. Another subject's retained receipt never bypasses admission.
 
 A pending native tool approval blocks generation and leaves the inbox row
 waiting. Decisions must go through
-`respond({ threadId, approvalId, approved, reason? })`, which returns
+`respond({ threadId, approvalId, decision })`, which returns
 `{ messageId, replayed }` (`replayed` is true when an identical retry was served
 from the receipt). A response saved directly through the Agent component is not
 seen by the runtime. An unknown approval throws `APPROVAL_NOT_FOUND`;
 while its receipt is retained, an identical repeated decision replays
 `messageId`, and a changed decision throws `KEY_CONFLICT`.
 
+Human decisions use `respond({ threadId, approvalId, decision })`:
+`{ kind: "approve" }`, `{ kind: "reject", reason? }`, or
+`{ kind: "approve", edit: { input } }`. Declared local tools with an executable
+binding can be edited; provider-executed and deferred tools cannot. The host
+validates edited input with the registered tool schema in the response transaction.
+Invalid edits leave the request pending. `defineOnceTool({ approval: { editable: true }, ... })`
+also enables approval without separately setting `needsApproval`.
+
+An edited approval preserves the original native proposal. A receipt binds the
+exact tool call to effective input and original/effective hashes. The native approval
+response carries this audit annotation in its reason, and the native result is
+`{ result, approval: { toolCallId, input, originalHash, effectiveHash, edited } }`.
+Hooks and the once-tool fingerprint see the effective input; `beforeTool` may deny
+work, but rewriting approved input returns `APPROVED_INPUT_CHANGED`. Cancellation
+and current host execution authorization still apply. No paid effect is retried.
+
+`pendingApprovals({ threadId, rootRunId? })` authorizes the root and includes its
+current owned child decisions. Each item contains `id`, `toolCallId`, `threadId`,
+`agent`, `kind` (`approval` or `ask`), `tool`, `input`, `editable`,
+`providerExecuted`, and optional `question`/`schema`. The optional run selector
+must match the root's current request. Subscribe to this query to render controls.
+
+Bounds are shared: 16 calls per paused assignment, 16 paused assignments, 16 KiB
+per input/answer/complete pending source document, 16 KiB per projected item and
+4 MiB per pending query output. Native storage may repeat raw input, so the whole
+source envelope must fit. Oversized saves roll back without an actionable pause.
+Exact source IDs avoid transcript scans; oversized direct native sources return
+`PENDING_SOURCE_TOO_LARGE`. Decisions and answers retain the seven-day response
+receipt: identical retries return the first `{ messageId, replayed: true }`, and
+changed payloads return `KEY_CONFLICT`.
+
 ## Deferred tools
 
 A tool declared without `execute` uses Agent's native deferred results. The
-owner answers with `answer({ threadId, toolCallId, text })`, which returns
+owner answers with `answer({ threadId, toolCallId, value })`, which returns
 `{ messageId, replayed }` and resumes the turn once every pending call has an answer. The
-text must be non-empty and at most 16,000 UTF-16 units. Without a retained response
+value must be a nonblank string without a form schema, or JSON matching the
+recorded app-supplied schema. Answers are bounded to 16 KiB. Without a retained response
 receipt, unrecorded, foreign, cancelled and already answered calls throw
 `TOOL_CALL_NOT_FOUND`; retained receipts replay identical answers and reject
 changed answers with `KEY_CONFLICT`.

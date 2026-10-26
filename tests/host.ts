@@ -513,8 +513,18 @@ export const nestedMutation: RegisteredMutation<"internal", {}, null> = internal
 const { runTurn, coordinate } = runtime.internalFunctions();
 
 export { runTurn, coordinate };
-export const { open, send, respond, answer, cancel, messages, streams, activity, delegations } =
-  runtime.authorizedEndpoints();
+export const {
+  open,
+  send,
+  respond,
+  answer,
+  pendingApprovals,
+  cancel,
+  messages,
+  streams,
+  activity,
+  delegations,
+} = runtime.authorizedEndpoints();
 
 /**
  * Reference to the authorized `delegations` query of the *test* registration.

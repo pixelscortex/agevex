@@ -45,7 +45,7 @@ it("ask_user pauses the run as a pending deferred call; answer resumes it once a
     queuedMessages: 1,
   });
 
-  const args = { threadId: receipt.threadId, toolCallId: "ask-1", text: "Use the 界 plan" };
+  const args = { threadId: receipt.threadId, toolCallId: "ask-1", value: "Use the 界 plan" };
 
   await expect(t.withIdentity({ subject: "bob" }).mutation(api.host.answer, args)).rejects.toThrow(
     "FORBIDDEN",
@@ -66,14 +66,14 @@ it("ask_user pauses the run as a pending deferred call; answer resumes it once a
         type: "tool-result",
         toolCallId: "ask-1",
         toolName: "ask_user",
-        output: { type: "text", value: args.text },
+        output: { type: "json", value: args.value },
       },
     ],
   });
 
   await drain(t);
   expect(state.calls).toHaveLength(2);
-  expect(JSON.stringify(state.calls[1].prompt)).toContain(args.text);
+  expect(JSON.stringify(state.calls[1].prompt)).toContain(args.value);
   // A repeated answer replays the original result and never resumes twice.
   expect(answered.replayed).toBe(false);
 

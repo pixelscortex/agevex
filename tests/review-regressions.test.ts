@@ -173,7 +173,7 @@ it("40 large tool results allow a turn to start, block on recorded approval, and
   await alice.mutation(api.agents.respond, {
     threadId: receipt.threadId,
     approvalId: part.approvalId,
-    approved: true,
+    decision: { kind: "approve" as const },
   });
 
   state.approval = false;
@@ -1686,7 +1686,7 @@ it("an approval response followed by a fresh send completes the approval-blocked
   await alice.mutation(api.agents.respond, {
     threadId: receipt.threadId,
     approvalId: part.approvalId,
-    approved: true,
+    decision: { kind: "approve" as const },
   });
 
   await drain(t);

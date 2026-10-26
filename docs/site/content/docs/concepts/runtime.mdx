@@ -72,22 +72,23 @@ server-derived assignment, thread, run-origin and optional child facts.
 The following endpoints come from `runtime.authorizedEndpoints()`.
 All require the host authorization policy. Optional arguments use `?`.
 
-| Endpoint      | Arguments                                     | Result                                         |
-| ------------- | --------------------------------------------- | ---------------------------------------------- |
-| `open`        | `agent, prompt, requestKey, models?, files?`  | `Receipt` for a new root thread                |
-| `send`        | `threadId, text, requestKey, models?, files?` | `Receipt` for an existing root                 |
-| `respond`     | `threadId, approvalId, approved, reason?`     | `{ messageId, replayed }`                      |
-| `answer`      | `threadId, toolCallId, text`                  | `{ messageId, replayed }`                      |
-| `title`       | `threadId`                                    | `{ text, source, version }`                    |
-| `rename`      | `threadId, text, expectedVersion`             | `{ messageId, replayed }`                      |
-| `summary`     | `threadId`                                    | `{ text, throughMessageId }` or null           |
-| `summarize`   | `threadId, requestKey`                        | `{ status: "queued" or "replayed" }`           |
-| `cancel`      | `threadId`                                    | `null`                                         |
-| `messages`    | `threadId, paginationOpts`                    | Native message page with origin metadata       |
-| `streams`     | `threadId, streamArgs`                        | Native stream synchronization result           |
-| `activity`    | `threadId`                                    | `Activity` for a root                          |
-| `runTree`     | `threadId`                                    | Current root request's bounded descendant tree |
-| `delegations` | `threadId, paginationOpts`                    | Root history, newest first                     |
+| Endpoint           | Arguments                                     | Result                                         |
+| ------------------ | --------------------------------------------- | ---------------------------------------------- |
+| `open`             | `agent, prompt, requestKey, models?, files?`  | `Receipt` for a new root thread                |
+| `send`             | `threadId, text, requestKey, models?, files?` | `Receipt` for an existing root                 |
+| `respond`          | `threadId, approvalId, decision`              | `{ messageId, replayed }`                      |
+| `pendingApprovals` | `threadId, rootRunId?`                        | Bounded root and owned child decisions         |
+| `answer`           | `threadId, toolCallId, value`                 | `{ messageId, replayed }`                      |
+| `title`            | `threadId`                                    | `{ text, source, version }`                    |
+| `rename`           | `threadId, text, expectedVersion`             | `{ messageId, replayed }`                      |
+| `summary`          | `threadId`                                    | `{ text, throughMessageId }` or null           |
+| `summarize`        | `threadId, requestKey`                        | `{ status: "queued" or "replayed" }`           |
+| `cancel`           | `threadId`                                    | `null`                                         |
+| `messages`         | `threadId, paginationOpts`                    | Native message page with origin metadata       |
+| `streams`          | `threadId, streamArgs`                        | Native stream synchronization result           |
+| `activity`         | `threadId`                                    | `Activity` for a root                          |
+| `runTree`          | `threadId`                                    | Current root request's bounded descendant tree |
+| `delegations`      | `threadId, paginationOpts`                    | Root history, newest first                     |
 
 ## Cancellation
 

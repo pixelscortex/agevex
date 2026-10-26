@@ -36,7 +36,7 @@ const tools = { continue_budget: createContinueBudgetTool() };
 `continue_budget({ reason })` pauses on a native approval. `CONTINUE_BUDGET_LIMITS`
 allow one trimmed, nonblank reason of at most 2000 characters; unknown fields,
 including ownership or a proposed budget, are rejected. The owner answers with
-core `respond({ threadId, approvalId, approved })`. Only approval executes the
+core `respond({ threadId, approvalId, decision })`. Only approval executes the
 tool; denial never returns an approved execution. **Consent does not raise any
 limit**: the tool changes no meter, budget or core counter.
 
@@ -44,7 +44,7 @@ limit**: the tool changes no meter, budget or core counter.
 
 Core keeps approval decisions in the native Agent transcript and has no
 read-only "was it approved" query. Consent is therefore **host state**: your
-approve action is one mutation that calls core `respond({ approved: true })` and
+approve action is one mutation that calls core `respond({ decision: { kind: "approve" } })` and
 records the consent row in the same transaction. The row is
 `{ subject, threadId, approvalId, runId, spent }` in `agevexBudgetConsents`, where
 `runId` is the thread's `activity.runId` at approval time.
@@ -66,7 +66,7 @@ export const approveContinue = mutationGeneric({
     const response = await ctx.runMutation(api.agents.respond, {
       threadId,
       approvalId,
-      approved: true,
+      decision: { kind: "approve" },
     });
     if (!response.replayed) {
       const { runId } = await ctx.runQuery(api.agents.activity, { threadId });
@@ -90,7 +90,7 @@ made anywhere else (plain `respond`, another tool, an admin script) never become
 consent: approving it again through the action is a replay and records nothing,
 so an old answer cannot be bound to a later run's stop.
 
-Denials are answered through plain `respond({ approved: false })` and record
+Denials are answered through plain `respond({ decision: { kind: "reject" } })` and record
 nothing. `record` is idempotent (the first row wins, spent or not); `consume` is how the
 resume spends it. Approval ids over 512 UTF-8 bytes cannot be indexed and are rejected, which rolls
 back the `respond` too.

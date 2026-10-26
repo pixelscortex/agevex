@@ -1,0 +1,165 @@
+// Exact-id pending-call reads and receipt lookup; never discover calls in history.
+import { ConvexError, v } from "convex/values";
+import { query, type QueryCtx } from "../_generated/server.js";
+import type { Doc } from "../_generated/dataModel.js";
+import { approvalKey, keyString } from "../approvals.js";
+import { findReceipt } from "../receipts/records.js";
+import { proposal } from "./decision-proposals.js";
+import { DECISION_LIMITS, decisionBytes } from "../../shared/decisions.js";
+
+export const pendingItem = v.object({
+  ...proposal.fields,
+  threadId: v.string(),
+  agent: v.string(),
+  kind: v.union(v.literal("approval"), v.literal("ask")),
+});
+
+/** One recorded reference reads one <=32 KiB proposal, never a native transcript. */
+export async function readPending(
+  ctx: QueryCtx,
+  row: Doc<"assignments">,
+  request: NonNullable<Doc<"assignments">["approvals"]>["requests"][number],
+) {
+  const stored = await ctx.db.get("receipts", request.proposalId);
+
+  if (stored?.kind !== "proposal") throw new ConvexError({ code: "PENDING_CALL_NOT_FOUND" });
+
+  if (decisionBytes(stored) > DECISION_LIMITS.proposalBytes)
+    throw new ConvexError({ code: "PENDING_ITEM_TOO_LARGE" });
+
+  return {
+    ...stored.result,
+    threadId: row.threadId,
+    agent: row.agent,
+    kind: request.deferred ? ("ask" as const) : ("approval" as const),
+  };
+}
+
+/** Resolve exactly one requested decision, or the already committed first receipt. */
+export const detail = query({
+  args: {
+    assignmentId: v.id("assignments"),
+    subject: v.string(),
+    id: v.string(),
+    deferred: v.boolean(),
+  },
+  returns: v.union(pendingItem, v.null()),
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get("assignments", args.assignmentId);
+
+    if (!row || row.subject !== args.subject) throw new ConvexError({ code: "FORBIDDEN" });
+
+    const key = await approvalKey(args.id);
+
+    const receipt = await findReceipt(
+      ctx,
+      args.deferred ? "answer" : "respond",
+      await approvalKey(JSON.stringify([row.threadId, args.id])),
+    );
+
+    if (receipt) return null;
+
+    const request = row.approvals?.requests.find(
+      (r) => r.key === key && !!r.deferred === args.deferred,
+    );
+
+    if (!request)
+      throw new ConvexError({ code: args.deferred ? "TOOL_CALL_NOT_FOUND" : "APPROVAL_NOT_FOUND" });
+
+    return readPending(ctx, row, request);
+  },
+});
+
+/** Root plus bounded live children: <=59*32 KiB assignment metadata +
+ * 256*32 KiB compact proposals + <=58*4 KiB child refs <10.1 MiB.
+ * Native messages (up to 1 MiB of reasoning each) are never read here.
+ * The host projects each item to <=16 KiB, giving <=4 MiB final output.
+ */
+export const pending = query({
+  args: {
+    assignmentId: v.id("assignments"),
+    subject: v.string(),
+    rootRunId: v.optional(v.string()),
+  },
+  returns: v.array(pendingItem),
+  handler: async (ctx, args) => {
+    const root = await ctx.db.get("assignments", args.assignmentId);
+
+    if (!root || root.subject !== args.subject || root.rootAssignmentId)
+      throw new ConvexError({ code: "FORBIDDEN" });
+
+    const runId = args.rootRunId ?? root.runId;
+
+    if (!runId) return [];
+
+    if (runId !== root.runId) throw new ConvexError({ code: "RUN_NOT_FOUND" });
+
+    const run = await ctx.db.get("runs", root.runId!);
+
+    if (!run) throw new ConvexError({ code: "RUN_NOT_FOUND" });
+
+    const children = await ctx.db
+      .query("subagentRuns")
+      .withIndex("by_group", (q) => q.eq("parentRunId", root.runId!))
+      .take(root.limits.runLaunches + root.limits.sideRunsPerRun);
+
+    const rows = [root];
+
+    for (const child of children) {
+      if (!child.childAssignmentId || child.status === "completed" || child.status === "failed")
+        continue;
+
+      const row = await ctx.db.get("assignments", child.childAssignmentId);
+
+      if (
+        row &&
+        row.subject === args.subject &&
+        row.rootAssignmentId === root._id &&
+        row.runId === runId
+      )
+        rows.push(row);
+    }
+
+    const paused = rows.filter(
+      (r) => r.approvalBlocked && !r.cancelled && !r.approvals?.cleanupPending,
+    );
+
+    if (paused.length > DECISION_LIMITS.assignments)
+      throw new ConvexError({ code: "PENDING_LIMIT" });
+
+    const result = [];
+
+    for (const row of paused)
+      for (const request of row.approvals!.requests) {
+        if (!request.resolved) result.push(await readPending(ctx, row, request));
+      }
+
+    return result;
+  },
+});
+
+/** Edited input is retrieved only for the exact recorded call, within its assignment. */
+export const effective = query({
+  args: { assignmentId: v.id("assignments"), toolCallId: v.string() },
+  returns: v.any(),
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get("assignments", args.assignmentId);
+    const key = await approvalKey(args.toolCallId);
+
+    const request = row?.approvals?.requests.find(
+      (r) => r.resolved && keyString(r.toolCallKey) === key,
+    );
+
+    if (!row || !request) return null;
+
+    const receipt = await findReceipt(
+      ctx,
+      "approved-input",
+      await approvalKey(JSON.stringify([row.threadId, args.toolCallId])),
+    );
+
+    if (request.effective && !receipt) throw new ConvexError({ code: "APPROVED_INPUT_GONE" });
+
+    return receipt?.result ?? null;
+  },
+});

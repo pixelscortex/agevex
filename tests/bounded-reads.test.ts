@@ -7,7 +7,8 @@ import { listMessages, saveMessage } from "@convex-dev/agent";
 import { setup, api, components, rawAssignment, state } from "./setup.js";
 import { main } from "./host.js";
 import type { ManagedAgent, OriginMessage } from "../src/client/index.js";
-import { LIMITS } from "../src/client/index.js";
+import { z } from "zod";
+import { defineOnceTool, LIMITS } from "../src/client/index.js";
 import { HOST_LIMITS } from "../src/component/limits.js";
 
 type Test = ReturnType<typeof setup>;
@@ -355,7 +356,7 @@ it("respond resolves two approvals separately and resumes from the final native 
   const first = await alice.mutation(api.agents.respond, {
     threadId: turn.threadId,
     approvalId: "approval-0",
-    approved: true,
+    decision: { kind: "approve" as const },
   });
 
   await drain(t);
@@ -366,15 +367,14 @@ it("respond resolves two approvals separately and resumes from the final native 
     alice.mutation(api.agents.respond, {
       threadId: turn.threadId,
       approvalId: "approval-0",
-      approved: true,
+      decision: { kind: "approve" as const },
     }),
   ).resolves.toEqual({ ...first, replayed: true });
 
   const last = await alice.mutation(api.agents.respond, {
     threadId: turn.threadId,
     approvalId: "approval-1",
-    approved: false,
-    reason: "declined",
+    decision: { kind: "reject" as const, reason: "declined" },
   });
 
   const queued = await execution(t, turn.assignmentId);
@@ -413,8 +413,9 @@ it.each([true, false])(
     const args = {
       threadId: turn.threadId,
       approvalId: "approval-0",
-      approved,
-      reason: "original reason",
+      decision: approved
+        ? { kind: "approve" as const }
+        : { kind: "reject" as const, reason: "original reason" },
     };
 
     const result = await owner(t).mutation(api.agents.respond, args);
@@ -475,7 +476,7 @@ it("an approval-pause note is delivered exactly once at the first safe queued tu
   await owner(t).mutation(api.agents.respond, {
     threadId: turn.threadId,
     approvalId: approval!.approvalId,
-    approved: true,
+    decision: { kind: "approve" as const },
   });
 
   await drain(t);
@@ -525,13 +526,23 @@ it("an approval-pause note is delivered exactly once at the first safe queued tu
 it("respond rejects a changed decision or reason with typed KEY_CONFLICT and preserves the original result", async () => {
   const t = setup(undefined, undefined, true);
   const turn = await request(t, 1);
-  const args = { threadId: turn.threadId, approvalId: "approval-0", approved: true };
+
+  const args = {
+    threadId: turn.threadId,
+    approvalId: "approval-0",
+    decision: { kind: "approve" as const },
+  };
+
   const result = await owner(t).mutation(api.agents.respond, args);
 
   await drain(t);
   const before = await nativePage(t, turn.threadId);
 
-  for (const change of [{ approved: false }, { reason: "changed" }, { reason: "" }])
+  for (const change of [
+    { decision: { kind: "reject" as const } },
+    { decision: { kind: "reject" as const, reason: "changed" } },
+    { decision: { kind: "reject" as const, reason: "" } },
+  ])
     await expect(
       owner(t).mutation(api.agents.respond, { ...args, ...change }),
     ).rejects.toMatchObject({ data: { code: "KEY_CONFLICT" } });
@@ -551,7 +562,12 @@ it("respond rejects a changed decision or reason with typed KEY_CONFLICT and pre
 it("respond preserves provider-executed flags and rejects other owners", async () => {
   const t = setup();
   const turn = await request(t, 1, true);
-  const decision = { threadId: turn.threadId, approvalId: "approval-0", approved: false };
+
+  const decision = {
+    threadId: turn.threadId,
+    approvalId: "approval-0",
+    decision: { kind: "reject" as const },
+  };
 
   await expect(
     t.withIdentity({ subject: "bob" }).mutation(api.agents.respond, decision),
@@ -609,7 +625,11 @@ it("respond authorizes an owned child and continues its managed settlement", asy
 
   if (part?.type !== "tool-approval-request") throw new Error("APPROVAL_MISSING");
 
-  const decision = { threadId: childThreadId, approvalId: part.approvalId, approved: false };
+  const decision = {
+    threadId: childThreadId,
+    approvalId: part.approvalId,
+    decision: { kind: "reject" as const },
+  };
 
   await expect(
     t.withIdentity({ subject: "bob" }).mutation(api.agents.respond, decision),
@@ -648,7 +668,7 @@ it("sixteen approvals stay bounded and resolve atomically at the pause limit", a
     const response = await owner(t).mutation(api.agents.respond, {
       threadId: turn.threadId,
       approvalId: `approval-${i}`,
-      approved: false,
+      decision: { kind: "reject" as const },
     });
 
     const row = (await execution(t, turn.assignmentId))!;
@@ -748,7 +768,7 @@ it.each([1, LIMITS.approvalsPerPause])(
       owner(t).mutation(api.agents.respond, {
         threadId: receipt.threadId,
         approvalId: approval.approvalId,
-        approved: true,
+        decision: { kind: "approve" as const },
       }),
     ).rejects.toThrow("APPROVAL_NOT_FOUND");
 
@@ -811,7 +831,7 @@ it("cancel settles the remaining approvals after a partial response without repl
   await owner(t).mutation(api.agents.respond, {
     threadId: turn.threadId,
     approvalId: "approval-0",
-    approved: true,
+    decision: { kind: "approve" as const },
   });
 
   await owner(t).mutation(api.agents.cancel, { threadId: turn.threadId });
@@ -838,7 +858,7 @@ it("cancel denies only the undecided calls even when the decided approval is las
   await owner(t).mutation(api.agents.respond, {
     threadId: turn.threadId,
     approvalId: "approval-2",
-    approved: true,
+    decision: { kind: "approve" as const },
   });
 
   await owner(t).mutation(api.agents.cancel, { threadId: turn.threadId });
@@ -893,7 +913,7 @@ it("pause approve running tool cancel fresh send completes without missing or du
   await owner(t).mutation(api.agents.respond, {
     threadId: turn.threadId,
     approvalId: approval.approvalId,
-    approved: true,
+    decision: { kind: "approve" as const },
   });
 
   expect(await execution(t, turn.assignmentId)).toMatchObject({
@@ -955,7 +975,7 @@ it("cancel after one native tool result commits settles only the remaining exact
     await owner(t).mutation(api.agents.respond, {
       threadId: turn.threadId,
       approvalId: `approval-${i}`,
-      approved: true,
+      decision: { kind: "approve" as const },
     });
 
   const row = (await execution(t, turn.assignmentId))!;
@@ -1134,7 +1154,7 @@ it("huge native approval ids leave fixed-size assignment metadata and still reso
   await owner(t).mutation(api.agents.respond, {
     threadId: turn.threadId,
     approvalId: prefix + "0",
-    approved: false,
+    decision: { kind: "reject" as const },
   });
 
   expect(await execution(t, turn.assignmentId)).toMatchObject({ approvalBlocked: false });
@@ -1546,7 +1566,7 @@ it("provider continuation consumes its decision atomically and permits a second 
   await owner(t).mutation(api.agents.respond, {
     threadId: turn.threadId,
     approvalId: "approval-0",
-    approved: true,
+    decision: { kind: "approve" as const },
   });
 
   const queued = (await execution(t, turn.assignmentId))!;
@@ -1598,7 +1618,7 @@ it("provider continuation consumes its decision atomically and permits a second 
   await owner(t).mutation(api.agents.respond, {
     threadId: turn.threadId,
     approvalId: "next-approval",
-    approved: false,
+    decision: { kind: "reject" as const },
   });
 
   await owner(t).mutation(api.agents.cancel, { threadId: turn.threadId });
@@ -1623,7 +1643,7 @@ it("cancel after a consumed provider approval appends no result or decision", as
   await owner(t).mutation(api.agents.respond, {
     threadId: turn.threadId,
     approvalId: "approval-0",
-    approved: false,
+    decision: { kind: "reject" as const },
   });
 
   const queued = (await execution(t, turn.assignmentId))!;
@@ -1709,7 +1729,7 @@ it.each([true, false])(
       await owner(t).mutation(api.agents.respond, {
         threadId: turn.threadId,
         approvalId: "approval-" + index,
-        approved,
+        decision: { kind: approved ? "approve" : "reject" },
       });
 
       if (index === 0) {
@@ -1770,3 +1790,73 @@ it.each([true, false])(
     expect(unresolved.size).toBe(0);
   },
 );
+
+it("provider-executed calls refuse edits and keep the original approval pending", async () => {
+  const t = setup(undefined, undefined, true);
+  const turn = await request(t, 1, true);
+
+  await expect(
+    owner(t).mutation(api.agents.respond, {
+      threadId: turn.threadId,
+      approvalId: "approval-0",
+      decision: { kind: "approve", edit: { input: { text: "edit" } } },
+    }),
+  ).rejects.toThrow("APPROVAL_NOT_EDITABLE");
+
+  expect((await execution(t, turn.assignmentId))?.approvalBlocked).toBe(true);
+
+  await owner(t).mutation(api.agents.respond, {
+    threadId: turn.threadId,
+    approvalId: "approval-0",
+    decision: { kind: "reject" },
+  });
+
+  await drain(t);
+});
+
+it("provider-executed approval edits are refused before deciding even when the host tool opts into editing", async () => {
+  const t = setup();
+  const managed = main as ManagedAgent;
+  const original = managed.declaredTools.echo;
+
+  managed.declaredTools.echo = defineOnceTool({
+    name: "echo",
+    input: z.object({ text: z.string() }),
+    approval: { editable: true },
+    run: ({ text }) => text,
+  });
+
+  try {
+    const turn = await request(t, 1, true);
+
+    const [pending] = await owner(t).query(api.agents.pendingApprovals, {
+      threadId: turn.threadId,
+    });
+
+    expect(pending).toMatchObject({ providerExecuted: true, editable: false });
+
+    await expect(
+      owner(t).mutation(api.agents.respond, {
+        threadId: turn.threadId,
+        approvalId: "approval-0",
+        decision: { kind: "approve", edit: { input: { text: "edited" } } },
+      }),
+    ).rejects.toMatchObject({ data: { code: "APPROVAL_NOT_EDITABLE" } });
+
+    expect(await execution(t, turn.assignmentId)).toMatchObject({ approvalBlocked: true });
+
+    expect(
+      (await execution(t, turn.assignmentId))?.approvals?.requests[0].resolved,
+    ).toBeUndefined();
+
+    await owner(t).mutation(api.agents.respond, {
+      threadId: turn.threadId,
+      approvalId: "approval-0",
+      decision: { kind: "reject" },
+    });
+
+    expect(await execution(t, turn.assignmentId)).toMatchObject({ approvalBlocked: false });
+  } finally {
+    managed.declaredTools.echo = original;
+  }
+});

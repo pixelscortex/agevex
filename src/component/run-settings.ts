@@ -27,6 +27,7 @@ export type RunSettings = Partial<ResolvedRunSettings>;
 
 /** Policy returned by claim and consumed by generation and its watchdog. */
 export const runSettings = v.object({
+  askUser: v.optional(v.boolean()),
   mode: v.union(v.literal("stream"), v.literal("generate")),
   maxOutputTokens: v.number(),
   modelTimeoutMs: v.number(),
@@ -47,6 +48,7 @@ export function resolveRunSettings(input: RunSettings = {}): ResolvedRunSettings
     throw new Error("INVALID_RUN_SETTINGS");
 
   const result: ResolvedRunSettings = {
+    ...(input.askUser !== undefined ? { askUser: input.askUser } : {}),
     mode: input.mode === undefined ? "stream" : input.mode,
     maxOutputTokens:
       input.maxOutputTokens === undefined
@@ -59,6 +61,9 @@ export function resolveRunSettings(input: RunSettings = {}): ResolvedRunSettings
     stepsPerTurn:
       input.stepsPerTurn === undefined ? RUN_LIMITS.stepsPerTurn.default : input.stepsPerTurn,
   };
+
+  if (input.askUser !== undefined && typeof input.askUser !== "boolean")
+    throw new Error("INVALID_ASK_USER_POLICY");
 
   if (result.mode !== "stream" && result.mode !== "generate")
     throw new Error("INVALID_RUN_SETTINGS");

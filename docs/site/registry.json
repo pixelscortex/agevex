@@ -65,13 +65,13 @@
       "name": "ask-user",
       "type": "registry:lib",
       "title": "Ask the user",
-      "description": "ask_user is a deferred tool (no execute): the model asks one nonblank question up to 2000 characters and the turn waits. The owner answers with core answer({ threadId, toolCallId, text }); the model sees the text. No item tables; native pending-call state and core hold it.",
+      "description": "ask_user defers a question (2000 characters), optionally with an app-supplied JSON Schema. The owner calls answer({ threadId, toolCallId, value }); malformed values stay pending. Root-only by default; Agent.askUser can override. No item tables.",
       "dependencies": [
         "ai@^7.0.153",
         "zod@^4.6.7",
         "convex@^1.47.0"
       ],
-      "docs": "Use a TypeScript host with tsx: true in components.json before installing. Register createAskUserTool() on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. Answer with core answer, never by saving a native tool result directly. See /docs/tools/ask-user.",
+      "docs": "Use a TypeScript host with tsx: true in components.json before installing. Register createAskUserTool() on an agevex Agent with host authorize/authorizeExecution. Requires the host's existing agevex package. Answer with core answer, never by saving a native tool result directly. See /docs/tools/ask-user. Subscribe to pendingApprovals for bounded owned root/child calls. answerSchema supports bounded JSON forms; answer.value replaces answer.text.",
       "files": [
         {
           "path": "../../src/modules/tools/registry/ask-user/askUser.ts",
@@ -90,7 +90,7 @@
         "zod@^4.6.7",
         "convex@^1.47.0"
       ],
-      "docs": "Use a TypeScript host with tsx: true in components.json before installing. Merge consentTables from the installed schema snippet into convex/schema.ts. Register createContinueBudgetTool() on an agevex Agent with host authorize/authorizeExecution. Your approve action must call core respond and internal.agevexTools.continueBudgetState.record in one mutation; call resumeAfterBudgetStop inside ONE host mutation with your own budget policy write. Requires the host's existing agevex package. No schema is overwritten. See /docs/tools/continue-budget.",
+      "docs": "Use a TypeScript host with tsx: true in components.json before installing. Merge consentTables from the installed schema snippet into convex/schema.ts. Register createContinueBudgetTool() on an agevex Agent with host authorize/authorizeExecution. Your approve action must call core respond and internal.agevexTools.continueBudgetState.record in one mutation; call resumeAfterBudgetStop inside ONE host mutation with your own budget policy write. Requires the host's existing agevex package. No schema is overwritten. See /docs/tools/continue-budget. Core respond uses decision: { kind: \"approve\" } or { kind: \"reject\" }. Record consent only for decision.kind === \"approve\" and a fresh response (!replayed).",
       "files": [
         {
           "path": "../../src/modules/tools/registry/continue-budget/continueBudget.ts",

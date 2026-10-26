@@ -3,7 +3,9 @@ import type { ComponentApi as NativeApi } from "@convex-dev/agent/_generated/com
 import type { LanguageModelV4Content, LanguageModelV4CallOptions } from "@ai-sdk/provider";
 import {
   Agent,
+  defineOnceTool,
   registerAgent,
+  type ManagedAgent,
   type CoordinateArgs,
   type CoordinateResult,
   type TurnArgs,
@@ -19,6 +21,7 @@ import {
   type ApiFromModules,
   type FunctionReference,
 } from "convex/server";
+import { z } from "zod";
 import { v } from "convex/values";
 import { scriptedModel } from "../../../src/test.js";
 import {
@@ -36,6 +39,9 @@ import {
 } from "../../../src/modules/tools/registry/continue-budget/continueBudget.js";
 
 export const state = {
+  effects: [] as string[],
+  hookInputs: [] as unknown[],
+  rewrite: false as boolean | "mutate" | "block",
   steps: [] as LanguageModelV4Content[][],
   calls: [] as LanguageModelV4CallOptions[],
   /** Fake metering: slices checked so far and the run id each check saw. */
@@ -66,7 +72,11 @@ export const goalRefs = hostApi.goalsState satisfies GoalFunctions;
 
 // A delegated child that (wrongly) carries the root-only continue_budget tool.
 // Its model asks for consent once, then finishes.
-export const child = { calls: [] as LanguageModelV4CallOptions[] };
+export const child = {
+  calls: [] as LanguageModelV4CallOptions[],
+  steps: null as LanguageModelV4Content[][] | null,
+  askUser: undefined as boolean | undefined,
+};
 const childModel = mockModel();
 
 childModel.doStream = async (args) => {
@@ -75,80 +85,114 @@ childModel.doStream = async (args) => {
   child.calls.push(args);
 
   return scriptedModel([
-    index === 0
-      ? [
-          {
-            type: "tool-call",
-            toolName: "continue_budget",
-            toolCallId: "child-consent",
-            input: JSON.stringify({ reason: "The child wants more budget" }),
-          },
-        ]
-      : [{ type: "text", text: "Child finished." }],
+    child.steps?.[index] ??
+      (index === 0
+        ? [
+            {
+              type: "tool-call",
+              toolName: "continue_budget",
+              toolCallId: "child-consent",
+              input: JSON.stringify({ reason: "The child wants more budget" }),
+            },
+          ]
+        : [{ type: "text", text: "Child finished." }]),
   ]).doStream(args);
 };
 
-const helper = new Agent(agent, {
+export const helper = new Agent(agent, {
   name: "Helper",
   subagents: [],
   languageModel: childModel,
-  tools: { continue_budget: createContinueBudgetTool() },
+  tools: { ask_user: createAskUserTool(), continue_budget: createContinueBudgetTool() },
 });
 
-const main = new Agent(agent, {
+Object.defineProperty(helper, "askUser", { get: () => child.askUser });
+
+export const main = new Agent(agent, {
   name: "Tools",
   subagents: [helper],
+  hooks: {
+    beforeTool: (_hc, { tool, input }) => {
+      if (tool !== "editable_echo") return;
+
+      state.hookInputs.push(input);
+
+      if (state.rewrite === "block") return { block: "refused" };
+
+      if (state.rewrite === "mutate") {
+        (input as { text: string }).text = "mutated";
+
+        return;
+      }
+
+      return state.rewrite ? { input: { text: "hook rewrite" } } : undefined;
+    },
+  },
   languageModel: model,
   tools: {
     ...createTodoTools(todoRefs),
     ...createGoalTools(goalRefs),
+    editable_echo: defineOnceTool({
+      name: "editable_echo",
+      input: z.strictObject({ text: z.string().min(1) }),
+      approval: { editable: true },
+      run: ({ text }) => {
+        state.effects.push(text);
+
+        return text;
+      },
+    }),
     ask_user: createAskUserTool(),
     continue_budget: createContinueBudgetTool(),
   },
 });
 
-const runtime = registerAgent(component, {
-  title: false,
-  agents: [main],
-  refs: {
-    runTurn: () =>
-      makeFunctionReference<"action", TurnArgs, null>(
-        "host:runTurn",
-      ) as unknown as FunctionReference<"action", "internal", TurnArgs, null>,
-    coordinate: () =>
-      makeFunctionReference<"mutation", CoordinateArgs, CoordinateResult>(
-        "host:coordinate",
-      ) as unknown as FunctionReference<"mutation", "internal", CoordinateArgs, CoordinateResult>,
-  },
-  authorize: async (ctx, scope) => {
-    // Delegation runs from a background slice with no end user on the connection.
-    if (scope.operation === "delegate" || scope.operation === "deliver") {
-      if (scope.subject !== "alice" && scope.subject !== "bob") throw new Error("FORBIDDEN");
-
-      return { subject: scope.subject };
-    }
-
-    const identity = await ctx.auth.getUserIdentity();
-
-    if (!identity) throw new Error("UNAUTHENTICATED");
-
-    return { subject: identity.subject };
-  },
-  budget: {
-    // Allowed while the slices used so far stay within the subject's stored
-    // limit (no row means unlimited). The limit is a host database row.
-    check: async (ctx, { subject, runId }) => {
-      state.budget.checks++;
-      state.budget.runIds.push(runId);
-      const limit = await ctx.runQuery(budgetLimitRef, { subject });
-
-      return { allowed: limit === null || state.budget.checks <= limit };
+function createRuntime() {
+  return registerAgent(component, {
+    title: false,
+    agents: [main as ManagedAgent, helper as ManagedAgent],
+    refs: {
+      runTurn: () =>
+        makeFunctionReference<"action", TurnArgs, null>(
+          "host:runTurn",
+        ) as unknown as FunctionReference<"action", "internal", TurnArgs, null>,
+      coordinate: () =>
+        makeFunctionReference<"mutation", CoordinateArgs, CoordinateResult>(
+          "host:coordinate",
+        ) as unknown as FunctionReference<"mutation", "internal", CoordinateArgs, CoordinateResult>,
     },
-  },
-  authorizeExecution: async (_ctx, { subject }) => {
-    if (subject !== "alice" && subject !== "bob") throw new Error("REVOKED");
-  },
-});
+    authorize: async (ctx, scope) => {
+      // Delegation runs from a background slice with no end user on the connection.
+      if (scope.operation === "delegate" || scope.operation === "deliver") {
+        if (scope.subject !== "alice" && scope.subject !== "bob") throw new Error("FORBIDDEN");
+
+        return { subject: scope.subject };
+      }
+
+      const identity = await ctx.auth.getUserIdentity();
+
+      if (!identity) throw new Error("UNAUTHENTICATED");
+
+      return { subject: identity.subject };
+    },
+    budget: {
+      // Allowed while the slices used so far stay within the subject's stored
+      // limit (no row means unlimited). The limit is a host database row.
+      check: async (ctx, { subject, runId }) => {
+        state.budget.checks++;
+        state.budget.runIds.push(runId);
+        const limit = await ctx.runQuery(budgetLimitRef, { subject });
+
+        return { allowed: limit === null || state.budget.checks <= limit };
+      },
+    },
+    authorizeExecution: async (_ctx, { subject }) => {
+      if (subject !== "alice" && subject !== "bob") throw new Error("REVOKED");
+    },
+  });
+}
+
+const runtime = createRuntime();
 
 const budgetLimitRef = makeFunctionReference<"query", { subject: string }, number | null>(
   "host:budgetLimit",
@@ -181,7 +225,7 @@ export const setBudgetLimit = internalMutationGeneric({
 const selfApi = anyApi;
 
 /**
- * The host's approve action: core `respond({ approved: true })` and the consent
+ * The host's approve action: core `respond({ decision: { kind: "approve" } })` and the consent
  * record commit in one transaction. This is the only place consent is created.
  */
 export const approveContinue = mutationGeneric({
@@ -194,7 +238,7 @@ export const approveContinue = mutationGeneric({
     const response = await ctx.runMutation(selfApi.host.respond, {
       threadId,
       approvalId,
-      approved: true,
+      decision: { kind: "approve" as const },
     });
 
     // A replayed response was first decided earlier, possibly through plain
@@ -253,5 +297,21 @@ export const resumeAfterBudget = mutationGeneric({
 });
 
 export const { runTurn, coordinate } = runtime.internalFunctions();
-export const { open, send, respond, answer, cancel, messages, activity, delegations } =
-  runtime.authorizedEndpoints();
+export const {
+  open,
+  send,
+  respond,
+  answer,
+  pendingApprovals,
+  cancel,
+  messages,
+  activity,
+  delegations,
+} = runtime.authorizedEndpoints();
+
+/** Rebuild registration when a fixture changes per-agent interaction policy. */
+export function fixtureExports() {
+  const current = createRuntime();
+
+  return { ...current.internalFunctions(), ...current.authorizedEndpoints() };
+}

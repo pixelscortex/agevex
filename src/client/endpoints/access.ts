@@ -7,6 +7,7 @@
 // supplies its request key and enforces ownership before its receipt lookup.
 
 import type { GenericDataModel, GenericMutationCtx, GenericQueryCtx } from "convex/server";
+import { ConvexError } from "convex/values";
 import type { ComponentApi } from "../../component/_generated/component.js";
 import { assertFact } from "../../component/facts.js";
 import type { SettingsSnapshot } from "../../component/run-settings.js";
@@ -25,6 +26,7 @@ export type EndpointContext = {
 
 /** The operations `ownedThread` authorizes; each is the host policy's `operation`. */
 export type ThreadOperation =
+  | "pendingApprovals"
   | "title"
   | "rename"
   | "summary"
@@ -79,7 +81,7 @@ export function createEndpointContext(
 export function rootAgent(ep: EndpointContext, name: string) {
   const found = ep.config.agents.find((a) => a.name === name);
 
-  if (!found) throw new Error("UNKNOWN_AGENT");
+  if (!found) throw new ConvexError({ code: "UNKNOWN_AGENT" });
 
   return found;
 }
@@ -97,7 +99,7 @@ export async function threadScope(
   assertFact(threadId, "threadId");
   const row = await ctx.runQuery(ep.component.turns.send.assignment, { threadId });
 
-  if (!row) throw new Error("FORBIDDEN");
+  if (!row) throw new ConvexError({ code: "FORBIDDEN" });
 
   return row;
 }
@@ -111,7 +113,7 @@ export function ownedScope(
 ) {
   assertFact(subject, "subject");
 
-  if (subject !== row.subject) throw new Error("FORBIDDEN");
+  if (subject !== row.subject) throw new ConvexError({ code: "FORBIDDEN" });
 
   // Ownership permits reading a child's transcript and resolving its recorded
   // approvals. Child turns belong to the coordinator's bounded delegation and
@@ -130,11 +132,11 @@ export function ownedScope(
     operation !== "answer" &&
     row.root === false
   )
-    throw new Error("FORBIDDEN");
+    throw new ConvexError({ code: "FORBIDDEN" });
 
   const native = ep.managedAgents.get(row.agent);
 
-  if (!native) throw new Error("UNKNOWN_AGENT");
+  if (!native) throw new ConvexError({ code: "UNKNOWN_AGENT" });
 
   return { ...row, native };
 }

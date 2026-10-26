@@ -8,6 +8,7 @@
 // wrapped by the generic tool hooks.
 
 import type { Tool, ToolExecutionOptions, ToolSet } from "ai";
+import { fingerprint } from "../keys.js";
 import { opaqueKey } from "../keys.js";
 import { bindOnceTool } from "../once.js";
 import type { RuntimeContext } from "../registration/context.js";
@@ -18,6 +19,7 @@ import { boundToolDeadlines } from "./deadlines.js";
 import type { Generation } from "./context.js";
 import { slotToolBags } from "./slots.js";
 import { assertBudget } from "./admission.js";
+import { askUserMarker } from "../../shared/tool-markers.js";
 
 /** Build the complete tool set for one generation. */
 export async function buildTurnTools(rt: RuntimeContext, gen: Generation): Promise<ToolSet> {
@@ -56,6 +58,14 @@ export async function buildTurnTools(rt: RuntimeContext, gen: Generation): Promi
 
     tools[name] = withToolHooks(rt, gen, name, declared);
   }
+
+  if (!(claimed.settings.askUser ?? !claimed.subagent))
+    for (const [name, tool] of Object.entries(tools))
+      if (askUserMarker(tool))
+        tools[name] = {
+          ...tool,
+          execute: async () => ({ status: "denied", code: "ROOT_ONLY" }),
+        };
 
   installCollaborationTools(rt, gen, tools, eligible);
 
@@ -96,6 +106,18 @@ function withToolHooks(rt: RuntimeContext, gen: Generation, name: string, declar
   return {
     ...declared,
     execute: async function (input: unknown, options: ToolExecutionOptions<any>) {
+      const approved = (await turn.rawCtx.runQuery(rt.component.turns["decision-reads"].effective, {
+        assignmentId: turn.args.assignmentId,
+        toolCallId: options.toolCallId,
+      })) as ApprovedInput | null;
+
+      // Hooks receive a copy: in-place mutation must not mutate the immutable audit input.
+      if (approved?.edited) input = JSON.parse(JSON.stringify(approved.input));
+
+      // Plain approvals retain native parsed values, including non-JSON schema
+      // transforms. Snapshot their fingerprint before hooks can mutate input.
+      const approvedHash = approved ? await fingerprint(input) : undefined;
+
       const before = await hook(
         managed.hooks?.beforeTool
           ? () => managed.hooks!.beforeTool!(hc, { tool: name, input })
@@ -106,6 +128,10 @@ function withToolHooks(rt: RuntimeContext, gen: Generation, name: string, declar
 
       // The outer deadline wrapper checked budget once before this hook.
       const actual = before && "input" in before ? before.input : input;
+
+      if (approved && (await fingerprint(actual)) !== approvedHash)
+        return { status: "denied", code: "APPROVED_INPUT_CHANGED" };
+
       const callKey = await opaqueKey("tool-call", facts.runId, facts.threadId, options.toolCallId);
 
       const tc = {
@@ -136,7 +162,9 @@ function withToolHooks(rt: RuntimeContext, gen: Generation, name: string, declar
             : undefined,
         );
 
-        return after && "output" in after ? after.output : output;
+        const result = after && "output" in after ? after.output : output;
+
+        return approved?.edited ? { result, approval: approved } : result;
       };
 
       if (output && typeof output === "object" && Symbol.asyncIterator in output) {
@@ -151,3 +179,12 @@ function withToolHooks(rt: RuntimeContext, gen: Generation, name: string, declar
     },
   } as Tool;
 }
+
+/** Receipt-backed audit annotation accompanying edited native tool results. */
+type ApprovedInput = {
+  input: unknown;
+  toolCallId: string;
+  originalHash: string;
+  effectiveHash: string;
+  edited: boolean;
+};

@@ -14,7 +14,7 @@ export async function fingerprint(input: unknown): Promise<string> {
       : value && typeof value === "object"
         ? Object.fromEntries(
             Object.entries(value)
-              .sort(([a], [b]) => a.localeCompare(b))
+              .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
               .map(([k, v]) => [k, canonical(v)]),
           )
         : value;
