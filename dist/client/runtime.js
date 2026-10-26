@@ -15,7 +15,7 @@ import { createRuntimeContext, } from "./registration/context.js";
 import { runTask } from "./tasks.js";
 import { buildTextTask } from "./text/task.js";
 import { buildRunTurn } from "./turn/run-turn.js";
-export { ASK_PARENT_TOOL_NAME, DELEGATE_TOOL_NAME, MESSAGE_CHILD_TOOL_NAME } from "./tool-names.js";
+export { ASK_PARENT_TOOL_NAME, DELEGATE_TOOL_NAME, MESSAGE_CHILD_TOOL_NAME, MESSAGE_PARENT_TOOL_NAME, } from "./tool-names.js";
 /**
  * Register one managed, bounded agent graph with the Agevex Convex runtime.
  *

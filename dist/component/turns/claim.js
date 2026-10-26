@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { api, internal } from "../_generated/api.js";
 import { scope, turnOrigin as vTurnOrigin } from "../schema.js";
 import { runSettings, resolveRunSettings, sliceWatchdogMs, } from "../run-settings.js";
-import { LIMITS } from "../limits.js";
+import { LIMITS, readyRowLimit } from "../limits.js";
 import { claimNotes, noteHandles } from "../hooks/notes.js";
 import { firstReady } from "./inbox.js";
 import { appendEvent, runById } from "../subagents/runs.js";
@@ -42,6 +42,9 @@ export const vClaim = v.object({
         rootThreadId: v.string(),
         childThreadId: v.string(),
         deliveryToken: v.string(),
+        // Tool installation reads this persisted run discriminator; side reviews
+        // must never inject progress into the watched parent's execution.
+        side: v.boolean(),
     })),
 });
 /** Claim the next slice of `turnToken`, or return null when this call may not
@@ -97,15 +100,19 @@ async function consumeHead(ctx, row) {
     if (!head)
         return row.promptMessageId;
     const noteAnchor = head.join?.earliestId ?? head.messageId;
-    await ctx.db.delete("inbox", head._id);
+    await consumeReady(ctx, head);
+    // A progress/result-origin turn can pause with kind="result". Keep its
+    // decided approval continuation anchored to the response until generation
+    // commits the approved tool results; merging a later note would skip them.
+    if (head._id === row.approvals?.inboxId && awaitingApprovalResults(row))
+        return noteAnchor;
     if (head.kind !== "result" && head.kind !== "note" && head.kind !== "parent")
         return noteAnchor;
     return mergeConsecutive(ctx, row, head, noteAnchor);
 }
-/** Consume the consecutive head only. Freeing capacity can publish an
- * already-ready join, so drain that same FIFO before choosing its native
- * anchor. Otherwise an older deferred join could hide a consumed answer
- * on the very next turn. Never cross another run/user turn.
+/** Consume the consecutive head only. Publish ready joins into that same FIFO
+ * before choosing its native anchor. Otherwise an older joined result could
+ * hide a consumed answer on the very next turn. Never cross another run/user turn.
  * <=100 backlog + reserved answer +50 joins + reserved head =152 rows.
  * The by_join "ready" range is scoped to this budget: <=50 members TOTAL
  * across its cohorts. <=100 run metadata reads (1,600 KiB), <=152
@@ -119,7 +126,7 @@ async function consumeHead(ctx, row) {
 async function mergeConsecutive(ctx, row, head, noteAnchor) {
     let newest = head.join?.newestSequence ?? head.sequence;
     let earliest = head.join?.earliestSequence ?? newest;
-    const bound = row.limits.queueLength + row.limits.runLaunches + 1;
+    const bound = readyRowLimit(row.limits) - 1;
     for (let count = 0; count < bound; count++) {
         await ctx.runMutation(api.subagents.deliver.releaseGroups, {
             assignmentId: row._id,
@@ -128,7 +135,7 @@ async function mergeConsecutive(ctx, row, head, noteAnchor) {
         const item = await firstReady(ctx, row._id);
         if (!item || item.runId !== head.runId || item.kind === "user")
             break;
-        await ctx.db.delete("inbox", item._id);
+        await consumeReady(ctx, item);
         const order = item.join?.newestSequence ?? item.sequence;
         const noteOrder = item.join?.earliestSequence ?? order;
         if (noteOrder < earliest) {
@@ -146,6 +153,14 @@ async function mergeConsecutive(ctx, row, head, noteAnchor) {
     }
     await ctx.db.patch("assignments", row._id, { promptMessageId: row.promptMessageId });
     return noteAnchor;
+}
+/** Progress notes retain only exact-id origin metadata after consumption, like
+ * saved hook notes. passive=false excludes them from ready and raw-note ranges. */
+async function consumeReady(ctx, item) {
+    if (item.kind === "note" && item.from)
+        await ctx.db.patch("inbox", item._id, { passive: false });
+    else
+        await ctx.db.delete("inbox", item._id);
 }
 /** Flush posted notes only at a turn claim with no decided approvals still
  * awaiting committed results; otherwise retain them for the next safe claim.
@@ -247,6 +262,7 @@ async function claimChild(ctx, row, first, claim) {
             rootThreadId: root.threadId,
             childThreadId: row.threadId,
             deliveryToken: run.deliveryToken,
+            side: !!run.side,
         },
     };
 }

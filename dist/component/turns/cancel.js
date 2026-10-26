@@ -3,8 +3,9 @@ import { mutation } from "../_generated/server.js";
 import { appendEvent } from "../subagents/runs.js";
 import { childLane, rootLane } from "../workflows/lanes.js";
 import { readyRows } from "./inbox.js";
-import { disarmRecovery } from "./recovery.js";
-import { disarmSlice } from "./boundaries.js";
+import { cancelIfPending } from "./recovery.js";
+import { settleRouting } from "../hooks/routing.js";
+import { readyRowLimit } from "../limits.js";
 import { RUN_LIMITS } from "../run-settings.js";
 import { v } from "convex/values";
 /** Cancel the root thread owned by `subject` and all its live descendants.
@@ -26,7 +27,7 @@ export async function cancelRoot(ctx, args) {
         await cancelAssignment(ctx, row, runIds);
     if (runIds.size > RUN_LIMITS.cancelBudgets)
         throw new Error("CANCEL_RUN_BUDGET");
-    // <=118 distinct runs *16 KiB <1.85 MiB, even with full settings maps.
+    // <=168 distinct runs *16 KiB <2.63 MiB, even with full settings maps.
     // Deduplicate across assignments: every child belongs to one root budget.
     for (const runId of runIds)
         await ctx.db.patch("runs", runId, { cancelled: true });
@@ -58,22 +59,30 @@ async function liveChildren(ctx, root) {
  * pre-cancel snapshot: the staged continuation, pending generation, notes,
  * run and workflow it names are the ones cleaned up here. */
 async function cancelAssignment(ctx, row, runIds) {
-    await disarmSlice(ctx, row);
-    await disarmRecovery(ctx, row);
+    await settleRouting(ctx, row, false);
+    if (row.watchdogId)
+        await cancelIfPending(ctx, row.watchdogId);
+    if (row.recoveryJobId)
+        await cancelIfPending(ctx, row.recoveryJobId);
     const approvalCleanup = !!row.approvals?.requests.length;
     await ctx.db.patch("assignments", row._id, cancelledState(row, approvalCleanup));
     // Only ready rows are read here. Raw passive bodies are cleared by one
-    // bounded job per assignment, preserving the documented <15 MiB cancel ceiling.
-    const inbox = await readyRows(ctx, row._id, row.limits.queueLength + 2);
+    // bounded job per assignment, preserving the documented <16 MiB cancel ceiling.
+    const inbox = await readyRows(ctx, row._id, readyRowLimit(row.limits));
     // A staged hook continuation is addressed directly, never included in a
     // backlog scan. <=16 assignments * (64 KiB text +1 KiB metadata) read
-    // for deletion adds <=1,040 KiB to the 13,656 KiB base budget: <15 MiB.
+    // for deletion adds <=1,040 KiB to the 14,520 KiB base budget: <16 MiB.
     if (row.hookContinue && row.inboxId)
         await ctx.db.delete("inbox", row.inboxId);
     await scheduleCleanup(ctx, row, approvalCleanup);
     for (const item of inbox) {
         runIds.add(item.runId);
-        await ctx.db.delete("inbox", item._id);
+        // Retain only the exact-id label of saved progress, as claim does. It is
+        // no longer ready work and carries no body or new cancellation budget.
+        if (item.kind === "note" && item.from)
+            await ctx.db.patch("inbox", item._id, { passive: false });
+        else
+            await ctx.db.delete("inbox", item._id);
     }
     if (row.runId)
         runIds.add(row.runId);
@@ -90,6 +99,11 @@ function cancelledState(row, approvalCleanup) {
         turnStatus: "idle",
         errorCode: null,
         turnToken: undefined,
+        watchdogId: undefined,
+        recoveryAt: undefined,
+        recoveryJobId: undefined,
+        recoveryDelayMs: undefined,
+        routingAgentIndex: undefined,
         promptMessageId: undefined,
         inboxId: undefined,
         workflowId: undefined,

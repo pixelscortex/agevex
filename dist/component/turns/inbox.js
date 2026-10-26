@@ -6,8 +6,8 @@ export function firstReady(ctx, assignmentId) {
         .withIndex("by_assignment_ready", (q) => q.eq("assignmentId", assignmentId).eq("passive", undefined))
         .first();
 }
-/** Up to `limit` ready rows in FIFO order. Only cancel reads more than the
- * head; its caller passes the per-assignment bound from limits.ts. */
+/** Up to `limit` ready rows in FIFO order. Cancel and launch admission pass
+ * the per-assignment readyRowLimit from limits.ts; native bodies stay elsewhere. */
 export function readyRows(ctx, assignmentId, limit) {
     return ctx.db
         .query("inbox")

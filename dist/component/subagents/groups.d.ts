@@ -18,9 +18,9 @@ import type { Doc, Id } from "../_generated/dataModel.js";
  * member together. Membership is immutable after continueTurn/finish seals it.
  */
 export declare function markGroupReady(ctx: MutationCtx, members: Doc<"subagentRuns">[], root: Doc<"assignments">): Promise<void>;
-/** Release uses recorded parent-message ids only. Full inboxes defer this
- * control transition until wake observes a freed slot; native delivery is
- * already committed and is NEVER attempted again. Returns true when the
+/** Release uses recorded parent-message ids only, regardless of queue length.
+ * A joined row replaces its owed members; queue capacity must never strand
+ * their already committed results. Returns true when the
  * cohort was joined (with or without a published inbox row).
  */
 export declare function releaseGroup(ctx: MutationCtx, parent: Doc<"assignments">, root: Doc<"assignments">, members: Doc<"subagentRuns">[]): Promise<boolean>;

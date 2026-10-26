@@ -6,7 +6,8 @@
  * parent run are live in the current epoch, depth and group arguments are
  * valid, the tool call was not already reserved (idempotent replay), the root
  * has a free active slot, the run budget has a launch/hop (or side-run) left,
- * and the named cohort accepts another member. Success spends the budget and
+ * the assignment has outstanding-result headroom across requests, and the named
+ * cohort accepts another member. Success spends the budget and
  * inserts the queued run in the same transaction as the host's native
  * child-thread creation. `attachChild` then creates the child assignment with
  * its task as the first inbox row and wakes it. Touches `subagentRuns`,
@@ -34,7 +35,7 @@ export declare const reservation: import("convex/values").VUnion<{
     runId: string;
 } | {
     kind: "denied";
-    code: "HOOK_BLOCKED" | "ACTIVE_LIMIT" | "TASK_LIMIT" | "FORBIDDEN" | "STALE_TURN" | "DELEGATION_CONFLICT" | "RUN_BUDGET" | "DEPTH_LIMIT" | "GROUP_LIMIT" | "GROUP_CLOSED" | "GROUP_CONFLICT" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
+    code: "HOOK_BLOCKED" | "ACTIVE_LIMIT" | "TASK_LIMIT" | "FORBIDDEN" | "STALE_TURN" | "DELEGATION_CONFLICT" | "RUN_BUDGET" | "DEPTH_LIMIT" | "GROUP_LIMIT" | "GROUP_CLOSED" | "GROUP_CONFLICT" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "MESSAGE_TOO_LARGE" | "MESSAGE_EMPTY" | "SIDE_RUN" | "MESSAGE_RATE_LIMIT" | "KEY_CONFLICT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
 }, [import("convex/values").VObject<{
     kind: "reserved";
     runId: string;
@@ -51,10 +52,10 @@ export declare const reservation: import("convex/values").VUnion<{
     agent: import("convex/values").VString<string, "required">;
 }, "required", "kind" | "agent" | "runId">, import("convex/values").VObject<{
     kind: "denied";
-    code: "HOOK_BLOCKED" | "ACTIVE_LIMIT" | "TASK_LIMIT" | "FORBIDDEN" | "STALE_TURN" | "DELEGATION_CONFLICT" | "RUN_BUDGET" | "DEPTH_LIMIT" | "GROUP_LIMIT" | "GROUP_CLOSED" | "GROUP_CONFLICT" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
+    code: "HOOK_BLOCKED" | "ACTIVE_LIMIT" | "TASK_LIMIT" | "FORBIDDEN" | "STALE_TURN" | "DELEGATION_CONFLICT" | "RUN_BUDGET" | "DEPTH_LIMIT" | "GROUP_LIMIT" | "GROUP_CLOSED" | "GROUP_CONFLICT" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "MESSAGE_TOO_LARGE" | "MESSAGE_EMPTY" | "SIDE_RUN" | "MESSAGE_RATE_LIMIT" | "KEY_CONFLICT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
 }, {
     kind: import("convex/values").VLiteral<"denied", "required">;
-    code: import("convex/values").VUnion<"HOOK_BLOCKED" | "ACTIVE_LIMIT" | "TASK_LIMIT" | "FORBIDDEN" | "STALE_TURN" | "DELEGATION_CONFLICT" | "RUN_BUDGET" | "DEPTH_LIMIT" | "GROUP_LIMIT" | "GROUP_CLOSED" | "GROUP_CONFLICT" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT", [import("convex/values").VLiteral<"HOOK_BLOCKED", "required">, import("convex/values").VLiteral<"ACTIVE_LIMIT", "required">, import("convex/values").VLiteral<"TASK_LIMIT", "required">, import("convex/values").VLiteral<"FORBIDDEN", "required">, import("convex/values").VLiteral<"STALE_TURN", "required">, import("convex/values").VLiteral<"DELEGATION_CONFLICT", "required">, import("convex/values").VLiteral<"RUN_BUDGET", "required">, import("convex/values").VLiteral<"DEPTH_LIMIT", "required">, import("convex/values").VLiteral<"GROUP_LIMIT", "required">, import("convex/values").VLiteral<"GROUP_CLOSED", "required">, import("convex/values").VLiteral<"GROUP_CONFLICT", "required">, import("convex/values").VLiteral<"CHILD_FINISHED", "required">, import("convex/values").VLiteral<"MESSAGE_LIMIT", "required">, import("convex/values").VLiteral<"ASK_PENDING", "required">, import("convex/values").VLiteral<"ASK_WITH_CHILDREN", "required">, import("convex/values").VLiteral<"QUEUE_LIMIT", "required">], "required", never>;
+    code: import("convex/values").VUnion<"HOOK_BLOCKED" | "ACTIVE_LIMIT" | "TASK_LIMIT" | "FORBIDDEN" | "STALE_TURN" | "DELEGATION_CONFLICT" | "RUN_BUDGET" | "DEPTH_LIMIT" | "GROUP_LIMIT" | "GROUP_CLOSED" | "GROUP_CONFLICT" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "MESSAGE_TOO_LARGE" | "MESSAGE_EMPTY" | "SIDE_RUN" | "MESSAGE_RATE_LIMIT" | "KEY_CONFLICT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT", [import("convex/values").VLiteral<"HOOK_BLOCKED", "required">, import("convex/values").VLiteral<"ACTIVE_LIMIT", "required">, import("convex/values").VLiteral<"TASK_LIMIT", "required">, import("convex/values").VLiteral<"FORBIDDEN", "required">, import("convex/values").VLiteral<"STALE_TURN", "required">, import("convex/values").VLiteral<"DELEGATION_CONFLICT", "required">, import("convex/values").VLiteral<"RUN_BUDGET", "required">, import("convex/values").VLiteral<"DEPTH_LIMIT", "required">, import("convex/values").VLiteral<"GROUP_LIMIT", "required">, import("convex/values").VLiteral<"GROUP_CLOSED", "required">, import("convex/values").VLiteral<"GROUP_CONFLICT", "required">, import("convex/values").VLiteral<"CHILD_FINISHED", "required">, import("convex/values").VLiteral<"MESSAGE_LIMIT", "required">, import("convex/values").VLiteral<"MESSAGE_TOO_LARGE", "required">, import("convex/values").VLiteral<"MESSAGE_EMPTY", "required">, import("convex/values").VLiteral<"SIDE_RUN", "required">, import("convex/values").VLiteral<"MESSAGE_RATE_LIMIT", "required">, import("convex/values").VLiteral<"KEY_CONFLICT", "required">, import("convex/values").VLiteral<"NO_PARENT", "required">, import("convex/values").VLiteral<"ASK_PENDING", "required">, import("convex/values").VLiteral<"ASK_WITH_CHILDREN", "required">, import("convex/values").VLiteral<"QUEUE_LIMIT", "required">], "required", never>;
 }, "required", "kind" | "code">], "required", "kind" | "agent" | "runId" | "code">;
 type ReserveArgs = ObjectType<typeof reserveArgs>;
 /**
@@ -66,6 +67,9 @@ type ReserveArgs = ObjectType<typeof reserveArgs>;
  * parent run, so a shared child definition cannot bypass the configured bound.
  */
 export declare function reserveRun(ctx: MutationCtx, args: ReserveArgs): Promise<{
+    kind: "denied";
+    code: "RUN_BUDGET";
+} | {
     kind: "denied";
     code: "STALE_TURN";
 } | {
@@ -86,9 +90,6 @@ export declare function reserveRun(ctx: MutationCtx, args: ReserveArgs): Promise
 } | {
     kind: "denied";
     code: "ACTIVE_LIMIT";
-} | {
-    kind: "denied";
-    code: "RUN_BUDGET";
 } | {
     kind: "denied";
     code: "GROUP_CLOSED";
@@ -154,6 +155,9 @@ export declare const reserve: import("convex/server").RegisteredMutation<"public
     coordinateHandle: string;
 }, Promise<{
     kind: "denied";
+    code: "RUN_BUDGET";
+} | {
+    kind: "denied";
     code: "STALE_TURN";
 } | {
     kind: "denied";
@@ -173,9 +177,6 @@ export declare const reserve: import("convex/server").RegisteredMutation<"public
 } | {
     kind: "denied";
     code: "ACTIVE_LIMIT";
-} | {
-    kind: "denied";
-    code: "RUN_BUDGET";
 } | {
     kind: "denied";
     code: "GROUP_CLOSED";

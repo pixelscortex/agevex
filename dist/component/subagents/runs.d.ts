@@ -21,6 +21,7 @@ export declare function runById(ctx: QueryCtx | MutationCtx, runId: string): Pro
     side?: boolean | undefined;
     group?: string | undefined;
     questionMessageId?: string | undefined;
+    lastParentNoteAt?: number | undefined;
     childAssignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
     childThreadId?: string | undefined;
     childResultMessageId?: string | undefined;
@@ -49,6 +50,7 @@ export declare function runById(ctx: QueryCtx | MutationCtx, runId: string): Pro
     actorAssignmentId: import("convex/values").GenericId<"assignments">;
     depth: number;
     messagesReceived: number;
+    parentNotesSent: number;
     actorAgent: string;
     deliveryToken: string;
     coordinateHandle: string;
@@ -96,6 +98,7 @@ export declare function groupMembers(ctx: QueryCtx | MutationCtx, cohort: {
     side?: boolean | undefined;
     group?: string | undefined;
     questionMessageId?: string | undefined;
+    lastParentNoteAt?: number | undefined;
     childAssignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
     childThreadId?: string | undefined;
     childResultMessageId?: string | undefined;
@@ -124,6 +127,7 @@ export declare function groupMembers(ctx: QueryCtx | MutationCtx, cohort: {
     actorAssignmentId: import("convex/values").GenericId<"assignments">;
     depth: number;
     messagesReceived: number;
+    parentNotesSent: number;
     actorAgent: string;
     deliveryToken: string;
     coordinateHandle: string;

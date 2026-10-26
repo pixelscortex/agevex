@@ -44,11 +44,12 @@ export declare const claim: import("convex/server").RegisteredMutation<"public",
         runId: string;
         subject: string;
         rootAssignmentId: string;
+        side: boolean;
         childThreadId: string;
         actorAgent: string;
         deliveryToken: string;
-        rootAgent: string;
         rootThreadId: string;
+        rootAgent: string;
     } | null;
 } | null>>;
 /** End the running turn, successfully or with a failure code; see

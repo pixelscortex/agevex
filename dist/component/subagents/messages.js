@@ -2,9 +2,10 @@
  * Parent/child conversation while a delegation runs: follow-up messages from
  * a parent to its running (or asking) child (`messageChild`), and a child's
  * question to its parent (`askParent`, authenticated by `questionContext`).
+ * Non-blocking progress uses the same admission and post helpers from parent-notes.ts.
  *
- * `interaction` is the constant-size admission check shared by the trusted
- * context query (`interactionContext`, `interactionTarget`) and both writes
+ * `interaction` is the bounded admission check shared by the trusted
+ * context queries (`interactionContext`, `interactionTarget`, parentNoteContext) and writes
  * (`sendToChild`, `askParentRun`), which rerun it inside the host's
  * native-save transaction. `post` then enqueues the saved native message on
  * the target thread and wakes it. Touches `inbox`, the target's counters,
@@ -15,23 +16,30 @@ import { mutation, query } from "../_generated/server.js";
 import { runById } from "./runs.js";
 import { wake } from "../turns/wake.js";
 import { hasPendingChildren } from "./settle.js";
+import { denialCode } from "../schema.js";
+import { LIMITS } from "../limits.js";
+import { reserveFor } from "./headroom.js";
 export const interactionArgs = {
     assignmentId: v.id("assignments"),
     turnToken: v.string(),
-    op: v.union(v.literal("message"), v.literal("ask")),
+    op: v.union(v.literal("message"), v.literal("ask"), v.literal("message_parent")),
     runId: v.optional(v.string()),
 };
 const denied = (code) => ({ kind: "denied", code });
-/** Constant-size admission: actor + root + target + child + shared budget.
+/** Bounded admission: actor + root + target + child + shared budget.
  * No native payload is read here. All writes below rerun this check inside
  * the native-save transaction, so neither a stale turn nor root cancellation
  * can admit a question/message after its fence.
+ * `replay` skips only fresh-note capacity/rate/hop checks; live turn, epoch,
+ * delegation, parent and budget cancellation fences must still hold.
  */
-export async function interaction(ctx, args) {
+export async function interaction(ctx, args, replay = false) {
     const scope = await interactionRun(ctx, args);
     if (scope.kind === "denied")
         return scope;
     const { actor, root, run } = scope;
+    if (args.op === "message_parent" && run.side)
+        return denied("SIDE_RUN");
     const child = await ctx.db.get("assignments", run.childAssignmentId);
     const parent = await ctx.db.get("assignments", run.actorAssignmentId);
     if (!child ||
@@ -41,22 +49,39 @@ export async function interaction(ctx, args) {
         child.turnStatus === "recovery_required" ||
         parent.turnStatus === "recovery_required")
         return denied("FORBIDDEN");
-    if (args.op === "message" && child._id === actor._id)
+    if (args.op === "message" && parent._id !== actor._id)
         return denied("FORBIDDEN");
-    if (args.op === "ask" && child._id !== actor._id)
+    if (args.op !== "message" && child._id !== actor._id)
         return denied("FORBIDDEN");
     if (args.op === "message" && run.messagesReceived >= root.limits.messagesPerChild)
         return denied("MESSAGE_LIMIT");
+    if (args.op === "message_parent") {
+        // An old delegation cannot wake a terminal parent or attach work to a newer request.
+        if (parent.runId !== run.parentRunId)
+            return denied("FORBIDDEN");
+        if (!replay && run.parentNotesSent >= root.limits.parentNotesPerChild)
+            return denied("MESSAGE_LIMIT");
+        if (!replay &&
+            run.lastParentNoteAt !== undefined &&
+            Date.now() - run.lastParentNoteAt < LIMITS.parentNoteIntervalMs)
+            return denied("MESSAGE_RATE_LIMIT");
+    }
     const target = args.op === "message" ? child : parent;
     // One extra slot is reserved exclusively for the answer to an open question.
     // A new question cannot reserve another while that extra slot is occupied.
     const answering = args.op === "message" && run.status === "asking";
-    if ((!answering && target.queuedMessages >= root.limits.queueLength) ||
+    if ((!replay && !answering && target.queuedMessages >= root.limits.queueLength) ||
         (args.op === "ask" && child.queuedMessages > root.limits.queueLength))
         return denied("QUEUE_LIMIT");
     const budget = await ctx.db.get("runs", run.parentRunId);
-    if (!budget || budget.cancelled || budget.hops >= root.limits.runHops)
+    if (!budget || budget.cancelled)
         return denied("RUN_BUDGET");
+    if (!replay) {
+        const kind = args.op === "message_parent" ? "note" : answering ? "answer" : args.op;
+        const refusal = await reserveFor(ctx, kind, root, budget);
+        if (refusal)
+            return refusal;
+    }
     return { kind: "ready", actor, root, run, child, parent, budget };
 }
 /** The calling turn, its root and the delegation being addressed: for "ask"
@@ -75,10 +100,12 @@ async function interactionRun(ctx, args) {
         : actor;
     if (!root || root.cancelled)
         return denied("FORBIDDEN");
-    const run = await runById(ctx, args.op === "ask" ? (actor.childRunId ?? "") : (args.runId ?? ""));
+    if (args.op === "message_parent" && !actor.childRunId)
+        return denied("NO_PARENT");
+    const run = await runById(ctx, args.op !== "message" ? (actor.childRunId ?? "") : (args.runId ?? ""));
     if (!run ||
         run.rootAssignmentId !== root._id ||
-        (args.op === "ask" && run.parentRunId !== actor.runId) ||
+        (args.op !== "message" && run.parentRunId !== actor.runId) ||
         run.rootCancellationEpoch !== root.cancellationEpoch)
         return denied("FORBIDDEN");
     if (args.op === "ask" && run.status === "asking")
@@ -94,14 +121,15 @@ async function interactionRun(ctx, args) {
 /** Enqueue an already saved native message as ready work on `target` and wake
  * it. `answering` lets a parent's reply to an open question use the one extra
  * reserved slot even when the child's ready queue is full. */
-export async function post(ctx, target, runId, messageId, kind, answering = false) {
-    if (target.queuedMessages >= target.limits.queueLength + Number(answering))
+export async function post(ctx, target, runId, messageId, kind, answering = false, from) {
+    if (!answering && target.queuedMessages >= target.limits.queueLength)
         throw new Error("QUEUE_LIMIT");
     await ctx.db.insert("inbox", {
         assignmentId: target._id,
         runId,
         messageId,
         kind,
+        from,
         sequence: target.nextSequence,
     });
     const next = {
@@ -136,6 +164,20 @@ export async function interactionTarget(ctx, args) {
         parentAgent: parent.agent,
     };
 }
+/** Shared trusted projection validator, including admission denials before native saves. */
+export const interactionResult = v.union(v.object({ kind: v.literal("denied"), code: denialCode }), v.object({
+    kind: v.literal("ready"),
+    runId: v.string(),
+    agent: v.string(),
+    subject: v.string(),
+    childThreadId: v.string(),
+    parentThreadId: v.string(),
+    rootThreadId: v.string(),
+    rootAssignmentId: v.id("assignments"),
+    rootAgent: v.string(),
+    actorAgent: v.string(),
+    parentAgent: v.string(),
+}));
 /** `subagents.messages.messageChild`: the exact native follow-up id is saved in the
  * child's inbox in the same transaction. Answers an open question (resuming
  * the child) when the child is asking; spends one hop either way. */
@@ -173,6 +215,7 @@ export async function askParentRun(ctx, args) {
 /** Trusted target projection for the host's atomic native message saves. */
 export const interactionContext = query({
     args: interactionArgs,
+    returns: interactionResult,
     handler: (ctx, args) => interactionTarget(ctx, args),
 });
 /** The exact native follow-up id is saved in the inbox in the same transaction. */

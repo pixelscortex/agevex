@@ -28,7 +28,12 @@ import { buildTextTask } from "./text/task.js";
 import { buildRunTurn } from "./turn/run-turn.js";
 import type { Registration } from "./types.js";
 
-export { ASK_PARENT_TOOL_NAME, DELEGATE_TOOL_NAME, MESSAGE_CHILD_TOOL_NAME } from "./tool-names.js";
+export {
+  ASK_PARENT_TOOL_NAME,
+  DELEGATE_TOOL_NAME,
+  MESSAGE_CHILD_TOOL_NAME,
+  MESSAGE_PARENT_TOOL_NAME,
+} from "./tool-names.js";
 export type { SandboxCompletion };
 
 /**

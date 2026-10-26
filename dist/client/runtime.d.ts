@@ -4,7 +4,7 @@ import { type NoteArgs, type SandboxCompletion } from "./host/notes.js";
 import { type CoordinatorCtx, type RunnerCtx } from "./registration/context.js";
 import { type Task, type TaskOptions } from "./tasks.js";
 import type { Registration } from "./types.js";
-export { ASK_PARENT_TOOL_NAME, DELEGATE_TOOL_NAME, MESSAGE_CHILD_TOOL_NAME } from "./tool-names.js";
+export { ASK_PARENT_TOOL_NAME, DELEGATE_TOOL_NAME, MESSAGE_CHILD_TOOL_NAME, MESSAGE_PARENT_TOOL_NAME, } from "./tool-names.js";
 export type { SandboxCompletion };
 /**
  * Register one managed, bounded agent graph with the Agevex Convex runtime.

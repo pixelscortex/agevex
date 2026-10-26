@@ -70,8 +70,8 @@ export declare const runMetadata: import("convex/server").RegisteredQuery<"inter
         size: number;
     } | null;
 }>>;
-/** Fill the <=118-run cancellation fixture with maximum-size accepted settings.
- * Read+patch <=118*16 KiB twice (<4 MiB), no messages or transcript scans. */
+/** Fill the <=168-run cancellation fixture with maximum-size accepted settings.
+ * Read+patch <=168*16 KiB twice (<6 MiB), no messages or transcript scans. */
 export declare const fillRunSettings: import("convex/server").RegisteredMutation<"internal", {
     settings?: {
         agent: string;

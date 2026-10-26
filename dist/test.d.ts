@@ -138,6 +138,7 @@ declare const _default: {
                 notesPending: number;
                 maxDepth: number;
                 messagesPerChild: number;
+                parentNotesPerChild: number;
                 rootLane: number;
                 childLane: number;
                 runLaunches: number;
@@ -343,6 +344,7 @@ declare const _default: {
                 notesPending: number;
                 maxDepth: number;
                 messagesPerChild: number;
+                parentNotesPerChild: number;
                 rootLane: number;
                 childLane: number;
                 runLaunches: number;
@@ -359,6 +361,7 @@ declare const _default: {
                 notesPending: import("convex/values").VFloat64<number, "required">;
                 maxDepth: import("convex/values").VFloat64<number, "required">;
                 messagesPerChild: import("convex/values").VFloat64<number, "required">;
+                parentNotesPerChild: import("convex/values").VFloat64<number, "required">;
                 rootLane: import("convex/values").VFloat64<number, "required">;
                 childLane: import("convex/values").VFloat64<number, "required">;
                 runLaunches: import("convex/values").VFloat64<number, "required">;
@@ -368,7 +371,7 @@ declare const _default: {
                 queueLength: import("convex/values").VFloat64<number, "required">;
                 slicesPerTurn: import("convex/values").VFloat64<number, "required">;
                 leaseMs: import("convex/values").VFloat64<number, "required">;
-            }, "required", "attachmentBytes" | "continuesPerRun" | "sideRunsPerRun" | "notesPending" | "maxDepth" | "messagesPerChild" | "rootLane" | "childLane" | "runLaunches" | "runHops" | "activeChildrenPerRoot" | "taskLength" | "queueLength" | "slicesPerTurn" | "leaseMs">;
+            }, "required", "attachmentBytes" | "continuesPerRun" | "sideRunsPerRun" | "notesPending" | "maxDepth" | "messagesPerChild" | "parentNotesPerChild" | "rootLane" | "childLane" | "runLaunches" | "runHops" | "activeChildrenPerRoot" | "taskLength" | "queueLength" | "slicesPerTurn" | "leaseMs">;
             loopWaiting: import("convex/values").VBoolean<boolean | undefined, "optional">;
             pinged: import("convex/values").VBoolean<boolean | undefined, "optional">;
             recoveryAt: import("convex/values").VFloat64<number | undefined, "optional">;
@@ -469,7 +472,7 @@ declare const _default: {
             lastSlice: import("convex/values").VString<string | undefined, "optional">;
             activeRuns: import("convex/values").VFloat64<number, "required">;
             nextRunSequence: import("convex/values").VFloat64<number, "required">;
-        }, "required", "workflowId" | "notesPending" | "agent" | "runId" | "limits" | "turnStatus" | "errorCode" | "textConfig" | "titleVersion" | "titleSource" | "titleTask" | "summaryTask" | "textCompleted" | "textSummary" | "modelStep" | "contextMessages" | "reviewed" | "completedTurns" | "routingAgentIndex" | "hookContinue" | "subject" | "threadId" | "models" | "runTurn" | "loopWaiting" | "pinged" | "recoveryAt" | "recoveryJobId" | "recoveryDelayMs" | "modelSteps" | "watchdogId" | "pendingGeneration" | "cancellationEpoch" | "cancelled" | "childRunId" | "rootAssignmentId" | "queuedMessages" | "nextSequence" | "nextTurn" | "turnToken" | "promptMessageId" | "turnOrigin" | "inboxId" | "approvalBlocked" | "approvals" | "lastSlice" | "activeRuns" | "nextRunSequence" | "limits.attachmentBytes" | "limits.continuesPerRun" | "limits.sideRunsPerRun" | "limits.notesPending" | "limits.maxDepth" | "limits.messagesPerChild" | "limits.rootLane" | "limits.childLane" | "limits.runLaunches" | "limits.runHops" | "limits.activeChildrenPerRoot" | "limits.taskLength" | "limits.queueLength" | "limits.slicesPerTurn" | "limits.leaseMs" | "textConfig.worker" | "textConfig.title" | "textConfig.summary" | "textConfig.updateThread" | "textConfig.getThread" | "textConfig.everyTurns" | "titleTask.status" | "titleTask.key" | "titleTask.runId" | "titleTask.epoch" | "titleTask.version" | "titleTask.dispatched" | "titleTask.again" | "titleTask.deferred" | "titleTask.titleRef" | "titleTask.titleRef.order" | "titleTask.titleRef.bytes" | "titleTask.titleRef.id" | "titleTask.titleRef.stepOrder" | "summaryTask.status" | "summaryTask.key" | "summaryTask.runId" | "summaryTask.epoch" | "summaryTask.version" | "summaryTask.dispatched" | "summaryTask.again" | "summaryTask.deferred" | "summaryTask.titleRef" | "summaryTask.titleRef.order" | "summaryTask.titleRef.bytes" | "summaryTask.titleRef.id" | "summaryTask.titleRef.stepOrder" | "textCompleted.order" | "textCompleted.id" | "textCompleted.stepOrder" | "textCompleted.sequence" | "textSummary.text" | "textSummary.through" | "textSummary.through.order" | "textSummary.through.id" | "textSummary.through.stepOrder" | "textSummary.through.sequence" | "modelStep.stepOrder" | "modelStep.messageId" | `models.${string}` | "pendingGeneration.stream" | "pendingGeneration.epoch" | "pendingGeneration.messageId" | "pendingGeneration.executionId" | "pendingGeneration.getMessages" | "pendingGeneration.finalizeMessage" | "pendingGeneration.stream.id" | "pendingGeneration.stream.abort" | "approvals.epoch" | "approvals.getMessages" | "approvals.inboxId" | "approvals.addMessages" | "approvals.cleanupPending" | "approvals.requests">, {
+        }, "required", "workflowId" | "notesPending" | "agent" | "runId" | "limits" | "turnStatus" | "errorCode" | "textConfig" | "titleVersion" | "titleSource" | "titleTask" | "summaryTask" | "textCompleted" | "textSummary" | "modelStep" | "contextMessages" | "reviewed" | "completedTurns" | "routingAgentIndex" | "hookContinue" | "subject" | "threadId" | "models" | "runTurn" | "loopWaiting" | "pinged" | "recoveryAt" | "recoveryJobId" | "recoveryDelayMs" | "modelSteps" | "watchdogId" | "pendingGeneration" | "cancellationEpoch" | "cancelled" | "childRunId" | "rootAssignmentId" | "queuedMessages" | "nextSequence" | "nextTurn" | "turnToken" | "promptMessageId" | "turnOrigin" | "inboxId" | "approvalBlocked" | "approvals" | "lastSlice" | "activeRuns" | "nextRunSequence" | "limits.attachmentBytes" | "limits.continuesPerRun" | "limits.sideRunsPerRun" | "limits.notesPending" | "limits.maxDepth" | "limits.messagesPerChild" | "limits.parentNotesPerChild" | "limits.rootLane" | "limits.childLane" | "limits.runLaunches" | "limits.runHops" | "limits.activeChildrenPerRoot" | "limits.taskLength" | "limits.queueLength" | "limits.slicesPerTurn" | "limits.leaseMs" | "textConfig.worker" | "textConfig.title" | "textConfig.summary" | "textConfig.updateThread" | "textConfig.getThread" | "textConfig.everyTurns" | "titleTask.status" | "titleTask.key" | "titleTask.runId" | "titleTask.epoch" | "titleTask.version" | "titleTask.dispatched" | "titleTask.again" | "titleTask.deferred" | "titleTask.titleRef" | "titleTask.titleRef.order" | "titleTask.titleRef.bytes" | "titleTask.titleRef.id" | "titleTask.titleRef.stepOrder" | "summaryTask.status" | "summaryTask.key" | "summaryTask.runId" | "summaryTask.epoch" | "summaryTask.version" | "summaryTask.dispatched" | "summaryTask.again" | "summaryTask.deferred" | "summaryTask.titleRef" | "summaryTask.titleRef.order" | "summaryTask.titleRef.bytes" | "summaryTask.titleRef.id" | "summaryTask.titleRef.stepOrder" | "textCompleted.order" | "textCompleted.id" | "textCompleted.stepOrder" | "textCompleted.sequence" | "textSummary.text" | "textSummary.through" | "textSummary.through.order" | "textSummary.through.id" | "textSummary.through.stepOrder" | "textSummary.through.sequence" | "modelStep.stepOrder" | "modelStep.messageId" | `models.${string}` | "pendingGeneration.stream" | "pendingGeneration.epoch" | "pendingGeneration.messageId" | "pendingGeneration.executionId" | "pendingGeneration.getMessages" | "pendingGeneration.finalizeMessage" | "pendingGeneration.stream.id" | "pendingGeneration.stream.abort" | "approvals.epoch" | "approvals.getMessages" | "approvals.inboxId" | "approvals.addMessages" | "approvals.cleanupPending" | "approvals.requests">, {
             by_thread: ["threadId", "_creationTime"];
         }, {}, {}>;
         inbox: import("convex/server").TableDefinition<import("convex/values").VObject<{
@@ -718,6 +721,7 @@ declare const _default: {
             side?: boolean | undefined;
             group?: string | undefined;
             questionMessageId?: string | undefined;
+            lastParentNoteAt?: number | undefined;
             childAssignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
             childThreadId?: string | undefined;
             childResultMessageId?: string | undefined;
@@ -746,6 +750,7 @@ declare const _default: {
             actorAssignmentId: import("convex/values").GenericId<"assignments">;
             depth: number;
             messagesReceived: number;
+            parentNotesSent: number;
             actorAgent: string;
             deliveryToken: string;
             coordinateHandle: string;
@@ -764,6 +769,8 @@ declare const _default: {
             join: import("convex/values").VUnion<"open" | "sealed" | "ready" | "joined" | undefined, [import("convex/values").VLiteral<"open", "required">, import("convex/values").VLiteral<"sealed", "required">, import("convex/values").VLiteral<"ready", "required">, import("convex/values").VLiteral<"joined", "required">], "optional", never>;
             questionMessageId: import("convex/values").VString<string | undefined, "optional">;
             messagesReceived: import("convex/values").VFloat64<number, "required">;
+            parentNotesSent: import("convex/values").VFloat64<number, "required">;
+            lastParentNoteAt: import("convex/values").VFloat64<number | undefined, "optional">;
             childAssignmentId: import("convex/values").VId<import("convex/values").GenericId<"assignments"> | undefined, "optional">;
             childThreadId: import("convex/values").VString<string | undefined, "optional">;
             childResultMessageId: import("convex/values").VString<string | undefined, "optional">;
@@ -799,13 +806,13 @@ declare const _default: {
                 at: import("convex/values").VFloat64<number, "required">;
                 errorCode: import("convex/values").VUnion<"BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | null, [import("convex/values").VNull<null, "required">, import("convex/values").VLiteral<"BUDGET_EXCEEDED", "required">, import("convex/values").VLiteral<"HOOK_FAILED", "required">, import("convex/values").VLiteral<"GENERATION_FAILED", "required">, import("convex/values").VLiteral<"RUN_TIMEOUT", "required">, import("convex/values").VLiteral<"SLICE_LIMIT", "required">, import("convex/values").VLiteral<"APPROVAL_LIMIT", "required">, import("convex/values").VLiteral<"CLEANUP_FAILED", "required">, import("convex/values").VLiteral<"AUTHORIZATION_DENIED", "required">, import("convex/values").VLiteral<"EXECUTION_AMBIGUOUS", "required">, import("convex/values").VLiteral<"EMPTY_RESULT", "required">, import("convex/values").VLiteral<"RESULT_UNVERIFIED", "required">, import("convex/values").VLiteral<"ROOT_UNAVAILABLE", "required">, import("convex/values").VLiteral<"DELIVERY_FAILED", "required">], "required", never>;
             }, "required", "errorCode" | "at" | "phase">, "required">;
-        }, "required", "join" | "startedAt" | "events" | "status" | "agent" | "sequence" | "runId" | "errorCode" | "rootAssignmentId" | "deliveryStatus" | "side" | "rootCancellationEpoch" | "parentRunId" | "dedupKey" | "payloadFingerprint" | "actorAssignmentId" | "depth" | "group" | "questionMessageId" | "messagesReceived" | "childAssignmentId" | "childThreadId" | "childResultMessageId" | "lastTurnResult" | "actorAgent" | "deliveryToken" | "coordinateHandle" | "createdAt" | "resultMessageId" | "resultSequence" | "lastTurnResult.errorCode" | "lastTurnResult.messageId">, {
+        }, "required", "join" | "startedAt" | "events" | "status" | "agent" | "sequence" | "runId" | "errorCode" | "rootAssignmentId" | "deliveryStatus" | "side" | "rootCancellationEpoch" | "parentRunId" | "dedupKey" | "payloadFingerprint" | "actorAssignmentId" | "depth" | "group" | "questionMessageId" | "messagesReceived" | "parentNotesSent" | "lastParentNoteAt" | "childAssignmentId" | "childThreadId" | "childResultMessageId" | "lastTurnResult" | "actorAgent" | "deliveryToken" | "coordinateHandle" | "createdAt" | "resultMessageId" | "resultSequence" | "lastTurnResult.errorCode" | "lastTurnResult.messageId">, {
             by_result_message: ["resultMessageId", "_creationTime"];
             by_dedup: ["dedupKey", "_creationTime"];
             by_run: ["runId", "_creationTime"];
             by_root_sequence: ["rootAssignmentId", "sequence", "_creationTime"];
             by_root_status: ["rootAssignmentId", "status", "_creationTime"];
-            by_parent_delivery: ["actorAssignmentId", "side", "deliveryStatus", "_creationTime"];
+            by_parent_delivery: ["actorAssignmentId", "side", "deliveryStatus", "rootCancellationEpoch", "_creationTime"];
             by_join: ["actorAssignmentId", "rootCancellationEpoch", "join", "parentRunId", "_creationTime"];
             by_group: ["parentRunId", "actorAssignmentId", "group", "_creationTime"];
         }, {}, {}>;

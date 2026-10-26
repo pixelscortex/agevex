@@ -32,8 +32,8 @@ export declare function firstReady(ctx: Pick<QueryCtx, "db">, assignmentId: Id<"
     messageId: string;
     assignmentId: import("convex/values").GenericId<"assignments">;
 } | null>;
-/** Up to `limit` ready rows in FIFO order. Only cancel reads more than the
- * head; its caller passes the per-assignment bound from limits.ts. */
+/** Up to `limit` ready rows in FIFO order. Cancel and launch admission pass
+ * the per-assignment readyRowLimit from limits.ts; native bodies stay elsewhere. */
 export declare function readyRows(ctx: Pick<QueryCtx, "db">, assignmentId: Id<"assignments">, limit: number): Promise<{
     _id: import("convex/values").GenericId<"inbox">;
     _creationTime: number;

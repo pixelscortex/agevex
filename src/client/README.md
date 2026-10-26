@@ -77,6 +77,7 @@ can be cancelled without an unknown outcome. Native app titles always win.
 | `coordinate/coordinator.ts`   | The `coordinate` mutation and op dispatch.                                    |
 | `coordinate/launch.ts`        | `launch`: start a child run or side review.                                   |
 | `coordinate/interaction.ts`   | `message` and `ask` between parent and child.                                 |
+| `coordinate/parent-note.ts`   | `message_parent`: receipt-backed progress to the immediate parent.            |
 | `coordinate/settle.ts`        | `settle`: record a child run's verified outcome.                              |
 | `coordinate/delivery.ts`      | `notify` and one-shot delivery to the parent.                                 |
 | `coordinate/verify.ts`        | Child-result verification against the native transcript.                      |
@@ -93,7 +94,7 @@ can be cancelled without an unknown outcome. Native app titles always win.
 | `turn/hook-runner.ts`         | Validated hook calls and hook notes.                                          |
 | `turn/routing.ts`             | `beforeTurn` model choice and per-agent routing.                              |
 | `turn/tools.ts`               | Tool set: slot tools, receipts binding, tool hooks.                           |
-| `turn/collaboration-tools.ts` | `agevex_delegate`, `agevex_message_child`, `agevex_ask_parent`.               |
+| `turn/collaboration-tools.ts` | Managed delegation, parent/child messages and blocking parent questions.      |
 | `turn/completion.ts`          | Post-step decisions: continue, `afterTurn`, side reviews, child result.       |
 | `turn/finish.ts`              | Finish the turn; settle and deliver for a child.                              |
 | `turn/slots.ts`               | Usage, extract, sandbox and telemetry slots during a turn.                    |

@@ -6,7 +6,8 @@
  * parent run are live in the current epoch, depth and group arguments are
  * valid, the tool call was not already reserved (idempotent replay), the root
  * has a free active slot, the run budget has a launch/hop (or side-run) left,
- * and the named cohort accepts another member. Success spends the budget and
+ * the assignment has outstanding-result headroom across requests, and the named
+ * cohort accepts another member. Success spends the budget and
  * inserts the queued run in the same transaction as the host's native
  * child-thread creation. `attachChild` then creates the child assignment with
  * its task as the first inbox row and wakes it. Touches `subagentRuns`,
@@ -23,6 +24,7 @@ import { messageRef, recordRefs } from "../hooks/refs.js";
 import { newChildAssignment } from "../turns/assignments.js";
 import { wake } from "../turns/wake.js";
 import { delegateScope } from "./views.js";
+import { canOweResult, reserveFor } from "./headroom.js";
 
 export const reserveArgs = {
   assignmentId: v.id("assignments"),
@@ -84,6 +86,14 @@ export async function reserveRun(ctx: MutationCtx, args: ReserveArgs) {
 
   if (!budget || budget.cancelled || budgetSpent(budget, row, args.side))
     return denied("RUN_BUDGET");
+
+  if (!args.side) {
+    const refusal = await reserveFor(ctx, "launch", root, budget);
+
+    if (refusal) return refusal;
+
+    if (!(await canOweResult(ctx, row, root))) return denied("RUN_BUDGET");
+  }
 
   const wait = args.wait ?? "each";
   const group = args.group ?? (wait === "all" ? "" : undefined);
@@ -167,11 +177,12 @@ async function reservationScope(ctx: MutationCtx, args: ReserveArgs) {
 }
 
 /** Whether this launch would exceed the run budget: side reviews spend
- * `sideRuns`; ordinary launches spend one launch and one hop. */
+ * `sideRuns`; ordinary launches spend one launch and one hop, with final-result
+ * headroom checked by reserveFor before any write. */
 function budgetSpent(budget: Doc<"runs">, row: Doc<"assignments">, side: boolean | undefined) {
   return side
     ? budget.sideRuns >= row.limits.sideRunsPerRun
-    : budget.launches >= row.limits.runLaunches || budget.hops >= row.limits.runHops;
+    : budget.launches >= row.limits.runLaunches;
 }
 
 /** A named group is a closed cohort, capped INCLUDING settled members. Refuse

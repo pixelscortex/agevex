@@ -16,9 +16,9 @@ export async function markGroupReady(ctx, members, root) {
     if (members[0].join === "sealed")
         await ctx.db.patch("subagentRuns", members[0]._id, { join: "ready" });
 }
-/** Release uses recorded parent-message ids only. Full inboxes defer this
- * control transition until wake observes a freed slot; native delivery is
- * already committed and is NEVER attempted again. Returns true when the
+/** Release uses recorded parent-message ids only, regardless of queue length.
+ * A joined row replaces its owed members; queue capacity must never strand
+ * their already committed results. Returns true when the
  * cohort was joined (with or without a published inbox row).
  */
 export async function releaseGroup(ctx, parent, root, members) {
@@ -34,8 +34,6 @@ export async function releaseGroup(ctx, parent, root, members) {
     const accepted = members
         .filter((member) => member.deliveryStatus === "accepted" && member.resultMessageId)
         .sort((a, b) => (a.resultSequence ?? 0) - (b.resultSequence ?? 0));
-    if (accepted.length && parent.queuedMessages >= root.limits.queueLength)
-        return false;
     // Mark all <=15 members "joined" so the by_join fence probes retire the
     // entire cohort, including failures. No delivered body is read or copied.
     for (const member of members)
@@ -123,7 +121,7 @@ export async function sealGroups(ctx, parent) {
  * Returns true when a cohort was released. */
 export async function releaseReadyCohort(ctx, args) {
     const parent = await ctx.db.get("assignments", args.assignmentId);
-    if (!parent || parent.cancelled || parent.queuedMessages >= parent.limits.queueLength)
+    if (!parent || parent.cancelled)
         return false;
     const root = parent.rootAssignmentId
         ? await ctx.db.get("assignments", parent.rootAssignmentId)

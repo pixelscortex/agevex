@@ -21,8 +21,9 @@ export async function interact(rt, ctx, args) {
     // Each native save reads at most its one <=1 MiB tail document.
     // message: one <=128 KiB saved text projection; ask: two such
     // saves +one <=128 KiB exact question verification. Add <=2.25 MiB
-    // bounded inbox/group recovery and <128 KiB admission metadata:
-    // either transaction stays <8 MiB, <600 reads and <128 writes.
+    // bounded inbox/group recovery, <128 KiB fixed admission metadata and
+    // two <=58-row hop-reservation scans (464 KiB): either transaction
+    // stays <8 MiB, <1,000 reads and <128 writes.
     // No backlog or transcript body scan participates in admission.
     const text = (args.op === "message" ? args.text : args.question).trim();
     if (!text || text.length > rt.limits.taskLength)

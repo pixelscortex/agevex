@@ -3,23 +3,25 @@ import type { Doc } from "../_generated/dataModel.js";
 export declare const interactionArgs: {
     assignmentId: import("convex/values").VId<import("convex/values").GenericId<"assignments">, "required">;
     turnToken: import("convex/values").VString<string, "required">;
-    op: import("convex/values").VUnion<"message" | "ask", [import("convex/values").VLiteral<"message", "required">, import("convex/values").VLiteral<"ask", "required">], "required", never>;
+    op: import("convex/values").VUnion<"message" | "ask" | "message_parent", [import("convex/values").VLiteral<"message", "required">, import("convex/values").VLiteral<"ask", "required">, import("convex/values").VLiteral<"message_parent", "required">], "required", never>;
     runId: import("convex/values").VString<string | undefined, "optional">;
 };
 type InteractionArgs = {
     assignmentId: Doc<"assignments">["_id"];
     turnToken: string;
-    op: "message" | "ask";
+    op: "message" | "ask" | "message_parent";
     runId?: string;
 };
-/** Constant-size admission: actor + root + target + child + shared budget.
+/** Bounded admission: actor + root + target + child + shared budget.
  * No native payload is read here. All writes below rerun this check inside
  * the native-save transaction, so neither a stale turn nor root cancellation
  * can admit a question/message after its fence.
+ * `replay` skips only fresh-note capacity/rate/hop checks; live turn, epoch,
+ * delegation, parent and budget cancellation fences must still hold.
  */
-export declare function interaction(ctx: QueryCtx | MutationCtx, args: InteractionArgs): Promise<{
+export declare function interaction(ctx: QueryCtx | MutationCtx, args: InteractionArgs, replay?: boolean): Promise<{
     kind: "denied";
-    code: "FORBIDDEN" | "STALE_TURN" | "RUN_BUDGET" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
+    code: "FORBIDDEN" | "STALE_TURN" | "RUN_BUDGET" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "SIDE_RUN" | "MESSAGE_RATE_LIMIT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
 } | {
     kind: "ready";
     actor: {
@@ -156,6 +158,7 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
             notesPending: number;
             maxDepth: number;
             messagesPerChild: number;
+            parentNotesPerChild: number;
             rootLane: number;
             childLane: number;
             runLaunches: number;
@@ -314,6 +317,7 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
             notesPending: number;
             maxDepth: number;
             messagesPerChild: number;
+            parentNotesPerChild: number;
             rootLane: number;
             childLane: number;
             runLaunches: number;
@@ -346,6 +350,7 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         side?: boolean | undefined;
         group?: string | undefined;
         questionMessageId?: string | undefined;
+        lastParentNoteAt?: number | undefined;
         childAssignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
         childThreadId?: string | undefined;
         childResultMessageId?: string | undefined;
@@ -374,6 +379,7 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         actorAssignmentId: import("convex/values").GenericId<"assignments">;
         depth: number;
         messagesReceived: number;
+        parentNotesSent: number;
         actorAgent: string;
         deliveryToken: string;
         coordinateHandle: string;
@@ -513,6 +519,7 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
             notesPending: number;
             maxDepth: number;
             messagesPerChild: number;
+            parentNotesPerChild: number;
             rootLane: number;
             childLane: number;
             runLaunches: number;
@@ -671,6 +678,7 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
             notesPending: number;
             maxDepth: number;
             messagesPerChild: number;
+            parentNotesPerChild: number;
             rootLane: number;
             childLane: number;
             runLaunches: number;
@@ -723,12 +731,12 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
 /** Enqueue an already saved native message as ready work on `target` and wake
  * it. `answering` lets a parent's reply to an open question use the one extra
  * reserved slot even when the child's ready queue is full. */
-export declare function post(ctx: MutationCtx, target: Doc<"assignments">, runId: Doc<"runs">["_id"], messageId: string, kind: "parent" | "note", answering?: boolean): Promise<void>;
+export declare function post(ctx: MutationCtx, target: Doc<"assignments">, runId: Doc<"runs">["_id"], messageId: string, kind: "parent" | "note", answering?: boolean, from?: string): Promise<void>;
 /** Trusted target projection for the host's atomic native message saves:
  * the threads and agents on both ends, or the admission denial. */
 export declare function interactionTarget(ctx: QueryCtx, args: InteractionArgs): Promise<{
     kind: "denied";
-    code: "FORBIDDEN" | "STALE_TURN" | "RUN_BUDGET" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
+    code: "FORBIDDEN" | "STALE_TURN" | "RUN_BUDGET" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "SIDE_RUN" | "MESSAGE_RATE_LIMIT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
 } | {
     kind: "ready";
     runId: string;
@@ -742,6 +750,53 @@ export declare function interactionTarget(ctx: QueryCtx, args: InteractionArgs):
     actorAgent: string;
     parentAgent: string;
 }>;
+/** Shared trusted projection validator, including admission denials before native saves. */
+export declare const interactionResult: import("convex/values").VUnion<{
+    kind: "denied";
+    code: "HOOK_BLOCKED" | "ACTIVE_LIMIT" | "TASK_LIMIT" | "FORBIDDEN" | "STALE_TURN" | "DELEGATION_CONFLICT" | "RUN_BUDGET" | "DEPTH_LIMIT" | "GROUP_LIMIT" | "GROUP_CLOSED" | "GROUP_CONFLICT" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "MESSAGE_TOO_LARGE" | "MESSAGE_EMPTY" | "SIDE_RUN" | "MESSAGE_RATE_LIMIT" | "KEY_CONFLICT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
+} | {
+    kind: "ready";
+    agent: string;
+    runId: string;
+    subject: string;
+    rootAssignmentId: import("convex/values").GenericId<"assignments">;
+    childThreadId: string;
+    actorAgent: string;
+    parentThreadId: string;
+    rootThreadId: string;
+    rootAgent: string;
+    parentAgent: string;
+}, [import("convex/values").VObject<{
+    kind: "denied";
+    code: "HOOK_BLOCKED" | "ACTIVE_LIMIT" | "TASK_LIMIT" | "FORBIDDEN" | "STALE_TURN" | "DELEGATION_CONFLICT" | "RUN_BUDGET" | "DEPTH_LIMIT" | "GROUP_LIMIT" | "GROUP_CLOSED" | "GROUP_CONFLICT" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "MESSAGE_TOO_LARGE" | "MESSAGE_EMPTY" | "SIDE_RUN" | "MESSAGE_RATE_LIMIT" | "KEY_CONFLICT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
+}, {
+    kind: import("convex/values").VLiteral<"denied", "required">;
+    code: import("convex/values").VUnion<"HOOK_BLOCKED" | "ACTIVE_LIMIT" | "TASK_LIMIT" | "FORBIDDEN" | "STALE_TURN" | "DELEGATION_CONFLICT" | "RUN_BUDGET" | "DEPTH_LIMIT" | "GROUP_LIMIT" | "GROUP_CLOSED" | "GROUP_CONFLICT" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "MESSAGE_TOO_LARGE" | "MESSAGE_EMPTY" | "SIDE_RUN" | "MESSAGE_RATE_LIMIT" | "KEY_CONFLICT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT", [import("convex/values").VLiteral<"HOOK_BLOCKED", "required">, import("convex/values").VLiteral<"ACTIVE_LIMIT", "required">, import("convex/values").VLiteral<"TASK_LIMIT", "required">, import("convex/values").VLiteral<"FORBIDDEN", "required">, import("convex/values").VLiteral<"STALE_TURN", "required">, import("convex/values").VLiteral<"DELEGATION_CONFLICT", "required">, import("convex/values").VLiteral<"RUN_BUDGET", "required">, import("convex/values").VLiteral<"DEPTH_LIMIT", "required">, import("convex/values").VLiteral<"GROUP_LIMIT", "required">, import("convex/values").VLiteral<"GROUP_CLOSED", "required">, import("convex/values").VLiteral<"GROUP_CONFLICT", "required">, import("convex/values").VLiteral<"CHILD_FINISHED", "required">, import("convex/values").VLiteral<"MESSAGE_LIMIT", "required">, import("convex/values").VLiteral<"MESSAGE_TOO_LARGE", "required">, import("convex/values").VLiteral<"MESSAGE_EMPTY", "required">, import("convex/values").VLiteral<"SIDE_RUN", "required">, import("convex/values").VLiteral<"MESSAGE_RATE_LIMIT", "required">, import("convex/values").VLiteral<"KEY_CONFLICT", "required">, import("convex/values").VLiteral<"NO_PARENT", "required">, import("convex/values").VLiteral<"ASK_PENDING", "required">, import("convex/values").VLiteral<"ASK_WITH_CHILDREN", "required">, import("convex/values").VLiteral<"QUEUE_LIMIT", "required">], "required", never>;
+}, "required", "kind" | "code">, import("convex/values").VObject<{
+    kind: "ready";
+    agent: string;
+    runId: string;
+    subject: string;
+    rootAssignmentId: import("convex/values").GenericId<"assignments">;
+    childThreadId: string;
+    actorAgent: string;
+    parentThreadId: string;
+    rootThreadId: string;
+    rootAgent: string;
+    parentAgent: string;
+}, {
+    kind: import("convex/values").VLiteral<"ready", "required">;
+    runId: import("convex/values").VString<string, "required">;
+    agent: import("convex/values").VString<string, "required">;
+    subject: import("convex/values").VString<string, "required">;
+    childThreadId: import("convex/values").VString<string, "required">;
+    parentThreadId: import("convex/values").VString<string, "required">;
+    rootThreadId: import("convex/values").VString<string, "required">;
+    rootAssignmentId: import("convex/values").VId<import("convex/values").GenericId<"assignments">, "required">;
+    rootAgent: import("convex/values").VString<string, "required">;
+    actorAgent: import("convex/values").VString<string, "required">;
+    parentAgent: import("convex/values").VString<string, "required">;
+}, "required", "kind" | "agent" | "runId" | "subject" | "rootAssignmentId" | "childThreadId" | "actorAgent" | "parentThreadId" | "rootThreadId" | "rootAgent" | "parentAgent">], "required", "kind" | "agent" | "runId" | "subject" | "rootAssignmentId" | "childThreadId" | "actorAgent" | "code" | "parentThreadId" | "rootThreadId" | "rootAgent" | "parentAgent">;
 /** `subagents.messages.messageChild`: the exact native follow-up id is saved in the
  * child's inbox in the same transaction. Answers an open question (resuming
  * the child) when the child is asking; spends one hop either way. */
@@ -772,10 +827,10 @@ export declare const interactionContext: import("convex/server").RegisteredQuery
     runId?: string | undefined;
     turnToken: string;
     assignmentId: import("convex/values").GenericId<"assignments">;
-    op: "message" | "ask";
+    op: "message" | "ask" | "message_parent";
 }, Promise<{
     kind: "denied";
-    code: "FORBIDDEN" | "STALE_TURN" | "RUN_BUDGET" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
+    code: "FORBIDDEN" | "STALE_TURN" | "RUN_BUDGET" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "SIDE_RUN" | "MESSAGE_RATE_LIMIT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
 } | {
     kind: "ready";
     runId: string;

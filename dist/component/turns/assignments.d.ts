@@ -149,6 +149,7 @@ export declare function assignmentByThread(ctx: Pick<QueryCtx, "db">, threadId: 
         notesPending: number;
         maxDepth: number;
         messagesPerChild: number;
+        parentNotesPerChild: number;
         rootLane: number;
         childLane: number;
         runLaunches: number;

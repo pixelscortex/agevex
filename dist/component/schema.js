@@ -24,7 +24,7 @@ export const errorCode = v.union(v.null(), v.literal("BUDGET_EXCEEDED"), v.liter
 // a new turn failure code can never be missing from run reports.
 const [, ...turnFailureCodes] = errorCode.members;
 export const runErrorCode = v.union(v.null(), ...turnFailureCodes, v.literal("EMPTY_RESULT"), v.literal("RESULT_UNVERIFIED"), v.literal("ROOT_UNAVAILABLE"), v.literal("DELIVERY_FAILED"));
-export const denialCode = v.union(v.literal("HOOK_BLOCKED"), v.literal("ACTIVE_LIMIT"), v.literal("TASK_LIMIT"), v.literal("FORBIDDEN"), v.literal("STALE_TURN"), v.literal("DELEGATION_CONFLICT"), v.literal("RUN_BUDGET"), v.literal("DEPTH_LIMIT"), v.literal("GROUP_LIMIT"), v.literal("GROUP_CLOSED"), v.literal("GROUP_CONFLICT"), v.literal("CHILD_FINISHED"), v.literal("MESSAGE_LIMIT"), v.literal("ASK_PENDING"), v.literal("ASK_WITH_CHILDREN"), v.literal("QUEUE_LIMIT"));
+export const denialCode = v.union(v.literal("HOOK_BLOCKED"), v.literal("ACTIVE_LIMIT"), v.literal("TASK_LIMIT"), v.literal("FORBIDDEN"), v.literal("STALE_TURN"), v.literal("DELEGATION_CONFLICT"), v.literal("RUN_BUDGET"), v.literal("DEPTH_LIMIT"), v.literal("GROUP_LIMIT"), v.literal("GROUP_CLOSED"), v.literal("GROUP_CONFLICT"), v.literal("CHILD_FINISHED"), v.literal("MESSAGE_LIMIT"), v.literal("MESSAGE_TOO_LARGE"), v.literal("MESSAGE_EMPTY"), v.literal("SIDE_RUN"), v.literal("MESSAGE_RATE_LIMIT"), v.literal("KEY_CONFLICT"), v.literal("NO_PARENT"), v.literal("ASK_PENDING"), v.literal("ASK_WITH_CHILDREN"), v.literal("QUEUE_LIMIT"));
 export const runStatus = v.union(v.literal("queued"), v.literal("running"), v.literal("asking"), v.literal("completed"), v.literal("failed"));
 export const deliveryStatus = v.union(v.literal("pending"), v.literal("accepted"), v.literal("failed"), v.literal("blocked"));
 export const runPhase = v.union(v.literal("queued"), v.literal("started"), v.literal("completed"), v.literal("failed"), v.literal("result_accepted"), v.literal("delivery_failed"), v.literal("delivery_blocked"));
@@ -340,6 +340,10 @@ export default defineSchema({
         questionMessageId: v.optional(v.string()),
         // Read by interaction admission against limits.messagesPerChild.
         messagesReceived: v.number(),
+        // Read by parent-note admission; accepted notes alone spend this lifetime cap.
+        parentNotesSent: v.number(),
+        // Read by parent-note admission for the minimum interval; retries replay first.
+        lastParentNoteAt: v.optional(v.number()),
         childAssignmentId: v.optional(v.id("assignments")),
         childThreadId: v.optional(v.string()),
         // Recorded with native final saves, cleared on every new turn claim, and
@@ -380,7 +384,14 @@ export default defineSchema({
         .index("by_run", ["runId"])
         .index("by_root_sequence", ["rootAssignmentId", "sequence"])
         .index("by_root_status", ["rootAssignmentId", "status"])
-        .index("by_parent_delivery", ["actorAssignmentId", "side", "deliveryStatus"])
+        // Launch admission also pins the epoch to bound outstanding result work
+        // across request budgets without reading cancelled delivery history.
+        .index("by_parent_delivery", [
+        "actorAssignmentId",
+        "side",
+        "deliveryStatus",
+        "rootCancellationEpoch",
+    ])
         // Every reader pins actor, epoch and one join state: settlementBlocked
         // (open/sealed/ready), releaseGroups (ready [+ run]), sealGroups (open + run).
         .index("by_join", ["actorAssignmentId", "rootCancellationEpoch", "join", "parentRunId"])

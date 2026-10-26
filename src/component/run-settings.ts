@@ -16,8 +16,12 @@ export const RUN_LIMITS = {
   metadataBytes: 16 << 10,
   // Native id/time envelope plus growth of bounded counters and JSON masks.
   nativeEnvelopeBytes: 256,
-  // Root backlog + reserved head/answer/current, plus one budget per child.
-  cancelBudgets: HOST_LIMITS.queueLength.max + HOST_LIMITS.activeChildrenPerRoot.max + 3,
+  // Root messages/results + reserved head/answer/current + one budget per child.
+  cancelBudgets:
+    HOST_LIMITS.queueLength.max +
+    HOST_LIMITS.runLaunches.max +
+    HOST_LIMITS.activeChildrenPerRoot.max +
+    3,
   // Reserve 1 KiB for ids, model overrides, counters and the native envelope.
   settingsBytes: 15 << 10,
 } as const;

@@ -41,6 +41,7 @@ export declare const acceptArgs: {
         notesPending: number;
         maxDepth: number;
         messagesPerChild: number;
+        parentNotesPerChild: number;
         rootLane: number;
         childLane: number;
         runLaunches: number;
@@ -57,6 +58,7 @@ export declare const acceptArgs: {
         notesPending: import("convex/values").VFloat64<number, "required">;
         maxDepth: import("convex/values").VFloat64<number, "required">;
         messagesPerChild: import("convex/values").VFloat64<number, "required">;
+        parentNotesPerChild: import("convex/values").VFloat64<number, "required">;
         rootLane: import("convex/values").VFloat64<number, "required">;
         childLane: import("convex/values").VFloat64<number, "required">;
         runLaunches: import("convex/values").VFloat64<number, "required">;
@@ -66,7 +68,7 @@ export declare const acceptArgs: {
         queueLength: import("convex/values").VFloat64<number, "required">;
         slicesPerTurn: import("convex/values").VFloat64<number, "required">;
         leaseMs: import("convex/values").VFloat64<number, "required">;
-    }, "required", "attachmentBytes" | "continuesPerRun" | "sideRunsPerRun" | "notesPending" | "maxDepth" | "messagesPerChild" | "rootLane" | "childLane" | "runLaunches" | "runHops" | "activeChildrenPerRoot" | "taskLength" | "queueLength" | "slicesPerTurn" | "leaseMs">;
+    }, "required", "attachmentBytes" | "continuesPerRun" | "sideRunsPerRun" | "notesPending" | "maxDepth" | "messagesPerChild" | "parentNotesPerChild" | "rootLane" | "childLane" | "runLaunches" | "runHops" | "activeChildrenPerRoot" | "taskLength" | "queueLength" | "slicesPerTurn" | "leaseMs">;
     models: import("convex/values").VRecord<Record<string, string> | undefined, import("convex/values").VString<string, "required">, import("convex/values").VString<string, "required">, "optional", string>;
     settings: import("convex/values").VArray<{
         agent: string;
@@ -237,6 +239,7 @@ export declare const accept: import("convex/server").RegisteredMutation<"public"
         notesPending: number;
         maxDepth: number;
         messagesPerChild: number;
+        parentNotesPerChild: number;
         rootLane: number;
         childLane: number;
         runLaunches: number;

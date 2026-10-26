@@ -205,7 +205,7 @@ export type DelegationResult = {
     status: "denied";
     code: DelegationDenialCode;
 };
-export type DelegationDenialCode = "HOOK_BLOCKED" | "ACTIVE_LIMIT" | "TASK_LIMIT" | "FORBIDDEN" | "STALE_TURN" | "DELEGATION_CONFLICT" | "RUN_BUDGET" | "DEPTH_LIMIT" | "GROUP_LIMIT" | "GROUP_CLOSED" | "GROUP_CONFLICT" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
+export type DelegationDenialCode = "HOOK_BLOCKED" | "ACTIVE_LIMIT" | "TASK_LIMIT" | "FORBIDDEN" | "STALE_TURN" | "DELEGATION_CONFLICT" | "RUN_BUDGET" | "DEPTH_LIMIT" | "GROUP_LIMIT" | "GROUP_CLOSED" | "GROUP_CONFLICT" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "MESSAGE_TOO_LARGE" | "MESSAGE_RATE_LIMIT" | "KEY_CONFLICT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
 /**
  * The single host-internal coordinator mutation.
  *
@@ -214,8 +214,9 @@ export type DelegationDenialCode = "HOOK_BLOCKED" | "ACTIVE_LIMIT" | "TASK_LIMIT
  * tool call id, `settle` by the child turn token that owns the run, and `notify`
  * by the one-shot delivery capability minted when the run was launched. There is
  * no separate `runChildTurn` entry point or extra authorization callback.
- * `message` and `ask` use the actor's current token and the existing background
- * delegate/deliver policy, respectively.
+ * `message`, `ask` and `message_parent` use the actor's current token and the
+ * existing background delegate/deliver policy. Progress also carries the
+ * native tool call identity for atomic receipt replay.
  */
 export type CoordinateArgs = {
     op: "launch";
@@ -239,6 +240,12 @@ export type CoordinateArgs = {
     turnToken: string;
     question: string;
 } | {
+    op: "message_parent";
+    assignmentId: string;
+    turnToken: string;
+    toolCallId: string;
+    text: string;
+} | {
     op: "settle";
     assignmentId: string;
     turnToken: string;
@@ -252,12 +259,16 @@ export type CoordinateArgs = {
 };
 /**
  * Launch returns a receipt or denial; message/ask return acceptance or denial.
+ * message_parent returns the accepted native message id or a denial.
  * Settlement returns deferred when an admitted follow-up owns the next turn,
  * otherwise null; notify returns null. These are control outcomes only.
  */
 export type CoordinateResult = DelegationResult | {
     status: "accepted" | "deferred";
     runId: string;
+} | {
+    status: "accepted";
+    messageId: string;
 } | null;
 export type ManagedAgent = {
     name: string;

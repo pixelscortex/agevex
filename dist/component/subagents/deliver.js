@@ -63,7 +63,7 @@ export async function applyDelivery(ctx, args) {
     if (run.join)
         await deliverJoinMember(ctx, run, parent, root, args);
     else if (args.deliveryStatus === "accepted" && args.parentMessageId)
-        await enqueueResult(ctx, run, parent, root, args.parentMessageId);
+        await enqueueResult(ctx, run, parent, args.parentMessageId);
     else
         await wake(ctx, parent);
     return null;
@@ -108,10 +108,8 @@ async function deliverJoinMember(ctx, run, parent, root, args) {
     await wake(ctx, (await ctx.db.get("assignments", parent._id)));
 }
 /** An ordinary accepted result becomes one ready "result" row on the parent,
- * refused when the parent's ready queue is full. */
-async function enqueueResult(ctx, run, parent, root, parentMessageId) {
-    if (parent.queuedMessages >= root.limits.queueLength)
-        throw new Error("QUEUE_LIMIT");
+ * regardless of the message queue limit: a launch already owes its result. */
+async function enqueueResult(ctx, run, parent, parentMessageId) {
     await ctx.db.insert("inbox", {
         assignmentId: parent._id,
         messageId: parentMessageId,
