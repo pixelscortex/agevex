@@ -54,6 +54,10 @@ export type TaskOutcome<Output> =
   | { status: "running" | "unknown" }
   | { status: "failed"; code: "TASK_FAILED" | "INVALID_OUTPUT" }
   | { status: "denied"; code: "KEY_CONFLICT" | "CANCELLED" };
+// Only admission refusals use this marker. Provider errors remain uncertain
+// paid outcomes, even when their message happens to match an admission error.
+class TaskDispatchRefused extends Error {}
+
 type ActionCtx = GenericActionCtx<GenericDataModel>;
 type Binding = {
   component: ComponentApi;
@@ -301,6 +305,10 @@ async function generateWithRepair<Input, Output>(
         result = await generateOnce(call, receipt, attempt, repairText);
         break;
       } catch (error) {
+        // Middleware has not entered doGenerate when admission refuses. There
+        // is no paid attempt to meter or classify as an unknown receipt.
+        if (error instanceof TaskDispatchRefused) return { status: "failed", code: "TASK_FAILED" };
+
         if (!NoObjectGeneratedError.isInstance(error)) {
           await recordTaskUsage(call, receipt, attempt, undefined, undefined);
           throw error;
@@ -360,7 +368,11 @@ async function generateOnce<Input, Output>(
               model: model as LanguageModelV4,
               middleware: {
                 wrapGenerate: async ({ doGenerate }) => {
-                  await call.options.beforeDispatch!();
+                  try {
+                    await call.options.beforeDispatch!();
+                  } catch {
+                    throw new TaskDispatchRefused("TASK_DISPATCH_REFUSED");
+                  }
 
                   return doGenerate();
                 },

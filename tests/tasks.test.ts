@@ -362,3 +362,44 @@ it.each(["subject", "agent", "rootThreadId", "threadId", "runId"] as const)(
     expect(model.calls).toHaveLength(0);
   },
 );
+
+it("refused dispatch records no usage and replays a failed receipt without paid work", async () => {
+  const t = setup();
+  const { model, definition } = task(['{"category":"yes"}']);
+
+  const scope = vi.fn(() => {
+    throw new Error("a refused dispatch must not reach the meter");
+  });
+
+  const beforeDispatch = vi.fn(async () => {
+    throw new Error("TEXT_INACTIVE");
+  });
+
+  const invoke = () =>
+    t.action((ctx) =>
+      runTask(
+        ctx,
+        definition,
+        { text: "hello" },
+        {
+          ...options,
+          usage: { scope },
+          beforeDispatch,
+        },
+      ),
+    );
+
+  expect(await invoke()).toEqual({ status: "failed", code: "TASK_FAILED" });
+  expect(await invoke()).toEqual({ status: "failed", code: "TASK_FAILED" });
+  expect(beforeDispatch).toHaveBeenCalledTimes(1);
+  expect(model.calls).toHaveLength(0);
+  expect(scope).not.toHaveBeenCalled();
+
+  expect(
+    await t.action((ctx) =>
+      runTask(ctx, definition, { text: "hello" }, { ...options, key: "fresh" }),
+    ),
+  ).toEqual({ status: "done", value: { category: "yes" } });
+
+  expect(model.calls).toHaveLength(1);
+});

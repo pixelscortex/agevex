@@ -6,7 +6,6 @@
 // contracts from here. Validator-derived types come from the component schema.
 
 import type { ThreadTextOptions, TextTaskArgs } from "./text/options.js";
-import type { ContextHandler } from "@convex-dev/agent";
 import type { UsageSlot, BudgetSlot, TelemetrySlot, SandboxSlot, ExtractSlot } from "./slots.js";
 import type {
   GenericActionCtx,
@@ -306,7 +305,6 @@ export type ManagedAgent = {
     options: {
       saveStreamDeltas: { chunking: "word"; throttleMs: number };
       storageOptions: { saveMessages: "promptAndOutput" };
-      contextHandler?: ContextHandler;
     },
   ): Promise<{
     consumeStream(options?: { onError: (error: unknown) => void }): PromiseLike<void>;
@@ -319,7 +317,6 @@ export type ManagedAgent = {
     args: ManagedGenerationArgs,
     options: {
       storageOptions: { saveMessages: "promptAndOutput" };
-      contextHandler?: ContextHandler;
     },
   ): Promise<{ finishReason: string; savedMessages?: MessageDoc[] }>;
 };

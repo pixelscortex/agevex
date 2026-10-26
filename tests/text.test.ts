@@ -714,7 +714,7 @@ it("background string models use the host default provider", async () => {
   expect(state.summaryCalls).toHaveLength(1);
 });
 
-it("cancellation fences dispatched summary results while retaining their usage", async () => {
+it("cadence resumes after cancel during dispatch", async () => {
   state.title = false;
   state.summary = { model: summaryModel, everyTurns: 1 };
   const held = gate();
@@ -728,5 +728,14 @@ it("cancellation fences dispatched summary results while retaining their usage",
   held.release();
   await drain(t);
   expect(await summary(t, receipt.threadId)).toBeNull();
-  expect(state.usage.some((entry) => entry.facts.purpose === "summary")).toBe(true);
+  expect(state.usage.filter((entry) => entry.facts.purpose === "summary")).toHaveLength(1);
+
+  // drain includes the expired lease: a known discarded result must stay
+  // retryable even after its old expiry runs, without an explicit summary key.
+  state.summaryGate = undefined;
+  await send(t, receipt.threadId, "next cadence");
+  await drain(t);
+  expect(state.summaryCalls).toHaveLength(2);
+  expect(await summary(t, receipt.threadId)).not.toBeNull();
+  expect(state.usage.filter((entry) => entry.facts.purpose === "summary")).toHaveLength(2);
 });

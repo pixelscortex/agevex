@@ -176,9 +176,20 @@ export const commit = mutation({
   handler: async (ctx, args) => {
     const row = await ctx.db.get("assignments", args.assignmentId);
     const field = args.kind === "title" ? "titleTask" : "summaryTask";
-    const job = liveJob(row, args);
+    const job = row?.[field];
 
-    if (!row || job?.status !== "running") return false;
+    if (!row || job?.key !== args.key || job.status !== "running") return false;
+
+    // A cancelled execution cannot publish text, but its matching worker has
+    // returned. Close the job as a known failure so expiry cannot turn that
+    // discarded result into unknown and block every later cadence point.
+    if (!liveJob(row, args)) {
+      await ctx.db.patch("assignments", row._id, {
+        [field]: { ...job, status: "failed", again: undefined },
+      });
+
+      return false;
+    }
 
     const done =
       args.status === "done" &&
