@@ -14,12 +14,17 @@ export declare function prepareSinks(ctx: MutationCtx, row: Doc<"charges">, conf
     terminal: boolean;
     sinkState: {
         pending?: {
+            status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+            source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
             externalId: string;
             revision: number;
             nanos: number;
             totalNanos: number;
         } | undefined;
+        estimates?: boolean | undefined;
         deliveredNanos?: number | undefined;
+        deliveredStatus?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+        deliveredSource?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
         name: string;
         revision: number;
     }[];
@@ -95,12 +100,17 @@ export declare function prepareSinks(ctx: MutationCtx, row: Doc<"charges">, conf
             revision: number;
             sinkState: {
                 pending?: {
+                    status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+                    source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
                     externalId: string;
                     revision: number;
                     nanos: number;
                     totalNanos: number;
                 } | undefined;
+                estimates?: boolean | undefined;
                 deliveredNanos?: number | undefined;
+                deliveredStatus?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+                deliveredSource?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
                 name: string;
                 failed: boolean;
                 attempts: number;

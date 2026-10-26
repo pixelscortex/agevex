@@ -103,6 +103,8 @@ export function polarSink(options) {
     const base = options.server === "sandbox" ? "https://sandbox-api.polar.sh" : "https://api.polar.sh";
     return {
         name: options.name ?? "polar",
+        // Never opts into estimates: Polar bills what it ingests, so only final
+        // amounts may reach it (an estimate would be charged before correction).
         deliver: async (batch) => {
             const accessToken = await resolveCredential(options.accessToken, "POLAR_TOKEN_REQUIRED");
             for (const entries of batches(batch)) {
@@ -148,6 +150,7 @@ export function webhookSink(options) {
         throw new Error("INVALID_WEBHOOK_URL");
     return {
         name: options.name ?? "webhook",
+        estimates: options.estimates,
         deliver: async (batch) => {
             for (const entries of batches(batch)) {
                 const response = await (options.fetch ?? fetch)(options.url, {

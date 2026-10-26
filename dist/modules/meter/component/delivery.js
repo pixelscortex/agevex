@@ -2,6 +2,11 @@ import { LIMITS, integer, text, chargeKey } from "../shared/limits.js";
 import { find } from "./charge-records.js";
 import { enqueueDrain, backoff, validateJobs } from "./jobs.js";
 import { prepareSinks } from "./outbox.js";
+/**
+ * Events queued before classification was recorded were never estimates (only
+ * known, non-estimate costs were billable then), so they read as settled.
+ */
+const LEGACY = { status: "settled", source: "settlement" };
 /** Due, unclaimed, non-failed events of one sink, oldest due first. */
 function dueRows(ctx, sink) {
     return ctx.db
@@ -11,8 +16,9 @@ function dueRows(ctx, sink) {
 }
 /**
  * Called by the host delivery action. Takes <=100 due outbox rows of one sink
- * (<=2 KiB each: event, <=6 attribution labels of 128 bytes, 256-byte key):
- * <=200 KiB read and written, 100 docs. Never reads charge rows. The claim
+ * (<=3 KiB each: frozen amount/classification, seven 128-byte attribution
+ * labels plus purpose, provider/sink labels and the key/external id):
+ * <=300 KiB read and written, 100 docs. Never reads charge rows. The claim
  * marker records that this job took its batch, even after every row is
  * acknowledged and deleted, so a later crash charges only the job's own rows.
  */
@@ -31,6 +37,8 @@ export async function claimDeliveryBatch(ctx, args) {
         await ctx.db.patch("deliveries", row._id, { claim: args.claim });
     return rows.map((row) => ({
         ...row.event,
+        status: row.event.status ?? LEGACY.status,
+        source: row.event.source ?? LEGACY.source,
         key: row.key,
         attribution: row.attribution,
         provider: row.provider,
@@ -72,11 +80,19 @@ async function acknowledge(ctx, row, config) {
     const sink = charge?.sinkState.find((entry) => entry.name === row.sink);
     if (!charge || !sink?.pending || sink.pending.externalId !== row.event.externalId)
         return;
-    const totalNanos = sink.pending.totalNanos;
+    const { totalNanos } = sink.pending;
+    const status = sink.pending.status ?? LEGACY.status;
+    const source = sink.pending.source ?? LEGACY.source;
     const sinkState = charge.sinkState.map((entry) => entry.name === row.sink
-        ? { name: entry.name, revision: entry.revision, deliveredNanos: totalNanos }
+        ? {
+            ...entry,
+            pending: undefined,
+            deliveredNanos: totalNanos,
+            deliveredStatus: status,
+            deliveredSource: source,
+        }
         : entry);
-    // May enqueue the next signed delta if the amount changed during delivery.
+    // Catch up amount OR classification changes after acknowledging the frozen event.
     await prepareSinks(ctx, { ...charge, sinkState }, config, true);
 }
 /**

@@ -59,6 +59,10 @@ export const event = v.object({
   revision: v.number(),
   nanos: v.number(),
   totalNanos: v.number(),
+  // Optional because outbox rows and pending events written before
+  // classification was recorded lack them; claims fill them in (delivery.ts).
+  status: v.optional(status),
+  source: v.optional(source),
 });
 /** Why a charge was created `unknown`. Set once at creation, kept after a later settlement. */
 export const reason = v.union(
@@ -73,12 +77,17 @@ export const reason = v.union(
 
 const sinkFields = {
   name: v.string(),
+  // Registration is frozen per charge, just like projection membership.
+  // Optional: charges created before opt-ins existed read as not opted in.
+  estimates: v.optional(v.boolean()),
   deliveredNanos: v.optional(v.number()),
+  deliveredStatus: v.optional(status),
+  deliveredSource: v.optional(source),
   revision: v.number(),
   pending: v.optional(event),
 };
 
-/** Stored on the charge: only what changes with the charge's own amount. */
+/** Stored on the charge: registration and acknowledged/pending amount and classification. */
 export const sinkState = v.array(v.object(sinkFields));
 /** Returned to callers: retry state joined from the charge's <=4 `deliveries` rows. */
 export const sinkView = v.array(
@@ -136,7 +145,7 @@ export default defineSchema({
   /**
    * Sink outbox: one small row per pending (charge, sink) event, present
    * exactly while that sink's `pending` is set on the charge. It carries the
-   * event payload so one delivery job reads <=100 rows of <=2 KiB instead of
+   * event payload so one delivery job reads <=100 rows of <=3 KiB instead of
    * <=100 charges of up to 280 KiB, and it holds retry state so crash and
    * failure accounting never rewrites large charge rows.
    */

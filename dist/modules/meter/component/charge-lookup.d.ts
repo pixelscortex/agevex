@@ -79,12 +79,17 @@ export declare function startLookup(ctx: MutationCtx, row: Doc<"charges">, reque
             revision: number;
             sinkState: {
                 pending?: {
+                    status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+                    source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
                     externalId: string;
                     revision: number;
                     nanos: number;
                     totalNanos: number;
                 } | undefined;
+                estimates?: boolean | undefined;
                 deliveredNanos?: number | undefined;
+                deliveredStatus?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+                deliveredSource?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
                 name: string;
                 failed: boolean;
                 attempts: number;
@@ -96,12 +101,17 @@ export declare function startLookup(ctx: MutationCtx, row: Doc<"charges">, reque
     revision: number;
     sinkState: {
         pending?: {
+            status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+            source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
             externalId: string;
             revision: number;
             nanos: number;
             totalNanos: number;
         } | undefined;
+        estimates?: boolean | undefined;
         deliveredNanos?: number | undefined;
+        deliveredStatus?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+        deliveredSource?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
         name: string;
         revision: number;
     }[];

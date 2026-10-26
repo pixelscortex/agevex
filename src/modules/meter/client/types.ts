@@ -42,10 +42,19 @@ export type SinkEvent = {
   nanos: number;
   totalNanos: number;
   revision: number;
+  /** Immutable classification captured when this revision enters the outbox. */
+  status: Charge["status"];
+  source: Charge["source"];
   attribution: Attribution;
   provider: string;
 };
-export type Sink = { name?: string; deliver: (batch: SinkEvent[]) => Promise<void> };
+export type Sink = {
+  name?: string;
+  /** Include known initial estimates; frozen per charge at creation, without backfill. */
+  estimates?: boolean;
+  /** The delivery worker's host action context, including host internal mutations. */
+  deliver: (batch: SinkEvent[], ctx: ActionCtx) => Promise<void>;
+};
 export type MeterOptions = {
   providers: Record<string, Provider>;
   /** Opt-in projections for new charges; enabling later does not backfill older charges. */

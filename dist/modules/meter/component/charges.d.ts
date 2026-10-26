@@ -35,7 +35,10 @@ export declare const create: import("convex/server").RegisteredMutation<"public"
     };
     breakdowns: ("thread.model" | "thread.provider" | "subject.agent" | "subject.model" | "subject.provider")[];
     maxThreadCharges: number;
-    sinks: string[];
+    sinks: {
+        name: string;
+        estimates: boolean;
+    }[];
 }, Promise<null>>;
 /** Apply one idempotent correction or authoritative settlement. */
 export declare const update: import("convex/server").RegisteredMutation<"public", {
@@ -91,17 +94,21 @@ export declare const claimDeliveries: import("convex/server").RegisteredMutation
         maxAttempts: number;
     };
     sink: string;
-}, Promise<({
+}, Promise<(Required<{
+    status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+    source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
     externalId: string;
     revision: number;
     nanos: number;
     totalNanos: number;
-} & Pick<{
+}> & Pick<{
     _id: import("convex/values").GenericId<"deliveries">;
     _creationTime: number;
     claim?: string | undefined;
     failed: boolean;
     event: {
+        status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+        source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
         externalId: string;
         revision: number;
         nanos: number;

@@ -80,12 +80,17 @@ export declare function find(ctx: Pick<QueryCtx, "db">, key: string): Promise<{
             revision: number;
             sinkState: {
                 pending?: {
+                    status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+                    source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
                     externalId: string;
                     revision: number;
                     nanos: number;
                     totalNanos: number;
                 } | undefined;
+                estimates?: boolean | undefined;
                 deliveredNanos?: number | undefined;
+                deliveredStatus?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+                deliveredSource?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
                 name: string;
                 failed: boolean;
                 attempts: number;
@@ -97,12 +102,17 @@ export declare function find(ctx: Pick<QueryCtx, "db">, key: string): Promise<{
     revision: number;
     sinkState: {
         pending?: {
+            status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+            source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
             externalId: string;
             revision: number;
             nanos: number;
             totalNanos: number;
         } | undefined;
+        estimates?: boolean | undefined;
         deliveredNanos?: number | undefined;
+        deliveredStatus?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+        deliveredSource?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
         name: string;
         revision: number;
     }[];
@@ -113,9 +123,10 @@ export declare function find(ctx: Pick<QueryCtx, "db">, key: string): Promise<{
  * Billing is separate from budgeting. A known cost (inline, settlement or
  * lookup) that is `unknown` only because it overflowed its thread or exceeded
  * the per-charge cap is still delivered to sinks: it is unknown for the gate,
- * billed because the amount is known. Estimates are billed once corrected.
+ * billed because the amount is known. Opted-in sinks also receive initial
+ * estimates, but unknown estimates still have no deliverable classification.
  */
-export declare function billable(row: Doc<"charges">): boolean;
+export declare function billable(row: Doc<"charges">, estimates?: boolean): boolean;
 /** Missing inline evidence can be recovered by lookup too; expiry never restarts itself. */
 export declare function resolved(row: Doc<"charges">): boolean;
 /** Settled and acknowledged by every sink (vacuously true without sinks).
@@ -195,12 +206,17 @@ export declare function stale(ctx: MutationCtx, row: Doc<"charges">, operation: 
             revision: number;
             sinkState: {
                 pending?: {
+                    status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+                    source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
                     externalId: string;
                     revision: number;
                     nanos: number;
                     totalNanos: number;
                 } | undefined;
+                estimates?: boolean | undefined;
                 deliveredNanos?: number | undefined;
+                deliveredStatus?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+                deliveredSource?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
                 name: string;
                 failed: boolean;
                 attempts: number;
@@ -212,12 +228,17 @@ export declare function stale(ctx: MutationCtx, row: Doc<"charges">, operation: 
     revision: number;
     sinkState: {
         pending?: {
+            status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+            source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
             externalId: string;
             revision: number;
             nanos: number;
             totalNanos: number;
         } | undefined;
+        estimates?: boolean | undefined;
         deliveredNanos?: number | undefined;
+        deliveredStatus?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+        deliveredSource?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
         name: string;
         revision: number;
     }[];
@@ -271,12 +292,17 @@ export declare function replay(row: Doc<"charges">, key: string): {
     revision: number;
     sinkState: {
         pending?: {
+            status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+            source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
             externalId: string;
             revision: number;
             nanos: number;
             totalNanos: number;
         } | undefined;
+        estimates?: boolean | undefined;
         deliveredNanos?: number | undefined;
+        deliveredStatus?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+        deliveredSource?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
         name: string;
         failed: boolean;
         attempts: number;

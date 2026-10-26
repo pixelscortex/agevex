@@ -64,7 +64,7 @@ function deliveryWorker(meter) {
             try {
                 if (!sink)
                     throw new Error("SINK_NOT_REGISTERED");
-                await sink.deliver(events);
+                await sink.deliver(events, ctx);
                 ok = true;
             }
             catch (error) {

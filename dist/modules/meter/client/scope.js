@@ -40,7 +40,7 @@ function estimateWriter(bound, resolve) {
             status: priced.reason ? "unknown" : "estimate",
             source: "estimate",
             ...priced,
-            sinks: sinks.map((s) => s.name),
+            sinks: sinks.map((s) => ({ name: s.name, estimates: s.estimates ?? false })),
             maxThreadCharges: limits.maxThreadCharges,
             jobs: await jobs(meter),
         });
@@ -73,7 +73,7 @@ function recordWriter(bound, resolve) {
             ...(args.requestId !== undefined ? { requestId: args.requestId } : {}),
             ...(tokens ? { tokens } : {}),
             ...priced,
-            sinks: sinks.map((s) => s.name),
+            sinks: sinks.map((s) => ({ name: s.name, estimates: s.estimates ?? false })),
             maxThreadCharges: limits.maxThreadCharges,
             jobs: await jobs(meter),
         });

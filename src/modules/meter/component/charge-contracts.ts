@@ -24,7 +24,7 @@ export const createArgs = v.object({
   reason: v.optional(reason),
   tokens: v.optional(tokens),
   requestId: v.optional(v.string()),
-  sinks: v.array(v.string()),
+  sinks: v.array(v.object({ name: v.string(), estimates: v.boolean() })),
   maxThreadCharges: v.number(),
   jobs,
 });

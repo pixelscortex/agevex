@@ -29,6 +29,8 @@ export declare const status: import("convex/values").VUnion<"unknown" | "estimat
 export declare const source: import("convex/values").VUnion<"lookup" | "estimate" | "inline" | "settlement", [import("convex/values").VLiteral<"estimate", "required">, import("convex/values").VLiteral<"inline", "required">, import("convex/values").VLiteral<"settlement", "required">, import("convex/values").VLiteral<"lookup", "required">], "required", never>;
 export declare const breakdowns: import("convex/values").VArray<("thread.model" | "thread.provider" | "subject.agent" | "subject.model" | "subject.provider")[], import("convex/values").VUnion<"thread.model" | "thread.provider" | "subject.agent" | "subject.model" | "subject.provider", [import("convex/values").VLiteral<"thread.model", "required">, import("convex/values").VLiteral<"thread.provider", "required">, import("convex/values").VLiteral<"subject.agent", "required">, import("convex/values").VLiteral<"subject.model", "required">, import("convex/values").VLiteral<"subject.provider", "required">], "required", never>, "required">;
 export declare const event: import("convex/values").VObject<{
+    status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+    source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
     externalId: string;
     revision: number;
     nanos: number;
@@ -38,35 +40,52 @@ export declare const event: import("convex/values").VObject<{
     revision: import("convex/values").VFloat64<number, "required">;
     nanos: import("convex/values").VFloat64<number, "required">;
     totalNanos: import("convex/values").VFloat64<number, "required">;
-}, "required", "externalId" | "revision" | "nanos" | "totalNanos">;
+    status: import("convex/values").VUnion<"unknown" | "estimate" | "settled" | "corrected" | undefined, [import("convex/values").VLiteral<"estimate", "required">, import("convex/values").VLiteral<"settled", "required">, import("convex/values").VLiteral<"corrected", "required">, import("convex/values").VLiteral<"unknown", "required">], "optional", never>;
+    source: import("convex/values").VUnion<"lookup" | "estimate" | "inline" | "settlement" | undefined, [import("convex/values").VLiteral<"estimate", "required">, import("convex/values").VLiteral<"inline", "required">, import("convex/values").VLiteral<"settlement", "required">, import("convex/values").VLiteral<"lookup", "required">], "optional", never>;
+}, "required", "status" | "source" | "externalId" | "revision" | "nanos" | "totalNanos">;
 /** Why a charge was created `unknown`. Set once at creation, kept after a later settlement. */
 export declare const reason: import("convex/values").VUnion<"NO_COST" | "DECODE_FAILED" | "INVALID_COST" | "OVER_CAP" | "PROVIDER_NOT_REGISTERED" | "PROFILE_NOT_REGISTERED" | "THREAD_CAPACITY", [import("convex/values").VLiteral<"NO_COST", "required">, import("convex/values").VLiteral<"DECODE_FAILED", "required">, import("convex/values").VLiteral<"INVALID_COST", "required">, import("convex/values").VLiteral<"OVER_CAP", "required">, import("convex/values").VLiteral<"PROVIDER_NOT_REGISTERED", "required">, import("convex/values").VLiteral<"PROFILE_NOT_REGISTERED", "required">, import("convex/values").VLiteral<"THREAD_CAPACITY", "required">], "required", never>;
-/** Stored on the charge: only what changes with the charge's own amount. */
+/** Stored on the charge: registration and acknowledged/pending amount and classification. */
 export declare const sinkState: import("convex/values").VArray<{
     pending?: {
+        status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+        source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
         externalId: string;
         revision: number;
         nanos: number;
         totalNanos: number;
     } | undefined;
+    estimates?: boolean | undefined;
     deliveredNanos?: number | undefined;
+    deliveredStatus?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+    deliveredSource?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
     name: string;
     revision: number;
 }[], import("convex/values").VObject<{
     pending?: {
+        status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+        source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
         externalId: string;
         revision: number;
         nanos: number;
         totalNanos: number;
     } | undefined;
+    estimates?: boolean | undefined;
     deliveredNanos?: number | undefined;
+    deliveredStatus?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+    deliveredSource?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
     name: string;
     revision: number;
 }, {
     name: import("convex/values").VString<string, "required">;
+    estimates: import("convex/values").VBoolean<boolean | undefined, "optional">;
     deliveredNanos: import("convex/values").VFloat64<number | undefined, "optional">;
+    deliveredStatus: import("convex/values").VUnion<"unknown" | "estimate" | "settled" | "corrected" | undefined, [import("convex/values").VLiteral<"estimate", "required">, import("convex/values").VLiteral<"settled", "required">, import("convex/values").VLiteral<"corrected", "required">, import("convex/values").VLiteral<"unknown", "required">], "optional", never>;
+    deliveredSource: import("convex/values").VUnion<"lookup" | "estimate" | "inline" | "settlement" | undefined, [import("convex/values").VLiteral<"estimate", "required">, import("convex/values").VLiteral<"inline", "required">, import("convex/values").VLiteral<"settlement", "required">, import("convex/values").VLiteral<"lookup", "required">], "optional", never>;
     revision: import("convex/values").VFloat64<number, "required">;
     pending: import("convex/values").VObject<{
+        status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+        source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
         externalId: string;
         revision: number;
         nanos: number;
@@ -76,29 +95,41 @@ export declare const sinkState: import("convex/values").VArray<{
         revision: import("convex/values").VFloat64<number, "required">;
         nanos: import("convex/values").VFloat64<number, "required">;
         totalNanos: import("convex/values").VFloat64<number, "required">;
-    }, "optional", "externalId" | "revision" | "nanos" | "totalNanos">;
-}, "required", "name" | "pending" | "revision" | "deliveredNanos" | "pending.externalId" | "pending.revision" | "pending.nanos" | "pending.totalNanos">, "required">;
+        status: import("convex/values").VUnion<"unknown" | "estimate" | "settled" | "corrected" | undefined, [import("convex/values").VLiteral<"estimate", "required">, import("convex/values").VLiteral<"settled", "required">, import("convex/values").VLiteral<"corrected", "required">, import("convex/values").VLiteral<"unknown", "required">], "optional", never>;
+        source: import("convex/values").VUnion<"lookup" | "estimate" | "inline" | "settlement" | undefined, [import("convex/values").VLiteral<"estimate", "required">, import("convex/values").VLiteral<"inline", "required">, import("convex/values").VLiteral<"settlement", "required">, import("convex/values").VLiteral<"lookup", "required">], "optional", never>;
+    }, "optional", "status" | "source" | "externalId" | "revision" | "nanos" | "totalNanos">;
+}, "required", "name" | "pending" | "revision" | "estimates" | "deliveredNanos" | "deliveredStatus" | "deliveredSource" | "pending.status" | "pending.source" | "pending.externalId" | "pending.revision" | "pending.nanos" | "pending.totalNanos">, "required">;
 /** Returned to callers: retry state joined from the charge's <=4 `deliveries` rows. */
 export declare const sinkView: import("convex/values").VArray<{
     pending?: {
+        status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+        source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
         externalId: string;
         revision: number;
         nanos: number;
         totalNanos: number;
     } | undefined;
+    estimates?: boolean | undefined;
     deliveredNanos?: number | undefined;
+    deliveredStatus?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+    deliveredSource?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
     name: string;
     failed: boolean;
     attempts: number;
     revision: number;
 }[], import("convex/values").VObject<{
     pending?: {
+        status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+        source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
         externalId: string;
         revision: number;
         nanos: number;
         totalNanos: number;
     } | undefined;
+    estimates?: boolean | undefined;
     deliveredNanos?: number | undefined;
+    deliveredStatus?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+    deliveredSource?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
     name: string;
     failed: boolean;
     attempts: number;
@@ -107,9 +138,14 @@ export declare const sinkView: import("convex/values").VArray<{
     attempts: import("convex/values").VFloat64<number, "required">;
     failed: import("convex/values").VBoolean<boolean, "required">;
     name: import("convex/values").VString<string, "required">;
+    estimates: import("convex/values").VBoolean<boolean | undefined, "optional">;
     deliveredNanos: import("convex/values").VFloat64<number | undefined, "optional">;
+    deliveredStatus: import("convex/values").VUnion<"unknown" | "estimate" | "settled" | "corrected" | undefined, [import("convex/values").VLiteral<"estimate", "required">, import("convex/values").VLiteral<"settled", "required">, import("convex/values").VLiteral<"corrected", "required">, import("convex/values").VLiteral<"unknown", "required">], "optional", never>;
+    deliveredSource: import("convex/values").VUnion<"lookup" | "estimate" | "inline" | "settlement" | undefined, [import("convex/values").VLiteral<"estimate", "required">, import("convex/values").VLiteral<"inline", "required">, import("convex/values").VLiteral<"settlement", "required">, import("convex/values").VLiteral<"lookup", "required">], "optional", never>;
     revision: import("convex/values").VFloat64<number, "required">;
     pending: import("convex/values").VObject<{
+        status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+        source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
         externalId: string;
         revision: number;
         nanos: number;
@@ -119,8 +155,10 @@ export declare const sinkView: import("convex/values").VArray<{
         revision: import("convex/values").VFloat64<number, "required">;
         nanos: import("convex/values").VFloat64<number, "required">;
         totalNanos: import("convex/values").VFloat64<number, "required">;
-    }, "optional", "externalId" | "revision" | "nanos" | "totalNanos">;
-}, "required", "name" | "failed" | "pending" | "attempts" | "revision" | "deliveredNanos" | "pending.externalId" | "pending.revision" | "pending.nanos" | "pending.totalNanos">, "required">;
+        status: import("convex/values").VUnion<"unknown" | "estimate" | "settled" | "corrected" | undefined, [import("convex/values").VLiteral<"estimate", "required">, import("convex/values").VLiteral<"settled", "required">, import("convex/values").VLiteral<"corrected", "required">, import("convex/values").VLiteral<"unknown", "required">], "optional", never>;
+        source: import("convex/values").VUnion<"lookup" | "estimate" | "inline" | "settlement" | undefined, [import("convex/values").VLiteral<"estimate", "required">, import("convex/values").VLiteral<"inline", "required">, import("convex/values").VLiteral<"settlement", "required">, import("convex/values").VLiteral<"lookup", "required">], "optional", never>;
+    }, "optional", "status" | "source" | "externalId" | "revision" | "nanos" | "totalNanos">;
+}, "required", "name" | "failed" | "pending" | "attempts" | "revision" | "estimates" | "deliveredNanos" | "deliveredStatus" | "deliveredSource" | "pending.status" | "pending.source" | "pending.externalId" | "pending.revision" | "pending.nanos" | "pending.totalNanos">, "required">;
 declare const _default: import("convex/server").SchemaDefinition<{
     charges: import("convex/server").TableDefinition<import("convex/values").VObject<{
         reason?: "NO_COST" | "DECODE_FAILED" | "INVALID_COST" | "OVER_CAP" | "PROVIDER_NOT_REGISTERED" | "PROFILE_NOT_REGISTERED" | "THREAD_CAPACITY" | undefined;
@@ -193,12 +231,17 @@ declare const _default: import("convex/server").SchemaDefinition<{
                 revision: number;
                 sinkState: {
                     pending?: {
+                        status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+                        source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
                         externalId: string;
                         revision: number;
                         nanos: number;
                         totalNanos: number;
                     } | undefined;
+                    estimates?: boolean | undefined;
                     deliveredNanos?: number | undefined;
+                    deliveredStatus?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+                    deliveredSource?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
                     name: string;
                     failed: boolean;
                     attempts: number;
@@ -210,12 +253,17 @@ declare const _default: import("convex/server").SchemaDefinition<{
         revision: number;
         sinkState: {
             pending?: {
+                status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+                source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
                 externalId: string;
                 revision: number;
                 nanos: number;
                 totalNanos: number;
             } | undefined;
+            estimates?: boolean | undefined;
             deliveredNanos?: number | undefined;
+            deliveredStatus?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+            deliveredSource?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
             name: string;
             revision: number;
         }[];
@@ -224,29 +272,44 @@ declare const _default: import("convex/server").SchemaDefinition<{
     }, {
         sinkState: import("convex/values").VArray<{
             pending?: {
+                status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+                source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
                 externalId: string;
                 revision: number;
                 nanos: number;
                 totalNanos: number;
             } | undefined;
+            estimates?: boolean | undefined;
             deliveredNanos?: number | undefined;
+            deliveredStatus?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+            deliveredSource?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
             name: string;
             revision: number;
         }[], import("convex/values").VObject<{
             pending?: {
+                status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+                source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
                 externalId: string;
                 revision: number;
                 nanos: number;
                 totalNanos: number;
             } | undefined;
+            estimates?: boolean | undefined;
             deliveredNanos?: number | undefined;
+            deliveredStatus?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+            deliveredSource?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
             name: string;
             revision: number;
         }, {
             name: import("convex/values").VString<string, "required">;
+            estimates: import("convex/values").VBoolean<boolean | undefined, "optional">;
             deliveredNanos: import("convex/values").VFloat64<number | undefined, "optional">;
+            deliveredStatus: import("convex/values").VUnion<"unknown" | "estimate" | "settled" | "corrected" | undefined, [import("convex/values").VLiteral<"estimate", "required">, import("convex/values").VLiteral<"settled", "required">, import("convex/values").VLiteral<"corrected", "required">, import("convex/values").VLiteral<"unknown", "required">], "optional", never>;
+            deliveredSource: import("convex/values").VUnion<"lookup" | "estimate" | "inline" | "settlement" | undefined, [import("convex/values").VLiteral<"estimate", "required">, import("convex/values").VLiteral<"inline", "required">, import("convex/values").VLiteral<"settlement", "required">, import("convex/values").VLiteral<"lookup", "required">], "optional", never>;
             revision: import("convex/values").VFloat64<number, "required">;
             pending: import("convex/values").VObject<{
+                status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+                source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
                 externalId: string;
                 revision: number;
                 nanos: number;
@@ -256,8 +319,10 @@ declare const _default: import("convex/server").SchemaDefinition<{
                 revision: import("convex/values").VFloat64<number, "required">;
                 nanos: import("convex/values").VFloat64<number, "required">;
                 totalNanos: import("convex/values").VFloat64<number, "required">;
-            }, "optional", "externalId" | "revision" | "nanos" | "totalNanos">;
-        }, "required", "name" | "pending" | "revision" | "deliveredNanos" | "pending.externalId" | "pending.revision" | "pending.nanos" | "pending.totalNanos">, "required">;
+                status: import("convex/values").VUnion<"unknown" | "estimate" | "settled" | "corrected" | undefined, [import("convex/values").VLiteral<"estimate", "required">, import("convex/values").VLiteral<"settled", "required">, import("convex/values").VLiteral<"corrected", "required">, import("convex/values").VLiteral<"unknown", "required">], "optional", never>;
+                source: import("convex/values").VUnion<"lookup" | "estimate" | "inline" | "settlement" | undefined, [import("convex/values").VLiteral<"estimate", "required">, import("convex/values").VLiteral<"inline", "required">, import("convex/values").VLiteral<"settlement", "required">, import("convex/values").VLiteral<"lookup", "required">], "optional", never>;
+            }, "optional", "status" | "source" | "externalId" | "revision" | "nanos" | "totalNanos">;
+        }, "required", "name" | "pending" | "revision" | "estimates" | "deliveredNanos" | "deliveredStatus" | "deliveredSource" | "pending.status" | "pending.source" | "pending.externalId" | "pending.revision" | "pending.nanos" | "pending.totalNanos">, "required">;
         terminal: import("convex/values").VBoolean<boolean, "required">;
         operations: import("convex/values").VArray<{
             key: string;
@@ -298,12 +363,17 @@ declare const _default: import("convex/server").SchemaDefinition<{
                 revision: number;
                 sinkState: {
                     pending?: {
+                        status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+                        source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
                         externalId: string;
                         revision: number;
                         nanos: number;
                         totalNanos: number;
                     } | undefined;
+                    estimates?: boolean | undefined;
                     deliveredNanos?: number | undefined;
+                    deliveredStatus?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+                    deliveredSource?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
                     name: string;
                     failed: boolean;
                     attempts: number;
@@ -350,12 +420,17 @@ declare const _default: import("convex/server").SchemaDefinition<{
                 revision: number;
                 sinkState: {
                     pending?: {
+                        status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+                        source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
                         externalId: string;
                         revision: number;
                         nanos: number;
                         totalNanos: number;
                     } | undefined;
+                    estimates?: boolean | undefined;
                     deliveredNanos?: number | undefined;
+                    deliveredStatus?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+                    deliveredSource?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
                     name: string;
                     failed: boolean;
                     attempts: number;
@@ -402,12 +477,17 @@ declare const _default: import("convex/server").SchemaDefinition<{
                 revision: number;
                 sinkState: {
                     pending?: {
+                        status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+                        source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
                         externalId: string;
                         revision: number;
                         nanos: number;
                         totalNanos: number;
                     } | undefined;
+                    estimates?: boolean | undefined;
                     deliveredNanos?: number | undefined;
+                    deliveredStatus?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+                    deliveredSource?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
                     name: string;
                     failed: boolean;
                     attempts: number;
@@ -417,24 +497,34 @@ declare const _default: import("convex/server").SchemaDefinition<{
             }, {
                 sinkState: import("convex/values").VArray<{
                     pending?: {
+                        status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+                        source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
                         externalId: string;
                         revision: number;
                         nanos: number;
                         totalNanos: number;
                     } | undefined;
+                    estimates?: boolean | undefined;
                     deliveredNanos?: number | undefined;
+                    deliveredStatus?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+                    deliveredSource?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
                     name: string;
                     failed: boolean;
                     attempts: number;
                     revision: number;
                 }[], import("convex/values").VObject<{
                     pending?: {
+                        status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+                        source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
                         externalId: string;
                         revision: number;
                         nanos: number;
                         totalNanos: number;
                     } | undefined;
+                    estimates?: boolean | undefined;
                     deliveredNanos?: number | undefined;
+                    deliveredStatus?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+                    deliveredSource?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
                     name: string;
                     failed: boolean;
                     attempts: number;
@@ -443,9 +533,14 @@ declare const _default: import("convex/server").SchemaDefinition<{
                     attempts: import("convex/values").VFloat64<number, "required">;
                     failed: import("convex/values").VBoolean<boolean, "required">;
                     name: import("convex/values").VString<string, "required">;
+                    estimates: import("convex/values").VBoolean<boolean | undefined, "optional">;
                     deliveredNanos: import("convex/values").VFloat64<number | undefined, "optional">;
+                    deliveredStatus: import("convex/values").VUnion<"unknown" | "estimate" | "settled" | "corrected" | undefined, [import("convex/values").VLiteral<"estimate", "required">, import("convex/values").VLiteral<"settled", "required">, import("convex/values").VLiteral<"corrected", "required">, import("convex/values").VLiteral<"unknown", "required">], "optional", never>;
+                    deliveredSource: import("convex/values").VUnion<"lookup" | "estimate" | "inline" | "settlement" | undefined, [import("convex/values").VLiteral<"estimate", "required">, import("convex/values").VLiteral<"inline", "required">, import("convex/values").VLiteral<"settlement", "required">, import("convex/values").VLiteral<"lookup", "required">], "optional", never>;
                     revision: import("convex/values").VFloat64<number, "required">;
                     pending: import("convex/values").VObject<{
+                        status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+                        source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
                         externalId: string;
                         revision: number;
                         nanos: number;
@@ -455,8 +550,10 @@ declare const _default: import("convex/server").SchemaDefinition<{
                         revision: import("convex/values").VFloat64<number, "required">;
                         nanos: import("convex/values").VFloat64<number, "required">;
                         totalNanos: import("convex/values").VFloat64<number, "required">;
-                    }, "optional", "externalId" | "revision" | "nanos" | "totalNanos">;
-                }, "required", "name" | "failed" | "pending" | "attempts" | "revision" | "deliveredNanos" | "pending.externalId" | "pending.revision" | "pending.nanos" | "pending.totalNanos">, "required">;
+                        status: import("convex/values").VUnion<"unknown" | "estimate" | "settled" | "corrected" | undefined, [import("convex/values").VLiteral<"estimate", "required">, import("convex/values").VLiteral<"settled", "required">, import("convex/values").VLiteral<"corrected", "required">, import("convex/values").VLiteral<"unknown", "required">], "optional", never>;
+                        source: import("convex/values").VUnion<"lookup" | "estimate" | "inline" | "settlement" | undefined, [import("convex/values").VLiteral<"estimate", "required">, import("convex/values").VLiteral<"inline", "required">, import("convex/values").VLiteral<"settlement", "required">, import("convex/values").VLiteral<"lookup", "required">], "optional", never>;
+                    }, "optional", "status" | "source" | "externalId" | "revision" | "nanos" | "totalNanos">;
+                }, "required", "name" | "failed" | "pending" | "attempts" | "revision" | "estimates" | "deliveredNanos" | "deliveredStatus" | "deliveredSource" | "pending.status" | "pending.source" | "pending.externalId" | "pending.revision" | "pending.nanos" | "pending.totalNanos">, "required">;
                 _id: import("convex/values").VId<import("convex/values").GenericId<"charges">, "required">;
                 _creationTime: import("convex/values").VFloat64<number, "required">;
                 key: import("convex/values").VString<string, "required">;
@@ -565,7 +662,7 @@ declare const _default: import("convex/server").SchemaDefinition<{
     /**
      * Sink outbox: one small row per pending (charge, sink) event, present
      * exactly while that sink's `pending` is set on the charge. It carries the
-     * event payload so one delivery job reads <=100 rows of <=2 KiB instead of
+     * event payload so one delivery job reads <=100 rows of <=3 KiB instead of
      * <=100 charges of up to 280 KiB, and it holds retry state so crash and
      * failure accounting never rewrites large charge rows.
      */
@@ -573,6 +670,8 @@ declare const _default: import("convex/server").SchemaDefinition<{
         claim?: string | undefined;
         failed: boolean;
         event: {
+            status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+            source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
             externalId: string;
             revision: number;
             nanos: number;
@@ -598,6 +697,8 @@ declare const _default: import("convex/server").SchemaDefinition<{
         sink: import("convex/values").VString<string, "required">;
         key: import("convex/values").VString<string, "required">;
         event: import("convex/values").VObject<{
+            status?: "unknown" | "estimate" | "settled" | "corrected" | undefined;
+            source?: "lookup" | "estimate" | "inline" | "settlement" | undefined;
             externalId: string;
             revision: number;
             nanos: number;
@@ -607,7 +708,9 @@ declare const _default: import("convex/server").SchemaDefinition<{
             revision: import("convex/values").VFloat64<number, "required">;
             nanos: import("convex/values").VFloat64<number, "required">;
             totalNanos: import("convex/values").VFloat64<number, "required">;
-        }, "required", "externalId" | "revision" | "nanos" | "totalNanos">;
+            status: import("convex/values").VUnion<"unknown" | "estimate" | "settled" | "corrected" | undefined, [import("convex/values").VLiteral<"estimate", "required">, import("convex/values").VLiteral<"settled", "required">, import("convex/values").VLiteral<"corrected", "required">, import("convex/values").VLiteral<"unknown", "required">], "optional", never>;
+            source: import("convex/values").VUnion<"lookup" | "estimate" | "inline" | "settlement" | undefined, [import("convex/values").VLiteral<"estimate", "required">, import("convex/values").VLiteral<"inline", "required">, import("convex/values").VLiteral<"settlement", "required">, import("convex/values").VLiteral<"lookup", "required">], "optional", never>;
+        }, "required", "status" | "source" | "externalId" | "revision" | "nanos" | "totalNanos">;
         attribution: import("convex/values").VObject<{
             agent?: string | undefined;
             runId?: string | undefined;
@@ -633,7 +736,7 @@ declare const _default: import("convex/server").SchemaDefinition<{
         failed: import("convex/values").VBoolean<boolean, "required">;
         dueAt: import("convex/values").VFloat64<number, "required">;
         claim: import("convex/values").VString<string | undefined, "optional">;
-    }, "required", "failed" | "event" | "attempts" | "key" | "claim" | "provider" | "attribution" | "attribution.agent" | "attribution.runId" | "attribution.threadId" | "attribution.subject" | "attribution.model" | "attribution.rootThreadId" | "attribution.purpose" | "attribution.nodeId" | "sink" | "limited" | "dueAt" | "event.externalId" | "event.revision" | "event.nanos" | "event.totalNanos">, {
+    }, "required", "failed" | "event" | "attempts" | "key" | "claim" | "provider" | "attribution" | "attribution.agent" | "attribution.runId" | "attribution.threadId" | "attribution.subject" | "attribution.model" | "attribution.rootThreadId" | "attribution.purpose" | "attribution.nodeId" | "sink" | "limited" | "dueAt" | "event.status" | "event.source" | "event.externalId" | "event.revision" | "event.nanos" | "event.totalNanos">, {
         by_key: ["key", "sink", "_creationTime"];
         by_due: ["sink", "failed", "claim", "dueAt", "_creationTime"];
         by_claim: ["claim", "_creationTime"];

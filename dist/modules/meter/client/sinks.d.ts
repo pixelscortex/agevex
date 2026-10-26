@@ -28,6 +28,7 @@ export declare function polarSink(options: {
 export declare function webhookSink(options: {
     url: string;
     name?: string;
+    estimates?: boolean;
     headers?: Record<string, string>;
     fetch?: typeof fetch;
 }): Sink;

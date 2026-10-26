@@ -48,10 +48,13 @@ function validateCreation(args: CreateArgs) {
 
   validateJobs(args.jobs);
 
-  if (args.sinks.length > LIMITS.maxSinks || new Set(args.sinks).size !== args.sinks.length)
+  if (
+    args.sinks.length > LIMITS.maxSinks ||
+    new Set(args.sinks.map((sink) => sink.name)).size !== args.sinks.length
+  )
     throw new Error("INVALID_SINKS");
 
-  for (const sink of args.sinks) text(sink, "SINK");
+  for (const sink of args.sinks) text(sink.name, "SINK");
 }
 
 /** Keep a component-wide key bound to its original provider and attribution on replay. */
@@ -106,7 +109,7 @@ function newCharge(
           ? "pending"
           : "unavailable",
     // No event or lifecycle operation exists until its first admission.
-    sinkState: args.sinks.map((name) => ({ name, revision: 0 })),
+    sinkState: args.sinks.map((sink) => ({ ...sink, revision: 0 })),
     terminal: false,
     revision: 0,
     operations: [],

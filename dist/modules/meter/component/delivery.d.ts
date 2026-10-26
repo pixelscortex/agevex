@@ -8,11 +8,12 @@ import type { Doc } from "./_generated/dataModel.js";
 import type { MutationCtx } from "./_generated/server.js";
 import type { ClaimDeliveriesArgs, DeliveryResultArgs, DeliveryCompleteArgs, RetrySinksArgs } from "./charge-contracts.js";
 type Delivery = Doc<"deliveries">;
-type DeliveryEvent = Delivery["event"] & Pick<Delivery, "key" | "attribution" | "provider">;
+type DeliveryEvent = Required<Delivery["event"]> & Pick<Delivery, "key" | "attribution" | "provider">;
 /**
  * Called by the host delivery action. Takes <=100 due outbox rows of one sink
- * (<=2 KiB each: event, <=6 attribution labels of 128 bytes, 256-byte key):
- * <=200 KiB read and written, 100 docs. Never reads charge rows. The claim
+ * (<=3 KiB each: frozen amount/classification, seven 128-byte attribution
+ * labels plus purpose, provider/sink labels and the key/external id):
+ * <=300 KiB read and written, 100 docs. Never reads charge rows. The claim
  * marker records that this job took its batch, even after every row is
  * acknowledged and deleted, so a later crash charges only the job's own rows.
  */

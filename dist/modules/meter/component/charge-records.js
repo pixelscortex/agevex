@@ -15,11 +15,14 @@ function final(row) {
  * Billing is separate from budgeting. A known cost (inline, settlement or
  * lookup) that is `unknown` only because it overflowed its thread or exceeded
  * the per-charge cap is still delivered to sinks: it is unknown for the gate,
- * billed because the amount is known. Estimates are billed once corrected.
+ * billed because the amount is known. Opted-in sinks also receive initial
+ * estimates, but unknown estimates still have no deliverable classification.
  */
-export function billable(row) {
+export function billable(row, estimates = false) {
     return (row.nanos !== undefined &&
-        (final(row) || (row.status === "unknown" && row.source !== "estimate")));
+        (final(row) ||
+            (row.status === "unknown" && row.source !== "estimate") ||
+            (estimates && row.status === "estimate")));
 }
 /** Missing inline evidence can be recovered by lookup too; expiry never restarts itself. */
 export function resolved(row) {

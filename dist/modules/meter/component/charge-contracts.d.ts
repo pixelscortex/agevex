@@ -38,7 +38,10 @@ export declare const createArgs: import("convex/values").VObject<{
     };
     breakdowns: ("thread.model" | "thread.provider" | "subject.agent" | "subject.model" | "subject.provider")[];
     maxThreadCharges: number;
-    sinks: string[];
+    sinks: {
+        name: string;
+        estimates: boolean;
+    }[];
 }, {
     key: import("convex/values").VString<string, "required">;
     attribution: import("convex/values").VObject<{
@@ -77,7 +80,16 @@ export declare const createArgs: import("convex/values").VObject<{
         outputTokens: import("convex/values").VFloat64<number, "required">;
     }, "optional", "inputTokens" | "outputTokens">;
     requestId: import("convex/values").VString<string | undefined, "optional">;
-    sinks: import("convex/values").VArray<string[], import("convex/values").VString<string, "required">, "required">;
+    sinks: import("convex/values").VArray<{
+        name: string;
+        estimates: boolean;
+    }[], import("convex/values").VObject<{
+        name: string;
+        estimates: boolean;
+    }, {
+        name: import("convex/values").VString<string, "required">;
+        estimates: import("convex/values").VBoolean<boolean, "required">;
+    }, "required", "name" | "estimates">, "required">;
     maxThreadCharges: import("convex/values").VFloat64<number, "required">;
     jobs: import("convex/values").VObject<{
         deliver?: string | undefined;
