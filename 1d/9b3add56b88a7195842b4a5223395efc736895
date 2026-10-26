@@ -1,0 +1,32 @@
+docs/site/content/docs/concepts/message-parent.mdx
+  s_d863bd773ba186::t_35c356e2697712 34-37
+tests/delivery-unknown.fixture.ts
+  s_d863bd773ba186::t_67b580ee9dbf86 1-82
+  s_d863bd773ba186::t_bffc7b33a0086b 83-88
+tests/delivery-unknown.test.ts
+  s_d863bd773ba186::t_71590d2465d2ee 1-117
+docs/site/content/docs/concepts/delegation.mdx
+  s_d863bd773ba186::t_c0d509e9979178 42-47
+src/client/coordinate/delivery.ts
+  s_d863bd773ba186::t_0b2dac4a7dbc08 293-303,315-338,341,343-344
+src/component/schema.ts
+  s_d863bd773ba186::t_a2db4b046404c7 41,53-55
+src/component/subagents/deliver.ts
+  s_d863bd773ba186::t_199eff94699fa8 15,222-223,235,242-277,291-292,294,296,301
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1d9b3add56b88a7195842b4a5223395efc736895",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
