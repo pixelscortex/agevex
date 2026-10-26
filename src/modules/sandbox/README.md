@@ -1,7 +1,7 @@
 # Sandbox
 
 An optional Convex component and host client for persistent sandbox files,
-bounded commands, background jobs and binary exports. Core never imports it.
+bounded commands, background jobs and binary transfers. Core never imports it.
 The component stores identities, claims and deadlines; provider credentials,
 commands and file bodies stay on the host or provider side.
 
@@ -25,6 +25,28 @@ exports need a trusted `resolveThread`. For larger files, export
 `sandboxNodeExport(options)` from a host `"use node"` file and pass its reference
 as `nodeExport`. Cleanup is explicitly invoked; mounting creates no timer.
 
+`sandbox.writeBytes(ctx, { subject, threadId, runId, path, source, maxBytes? })`
+accepts host-owned scope facts and either `source: { storageId }` or
+`source: { bytes: Uint8Array }`. With a trusted tool context, use
+`sandbox.writeBytes(tc, { path, source, maxBytes? })`. Host wrappers own storage
+attachment/ownership checks; never accept model-supplied scope facts or storage
+ids without authorization. The result is `{ bytes, sha256 }`.
+
+Writes share the export bounds: 8 MiB by default, 64 MiB through
+`sandboxNodeWrite(options)` exported from a host `"use node"` file and registered
+as `nodeWrite`. Node delegation accepts storage sources only; it never forwards
+a large binary action argument. `maxBytes` may lower the registered bound
+(including zero for empty files). Oversize writes throw `SandboxWriteError`
+with code `SANDBOX_WRITE_TOO_LARGE`.
+
+Each provider receives at most 512 KiB per window. A sibling stage is verified
+by size and SHA-256 before atomic rename, preserving an existing target on
+interruption. Exact duplicate windows are no-ops; gaps, conflicting bytes and
+partial overlaps throw `SANDBOX_WRITE_OFFSET_MISMATCH`. Explicit retries restart
+from offset zero. Failure cleanup removes staging files; if an action dies
+before cleanup, the next write to that path reclaims its deterministic stage
+and transport window. No directory scans, timers or file registry are added.
+
 | File                          | Responsibility                                                                           |
 | ----------------------------- | ---------------------------------------------------------------------------------------- |
 | `component/state.ts`          | Stable registered `state.*` queries and mutations; runs in Convex.                       |
@@ -41,11 +63,13 @@ as `nodeExport`. Cleanup is explicitly invoked; mounting creates no timer.
 | `client/tools.ts`             | SDK tools, once-tool bindings and root-conversation slot.                                |
 | `client/watchdog.ts`          | Host wake/poll/settle/cleanup builders and bounded status/kill decisions.                |
 | `client/export.ts`            | Existing-filesystem authorization, windowed downloads, hashing and native Agent storage. |
+| `client/write.ts`             | Authorized bounded binary writes, storage-only Node delegation and staged commit.        |
 | `client/daytona.ts`           | Public Daytona adapter factory.                                                          |
 | `client/daytona-context.ts`   | SDK context and bounded Python transport.                                                |
 | `client/daytona-lifecycle.ts` | Create, recover/resume, stop and delete builders.                                        |
 | `client/daytona-process.ts`   | Command supervision, background launch, status and ownership-checked cancellation.       |
 | `client/daytona-files.ts`     | Source-bounded file operations and staged binary windows.                                |
+| `client/daytona-write.ts`     | Binary window uploads, offset checks, verified atomic rename and stage cleanup.          |
 | `client/types.ts`             | Host/provider contracts and callback types.                                              |
 | `shared/limits.ts`            | Pure bounds and validation shared by host and component.                                 |
 | `test.ts`                     | Offline convex-test component registration.                                              |

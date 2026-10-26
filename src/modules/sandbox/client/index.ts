@@ -34,6 +34,7 @@ import { readFile, list } from "./files.js";
 import { tools, slot } from "./tools.js";
 import { internalFunctions } from "./watchdog.js";
 import { exportSandbox } from "./export.js";
+import { bindWriteBytes } from "./write.js";
 
 /**
  * Connect a finished background job to agevex: pass the result as
@@ -107,6 +108,24 @@ export function sandboxNodeExport(options: SandboxOptions) {
   });
 }
 
+/** Export from a host "use node" file; large writes delegate using a storage id only. */
+export function sandboxNodeWrite(options: SandboxOptions) {
+  const sandbox = sandboxRuntime(options, true);
+
+  return internalActionGeneric({
+    args: {
+      subject: v.string(),
+      threadId: v.string(),
+      runId: v.string(),
+      path: v.string(),
+      source: v.object({ storageId: v.id("_storage") }),
+      maxBytes: v.optional(v.number()),
+    },
+    returns: v.object({ bytes: v.number(), sha256: v.string() }),
+    handler: (ctx, args) => sandbox.writeBytes(ctx, args),
+  });
+}
+
 function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
   const runtime = createRuntimeContext(options, nodeExport);
 
@@ -117,6 +136,7 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
     scopeKey: (tc: SandboxFacts) => scopeKey(runtime, tc),
     prepare: (tc: SandboxCall, opts?: { existingOnly?: boolean }) => prepare(runtime, tc, opts),
     readFile: (tc: SandboxCall, input: { path: string }) => readFile(runtime, tc, input),
+    writeBytes: bindWriteBytes(runtime),
     list: (tc: SandboxCall, input: { path: string }) => list(runtime, tc, input),
     internalFunctions: () => internalFunctions(runtime),
     job: (ctx: SandboxContext, input: PollArgs) => jobSnapshot(runtime, ctx, input),
@@ -129,6 +149,8 @@ function sandboxRuntime(options: SandboxOptions, nodeExport: boolean) {
 }
 
 export { daytona } from "./daytona.js";
+export { SandboxWriteError } from "../shared/write.js";
+export type { SandboxWriteErrorCode } from "../shared/write.js";
 export type { Credential } from "./credential.js";
 export { LIMITS, HARD_LIMITS } from "../shared/limits.js";
 export type { SandboxLimits } from "../shared/limits.js";

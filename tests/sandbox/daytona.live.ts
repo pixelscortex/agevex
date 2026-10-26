@@ -12,7 +12,7 @@ const api = anyApi as unknown as ApiFromModules<{ daytona: typeof daytona }>;
 const modules = import.meta.glob(["./fixture/daytona.ts", "./fixture/_generated/*.ts"]);
 
 it.skipIf(!process.env.DAYTONA_API_KEY)(
-  "live Daytona enforces original-group cleanup, control-file cancellation and fallback marker checks, and always deletes the sandbox",
+  "live Daytona enforces process cleanup, cancellation and binary write/export round-trips, and always deletes the sandbox",
   async () => {
     const t = convexTest({ schema, modules, transactionLimits: true });
 
@@ -101,6 +101,31 @@ it.skipIf(!process.env.DAYTONA_API_KEY)(
         await t.run(async (ctx) => (await ctx.storage.get(exported.storageId as never))!.size),
       ).toBe(expected.length);
 
+      const roundTrip = (await t.action(api.daytona.lifecycle, {
+        op: "writeRoundTrip",
+        sandboxId,
+      })) as {
+        written: { bytes: number; sha256: string };
+        exported: { bytes: number; sha256: string; storageId: string };
+      };
+
+      const writtenBytes = Uint8Array.from({ length: 3 * 512 * 1024 + 17 }, (_, i) => i % 251);
+
+      expect(roundTrip.written).toEqual({
+        bytes: writtenBytes.length,
+        sha256: Buffer.from(await crypto.subtle.digest("SHA-256", writtenBytes)).toString("hex"),
+      });
+
+      expect(roundTrip.exported).toMatchObject(roundTrip.written);
+
+      const storedBytes = new Uint8Array(
+        await t.run(async (ctx) =>
+          (await ctx.storage.get(roundTrip.exported.storageId as never))!.arrayBuffer(),
+        ),
+      );
+
+      expect(storedBytes).toEqual(writtenBytes);
+
       await t.action(api.daytona.lifecycle, { op: "stop", sandboxId });
     } finally {
       // Deletion is never conditional on any assertion or previous lifecycle
@@ -123,6 +148,7 @@ it.skipIf(!process.env.DAYTONA_API_KEY)(
         fallbackMarkerVerified: true,
         unmarkedGroupPreserved: true,
         exportBytes: 3 * 1024 * 1024 + 17,
+        writeRoundTripBytes: 3 * 512 * 1024 + 17,
       }),
     );
   },

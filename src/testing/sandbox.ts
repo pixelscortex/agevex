@@ -4,6 +4,13 @@
  * Hooks simulate uncertain provider outcomes without shell commands or credentials.
  */
 import type { SandboxProvider, JobOutcome, FileEntry } from "../modules/sandbox/client/types.js";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
+import {
+  SandboxWriteError,
+  validateWriteCommit,
+  validateWriteWindow,
+} from "../modules/sandbox/shared/write.js";
 
 type FakeMachine = {
   state: "creating" | "ready" | "stopped" | "archived" | "error" | "deleted";
@@ -58,9 +65,57 @@ export function fakeSandboxProvider(opts: FakeOptions = {}) {
     ...fakeLifecycle(runtime),
     ...fakeExecution(runtime),
     ...fakeFiles(runtime),
+    ...fakeBinaryWrites(runtime),
   };
 
   return { provider, sandboxes: runtime.sandboxes, jobs: runtime.jobs, calls: runtime.calls };
+}
+
+/** Mirror staged offset checks and atomic replacement without exposing partial targets. */
+function fakeBinaryWrites(
+  runtime: FakeContext,
+): Pick<SandboxProvider, "writeWindow" | "commitWrite" | "discardWrite"> {
+  return {
+    async writeWindow(_ctx, id, path, offset, content) {
+      validateWriteWindow(path, offset, content);
+      const files = ready(runtime, id).files;
+      const existing = files.get(path) ?? new Uint8Array();
+
+      if (existing.length !== offset) {
+        if (
+          offset + content.length <= existing.length &&
+          content.every((byte, i) => byte === existing[offset + i])
+        )
+          return;
+
+        throw new SandboxWriteError("SANDBOX_WRITE_OFFSET_MISMATCH");
+      }
+
+      const next = new Uint8Array(offset + content.length);
+
+      next.set(existing);
+      next.set(content, offset);
+      files.set(path, next);
+    },
+    async commitWrite(_ctx, id, tempPath, path, expected) {
+      validateWriteCommit(tempPath, path, expected.bytes, expected.sha256);
+      const files = ready(runtime, id).files;
+      const staged = files.get(tempPath);
+
+      if (
+        !staged ||
+        staged.length !== expected.bytes ||
+        bytesToHex(sha256(staged)) !== expected.sha256
+      )
+        throw new SandboxWriteError("SANDBOX_WRITE_INCOMPLETE");
+
+      files.set(path, staged);
+      files.delete(tempPath);
+    },
+    async discardWrite(_ctx, id, path) {
+      ready(runtime, id).files.delete(path);
+    },
+  };
 }
 
 /** Require an existing machine before any fake effect. */

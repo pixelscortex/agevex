@@ -11,12 +11,88 @@ import type { SandboxContext } from "../../src/modules/sandbox/client/types.js";
 import { fakeSandboxProvider } from "../../src/testing/sandbox.js";
 import { setup, api, state, EXPORT_TEST_TIMEOUT_MS } from "./setup.js";
 
+it(
+  "Daytona stages binary windows idempotently and atomically commits only complete verified bytes",
+  async () => {
+    const { provider, ctx, replies } = harness();
+    const directory = await mkdtemp(join(tmpdir(), "agevex-write-'quoted-"));
+    const target = join(directory, "target.bin");
+    const tempPath = join(directory, ".stage");
+
+    const content = Uint8Array.from(
+      { length: 3 * LIMITS.exportChunkBytes + 17 },
+      (_, i) => i % 251,
+    );
+
+    const expected = {
+      bytes: content.length,
+      sha256: Buffer.from(await crypto.subtle.digest("SHA-256", content)).toString("hex"),
+    };
+
+    try {
+      await writeFile(target, "original");
+
+      for (let offset = 0; offset < content.length; offset += LIMITS.exportChunkBytes) {
+        const chunk = content.subarray(offset, offset + LIMITS.exportChunkBytes);
+
+        await provider.writeWindow(ctx, "local", tempPath, offset, chunk);
+        await provider.writeWindow(ctx, "local", tempPath, offset, chunk);
+        expect(await readFile(target, "utf8")).toBe("original");
+      }
+
+      for (const [offset, bytes] of [
+        [content.length + 1, [1]],
+        [0, [255]],
+        [content.length - 1, [1, 2]],
+      ] as const)
+        await expect(
+          provider.writeWindow(ctx, "local", tempPath, offset, new Uint8Array(bytes)),
+        ).rejects.toMatchObject({ code: "SANDBOX_WRITE_OFFSET_MISMATCH" });
+
+      await expect(
+        provider.commitWrite(ctx, "local", tempPath, target, {
+          ...expected,
+          bytes: content.length - 1,
+        }),
+      ).rejects.toMatchObject({ code: "SANDBOX_WRITE_INCOMPLETE" });
+
+      await expect(
+        provider.commitWrite(ctx, "local", tempPath, target, {
+          ...expected,
+          sha256: "0".repeat(64),
+        }),
+      ).rejects.toMatchObject({ code: "SANDBOX_WRITE_INCOMPLETE" });
+
+      expect(await readFile(target, "utf8")).toBe("original");
+      await provider.commitWrite(ctx, "local", tempPath, target, expected);
+      expect(new Uint8Array(await readFile(target))).toEqual(content);
+      await expect(access(tempPath)).rejects.toThrow();
+      await expect(access(tempPath + ".window")).rejects.toThrow();
+      await provider.writeWindow(ctx, "local", tempPath, 0, new Uint8Array([9]));
+      await provider.discardWrite(ctx, "local", tempPath);
+      await provider.discardWrite(ctx, "local", tempPath);
+      await expect(access(tempPath)).rejects.toThrow();
+      expect(replies.every((size) => size < 64)).toBe(true);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+  EXPORT_TEST_TIMEOUT_MS,
+);
+
 // Mock the component boundary, not the adapter: execute its exact shell/Python
 // commands locally so quoting, detachment and source-side byte bounds are real.
 function harness(env?: Record<string, string>) {
   const replies: number[] = [];
 
   const actions = vi.fn(async (ref, args) => {
+    if (ref === "writeBytes") {
+      expect(args.content.byteLength).toBeLessThanOrEqual(LIMITS.exportChunkBytes);
+      await writeFile(args.path, new Uint8Array(args.content));
+
+      return null;
+    }
+
     if (ref === "read") {
       const data = await readFile(args.path);
 
@@ -55,7 +131,7 @@ function harness(env?: Record<string, string>) {
   const provider = daytona(
     {
       process: { run: "run", runBackground: "background" },
-      files: { readFileBytes: "read", deleteFile: "delete" },
+      files: { readFileBytes: "read", deleteFile: "delete", writeFileBytes: "writeBytes" },
     } as unknown as ComponentApi,
     { apiKey: "test-only" },
   );

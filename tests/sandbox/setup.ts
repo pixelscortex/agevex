@@ -32,6 +32,7 @@ export function setup(
   state.usage = [];
   state.resolver = undefined;
   state.nodeExport = false;
+  state.nodeWrite = false;
 
   // Every sandbox scenario, including hard-max admissions and sweeps, runs
   // with convex-test's actual transaction byte/doc/query limits enabled.
@@ -44,7 +45,11 @@ export function setup(
       "./fixture/node.ts": async () => {
         const node = await import("./fixture/node.js");
 
-        return { ...node, exportFile: sandboxNodeExport(config()) };
+        return {
+          ...node,
+          exportFile: sandboxNodeExport(config()),
+          writeBytes: node.nodeWrite(),
+        };
       },
     },
   });

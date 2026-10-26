@@ -18,6 +18,7 @@ import {
   buildDownload,
 } from "./daytona-files.js";
 import { type ComponentApi } from "@daytona/convex";
+import { buildWriteWindow, buildCommitWrite, buildDiscardWrite } from "./daytona-write.js";
 import { bindCredentials, type DaytonaSettings } from "./daytona-context.js";
 import { LIMITS, bounded, integer } from "../shared/limits.js";
 import { type SandboxProvider } from "./types.js";
@@ -84,6 +85,9 @@ export function daytona(
     writeFile: buildWriteFile(runtime),
     listFiles: buildListFiles(runtime),
     upload: buildUpload(runtime),
+    writeWindow: buildWriteWindow(runtime),
+    commitWrite: buildCommitWrite(runtime),
+    discardWrite: buildDiscardWrite(runtime),
     download: buildDownload(runtime),
   };
 }

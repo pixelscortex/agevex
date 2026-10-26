@@ -111,13 +111,15 @@ export const lifecycle = internalActionGeneric({
           outcome: await provider.poll(ctx, job.jobId, job),
         };
       }
+      case "writeRoundTrip":
       case "export": {
-        await provider.exec(
-          ctx,
-          sandboxId,
-          `python3 -c 'open("/tmp/agevex-large.bin","wb").write(bytes(i % 251 for i in range(3 * 1024 * 1024 + 17)))'`,
-          { timeoutS: 10, signal: new AbortController().signal },
-        );
+        if (args.op === "export")
+          await provider.exec(
+            ctx,
+            sandboxId,
+            `python3 -c 'open("/tmp/agevex-large.bin","wb").write(bytes(i % 251 for i in range(3 * 1024 * 1024 + 17)))'`,
+            { timeoutS: 10, signal: new AbortController().signal },
+          );
 
         const component = componentsGeneric()["sandbox"] as unknown as SandboxApi;
 
@@ -147,6 +149,21 @@ export const lifecycle = internalActionGeneric({
           sandboxId,
           state: "ready",
         });
+
+        if (args.op === "writeRoundTrip") {
+          const path = "/tmp/agevex-write.bin";
+          const bytes = Uint8Array.from({ length: 3 * 512 * 1024 + 17 }, (_, i) => i % 251);
+
+          const written = await sandbox.writeBytes(ctx, {
+            subject: "live",
+            threadId: "live",
+            runId: "live",
+            path,
+            source: { bytes },
+          });
+
+          return { written, exported: await sandbox.export(ctx, { threadId: "live", path }) };
+        }
 
         return sandbox.export(ctx, { threadId: "live", path: "/tmp/agevex-large.bin" });
       }
