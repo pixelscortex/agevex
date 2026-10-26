@@ -82,6 +82,7 @@ async function executeTextTask(rt, ctx, args, state, task, input, dispatch) {
             scope: (context, facts) => failOpenMeter(() => rt.config.usage.scope(context, facts), failed),
         }
         : undefined;
+    const configured = rt.config[args.kind];
     const controller = new AbortController();
     let timer;
     try {
@@ -108,7 +109,8 @@ async function executeTextTask(rt, ctx, args, state, task, input, dispatch) {
             signal: controller.signal,
             leaseMs: TEXT_LIMITS.leaseMs,
             maxPromptLength: TEXT_LIMITS.taskPromptCharacters,
-            maxOutputTokens: args.kind === "title" ? TEXT_LIMITS.titleTokens : TEXT_LIMITS.summaryTokens,
+            maxOutputTokens: (configured ? configured.maxOutputTokens : undefined) ??
+                (args.kind === "title" ? TEXT_LIMITS.titleTokens : TEXT_LIMITS.summaryTokens),
         });
         dispatch.known =
             result.status === "done" || result.status === "failed" || result.status === "denied";

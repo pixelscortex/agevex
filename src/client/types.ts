@@ -75,6 +75,11 @@ export type TurnOrigin = "user" | "subagent_result";
  * Authorization request handed to the host policy for every public read, write,
  * launch and delivery.
  *
+ * `open` and `send` include the request key. Authorization runs on every
+ * retry and maps the caller's identity to the host's own subject. Fresh paid
+ * work can be refused separately through Registration.admit after replay and
+ * conflict resolution; authorization never receives replay metadata.
+ *
  * Public operations identify the thread being accessed: `messages` supplies
  * that thread's own agent name and id for both roots and children. `open`,
  * `send` and `activity` remain root-only. Background delegation and result
@@ -88,7 +93,8 @@ export type TurnOrigin = "user" | "subagent_result";
  * authorization.
  */
 export type AuthorizationScope =
-  | { operation: "open"; agent: string }
+  | { operation: "open"; agent: string; requestKey: string }
+  | { operation: "send"; agent: string; threadId: string; requestKey: string }
   | { operation: "sandbox"; agent: string; threadId: string; subject: string; runId: string }
   | {
       operation:
@@ -97,7 +103,6 @@ export type AuthorizationScope =
         | "summary"
         | "summarize"
         | "note"
-        | "send"
         | "respond"
         | "answer"
         | "cancel"
@@ -374,10 +379,33 @@ export type Registration = ThreadTextOptions & {
      */
     coordinate?: () => FunctionReference<"mutation", "internal", CoordinateArgs, CoordinateResult>;
   };
+  /** Runs on every call; the host maps its identity to its own subject. */
   authorize: (
     ctx: GenericQueryCtx<GenericDataModel> | GenericMutationCtx<GenericDataModel>,
     scope: AuthorizationScope,
   ) => Promise<{ subject: string }>;
+  /**
+   * Refuse new paid work (e.g. exhausted balance) without breaking idempotent
+   * retries. Runs only for fresh open/send requests, after authorization,
+   * subject-private duplicate/conflict resolution and all returning agevex
+   * rejection checks (including queue and attachment limits), before native
+   * saves, inbox rows or receipts. No reservation/settlement protocol is needed.
+   *
+   * Receives the full host MutationCtx. admit may write host state in the same
+   * transaction; those writes commit only if the request is accepted. A throw
+   * from admit or any later failure rolls back the entire mutation. After this
+   * hook, a non-accepting result throws rather than returning a receipt.
+   */
+  admit?: (
+    ctx: GenericMutationCtx<GenericDataModel>,
+    input: {
+      subject: string;
+      operation: "open" | "send";
+      agent: string;
+      threadId?: string;
+      requestKey: string;
+    },
+  ) => Promise<void>;
   authorizeExecution: (
     ctx: GenericActionCtx<GenericDataModel>,
     scope: ExecutionScope,

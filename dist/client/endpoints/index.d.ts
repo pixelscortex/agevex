@@ -41,6 +41,15 @@ export declare function authorizedEndpoints(component: ComponentApi, config: Reg
         prompt: string;
     }, Promise<{
         status: "rejected";
+        code: "INVALID_MESSAGE" | "INVALID_REQUEST_KEY";
+    } | {
+        status: "rejected";
+        code: "UNKNOWN_AGENT";
+    } | {
+        status: "rejected";
+        code: "INVALID_MODELS";
+    } | {
+        status: "rejected";
         code: "KEY_CONFLICT";
     } | {
         receiptId: string;
@@ -57,15 +66,6 @@ export declare function authorizedEndpoints(component: ComponentApi, config: Reg
         position: number;
     } | {
         status: "rejected";
-        code: "INVALID_MESSAGE" | "INVALID_REQUEST_KEY";
-    } | {
-        status: "rejected";
-        code: "UNKNOWN_AGENT";
-    } | {
-        status: "rejected";
-        code: "INVALID_MODELS";
-    } | {
-        status: "rejected";
         code: "ATTACHMENT_LIMIT";
     }>>;
     send: import("convex/server").RegisteredMutation<"public", {
@@ -75,6 +75,15 @@ export declare function authorizedEndpoints(component: ComponentApi, config: Reg
         threadId: string;
         requestKey: string;
     }, Promise<{
+        status: "rejected";
+        code: "INVALID_MESSAGE" | "INVALID_REQUEST_KEY";
+    } | {
+        status: "rejected";
+        code: "UNKNOWN_AGENT";
+    } | {
+        status: "rejected";
+        code: "INVALID_MODELS";
+    } | {
         status: "rejected";
         code: "KEY_CONFLICT";
     } | {
@@ -96,12 +105,6 @@ export declare function authorizedEndpoints(component: ComponentApi, config: Reg
     } | {
         status: "rejected";
         code: "QUEUE_FULL";
-    } | {
-        status: "rejected";
-        code: "INVALID_MESSAGE" | "INVALID_REQUEST_KEY";
-    } | {
-        status: "rejected";
-        code: "INVALID_MODELS";
     } | {
         status: "rejected";
         code: "ATTACHMENT_LIMIT";

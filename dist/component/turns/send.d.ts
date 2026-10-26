@@ -150,7 +150,13 @@ export declare function acceptSend(ctx: MutationCtx, args: ObjectType<typeof acc
     status: "accepted";
     position: number;
 }>;
-/** Replay lookup for a host send, before any native save is attempted. */
+/**
+ * Replay lookup after host authorization, before admission or native saves.
+ * Use the host-authorized subject, never a supplied thread's stored owner:
+ * even replay metadata must not reveal another subject's receipt. The exact
+ * by_scope_key lookup uses unique() / take(2), so <=2 * 1 MiB are read even if
+ * corrupt duplicate rows cause it to throw. No transcript or ledger scan.
+ */
 export declare const lookupReceipt: import("convex/server").RegisteredQuery<"public", {
     subject: string;
     fingerprint: string;

@@ -6,7 +6,7 @@
  */
 import { v } from "convex/values";
 import { query } from "./_generated/server.js";
-import { byThread, bySubject, combine, summary, groups, } from "./aggregates.js";
+import { byThread, bySubject, combine, runBlockingUnknown, summary, groups, } from "./aggregates.js";
 import { integer, text, LIMITS } from "../shared/limits.js";
 import { requireBreakdown, resolveBreakdowns } from "../shared/breakdowns.js";
 import { breakdowns } from "./schema.js";
@@ -101,9 +101,16 @@ export const cost = query({
             text(runId, "RUN");
         // Both are unbounded reads of ONE owned namespace: on a lazy root that is
         // the root plus <=5 children per call, independent of how many charges exist.
-        return runId
-            ? await summary(ctx, bySubject, ["run", subject, runId])
-            : await summary(ctx, bySubject, ["subject", subject]);
+        // `unknown` counts every unknown charge; `blockingUnknown` is the subset the
+        // budget gate denies on (run scope skips title/summary charges).
+        if (!runId) {
+            const all = await summary(ctx, bySubject, ["subject", subject]);
+            return { ...all, blockingUnknown: all.unknown };
+        }
+        return {
+            ...(await summary(ctx, bySubject, ["run", subject, runId])),
+            blockingUnknown: await runBlockingUnknown(ctx, subject, runId),
+        };
     },
 });
 /** Page an enabled subject axis or a bounded UTC-day range without reading charge rows. */

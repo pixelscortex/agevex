@@ -5,6 +5,9 @@ import type { Registration, ManagedAgent } from "../types.js";
 export type TextTaskOptions = {
     model?: Extract<LanguageModel, string | LanguageModelV4>;
     prompt?: string;
+    /** Output cap for this call. Defaults to 128 for titles and 2048 for summaries;
+     * must be a positive integer within the task bound (`LIMITS.outputTokens`, 4096). */
+    maxOutputTokens?: number;
 };
 export type ThreadTextOptions = {
     /** On by default, once after the first user message. User renames always win. */

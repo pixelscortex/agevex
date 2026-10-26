@@ -124,6 +124,7 @@ async function executeTextTask(
       }
     : undefined;
 
+  const configured = rt.config[args.kind];
   const controller = new AbortController();
 
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -157,7 +158,9 @@ async function executeTextTask(
       signal: controller.signal,
       leaseMs: TEXT_LIMITS.leaseMs,
       maxPromptLength: TEXT_LIMITS.taskPromptCharacters,
-      maxOutputTokens: args.kind === "title" ? TEXT_LIMITS.titleTokens : TEXT_LIMITS.summaryTokens,
+      maxOutputTokens:
+        (configured ? configured.maxOutputTokens : undefined) ??
+        (args.kind === "title" ? TEXT_LIMITS.titleTokens : TEXT_LIMITS.summaryTokens),
     });
 
     dispatch.known =

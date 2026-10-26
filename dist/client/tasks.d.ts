@@ -10,6 +10,9 @@ export type Task<Input, Output> = {
     input: z.ZodType<Input>;
     output: z.ZodType<Output>;
     prompt: (input: Input) => string;
+    /** Sent as the model's system message, separate from the prompt (the user
+     * message). Bounded like the prompt; repair attempts reuse it unchanged. */
+    instructions?: string | ((input: Input) => string);
     model?: TaskModel;
     repair?: 0 | 1;
 };

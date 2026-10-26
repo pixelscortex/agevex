@@ -33,11 +33,28 @@ export declare function createEndpointContext(component: ComponentApi, config: R
  */
 export declare function rootAgent(ep: EndpointContext, name: string): ManagedAgent;
 /**
- * Authorize one thread-scoped operation and return the owned assignment plus its
- * native agent. Throws `FORBIDDEN` for an unmanaged thread, a subject that does
- * not own it, or a root-only operation on a child thread.
+ * Load one bounded assignment projection, without granting access. Request
+ * endpoints need its agent before authorization; every caller must still
+ * authorize and pass `ownedScope` before returning data or saving messages.
  */
-export declare function ownedThread(ep: EndpointContext, ctx: GenericQueryCtx<GenericDataModel>, threadId: string, operation: ThreadOperation): Promise<{
+export declare function threadScope(ep: EndpointContext, ctx: GenericQueryCtx<GenericDataModel>, threadId: string): Promise<{
+    assignmentId: string;
+    threadId: string;
+    subject: string;
+    agent: string;
+    root: boolean;
+}>;
+/** Enforce ownership and the persisted root/child role after host authorization. */
+export declare function ownedScope(ep: EndpointContext, row: Awaited<ReturnType<typeof threadScope>>, subject: string, operation: ThreadOperation): {
+    native: ManagedAgent;
+    assignmentId: string;
+    threadId: string;
+    subject: string;
+    agent: string;
+    root: boolean;
+};
+/** Authorize ordinary thread operations; send separately includes its request key. */
+export declare function ownedThread(ep: EndpointContext, ctx: GenericQueryCtx<GenericDataModel>, threadId: string, operation: Exclude<ThreadOperation, "send">): Promise<{
     native: ManagedAgent;
     assignmentId: string;
     threadId: string;

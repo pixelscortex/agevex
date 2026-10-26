@@ -30,6 +30,12 @@ function summand(row) {
 export function rootOf(attribution) {
     return attribution.rootThreadId ?? attribution.threadId;
 }
+/** Background purposes (cosmetic metadata work, not the user's task) are kept
+ * out of the run gate's unknown-blocks rule. The run tree labels their entries
+ * with this key prefix, so the gate can count blocking unknowns by prefix. The
+ * charges still enter every sum, count, view and sink; only the gate skips them. */
+const BACKGROUND_PURPOSES = ["title", "summary"];
+const BACKGROUND_LABEL = "background";
 /**
  * Every namespace is owned by ONE subject or ONE root thread; none is shared
  * across the deployment. Writes for different subjects therefore never touch
@@ -66,7 +72,8 @@ export function projections(row) {
     if (a.runId)
         entries.push({
             tree: bySubject,
-            key: ["", day],
+            // Existing run entries keep the "" label, which the gate counts as blocking.
+            key: [BACKGROUND_PURPOSES.includes(a.purpose ?? "") ? BACKGROUND_LABEL : "", day],
             namespace: ["run", a.subject, a.runId, state],
             depth: subject,
         });
@@ -165,6 +172,15 @@ export async function summary(ctx, tree, namespace, bounds) {
         sums.push(await tree.sum(ctx, { namespace: [...namespace, state], bounds }));
     const unknown = await tree.count(ctx, { namespace: [...namespace, "unknown"], bounds });
     return totals(sums[0], sums[1], sums[2], unknown);
+}
+/** Unknown charges that block a run's budget gate: every unknown one except
+ * background (title/summary) purposes, which stay recorded and counted in
+ * `unknown` but never stop the run that triggered them. */
+export function runBlockingUnknown(ctx, subject, runId) {
+    return bySubject.count(ctx, {
+        namespace: ["run", subject, runId, "unknown"],
+        bounds: { prefix: [""] },
+    });
 }
 /** Keep budget totals separate from unknown billed nanos when formatting aggregate reads. */
 function totals(estimated, settled, unknownNanos, unknown) {

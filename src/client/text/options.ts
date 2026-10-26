@@ -3,11 +3,15 @@ import type { LanguageModelV4 } from "@ai-sdk/provider";
 import type { LanguageModel } from "ai";
 import { createFunctionHandle } from "convex/server";
 import type { Registration, ManagedAgent } from "../types.js";
+import { LIMITS } from "../../component/limits.js";
 import { TEXT_LIMITS } from "../../component/text/values.js";
 
 export type TextTaskOptions = {
   model?: Extract<LanguageModel, string | LanguageModelV4>;
   prompt?: string;
+  /** Output cap for this call. Defaults to 128 for titles and 2048 for summaries;
+   * must be a positive integer within the task bound (`LIMITS.outputTokens`, 4096). */
+  maxOutputTokens?: number;
 };
 export type ThreadTextOptions = {
   /** On by default, once after the first user message. User renames always win. */
@@ -31,7 +35,11 @@ export function assertTextOptions(config: Registration) {
       (options.prompt !== undefined &&
         (typeof options.prompt !== "string" ||
           !options.prompt.trim() ||
-          options.prompt.length > TEXT_LIMITS.promptCharacters))
+          options.prompt.length > TEXT_LIMITS.promptCharacters)) ||
+      (options.maxOutputTokens !== undefined &&
+        (!Number.isSafeInteger(options.maxOutputTokens) ||
+          options.maxOutputTokens < 1 ||
+          options.maxOutputTokens > LIMITS.outputTokens))
     )
       throw new Error("INVALID_TEXT_OPTIONS");
   }

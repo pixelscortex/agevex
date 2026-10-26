@@ -14,6 +14,7 @@ export declare function check(meter: MeterContext, ctx: ReadCtx, args: {
     maxUsd: number;
 }>) | undefined, trusted?: boolean): Promise<{
     maxNanos: number | null;
+    blockingUnknown: number;
     totalNanos: number;
     estimatedNanos: number;
     settledNanos: number;
@@ -111,6 +112,7 @@ export declare function costReads(meter: MeterContext): {
         subject: string;
         runId?: string;
     }) => Promise<{
+        blockingUnknown: number;
         totalNanos: number;
         estimatedNanos: number;
         settledNanos: number;
@@ -147,6 +149,7 @@ export declare function costReads(meter: MeterContext): {
         runId?: string;
     }) => Promise<{
         maxNanos: number | null;
+        blockingUnknown: number;
         totalNanos: number;
         estimatedNanos: number;
         settledNanos: number;

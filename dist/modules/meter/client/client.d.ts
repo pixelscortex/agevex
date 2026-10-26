@@ -131,6 +131,7 @@ export declare function defineMeter(component: ComponentApi, options: MeterOptio
         subject: string;
         runId?: string;
     }) => Promise<{
+        blockingUnknown: number;
         totalNanos: number;
         estimatedNanos: number;
         settledNanos: number;
@@ -167,6 +168,7 @@ export declare function defineMeter(component: ComponentApi, options: MeterOptio
         runId?: string;
     }) => Promise<{
         maxNanos: number | null;
+        blockingUnknown: number;
         totalNanos: number;
         estimatedNanos: number;
         settledNanos: number;

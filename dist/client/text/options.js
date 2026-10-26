@@ -1,4 +1,5 @@
 import { createFunctionHandle } from "convex/server";
+import { LIMITS } from "../../component/limits.js";
 import { TEXT_LIMITS } from "../../component/text/values.js";
 /** Fail before request acceptance when the host cannot dispatch metadata work. */
 export function assertTextOptions(config) {
@@ -12,7 +13,11 @@ export function assertTextOptions(config) {
             (options.prompt !== undefined &&
                 (typeof options.prompt !== "string" ||
                     !options.prompt.trim() ||
-                    options.prompt.length > TEXT_LIMITS.promptCharacters)))
+                    options.prompt.length > TEXT_LIMITS.promptCharacters)) ||
+            (options.maxOutputTokens !== undefined &&
+                (!Number.isSafeInteger(options.maxOutputTokens) ||
+                    options.maxOutputTokens < 1 ||
+                    options.maxOutputTokens > LIMITS.outputTokens)))
             throw new Error("INVALID_TEXT_OPTIONS");
     }
     const summary = config.summary;

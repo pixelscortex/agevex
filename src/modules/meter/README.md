@@ -1,7 +1,8 @@
 # meter
 
 Optional cost accounting and budget gates for agevex. Stable charge and operation
-keys prevent replay billing; unknown costs deny the next budget check. Aggregate
+keys prevent replay billing; unknown costs deny the next budget check, except
+unknown background title/summary charges, which never block their run. Aggregate
 reads stay bounded, and the sink outbox delivers known amounts independently of
 the budget decision. Core never imports this module.
 

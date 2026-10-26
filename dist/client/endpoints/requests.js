@@ -1,11 +1,12 @@
 // The two public endpoints that start work: `open` (new conversation) and `send`
 // (next message in an owned root conversation).
 //
-// Both are idempotent per subject and request key: input is validated and
-// fingerprinted, a duplicate returns its stored receipt (`turns.send.lookupReceipt`),
-// and only a fresh request saves the native prompt (with its attachments) and is
-// admitted by `turns.send.accept` in the same transaction. `send` also respects the
-// thread's admission state (`turns.send.admission`) before any native write.
+// Both authorize first: the host owns the mapping from identity to subject.
+// Validated, fingerprinted inputs resolve that subject's retained receipt before
+// fresh work reaches the optional host admit hook. All returning refusals
+// (including queue and attachment limits) precede admit. After it, native saves
+// and turns.send.accept either accept together with host writes or throw to
+// roll back the entire mutation; no non-accepting receipt can commit host writes.
 import { createThread, saveMessage } from "@convex-dev/agent";
 import { createFunctionHandle, mutationGeneric, } from "convex/server";
 import { v } from "convex/values";
@@ -16,7 +17,7 @@ import { receipt } from "../../component/schema.js";
 import { savedMessageRef } from "../native-saves.js";
 import { fingerprint } from "../once.js";
 import { persistedTextConfig } from "../text/options.js";
-import { observe, ownedThread, rootAgent } from "./access.js";
+import { observe, ownedScope, rootAgent, threadScope } from "./access.js";
 import { attachment, recordAttachments, validateFiles } from "./attachments.js";
 /** A non-empty bounded message and a bounded request key; else the rejection code. */
 function validateInput(text, requestKey) {
@@ -43,6 +44,49 @@ function validModels(ep, models, root) {
     visit(root);
     return (validModelOverrides(models) &&
         Object.entries(models).every(([name, id]) => reachable.has(name) && ep.config.modelAllowlist?.includes(id)));
+}
+/** Bound every fingerprint input before hashing, after host authorization. */
+async function prepareRequest(ep, scope, input, managed) {
+    assertFact(scope.agent, "agent");
+    const invalid = validateInput(input.text, scope.requestKey);
+    if (invalid)
+        return { rejected: { status: "rejected", code: invalid } };
+    if (!managed && !ep.config.agents.some((agent) => agent.name === scope.agent))
+        return { rejected: { status: "rejected", code: "UNKNOWN_AGENT" } };
+    const native = managed ?? rootAgent(ep, scope.agent);
+    if (!validModels(ep, input.models, native))
+        return { rejected: { status: "rejected", code: "INVALID_MODELS" } };
+    validateFiles(input.files);
+    const hash = await fingerprint([
+        scope.operation,
+        scope.operation === "open" ? scope.agent : scope.threadId,
+        input.text,
+        input.models ?? null,
+        input.files ?? [],
+    ]);
+    return { native, hash };
+}
+/**
+ * Authorize every call before validation or receipt lookup. Only the host's
+ * returned subject is trusted; it may differ from ctx.auth's identity subject.
+ */
+async function authorizeRequest(ep, ctx, scope) {
+    const { subject } = await ep.config.authorize(ctx, scope);
+    assertFact(subject, "subject");
+    return subject;
+}
+/**
+ * One exact authorized subject/key lookup uses unique() (Convex implements it
+ * with take(2)): <=2 * 1 MiB even for corrupt duplicate ledger rows, independent
+ * of queue or receipt counts. Never substitute a thread's owner for the host's
+ * authorized subject: foreign callers must not learn another subject's keys.
+ */
+function lookupRequest(ep, ctx, subject, scope, hash) {
+    return ctx.runQuery(ep.component.turns.send.lookupReceipt, {
+        subject,
+        requestKey: scope.requestKey,
+        fingerprint: hash,
+    });
 }
 /**
  * Admit a saved prompt into the queue and report it. Throws
@@ -89,30 +133,20 @@ export function openEndpoint(ep) {
         },
         returns: receipt,
         handler: async (ctx, args) => {
-            const { subject } = await ep.config.authorize(ctx, { operation: "open", agent: args.agent });
-            assertFact(subject, "subject");
-            assertFact(args.agent, "agent");
-            const invalid = validateInput(args.prompt, args.requestKey);
-            if (invalid)
-                return { status: "rejected", code: invalid };
-            if (!ep.config.agents.some((a) => a.name === args.agent))
-                return { status: "rejected", code: "UNKNOWN_AGENT" };
-            const native = rootAgent(ep, args.agent);
-            if (!validModels(ep, args.models, native))
-                return { status: "rejected", code: "INVALID_MODELS" };
-            validateFiles(args.files);
             const { prompt, models, files } = args;
-            const hash = await fingerprint(["open", args.agent, prompt, models ?? null, files ?? []]);
-            const duplicate = await ctx.runQuery(ep.component.turns.send.lookupReceipt, {
-                subject,
-                requestKey: args.requestKey,
-                fingerprint: hash,
-            });
+            const scope = { operation: "open", agent: args.agent, requestKey: args.requestKey };
+            const subject = await authorizeRequest(ep, ctx, scope);
+            const prepared = await prepareRequest(ep, scope, { text: prompt, models, files });
+            if (prepared.rejected)
+                return prepared.rejected;
+            const { native, hash } = prepared;
+            const duplicate = await lookupRequest(ep, ctx, subject, scope, hash);
             if (duplicate)
                 return duplicate;
             const attached = await attachment(ep, ctx, native, subject, prompt, files);
             if ("rejected" in attached)
                 return { status: "rejected", code: "ATTACHMENT_LIMIT" };
+            await ep.config.admit?.(ctx, { ...scope, subject });
             const runTurn = await createFunctionHandle(ep.config.refs.runTurn());
             const threadId = await createThread(ctx, native.component, { userId: subject });
             const saved = await saveMessage(ctx, native.component, {
@@ -148,20 +182,21 @@ export function sendEndpoint(ep) {
         },
         returns: receipt,
         handler: async (ctx, args) => {
-            const row = await ownedThread(ep, ctx, args.threadId, "send");
-            const invalid = validateInput(args.text, args.requestKey);
-            if (invalid)
-                return { status: "rejected", code: invalid };
-            if (!validModels(ep, args.models, row.native))
-                return { status: "rejected", code: "INVALID_MODELS" };
-            validateFiles(args.files);
             const { threadId, text, models, files } = args;
-            const hash = await fingerprint(["send", threadId, text, models ?? null, files ?? []]);
-            const duplicate = await ctx.runQuery(ep.component.turns.send.lookupReceipt, {
-                subject: row.subject,
+            const stored = await threadScope(ep, ctx, threadId);
+            const scope = {
+                operation: "send",
+                agent: stored.agent,
+                threadId,
                 requestKey: args.requestKey,
-                fingerprint: hash,
-            });
+            };
+            const subject = await authorizeRequest(ep, ctx, scope);
+            const row = ownedScope(ep, stored, subject, "send");
+            const prepared = await prepareRequest(ep, scope, { text, models, files }, row.native);
+            if (prepared.rejected)
+                return prepared.rejected;
+            const { hash } = prepared;
+            const duplicate = await lookupRequest(ep, ctx, subject, scope, hash);
             if (duplicate)
                 return duplicate;
             const refusal = await ctx.runQuery(ep.component.turns.send.admission, {
@@ -173,6 +208,7 @@ export function sendEndpoint(ep) {
             const attached = await attachment(ep, ctx, row.native, row.subject, text, files);
             if ("rejected" in attached)
                 return { status: "rejected", code: "ATTACHMENT_LIMIT" };
+            await ep.config.admit?.(ctx, { ...scope, subject });
             const saved = await saveMessage(ctx, row.native.component, {
                 threadId,
                 message: attached.message,

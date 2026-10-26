@@ -82,5 +82,9 @@ export declare function summary(ctx: QueryCtx, tree: Tree, namespace: string[], 
         settled: number;
     };
 }>;
+/** Unknown charges that block a run's budget gate: every unknown one except
+ * background (title/summary) purposes, which stay recorded and counted in
+ * `unknown` but never stop the run that triggered them. */
+export declare function runBlockingUnknown(ctx: QueryCtx, subject: string, runId: string): Promise<number>;
 /** Combine the capped and overflow thread summaries without hiding unknown charges. */
 export declare function combine(a: Summary, b: Summary): Summary;

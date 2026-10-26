@@ -8,6 +8,15 @@ export declare function openEndpoint(ep: EndpointContext): import("convex/server
     prompt: string;
 }, Promise<{
     status: "rejected";
+    code: "INVALID_MESSAGE" | "INVALID_REQUEST_KEY";
+} | {
+    status: "rejected";
+    code: "UNKNOWN_AGENT";
+} | {
+    status: "rejected";
+    code: "INVALID_MODELS";
+} | {
+    status: "rejected";
     code: "KEY_CONFLICT";
 } | {
     receiptId: string;
@@ -24,15 +33,6 @@ export declare function openEndpoint(ep: EndpointContext): import("convex/server
     position: number;
 } | {
     status: "rejected";
-    code: "INVALID_MESSAGE" | "INVALID_REQUEST_KEY";
-} | {
-    status: "rejected";
-    code: "UNKNOWN_AGENT";
-} | {
-    status: "rejected";
-    code: "INVALID_MODELS";
-} | {
-    status: "rejected";
     code: "ATTACHMENT_LIMIT";
 }>>;
 /** `send`: the next user message in an owned root conversation. */
@@ -43,6 +43,15 @@ export declare function sendEndpoint(ep: EndpointContext): import("convex/server
     threadId: string;
     requestKey: string;
 }, Promise<{
+    status: "rejected";
+    code: "INVALID_MESSAGE" | "INVALID_REQUEST_KEY";
+} | {
+    status: "rejected";
+    code: "UNKNOWN_AGENT";
+} | {
+    status: "rejected";
+    code: "INVALID_MODELS";
+} | {
     status: "rejected";
     code: "KEY_CONFLICT";
 } | {
@@ -64,12 +73,6 @@ export declare function sendEndpoint(ep: EndpointContext): import("convex/server
 } | {
     status: "rejected";
     code: "QUEUE_FULL";
-} | {
-    status: "rejected";
-    code: "INVALID_MESSAGE" | "INVALID_REQUEST_KEY";
-} | {
-    status: "rejected";
-    code: "INVALID_MODELS";
 } | {
     status: "rejected";
     code: "ATTACHMENT_LIMIT";

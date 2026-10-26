@@ -2,7 +2,8 @@
  * Authorized host reads and the run-scoped budget decision.
  * All totals come from the component aggregates, never from charge scans.
  * Optional grouping is checked against registration before invoking a query;
- * unknown charges deny work even when no spending cap has been configured.
+ * unknown charges deny work even when no spending cap has been configured,
+ * except background (title/summary) charges, which never block their run.
  */
 import { requireBreakdown } from "../shared/breakdowns.js";
 import { LIMITS, integer, text } from "../shared/limits.js";
@@ -37,7 +38,9 @@ export async function check(
   const cost = await ctx.runQuery(meter.component.reads.cost, args);
 
   return {
-    allowed: cost.unknown === 0 && (maxNanos === undefined || cost.totalNanos < maxNanos),
+    // Run scope ignores unknown title/summary charges (see aggregates.ts); their
+    // known amounts are already in totalNanos and every unknown stays in `unknown`.
+    allowed: cost.blockingUnknown === 0 && (maxNanos === undefined || cost.totalNanos < maxNanos),
     ...cost,
     maxNanos: maxNanos ?? null,
   };

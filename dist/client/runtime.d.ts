@@ -64,6 +64,15 @@ export declare function registerAgent(component: ComponentApi, config: Registrat
             prompt: string;
         }, Promise<{
             status: "rejected";
+            code: "INVALID_MESSAGE" | "INVALID_REQUEST_KEY";
+        } | {
+            status: "rejected";
+            code: "UNKNOWN_AGENT";
+        } | {
+            status: "rejected";
+            code: "INVALID_MODELS";
+        } | {
+            status: "rejected";
             code: "KEY_CONFLICT";
         } | {
             receiptId: string;
@@ -80,15 +89,6 @@ export declare function registerAgent(component: ComponentApi, config: Registrat
             position: number;
         } | {
             status: "rejected";
-            code: "INVALID_MESSAGE" | "INVALID_REQUEST_KEY";
-        } | {
-            status: "rejected";
-            code: "UNKNOWN_AGENT";
-        } | {
-            status: "rejected";
-            code: "INVALID_MODELS";
-        } | {
-            status: "rejected";
             code: "ATTACHMENT_LIMIT";
         }>>;
         send: import("convex/server").RegisteredMutation<"public", {
@@ -98,6 +98,15 @@ export declare function registerAgent(component: ComponentApi, config: Registrat
             threadId: string;
             requestKey: string;
         }, Promise<{
+            status: "rejected";
+            code: "INVALID_MESSAGE" | "INVALID_REQUEST_KEY";
+        } | {
+            status: "rejected";
+            code: "UNKNOWN_AGENT";
+        } | {
+            status: "rejected";
+            code: "INVALID_MODELS";
+        } | {
             status: "rejected";
             code: "KEY_CONFLICT";
         } | {
@@ -119,12 +128,6 @@ export declare function registerAgent(component: ComponentApi, config: Registrat
         } | {
             status: "rejected";
             code: "QUEUE_FULL";
-        } | {
-            status: "rejected";
-            code: "INVALID_MESSAGE" | "INVALID_REQUEST_KEY";
-        } | {
-            status: "rejected";
-            code: "INVALID_MODELS";
         } | {
             status: "rejected";
             code: "ATTACHMENT_LIMIT";

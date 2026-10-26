@@ -96,6 +96,7 @@ export declare const cost: import("convex/server").RegisteredQuery<"public", {
     runId?: string | undefined;
     subject: string;
 }, Promise<{
+    blockingUnknown: number;
     totalNanos: number;
     estimatedNanos: number;
     settledNanos: number;

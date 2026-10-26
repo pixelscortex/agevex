@@ -1,6 +1,7 @@
 // Structured tasks: one bounded, schema-validated model call with a receipt.
 //
-// `defineTask` declares a task (name, input/output schemas, prompt); `runTask`
+// `defineTask` declares a task (name, input/output schemas, prompt and optional
+// system instructions); `runTask`
 // runs it at most once per idempotency key through the core receipts ledger
 // (`receipts.effects.begin` → `receipts.effects.complete` /
 // `receipts.effects.unknown`), with at most one repair re-ask for invalid
@@ -33,6 +34,9 @@ export function defineTask(task) {
     if (!task.name ||
         task.name.length > LIMITS.requestKeyLength ||
         typeof task.prompt !== "function" ||
+        (task.instructions !== undefined &&
+            typeof task.instructions !== "string" &&
+            typeof task.instructions !== "function") ||
         (task.repair !== undefined && task.repair !== 0 && task.repair !== LIMITS.taskRepairs))
         throw new Error("INVALID_TASK");
     return { ...task };
@@ -118,6 +122,12 @@ async function prepareTask(context, task, input, options) {
     const prompt = task.prompt(parsed);
     if (!prompt.trim() || prompt.length > maxPromptLength)
         throw new Error("INVALID_TASK_PROMPT");
+    const instructions = typeof task.instructions === "function" ? task.instructions(parsed) : task.instructions;
+    if (instructions !== undefined &&
+        (typeof instructions !== "string" ||
+            !instructions.trim() ||
+            instructions.length > maxPromptLength))
+        throw new Error("INVALID_TASK_INSTRUCTIONS");
     const signal = "ctx" in context ? context.signal : options.signal;
     return {
         ctx,
@@ -131,13 +141,15 @@ async function prepareTask(context, task, input, options) {
         model,
         parsed,
         prompt,
+        instructions,
         signal,
     };
 }
 /**
  * Admit (or re-read) this task's receipt. The payload fingerprint covers the
- * parsed input, the prompt and the model, so a key reused for a different
- * payload is a conflict.
+ * parsed input, the prompt, the model and any instructions, so a key reused for
+ * a different payload is a conflict. Instructions are appended only when set,
+ * which keeps the fingerprint of tasks without them identical to before.
  */
 async function beginTask(call, receipt) {
     const { model } = call;
@@ -147,6 +159,7 @@ async function beginTask(call, receipt) {
             call.parsed,
             call.prompt,
             typeof model === "string" ? model : [model.provider, model.modelId],
+            ...(call.instructions === undefined ? [] : [call.instructions]),
         ]),
         leaseMs: call.leaseMs,
     });
@@ -217,6 +230,7 @@ async function generateOnce(call, receipt, attempt, repairText) {
     const generated = await abortTask(generateText({
         model: call.model,
         output: Output.object({ schema: call.task.output }),
+        instructions: call.instructions,
         prompt: repairText === undefined
             ? call.prompt
             : `${call.prompt}\n\nYour previous response did not match the output schema. Return valid JSON matching the schema.\nPrevious response:\n${repairText}`,

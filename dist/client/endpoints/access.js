@@ -1,10 +1,10 @@
 // Shared context and ownership checks for the public endpoints.
 //
 // `createEndpointContext` indexes every registered agent once; `rootAgent`
-// resolves a public root for `open`; `ownedThread` is the authorization gate every
-// thread-scoped endpoint runs first: it loads the persisted assignment
-// (`turns.send.assignment`), runs the host `authorize` policy, requires the returned
-// subject to own the thread, and enforces which operations a child thread allows.
+// resolves a public root for `open`. `threadScope` loads one assignment and
+// `ownedScope` enforces ownership and the persisted root/child role. Ordinary
+// endpoints use `ownedThread` to run host policy between those checks. `send`
+// supplies its request key and enforces ownership before its receipt lookup.
 import { assertFact } from "../../component/facts.js";
 import { resolveLimits } from "../../component/limits.js";
 /**
@@ -46,18 +46,21 @@ export function rootAgent(ep, name) {
     return found;
 }
 /**
- * Authorize one thread-scoped operation and return the owned assignment plus its
- * native agent. Throws `FORBIDDEN` for an unmanaged thread, a subject that does
- * not own it, or a root-only operation on a child thread.
+ * Load one bounded assignment projection, without granting access. Request
+ * endpoints need its agent before authorization; every caller must still
+ * authorize and pass `ownedScope` before returning data or saving messages.
  */
-export async function ownedThread(ep, ctx, threadId, operation) {
+export async function threadScope(ep, ctx, threadId) {
     assertFact(threadId, "threadId");
     const row = await ctx.runQuery(ep.component.turns.send.assignment, { threadId });
     if (!row)
         throw new Error("FORBIDDEN");
-    const trusted = await ep.config.authorize(ctx, { operation, agent: row.agent, threadId });
-    assertFact(trusted.subject, "subject");
-    if (trusted.subject !== row.subject)
+    return row;
+}
+/** Enforce ownership and the persisted root/child role after host authorization. */
+export function ownedScope(ep, row, subject, operation) {
+    assertFact(subject, "subject");
+    if (subject !== row.subject)
         throw new Error("FORBIDDEN");
     // Ownership permits reading a child's transcript and resolving its recorded
     // approvals. Child turns belong to the coordinator's bounded delegation and
@@ -79,6 +82,12 @@ export async function ownedThread(ep, ctx, threadId, operation) {
     if (!native)
         throw new Error("UNKNOWN_AGENT");
     return { ...row, native };
+}
+/** Authorize ordinary thread operations; send separately includes its request key. */
+export async function ownedThread(ep, ctx, threadId, operation) {
+    const row = await threadScope(ep, ctx, threadId);
+    const trusted = await ep.config.authorize(ctx, { operation, agent: row.agent, threadId });
+    return ownedScope(ep, row, trusted.subject, operation);
 }
 /** Report one lifecycle event to the host; never changes the request outcome. */
 export async function observe(ep, ctx, event) {
