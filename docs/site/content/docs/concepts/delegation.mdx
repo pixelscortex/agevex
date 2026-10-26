@@ -39,6 +39,12 @@ members in one group returns `GROUP_CONFLICT`.
 A delivered result is the child's verified final text. A tool-only or empty
 completion is a failed run, never a result.
 
+Each result gets one delivery attempt, never a retry. If it throws, the run
+records `DELIVERY_FAILED`. If that record throws too, the run immediately
+records `DELIVERY_UNKNOWN` (the outcome is unknown, not a known failure), which
+frees its result slot and hop. If even that last write fails, the run stays
+`pending` until a cancel clears it.
+
 ## Questions and follow-ups
 
 One open question pauses the child as `asking`, and its verified question wakes
