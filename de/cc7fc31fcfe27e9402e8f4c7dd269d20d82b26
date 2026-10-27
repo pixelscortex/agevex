@@ -1,0 +1,54 @@
+src/component/subagents/runs.ts
+  s_b94d21162db9c6::t_f7164fa8fbb068 20,22-24
+src/component/subagents/settle.ts
+  s_b94d21162db9c6::t_02bdb7f062c522 103
+src/component/subagents/launch.ts
+  s_b94d21162db9c6::t_436ae028dce9a4 75,101
+src/component/subagents/views.ts
+  s_b94d21162db9c6::t_fa789f9ed2e9d7 76,117,184,197
+src/component/subagents/tree.ts
+  s_b94d21162db9c6::t_e1cfcb830938cb 62,186
+src/component/hooks/origins.ts
+  s_b94d21162db9c6::t_2743521aa42dd3 55
+tests/cancel-history.fixture.ts
+  s_b94d21162db9c6::t_dd5835df3cabf6 5-6,66-72
+tests/delegation-v2.test.ts
+  s_b94d21162db9c6::t_51e06357eeb8d4 2631-2655
+src/component/subagents/messages.ts
+  s_b94d21162db9c6::t_9789e2ff801910 228,286,314
+tests/claim-bounds.test.ts
+  s_b94d21162db9c6::t_89075a51b37758 64
+src/component/limits.ts
+  s_b94d21162db9c6::t_f476920d9c6b29 79-82
+src/component/turns/assignments.ts
+  s_b94d21162db9c6::t_c76f8e640771b9 95
+tests/claim-bounds.fixture.ts
+  s_b94d21162db9c6::t_3d54899e480e73 61-67
+tests/bounded-reads.test.ts
+  s_b94d21162db9c6::t_e03a7fb6155935 1925
+docs/site/content/docs/concepts/delegation.mdx
+  s_b94d21162db9c6::t_fb3d69aae1a573 21-25
+src/testing/bridge.ts
+  s_b94d21162db9c6::t_3419caaf5907b6 41,122-126
+src/component/turns/claim.ts
+  s_b94d21162db9c6::t_824e2204480996 347
+tests/run-tree.seed.ts
+  s_b94d21162db9c6::t_a73417fcfda091 99-106
+  s_b94d21162db9c6::t_9ad5a922f8a8f3 107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "decc7fc31fcfe27e9402e8f4c7dd269d20d82b26",
+  "prompts": {},
+  "sessions": {
+    "s_b94d21162db9c6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17b06-f2cf-7782-a290-3b2a34c6e36a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
