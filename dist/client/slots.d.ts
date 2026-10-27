@@ -46,17 +46,20 @@ export type SlotActionCtx = GenericActionCtx<GenericDataModel>;
 export type UsageEvent = SlotFacts & {
     key: string;
     status: "success" | "failed" | "aborted";
-    /** Provider step completion time, epoch milliseconds (not delivery time). */
+    /** Provider finish time, or interrupted-step finalization time, in epoch ms. */
     occurredAt: number;
     model?: string;
     provider?: string;
-    usage: unknown;
+    /** Absent when interrupted before usage arrived. Reconcile known OpenRouter
+     * requestId with openRouterCost({ apiKey, generationId: requestId }); missing
+     * tokens must never be treated as zero. */
+    usage?: unknown;
     providerMetadata?: unknown;
     requestId?: string;
     messageId: string | null;
 };
 export type UsageSlot = {
-    /** Managed turns retry throwing hooks with the same event/key. Deduplicate
+    /** Turns, titles and tasks retry throwing hooks with the same event/key. Deduplicate
      * transactionally: a hook may have committed before its caller stopped waiting. */
     record(ctx: SlotActionCtx, event: UsageEvent): Promise<void>;
     /** Optional app-owned projection; absent adapters leave run-tree usage null. */

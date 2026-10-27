@@ -45,7 +45,7 @@ export type Turn = {
 };
 /** Flags generation sets while the model and its tools run. */
 export type GenerationState = {
-    /** Provider dispatch began; failed/dropped native saves must report partial. */
+    /** Provider dispatch began; missing metadata and usage must report partial. */
     modelStarted: boolean;
     budgetExceeded?: boolean;
     /** A hook threw or returned an invalid result: the turn reports HOOK_FAILED. */

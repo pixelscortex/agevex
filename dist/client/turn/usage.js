@@ -8,22 +8,33 @@ import { LIMITS } from "../../component/limits.js";
  * Hook/backoff budget: 3*1000 + 2*25 = 3050 ms, clipped by the turn fence.
  * Ownership reads use the existing fence; no recovery or wake-loop state is added. */
 export async function deliverStepUsage(usage, turn, fence, event) {
+    return deliverUsage(usage, turn.rawCtx, event, {
+        signal: fence.controller.signal,
+        wait: fence.wait,
+        assertActive: () => fence.assertActive(true),
+    });
+}
+/** Shared evidence-only retry loop for turns, titles and structured tasks.
+ * The 3050 ms hook/backoff maximum applies without a guard; managed calls also
+ * race the existing turn fence, including ownership reads before retries. */
+export async function deliverUsage(usage, ctx, event, guard) {
+    const wait = (work) => (guard ? guard.wait(work) : work);
     for (let attempt = 0; attempt < LIMITS.usageRecordAttempts; attempt++) {
-        const alreadyAborted = fence.controller.signal.aborted;
+        const alreadyAborted = guard?.signal?.aborted;
         try {
-            if (attempt > 0)
-                await fence.wait(fence.assertActive(true));
-            const pending = boundedUsageCall(() => usage.record(turn.rawCtx, event));
+            if (attempt > 0 && guard?.assertActive)
+                await wait(guard.assertActive());
+            const pending = boundedUsageCall(() => usage.record(ctx, event));
             if (alreadyAborted)
                 await pending;
             else
-                await fence.wait(pending);
+                await wait(pending);
             return;
         }
         catch (error) {
-            if (fence.controller.signal.aborted || attempt + 1 === LIMITS.usageRecordAttempts)
+            if (guard?.signal?.aborted || attempt + 1 === LIMITS.usageRecordAttempts)
                 throw error;
-            await fence.wait(new Promise((resolve) => setTimeout(resolve, LIMITS.usageRecordBackoffMs)));
+            await wait(new Promise((resolve) => setTimeout(resolve, LIMITS.usageRecordBackoffMs)));
         }
     }
 }

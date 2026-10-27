@@ -17,6 +17,7 @@ import { LIMITS } from "../../component/limits.js";
 import type { RunnerCtx, RuntimeContext } from "../registration/context.js";
 import { opaqueKey } from "../keys.js";
 import type { TextTaskArgs } from "./options.js";
+import { deliverUsage } from "../turn/usage.js";
 
 type Snapshot = NonNullable<FunctionReturnType<ComponentApi["text"]["state"]["claim"]>>;
 type Dispatch = {
@@ -208,8 +209,10 @@ async function recordUsage(
   model: LanguageModel,
   dispatch: Dispatch,
 ) {
+  if (!rt.config.usage) return;
+
   try {
-    await rt.config.usage?.record(ctx, {
+    await deliverUsage(rt.config.usage, ctx, {
       subject: state.subject,
       rootThreadId: state.threadId,
       threadId: state.threadId,

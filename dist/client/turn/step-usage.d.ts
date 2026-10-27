@@ -7,9 +7,13 @@ import type { UsageEvent } from "../slots.js";
 import type { Turn } from "./context.js";
 import type { TurnFence } from "./fence.js";
 export type StepUsage = Pick<UsageEvent, "model" | "provider" | "usage" | "occurredAt" | "status"> & {
+    finished: boolean;
     providerMetadata?: SharedV4ProviderMetadata;
     native?: Pick<MessageDoc, "_id" | "stepOrder">;
 };
+/** Metadata proves provider admission even if the stream never reaches finish.
+ * Keep it on this same step so finish enriches evidence instead of billing twice. */
+export declare function captureStepResponse(turn: Turn, model: Pick<LanguageModelV4, "modelId" | "provider">, requestId?: string, modelId?: string): void;
 /** Retain the first completion only, even if a malformed stream finishes twice.
  * Match Agent vercel/mapping.ts:241-253's native usage vocabulary. Preserve
  * unknown counts; adding missing totals would manufacture billing evidence. */

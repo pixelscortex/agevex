@@ -4,6 +4,7 @@ import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import type { z } from "zod";
 import type { ComponentApi } from "../component/_generated/component.js";
 import type { SlotFacts, UsageSlot } from "./slots.js";
+import { type UsageDeliveryGuard } from "./turn/usage.js";
 type TaskModel = Extract<LanguageModel, string | LanguageModelV4>;
 export type Task<Input, Output> = {
     name: string;
@@ -52,6 +53,10 @@ type Binding = {
         assignmentId: string;
         executionId: string;
         cancellationEpoch: number;
+    };
+    usageDelivery?: {
+        ctx: ActionCtx;
+        guard: UsageDeliveryGuard;
     };
 };
 /**

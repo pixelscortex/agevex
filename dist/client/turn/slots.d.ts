@@ -3,7 +3,7 @@ import type { RuntimeContext } from "../registration/context.js";
 import type { SlotFacts } from "../slots.js";
 import type { HookContext, Registration } from "../types.js";
 import { type Generation, type Turn } from "./context.js";
-/** Report exactly one provider completion after its save succeeds or fails.
+/** Report exactly one provider attempt after its save succeeds or fails.
  * Preserve the existing native key; a dropped save uses the unique slice id in
  * its place. Retries reuse this one event, including its original timestamp. */
 export declare function recordStepUsage(rt: RuntimeContext, gen: Generation, failed: boolean): Promise<void>;

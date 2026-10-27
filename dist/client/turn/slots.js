@@ -1,6 +1,6 @@
 // How the optional host slots take part in one turn.
 //
-// usage: `recordStepUsage` reports provider completion, including dropped saves.
+// usage: `recordStepUsage` reports provider evidence, including interrupted streams.
 // sandbox tools: `slotToolBags` asks each slot for its tools.
 // telemetry: `telemetryIntegrations` per generation, `flushTelemetry` per action.
 // Every slot is fail-open for evidence (usage, telemetry) and never retries paid
@@ -11,7 +11,7 @@ import { opaqueKey } from "../keys.js";
 import { sliceKey } from "./context.js";
 import { markUsagePartial, deliverStepUsage } from "./usage.js";
 import { settleUsageSave } from "./step-usage.js";
-/** Report exactly one provider completion after its save succeeds or fails.
+/** Report exactly one provider attempt after its save succeeds or fails.
  * Preserve the existing native key; a dropped save uses the unique slice id in
  * its place. Retries reuse this one event, including its original timestamp. */
 export async function recordStepUsage(rt, gen, failed) {
@@ -34,8 +34,8 @@ export async function recordStepUsage(rt, gen, failed) {
             key: await opaqueKey("model", turn.facts.threadId, step.native?._id ?? sliceKey(turn), step.native?.stepOrder ?? 0),
             messageId: step.native ? String(step.native._id) : null,
             status: fence.controller.signal.aborted ? "aborted" : failed ? "failed" : step.status,
-            occurredAt: step.occurredAt,
-            usage: step.usage,
+            occurredAt: step.finished ? step.occurredAt : Date.now(),
+            ...(step.usage === undefined ? {} : { usage: step.usage }),
             providerMetadata: step.providerMetadata,
             ...(typeof requestId === "string" ? { requestId } : {}),
         };

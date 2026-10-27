@@ -32,22 +32,29 @@ agent index, and `open` looks roots up in `config.agents`.
    the `afterTurn` notification.
 8. **Finish.** `turn/finish.ts` calls `turns.slices.finish`; a child turn first settles its
    run (`coordinate/settle.ts`) and delivers the result (`coordinate/delivery.ts`).
-9. **Record usage.** Provider middleware captures usage and finish time before
+9. **Record usage.** Provider middleware captures response identity immediately,
+   then usage and finish time before
    native saves. Delivery uses one `UsageEvent` per step, including failure,
    timeout, abort or cancellation; `status` is success/failed/aborted and
-   `occurredAt` is epoch ms. Saves settle before identity is chosen; a delayed
+   `occurredAt` is epoch ms (finalization time when interrupted before finish).
+   Pre-finish failures retain `requestId` with optional `usage` absent, for host
+   reconciliation using `openRouterCost({ apiKey, generationId: requestId })` from `agevex/usage`.
+   Finish enriches the same step; no metadata or usage means no event.
+   Saves settle before identity is chosen; a delayed
    reply is recovered by exact placeholder id. `messageId` is null for a dropped
    save. An unverifiable pending save marks reporting partial without an event.
    Delivery precedes continuation/budget admission. The existing native step key
    (slice identity for dropped saves) deduplicates multiple native rows. Hosts
    must dedupe the key transactionally: three in-action attempts reuse the same
-   event, with 25 ms backoff and a 1 second per-attempt timeout (`LIMITS`).
+   event, with 25 ms backoff and a 1 second per-attempt timeout (`LIMITS`). Titles
+   and `runTask` use the same helper; hook tasks share the turn fence, standalone
+   tasks honor their abort signal, and titles have a 3,050 ms delivery budget.
    Waiting/retries race the live turn fence and deadline; retries recheck
    ownership, allowing this slice's approval pause. After abort, exact-id recovery
    and one raw-context delivery each get a separate bound of 1 second; this
    evidence cleanup can finish after the turn deadline. No retry starts then.
    Uncooperative hooks may commit after waiting stops. Exhausted/interrupted
-   delivery or missing provider usage sets reporting partial. No model replay,
+   delivery or missing metadata and usage sets reporting partial. No model replay,
    persisted redelivery or scheduler is involved.
 
 Collaboration tools call the `coordinate` mutation

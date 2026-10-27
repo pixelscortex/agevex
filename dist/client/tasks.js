@@ -14,6 +14,7 @@ import { TEXT_LIMITS } from "../component/text/values.js";
 import { HOST_LIMITS, LIMITS } from "../component/limits.js";
 import { fingerprint, opaqueKey } from "./keys.js";
 import { assertFact } from "../component/facts.js";
+import { deliverUsage } from "./turn/usage.js";
 // Only admission refusals use this marker. Provider errors remain uncertain
 // paid outcomes, even when their message happens to match an admission error.
 class TaskDispatchRefused extends Error {
@@ -274,9 +275,12 @@ async function generateOnce(call, receipt, attempt, repairText) {
 async function recordTaskUsage(call, receipt, attempt, usage, providerMetadata, requestId, status = "success") {
     const { model, attribution, binding, options, ctx } = call;
     const occurredAt = Date.now();
+    const slot = binding?.usage ?? options.usage;
+    if (!slot)
+        return;
     try {
         const provider = typeof model === "string" ? model.split("/")[0] : model.provider;
-        await (binding?.usage ?? options.usage)?.record(ctx, {
+        await deliverUsage(slot, binding?.usageDelivery?.ctx ?? ctx, {
             ...attribution,
             model: typeof model === "string" ? model : model.modelId,
             provider,
@@ -287,11 +291,14 @@ async function recordTaskUsage(call, receipt, attempt, usage, providerMetadata, 
             usage,
             providerMetadata,
             requestId,
+        }, binding?.usageDelivery?.guard ?? {
+            signal: call.signal,
+            wait: (work) => abortTask(work, call.signal),
         });
     }
     catch {
         try {
-            await ctx.runMutation(call.component.turns.slices.usageFailed, { runId: attribution.runId });
+            await (binding?.usageDelivery?.ctx ?? ctx).runMutation(call.component.turns.slices.usageFailed, { runId: attribution.runId });
         }
         catch {
             /* Recording evidence must never trigger another paid call. */

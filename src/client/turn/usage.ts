@@ -4,8 +4,15 @@
 import type { RuntimeContext } from "../registration/context.js";
 import type { Turn } from "./context.js";
 import type { TurnFence } from "./fence.js";
-import type { UsageEvent, UsageSlot } from "../slots.js";
+import type { SlotActionCtx, UsageEvent, UsageSlot } from "../slots.js";
 import { LIMITS } from "../../component/limits.js";
+
+/** Optional admission/deadline guard; standalone titles have only the hook bound. */
+export type UsageDeliveryGuard = {
+  signal?: AbortSignal;
+  wait<T>(work: Promise<T>): Promise<T>;
+  assertActive?: () => Promise<void>;
+};
 
 /** At most three host deliveries, never provider retries. Every retry checks
  * the authoritative fence (including this slice's native approval pause), and
@@ -21,25 +28,40 @@ export async function deliverStepUsage(
   fence: TurnFence,
   event: UsageEvent,
 ) {
+  return deliverUsage(usage, turn.rawCtx, event, {
+    signal: fence.controller.signal,
+    wait: fence.wait,
+    assertActive: () => fence.assertActive(true),
+  });
+}
+
+/** Shared evidence-only retry loop for turns, titles and structured tasks.
+ * The 3050 ms hook/backoff maximum applies without a guard; managed calls also
+ * race the existing turn fence, including ownership reads before retries. */
+export async function deliverUsage(
+  usage: UsageSlot,
+  ctx: SlotActionCtx,
+  event: UsageEvent,
+  guard?: UsageDeliveryGuard,
+) {
+  const wait = <T>(work: Promise<T>) => (guard ? guard.wait(work) : work);
+
   for (let attempt = 0; attempt < LIMITS.usageRecordAttempts; attempt++) {
-    const alreadyAborted = fence.controller.signal.aborted;
+    const alreadyAborted = guard?.signal?.aborted;
 
     try {
-      if (attempt > 0) await fence.wait(fence.assertActive(true));
+      if (attempt > 0 && guard?.assertActive) await wait(guard.assertActive());
 
-      const pending = boundedUsageCall(() => usage.record(turn.rawCtx, event));
+      const pending = boundedUsageCall(() => usage.record(ctx, event));
 
       if (alreadyAborted) await pending;
-      else await fence.wait(pending);
+      else await wait(pending);
 
       return;
     } catch (error) {
-      if (fence.controller.signal.aborted || attempt + 1 === LIMITS.usageRecordAttempts)
-        throw error;
+      if (guard?.signal?.aborted || attempt + 1 === LIMITS.usageRecordAttempts) throw error;
 
-      await fence.wait(
-        new Promise<void>((resolve) => setTimeout(resolve, LIMITS.usageRecordBackoffMs)),
-      );
+      await wait(new Promise<void>((resolve) => setTimeout(resolve, LIMITS.usageRecordBackoffMs)));
     }
   }
 }

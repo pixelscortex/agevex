@@ -7,6 +7,7 @@ import { z } from "zod";
 import { TEXT_LIMITS, textArgs, validText } from "../../component/text/values.js";
 import { LIMITS } from "../../component/limits.js";
 import { opaqueKey } from "../keys.js";
+import { deliverUsage } from "../turn/usage.js";
 /** Export as refs.textTask. Workflow retries are disabled for this action. */
 export function buildTextTask(rt) {
     return internalActionGeneric({
@@ -133,8 +134,10 @@ async function generate(rt, ctx, args, model, prompt, dispatch) {
 /** Evidence failures never trigger another generation. There is no text body
  * in the receipt or usage event; only one opaque usage key per accepted job. */
 async function recordUsage(rt, ctx, args, state, model, dispatch) {
+    if (!rt.config.usage)
+        return;
     try {
-        await rt.config.usage?.record(ctx, {
+        await deliverUsage(rt.config.usage, ctx, {
             subject: state.subject,
             rootThreadId: state.threadId,
             threadId: state.threadId,
