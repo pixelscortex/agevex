@@ -18,7 +18,8 @@ import type { Infer } from "convex/values";
 import type { AgentComponent, MessageDoc } from "@convex-dev/agent";
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import type { RunSettings } from "../component/run_settings.js";
-import type { LanguageModel, ToolSet } from "ai";
+import type { Instructions, LanguageModel, ModelMessage, ToolSet } from "ai";
+import type { ProviderOptions } from "@ai-sdk/provider-utils";
 import type { ToolContext } from "./once.js";
 import type { activity, receipt, runErrorCode } from "../component/schema.js";
 
@@ -291,6 +292,9 @@ export type CoordinateResult =
   | { status: "accepted"; messageId: string }
   | null;
 
+/** Experimental, per-agent managed-turn policies; never persisted. */
+export type AgentExperiments = { claude?: { cache?: boolean } };
+
 // Minimal execution capability, not Agent<object, ToolSet>: native tool sets
 // are invariant (notably stop conditions). No native result is widened publicly.
 export type ManagedAgent = {
@@ -300,6 +304,9 @@ export type ManagedAgent = {
   run?: RunSettings;
   sandbox?: boolean;
   hooks?: AgentHooks;
+  experimental?: AgentExperiments;
+  /** Read native hints without comparing its large Config model union. */
+  readonly _agevexProviderOptions?: ProviderOptions;
   subagents: readonly ManagedAgent[];
   component: AgentComponent;
   /**
@@ -344,7 +351,16 @@ export type ManagedGenerationArgs = {
   stopWhen: () => boolean;
   abortSignal: AbortSignal;
   toolCallConcurrency: number;
-  prepareStep: (options: { model: LanguageModel }) => { model: LanguageModelV4 };
+  prepareStep: (options: {
+    model: LanguageModel;
+    instructions?: Instructions;
+    messages: ModelMessage[];
+  }) => {
+    model: LanguageModelV4;
+    instructions?: Instructions;
+    messages?: ModelMessage[];
+    providerOptions?: ProviderOptions;
+  };
   experimental_download?: import("ai").Experimental_DownloadFunction;
   telemetry?: { integrations: import("ai").Telemetry[] };
 };

@@ -14,7 +14,7 @@ import { LIMITS } from "../../component/limits.js";
 import { boundedDownload } from "./download.js";
 import type { RuntimeContext } from "../registration/context.js";
 import { bindTaskContext } from "../tasks.js";
-import type { HookContext, Registration } from "../types.js";
+import type { HookContext, ManagedGenerationArgs, Registration } from "../types.js";
 import { completeGeneration } from "./completion.js";
 import { type Generation, type GenerationState, type Turn, type TurnOutcome } from "./context.js";
 import { startTurnFence } from "./fence.js";
@@ -23,6 +23,7 @@ import { selectTurnModel } from "./routing.js";
 import { recordStepUsage, telemetryIntegrations } from "./slots.js";
 import { buildTurnTools } from "./tools.js";
 import { assertBudget } from "./admission.js";
+import { claudeCacheOptions } from "./prompt-cache.js";
 
 /**
  * Run one admitted turn's generation.
@@ -156,7 +157,19 @@ async function nativeGeneration(
     experimental_download: boundedDownload(turn.queued.attachmentBytes, fence.controller.signal),
     maxOutputTokens: turn.claimed.settings.maxOutputTokens,
     toolCallConcurrency: 1,
-    prepareStep: ({ model }: { model: import("ai").LanguageModel }) => ({
+    prepareStep: ({
+      model,
+      instructions,
+      messages,
+    }: Parameters<ManagedGenerationArgs["prepareStep"]>[0]) => ({
+      ...claudeCacheOptions({
+        model,
+        instructions,
+        messages,
+        tools,
+        providerOptions: turn.managed._agevexProviderOptions,
+        enabled: turn.managed.experimental?.claude?.cache !== false,
+      }),
       model: boundedModel(gen, model),
     }),
     maxRetries: LIMITS.modelRetries,

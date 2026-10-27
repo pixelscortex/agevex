@@ -23,6 +23,7 @@ export class Agent extends NativeBase {
     sandbox;
     subagents;
     hooks;
+    experimental;
     /**
      * Native tools declared on this agent, kept so the managed runtime can merge
      * its reserved delegation tool with them. Inherited native behavior is
@@ -30,6 +31,11 @@ export class Agent extends NativeBase {
      * native `streamText` `tools` override already allows.
      */
     declaredTools;
+    /** Internal view of the current native options, including host updates. */
+    get _agevexProviderOptions() {
+        // Even property access on native Config can expand both gateway-id unions.
+        return this.options.providerOptions;
+    }
     constructor(component, options) {
         super(component, options);
         this.name = options.name;
@@ -39,6 +45,7 @@ export class Agent extends NativeBase {
         this.sandbox = options.sandbox ?? false;
         this.subagents = options.subagents ?? [];
         this.hooks = options.hooks;
+        this.experimental = options.experimental;
         this.declaredTools = options.tools ?? EMPTY_TOOLS;
     }
 }

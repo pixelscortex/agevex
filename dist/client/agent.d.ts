@@ -1,8 +1,9 @@
 import { Agent as NativeAgent, type AgentComponent, type Config } from "@convex-dev/agent";
 import type { LanguageModelV4 } from "@ai-sdk/provider";
+import type { ProviderOptions } from "@ai-sdk/provider-utils";
 import type { Instructions, LanguageModel, StopCondition, ToolSet } from "ai";
 import type { RunSettings } from "../component/run_settings.js";
-import type { AgentHooks, ManagedAgent } from "./types.js";
+import type { AgentExperiments, AgentHooks, ManagedAgent } from "./types.js";
 type AgentOptions<Tools extends ToolSet> = Omit<Config, "languageModel"> & {
     name: string;
     languageModel: Extract<LanguageModel, string | LanguageModelV4>;
@@ -31,6 +32,8 @@ type AgentOptions<Tools extends ToolSet> = Omit<Config, "languageModel"> & {
     run?: RunSettings;
     sandbox?: boolean;
     hooks?: AgentHooks;
+    /** Managed turns cache Claude prefixes by default; this experimental policy may change. */
+    experimental?: AgentExperiments;
 };
 declare const NativeBase: {
     new <CustomCtx extends object, Tools extends ToolSet>(component: AgentComponent, options: AgentOptions<Tools>): NativeAgent<CustomCtx, Tools>;
@@ -48,6 +51,7 @@ export declare class Agent<CustomCtx extends object = object, AgentTools extends
     readonly sandbox: boolean;
     readonly subagents: readonly ManagedAgent[];
     readonly hooks?: AgentHooks;
+    readonly experimental?: AgentExperiments;
     /**
      * Native tools declared on this agent, kept so the managed runtime can merge
      * its reserved delegation tool with them. Inherited native behavior is
@@ -55,6 +59,8 @@ export declare class Agent<CustomCtx extends object = object, AgentTools extends
      * native `streamText` `tools` override already allows.
      */
     readonly declaredTools: ToolSet;
+    /** Internal view of the current native options, including host updates. */
+    get _agevexProviderOptions(): ProviderOptions | undefined;
     constructor(component: AgentComponent, options: AgentOptions<AgentTools>);
 }
 export {};

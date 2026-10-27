@@ -20,6 +20,7 @@ import { selectTurnModel } from "./routing.js";
 import { recordStepUsage, telemetryIntegrations } from "./slots.js";
 import { buildTurnTools } from "./tools.js";
 import { assertBudget } from "./admission.js";
+import { claudeCacheOptions } from "./prompt-cache.js";
 /**
  * Run one admitted turn's generation.
  *
@@ -137,7 +138,15 @@ async function nativeGeneration(rt, gen, tools, selectedModel) {
         experimental_download: boundedDownload(turn.queued.attachmentBytes, fence.controller.signal),
         maxOutputTokens: turn.claimed.settings.maxOutputTokens,
         toolCallConcurrency: 1,
-        prepareStep: ({ model }) => ({
+        prepareStep: ({ model, instructions, messages, }) => ({
+            ...claudeCacheOptions({
+                model,
+                instructions,
+                messages,
+                tools,
+                providerOptions: turn.managed._agevexProviderOptions,
+                enabled: turn.managed.experimental?.claude?.cache !== false,
+            }),
             model: boundedModel(gen, model),
         }),
         maxRetries: LIMITS.modelRetries,
