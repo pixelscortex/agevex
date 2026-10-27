@@ -1,0 +1,157 @@
+src/component/limits.ts
+  s_2de20db2dc33f9::t_410b57456b7552 71-75,78,80,82-83,125
+AGENTS.md
+  s_2de20db2dc33f9::t_23264373277dc9 11
+README.md
+  s_2de20db2dc33f9::t_cc0b23c77aa314 60-64,280,284-294,404-406,424,600
+bun.lock
+  s_2de20db2dc33f9::t_f94cbe6e33843d 81
+docs/site/content/docs/concepts/agent-summaries.mdx
+  s_2de20db2dc33f9::t_a0398820e20caa 1-5,7-9,11-17,19-31,35-48
+docs/site/content/docs/concepts/architecture.mdx
+  s_2de20db2dc33f9::t_48e521d53b0b8d 27
+docs/site/content/docs/concepts/background-text.mdx
+  s_2de20db2dc33f9::t_cf913809a2ff10 2-3,7-32
+docs/site/content/docs/concepts/delegation.mdx
+  s_2de20db2dc33f9::t_9eeed165728625 126-128,130
+docs/site/content/docs/concepts/limits.mdx
+  s_2de20db2dc33f9::t_d620b1714bff9f 44,79
+docs/site/content/docs/concepts/meta.json
+  s_2de20db2dc33f9::t_e19df835fb56da 8-9
+docs/site/content/docs/concepts/react-hooks.mdx
+  s_2de20db2dc33f9::t_12161b07bb448b 102
+docs/site/content/docs/concepts/recording-usage.mdx
+  s_2de20db2dc33f9::t_6c3fd0541ab24a 1-18,21-54,56-113,115-125,127-155,157,159-162,164-171,173-177
+docs/site/content/docs/concepts/runtime.mdx
+  s_2de20db2dc33f9::t_caac05b84579f5 16,175,177,180
+docs/site/content/docs/concepts/slots.mdx
+  s_2de20db2dc33f9::t_ef2a9db93755a4 16,35-36,38,40-44
+docs/site/content/docs/index.mdx
+  s_2de20db2dc33f9::t_27bd31e8eca6b2 12
+docs/site/content/docs/modules/meta.json
+  s_2de20db2dc33f9::t_c746679a0ffd4f 4
+docs/site/content/docs/testing.mdx
+  s_2de20db2dc33f9::t_d728b79789be29 21
+docs/site/content/docs/tools/continue-budget.mdx
+  s_2de20db2dc33f9::t_133bf04a21c40a 41
+docs/site/scripts/check-snippets.ts
+  s_2de20db2dc33f9::t_28016626a87d67 118
+docs/site/scripts/generate-api-reference.ts
+  s_2de20db2dc33f9::t_d2d2c1d06683b4 111-117,122,177-179
+package.json
+  s_2de20db2dc33f9::t_a87cebe100311f 72-75,91
+scripts/check-deploy.sh
+  s_2de20db2dc33f9::t_65f09487818bc8 53-54
+src/client/README.md
+  s_2de20db2dc33f9::t_c73fa3b732d5f8 52,67,82-87,97,124
+src/client/endpoints/index.ts
+  s_2de20db2dc33f9::t_40e63fa6b686c8 24
+src/client/endpoints/reads.ts
+  s_2de20db2dc33f9::t_abaa193dc7bc24 238-239
+src/client/endpoints/text.ts
+  s_2de20db2dc33f9::t_e43ef16f0eb4c4 1,8-9
+src/client/index.ts
+  s_2de20db2dc33f9::t_a74330a151181b 41,55
+src/client/keys.ts
+  s_2de20db2dc33f9::t_52ed380e3975fa 5,32
+src/client/registration/context.ts
+  s_2de20db2dc33f9::t_37dc021f09ceca 82
+src/client/runtime.ts
+  s_2de20db2dc33f9::t_a0e80677d65335 53
+src/client/slots.ts
+  s_2de20db2dc33f9::t_9e08a34d7c5419 1-2,17,32,42-44,46-51,54-55
+src/client/tasks.ts
+  s_2de20db2dc33f9::t_d7c11d949d1103 332,438,452-461,463-467
+src/client/text/options.ts
+  s_2de20db2dc33f9::t_f3a05cdf6d900d 12,20,24,27,46,53
+src/client/text/task.ts
+  s_2de20db2dc33f9::t_d79dbdff786222 76,98,101,147,192,202-216,226-227,233,235-236,239-243,246,248,250
+src/client/turn/context.ts
+  s_2de20db2dc33f9::t_4b5a23c27c4052 6,13
+src/client/turn/fence.ts
+  s_2de20db2dc33f9::t_911ab0fd6060fc 11-12,225
+src/client/turn/generation.ts
+  s_2de20db2dc33f9::t_6f2dd5639c929a 19,23,84,119
+src/client/turn/slots.ts
+  s_2de20db2dc33f9::t_7e5a62ce49fc2f 3,16-17,21,24,27-30,46-56,60
+src/client/turn/tools.ts
+  s_2de20db2dc33f9::t_48b32adc935af8 26,101,104
+src/client/turn/usage.ts
+  s_2de20db2dc33f9::t_4ed2888c7f1267 1-2
+src/client/types.ts
+  s_2de20db2dc33f9::t_222903b0c14493 145
+src/component/README.md
+  s_2de20db2dc33f9::t_dd10dc769b076f 18-19,54,59-62,67,72-73,112-132
+src/component/facts.ts
+  s_2de20db2dc33f9::t_6d03f1248e3c47 11
+src/component/subagents/tree.ts
+  s_2de20db2dc33f9::t_f5489686dcc55c 3-5,7,189
+src/component/subagents/views.ts
+  s_2de20db2dc33f9::t_6a1b96f52bd0a8 191
+src/component/text/jobs.ts
+  s_2de20db2dc33f9::t_9b1a2af2f25422 2,7,18,23,27,29
+src/component/text/state.ts
+  s_2de20db2dc33f9::t_1c804452ce4c84 9,13,15,17,62,97,137,177,182
+src/component/text/values.ts
+  s_2de20db2dc33f9::t_1e88a166577e9c 2,16,25,29-30
+src/component/text/worker.ts
+  s_2de20db2dc33f9::t_e9d39a7441fbb3 10
+src/component/turns/send.ts
+  s_2de20db2dc33f9::t_1759ca1c56169f 134
+src/component/turns/write.ts
+  s_2de20db2dc33f9::t_ebac91f4028206 11,127,233,267
+src/modules/sandbox/client/types.ts
+  s_2de20db2dc33f9::t_cb1101d0828e7f 21
+src/testing/bridge.ts
+  s_2de20db2dc33f9::t_caffb34b1aa86c 48
+src/usage/index.ts
+  s_2de20db2dc33f9::t_3027860dd3fb77 1-14,32-35,37-44,47-48,52-58,63-70,73-172
+tests/acceptance/main-builder-reviewer.test.ts
+  s_2de20db2dc33f9::t_af7809bf76dd74 125,250-251,257,259-260
+tests/acceptance/work.fixture.ts
+  s_2de20db2dc33f9::t_c175fd5d35838f 78,118-119,135
+tests/hooks.host.ts
+  s_2de20db2dc33f9::t_fe494841f2e5ea 149-150
+tests/live/convex/agents.ts
+  s_2de20db2dc33f9::t_3d0e3f21f0b875 168-175
+tests/message-ids.test.ts
+  s_2de20db2dc33f9::t_69220423b7e4de 250
+tests/message-parent.fixture.ts
+  s_2de20db2dc33f9::t_2a1f5b7859fb3a 64-66
+tests/module-paths.test.ts
+  s_2de20db2dc33f9::t_70e6d6e47b7f52 57
+tests/run-settings.test.ts
+  s_2de20db2dc33f9::t_a71bb3183ad871 15,78-80,230,641,686
+tests/run-tree.fixture.ts
+  s_2de20db2dc33f9::t_c34efe99c55440 1,123,191,205
+tests/run-tree.test.ts
+  s_2de20db2dc33f9::t_fe587b377ff163 382,406-448
+tests/sandbox/fixture/host.ts
+  s_2de20db2dc33f9::t_2031b9827a658f 11
+tests/slots.test.ts
+  s_2de20db2dc33f9::t_28d83ab9c540ae 14,100-101,103-104,110,112-113,115-117,119-121,123,127-128,142,147-149,158-160,683,694-695,795,1025-1037
+tests/tasks.test.ts
+  s_2de20db2dc33f9::t_640ff0e9c42eaf 8-14,199-201,438,453
+tests/text.host.ts
+  s_2de20db2dc33f9::t_a98ba955663a41 38,51,110-114
+tests/text.test.ts
+  s_2de20db2dc33f9::t_ae4bc906514e35 2,10,259,264,266-268,270-272,275-276,279,281,284-288,291,299-301,309,312,321-328
+tests/usage.test.ts
+  s_2de20db2dc33f9::t_f2549ba11fbef7 1-13,15-18,20-27,29-32,36-51,53,55-57,60,62-67,71-84,86-88,91-93,96-97,99-101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "afb057d226b724c60f3d73b5c18431b38c68ef48",
+  "prompts": {},
+  "sessions": {
+    "s_2de20db2dc33f9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17ab4-0e77-7a21-aee1-9bdae9eec403",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
