@@ -18,3 +18,4 @@ dist
 
 # src/component/_generated is genuine `convex codegen` output and is tracked:
 # packaged consumers need the component API types.
+.events-crash-probe.json
