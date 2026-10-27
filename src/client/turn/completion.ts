@@ -3,14 +3,11 @@
 // `completeGeneration` decides, in order: stop if the turn was fenced out; pause a
 // child that asked its parent a question (`turns.slices.finish`); continue with another
 // slice after undelegated tool calls (`turns.slices.continueTurn`); otherwise complete
-// the turn (`hooks.state.hookState`), run `afterTurn`, launch side reviews, admit an
-// `afterTurn` continuation (`hooks.state.continueAdmission`), and finally pick a
-// child's result message. Called by `turn/generation.ts` inside its try, so a
+// the turn by notifying afterTurn, and finally picks a child's result message. Called by `turn/generation.ts` inside its try, so a
 // throw here is a GENERATION_FAILED / HOOK_FAILED outcome.
 
 import type { MessageDoc } from "@convex-dev/agent";
-import { coordinateRef, type RuntimeContext } from "../registration/context.js";
-import type { HookResult } from "../types.js";
+import { type RuntimeContext } from "../registration/context.js";
 import { stillOwns, type Generation, type Turn, type TurnOutcome } from "./context.js";
 
 /** The native step result `streamText` resolved with. */
@@ -54,17 +51,7 @@ export async function completeGeneration(
   )
     return null;
 
-  const completed = await fence.ctx.runMutation(rt.component.hooks.state.hookState, {
-    assignmentId: turn.claimed.assignmentId,
-    executionId: args.turnToken,
-    complete: true,
-  });
-
-  const after = await runAfterTurn(gen, completed.turn, completed.messageIds, result);
-
-  await launchSideReviews(rt, gen, completed.turn);
-
-  if (await continueFromHook(rt, gen, after)) return null;
+  await runAfterTurn(gen, turn.claimed.turn, snapshot.messageIds, result);
 
   return { errorCode: null, ...childResult(turn, result) };
 }
@@ -114,65 +101,16 @@ function runAfterTurn(
 
   return gen.hook(
     managed.hooks?.afterTurn
-      ? () =>
-          managed.hooks!.afterTurn!(gen.hc, { turn: completedTurn, text: savedText, messageIds })
+      ? async () => {
+          // Notification results are ignored, including accidental JS returns.
+          await managed.hooks!.afterTurn!(gen.hc, {
+            turn: completedTurn,
+            text: savedText,
+            messageIds,
+          });
+        }
       : undefined,
   );
-}
-
-/**
- * Launch every side agent's review of this turn.
- *
- * A side review is best effort, independently admitted and never
- * awaited as a workflow/child result. Only its short launch mutation
- * is awaited here; paid child work is dispatched on the child lane.
- * The tool call id is keyed by the completed turn, so a replay is idempotent.
- */
-async function launchSideReviews(rt: RuntimeContext, gen: Generation, completedTurn: number) {
-  const { turn, fence } = gen;
-
-  for (const side of turn.managed.sideAgents ?? []) {
-    try {
-      await fence.ctx.runMutation(coordinateRef(rt), {
-        op: "launch",
-        side: true,
-        assignmentId: turn.claimed.assignmentId,
-        turnToken: turn.args.turnToken,
-        toolCallId: `side:${side.agent.name}:${completedTurn}`,
-        agent: side.agent.name,
-        task: "Review the following conversation delta. Reply with a short helpful note, or NONE if there is nothing to add.",
-      });
-    } catch {
-      /* Side review failures never fail the watched turn. */
-    }
-  }
-}
-
-/**
- * Admit an `afterTurn` continuation prompt and continue the turn with it.
- * Returns false when there is no continuation or admission refused it.
- */
-async function continueFromHook(rt: RuntimeContext, gen: Generation, after: HookResult) {
-  const { turn, fence } = gen;
-
-  const continuation = after?.continue
-    ? await fence.ctx.runMutation(rt.component.hooks.state.continueAdmission, {
-        assignmentId: turn.claimed.assignmentId,
-        executionId: turn.args.turnToken,
-        prompt: after.continue,
-      })
-    : null;
-
-  if (!continuation) return false;
-
-  await fence.ctx.runMutation(rt.component.turns.slices.continueTurn, {
-    assignmentId: turn.claimed.assignmentId,
-    executionId: turn.args.turnToken,
-    cancellationEpoch: turn.claimed.cancellationEpoch,
-    messageId: continuation,
-  });
-
-  return true;
 }
 
 /**

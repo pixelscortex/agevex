@@ -12,8 +12,7 @@ Git-only, private package, **UNLICENSED**.
 Core lives in `src/component/` and `src/client/`. Optional modules live in
 `src/modules/<name>/`: `component/` runs inside Convex, `client/` is the host API,
 `shared/` contains pure contracts used by both, and `test.ts` registers tests.
-Telemetry is a client library; tools expose host factories and installable registry
-sources. Each module README maps its files. Package subpaths stay `agevex/<name>`,
+Telemetry is a small host adapter; tools export the stateless `ask_user` factory. Each module README maps its files. Package subpaths stay `agevex/<name>`,
 with `/convex.config`, `/test` and `/_generated/component.js` for components.
 
 ## React hooks
@@ -57,14 +56,11 @@ sleeping workflows use no slot. See
 
 ## Usage and budgets
 
-Optional `agevex/meter` records each saved model step and app-reported tool cost
-while a run works. `openRouterProvider` reconciles exact generation ids on those
-same charges; `Provider.lookup` supports other billing adapters. Configure
-`Provider.estimate` or `tokenEstimate` for costs unavailable inline. Its bounded
-`usageView` reads exclusive node and run totals from existing aggregates.
-`budgetSlot` stops the next model/tool boundary on observed spend; in-flight work
-may overshoot. No credit reservations or resumable pause are added. See
-[meter wiring](src/modules/meter/README.md).
+The usage hook reports each saved model step to your app's ledger, including
+its exact native message id, provider response id and token usage. The budget
+hook reads your own spend before each step or local tool. Helpers at
+`agevex/usage` estimate token cost and fetch a real OpenRouter generation cost.
+See [Recording usage in your app](docs/site/content/docs/concepts/recording-usage.mdx).
 
 ## Optional sandboxes
 
@@ -271,8 +267,6 @@ export const {
   runTree,
   title,
   rename,
-  summary,
-  summarize,
 } = runtime.authorizedEndpoints();
 ```
 
@@ -282,37 +276,21 @@ Convex generated-reference inference cycles, annotate `runTurn` with
 `RegisteredMutation<"internal", CoordinateArgs, CoordinateResult>` from
 `convex/server`; the argument/result types are exported by `agevex`.
 A root without children needs `refs.runTurn` and `refs.textTask` by default.
-Set `title: false` and leave summary disabled to omit `refs.textTask`.
+Set `title: false` to omit `refs.textTask`.
 Annotate its export with `RegisteredAction<"internal", TextTaskArgs, null>`
 when generated-reference inference needs an explicit type.
 
-## Background title and summary
+## Background titles
 
-Titles are on by default: one tool-free background call after the first user
-message, using the root model (including an accepted model override). Configure
-`title: { model, prompt, maxOutputTokens }` or disable with `title: false`.
-`maxOutputTokens` (a positive integer up to 4,096, refused at registration
-otherwise) overrides the title's 128 or the summary's 2,048 output cap. Export the supplied
-`textTask` internal action and provide `refs.textTask` when either feature is on.
-Native app titles and user `rename({ threadId, text, expectedVersion })` always
-win over late work. Titles are generated even if the first turn is cancelled.
-`title` returns `{ text, source, version }`; conflicting renames throw
-`VERSION_CONFLICT`. Rename receipts identify the native thread in `messageId`;
-renaming adds no transcript message.
+Titles generate once after the first accepted message, using the root model.
+Configure `title: { model, prompt, maxOutputTokens }` or `title: false`.
+Export `textTask` and provide `refs.textTask` when enabled. The default output
+cap is 128 tokens, with a hard maximum of 4,096. App/user native titles always
+win over late generation, including cancellation. Jobs recheck authorization
+and budget, run without tools or repairs, and never retry uncertain paid work.
+Usage failures mark the run partial. See [titles](docs/site/content/docs/concepts/background-text.mdx).
 
-Summaries are off. `summary: {}` enables on-demand
-`summarize({ threadId, requestKey })`; `everyTurns: N` adds completed-root-turn
-cadence. `summary({ threadId })` returns text and an exact `throughMessageId`.
-Summaries are display-only and never change native model context. See [background text](docs/site/content/docs/concepts/background-text.mdx).
-
-Jobs use child capacity, 30-second model deadlines, no tools, no repairs and no
-paid retries. Their usage carries `title`/`summary` purpose labels on the
-triggering root run. Authorization and budget are rechecked before spend; failures
-leave the conversation and previous metadata unaffected. An unknown-cost
-title/summary charge stays recorded, billed and visible but never stops the
-run that triggered it (the budget gate ignores background `unknown`s). A fresh summary key
-can request new work after an unknown/failed result; cadence resumes after known
-failures. A job lease starts at provider dispatch, after authorization and input reads.
+Apps can build [summaries with Convex Agent](docs/site/content/docs/concepts/agent-summaries.mdx).
 
 ## Durable execution
 
@@ -345,14 +323,14 @@ A user prompt starts one run. Its turns and child results share a budget of
 12 launches / 24 hops (launches, delivered results, notes, questions, answers and
 follow-ups). Each launch reserves its result's hop; each question reserves its
 answer hop. Notes, questions and follow-ups cannot spend those reserved hops.
-Final results and joined groups always enter the ready queue, even above
+Final results always enter the ready queue, even above
 `queueLength`. The queue limit applies to messages: user sends, parent notes,
 questions and child follow-ups are refused at capacity (`QUEUE_FULL` for user
 sends, `QUEUE_LIMIT` for component enqueues). Answers and approval continuations
 retain their control allowance. Messages are refused until the queue drains
 below its limit. Launch admission also caps outstanding result work per assignment
 at `runLaunches` across user requests: pending results, unreleased join members
-and queued result rows. A joined row replaces its members; claim frees this
+and queued result rows. Delivery replaces a pending result; claim frees this
 capacity. Reaching this separate bound returns `RESULTS_PENDING`: wait for or claim
 child results before launching more. `RUN_BUDGET` means a launch or hop budget is
 exhausted. Result turns may call
@@ -363,19 +341,15 @@ Failures are sanitized and never automatically replayed. Ambiguous execution
 sets `recovery_required`; the watchdog covers each active slice, excluding
 queue and between-slice time.
 
-## Hooks, notes and side agents
+## Hooks and notes
 
 Hooks belong to an `Agent`: `beforeTurn`, `afterTurn`, `beforeTool`,
 `afterTool`, and `beforeDelegate`. They receive trusted execution context and
-return one `HookResult`: `note`, `block`, `input`, `output`, `continue`, or
-`model`. They run inside the existing action; no Workflow steps are added.
+return `note`, `block`, `input`, `output` or `model` where appropriate.
+`afterTurn(hc, { turn, text, messageIds })` is a notification returning void.
+Hooks run inside the existing action; no Workflow steps are added.
 
 ```ts
-const critic = new Agent(components.agent, {
-  name: "Critic",
-  languageModel,
-  instructions: "Review the delta. Return a short note, or NONE.",
-});
 const main = new Agent(components.agent, {
   name: "Main",
   languageModel,
@@ -384,16 +358,14 @@ const main = new Agent(components.agent, {
       prompt.trim() ? undefined : { block: "A prompt is required." },
     afterTool: (_hc, { output }) => ({ output: redact(output) }),
   },
-  sideAgents: [{ agent: critic, every: { turns: 3 }, sees: "delta" }],
 });
 ```
 
-`beforeTurn` can choose an allowlisted model only when `isRunStart` is true;
-that choice persists for the agent's run. Concurrent siblings share the first
-routing attempt. If its owner is denied, fails or is cancelled, siblings use
-the committed model or their default; the classifier is never retried.
-`afterTurn.continue` requests another
-bounded turn (default 3 per run, hard maximum 8). A throwing hook fails the turn
+`beforeTurn` runs before each model generation, including tool steps and approval
+resumes. Its allowlisted `model` applies to that invocation only. Return it every
+time to keep using it; concurrent siblings choose independently. No hook choice
+is stored. `afterTurn` cannot request more work; use the public send/runtime API
+from your own code for a follow-up. A throwing hook fails the turn
 with `HOOK_FAILED`; private details stay outside the transcript. Tool execution
 hooks include native and `defineOnceTool` effects. The SDK's delegate, message
 and ask protocols are excluded; delegation uses `beforeDelegate`. Provider-owned
@@ -410,27 +382,16 @@ That claim saves all pending notes atomically in arrival order, after prior
 tool results. Ordinary tool-step slices never drain notes. Notes never start a
 turn or schedule work.
 
-Notes and hook continuation prompts use the claimed request's native order
+Notes use the claimed request's native order
 group, keeping future queued requests hidden without context injection.
-The authorized `messages` reader adds `origin: user | result | note | continue`,
+The authorized `messages` reader adds `origin: user | result | note`,
 `from` for notes and `runId` for results. Unclassified native messages (including
 assistant replies) use `user`. Page-local exact-id indexes add at most 201 small
 metadata reads (532 KiB); total message reads remain below 8.27 MiB.
-`delegations` and `runTree` include `side: boolean` for every public run.
-
-Side cadence uses completed turns or `{ minutes: N }` since the last review,
-checked after a turn without a cron. Deltas use exact recorded native ids and
-orders: at most 24 recent messages and 48 KiB of text, with tool output stripped.
-Skipped reviews retain their delta. Side runs use the child lane and root run
-attribution, with a separate cap of 2 per run (hard maximum 8). Their replies
-become passive notes; empty replies and `NONE` add nothing. Side runs never
-hold a parent's settlement fence, never fail their parent, and cancel with the
-root. Side agents keep their own configured model; root model overrides do not
-apply to them. Their threads use the same authorized `messages` reader as other children.
 
 ## Optional module slots
 
-Pass `usage`, `budget`, `telemetry`, `sandbox`, or `extract` to `registerAgent`.
+Pass `usage`, `budget`, `telemetry`, or `sandbox` to `registerAgent`.
 Core imports only the contracts in `src/client/slots.ts`; module adapters belong
 in their own packages. Omitted slots ignore usage, allow spending, export no
 telemetry, add no sandbox tools, and pass files as native model parts.
@@ -439,11 +400,9 @@ Every managed tool receives a `ToolContext` through AI SDK `options.context`.
 Native `createTool` also receives these facts on its normal injected context;
 `defineOnceTool` receives them as its second argument. Facts include `subject`,
 `rootThreadId`, `threadId`, the shared user `runId`, `agent`, `toolCallId`,
-`signal`, and `meter`. The meter is always present. Charge keys hash the
-tool-call identity and ordinal; operations hash the charge, method and ordinal.
-Explicit keys distinguish logical operations when necessary. Model usage is
-recorded once per saved step with exact native thread/message/step ids;
-recording failures never replay or fail the generation.
+`signal` and the trusted `promptMessageId`. Model usage is reported once per
+saved step with the exact native message id; hook failures mark usage partial
+and never replay or fail the generation. Apps own tool-cost recording.
 
 Budget `check(ctx, { subject, runId })` runs before each slice. A denial ends
 with `BUDGET_EXCEEDED` in activity and a passive thread note admitted under
@@ -451,7 +410,7 @@ the same `notesPending` cap as host and sandbox notes. Notes remain inbox
 text until the next safe turn claim saves them natively. If the cap is full,
 the budget notice is omitted, existing notes wait for that claim, and the typed
 `BUDGET_EXCEEDED` still stops the turn; notices never displace notes or bypass
-admission. Pair this with the host's copied `continue-budget` registry tool:
+admission. Use the [budget consent recipe](docs/site/content/docs/tools/raise-budget.mdx):
 obtain explicit spending consent, update host budget policy, cancel the stopped
 run to clear its recovery state, and send a fresh request, all in one host
 mutation. `activity.runId` names the stopped run (the same id the budget check
@@ -461,7 +420,7 @@ discards that run's pending notes. Core never resumes an uncertain paid step.
 Semantic slot facts (subject, agent, root/thread/run ids) are nonempty and at most
 128 UTF-8 bytes (`LIMITS.factBytes`); invalid registration/endpoint facts throw a
 typed `ConvexError`. Opaque keys use full SHA-256 hex (64 ASCII bytes) over
-canonical, domain-separated parts, including explicit meter keys and once-tool
+canonical, domain-separated parts, including usage keys and once-tool
 keys. Replay produces the same key; original semantic facts stay in attribution.
 `tc.toolCallId` is bounded the same way; `tc.nativeToolCallId` retains the provider id.
 
@@ -497,11 +456,8 @@ sizes and rejects totals over `limits.attachmentBytes` (default 8 MiB, hard max
 Native downloads stream under the same per-generation budget, including history;
 overflow stops before the model call and ends the turn with `GENERATION_FAILED`.
 `runtime.fileAttached(ctx, { subject, threadId, fileId })`
-provides an indexed exact-attachment check for an extract adapter's authorized
-host callback; the helper itself is server-only. Without extract, files reach
-the model as native file parts. With extract, the first slice admits one durable
-extraction per attached file and adds the slot's thread-bound file tools.
-Extraction owns its own deduplication, status and reads.
+provides an indexed exact-attachment check for authorized host tools. Files
+reach the model as native file parts; attachment content remains in native storage.
 
 ## Structured tasks
 
@@ -550,18 +506,13 @@ Agents may delegate two edges deep: Main → Builder → Reviewer. Set
 registration. Shared child Agent objects are supported. Launch/hop budgets and
 cancellation cover every descendant; results return to the immediate parent.
 
-Parents receive `agevex_delegate({ agent, task, group?, wait? })` and
+Parents receive `agevex_delegate({ agent, task, wait?: "each" })` and
 `agevex_message_child({ runId, text })`. Default `wait: "each"` delivers each
-settled result immediately. With `wait: "all"`, a group
-wakes its parent once after the launching slice ends and every member settles,
-including failures. Membership seals when that slice ends; later launches into
-the group return `GROUP_CLOSED`. Groups belong to one parent assignment and user run.
-A group has at most `activeChildrenPerRoot` members (hard maximum 15);
-omitting its name selects the unnamed group. Names are at most 200 characters.
+settled result independently.
 
 Children receive `agevex_ask_parent({ question })`: one open question pauses
 the child as `asking`, and its verified question wakes its parent immediately,
-even inside a waiting group. The parent answers with `agevex_message_child`.
+The parent answers with `agevex_message_child`.
 Follow-ups reach running or idle children in the same root; finished or foreign
 runs return typed denials. Each child accepts 4 follow-ups by default (maximum
 8); questions and follow-ups spend the originating run's hops. Both use the
@@ -570,7 +521,7 @@ reserved for their answer.
 
 Children also receive `agevex_message_parent({ text })` to report progress and
 keep working. It returns `{ status: "accepted", messageId }` or a typed denial.
-Notes wake a sleeping parent, including in wait-all groups, at its next safe
+Notes wake a sleeping parent at its next safe
 turn without bypassing approval or deferred calls. Inbox commit order is FIFO:
 accepted notes precede that child's final result, and consecutive work may
 share a turn. Identical tool-call retries replay without another save or wake.
@@ -642,8 +593,8 @@ accepted by a provider still depend on that provider's abort behavior.
 At the hard maximum of 15 descendants, cancel covers 16 assignments, up to
 2,432 ready rows (`16 × (100 messages + 50 results + 2 control rows)`) and
 384 pending notes. Cancel deduplicates up to 168 request budgets. Its conservative
-read bound is 15,560 KiB of 16,384 KiB, including routing ownership and staged
-continuations; native message bodies are cleaned separately.
+read bound is 14,100 KiB of 16,384 KiB; written bytes stay within 10,508 KiB.
+Native message bodies are cleaned separately.
 
 Pending native tool approvals block generation and leave the inbox row
 waiting, avoiding Agent 0.7.7's automatic denial on a new generation.
@@ -732,37 +683,17 @@ sharing a component mount share its lane capacities. `PLATFORM` contains
 documented facts, not checked by the SDK, including Workflow journal/step
 ceilings (8 MiB / 800 KiB). Workflow enforces those byte limits.
 
-## Optional cost meter
+## Ask the user
 
-Mount `agevex/meter/convex.config` and import `defineMeter` from `agevex/meter`
-for keyed cost recording, estimates/corrections, aggregate thread/subject/run
-reads, fail-closed budget gates (unpriceable charges record `unknown`),
-request-id lookups, batched Polar/webhook/custom sinks and host-driven
-retention (`prune`). Core wiring is separate. See the [meter API, limits and delivery semantics](src/modules/meter/README.md).
-
-## Registry tools
-
-Copy headless tools into your host with shadcn. Start the docs site in
-`docs/site`, then install from its origin:
-
-```sh
-bunx shadcn add http://localhost:3000/r/todo.json
+```ts
+import { createAskUserTool } from "agevex/tools";
+const tools = { ask_user: createAskUserTool() };
 ```
 
-Items: [todo](docs/site/content/docs/tools/todo.mdx) (100 items, 32 KiB/list),
-[goals](docs/site/content/docs/tools/goals.mdx) (one 4000-character goal/thread),
-[ask-user](docs/site/content/docs/tools/ask-user.mdx) (a deferred tool: the owner
-answers with core `answer`, 2000-character question) and
-[continue-budget](docs/site/content/docs/tools/continue-budget.mdx) (native
-approval plus `resumeAfterBudgetStop`: single-use host-recorded consent, raise budget, cancel,
-fresh send, atomically in one host mutation). Todo, goals and continue-budget ship
-host table snippets to merge into your schema; ask-user adds no tables. Core `ToolContext` supplies ownership and the once-tool
-ledger. Rows outlive threads: use each state module's bounded `cleanup`. Keep state functions internal. Budget consent does not change a budget.
-
-`bun run registry:build` rebuilds `/r/*.json`; `bun run test:tools` builds the
-package and runs the offline suite, including a CLI install smoke test that
-clearly skips if shadcn needs network. The provisional `@agevex` namespace
-requires a host registry URL configuration.
+This deferred tool pauses until the owner calls core `answer`. It supports
+bounded questions and structured forms without extra tables or installation.
+See [ask_user](docs/site/content/docs/tools/ask-user.mdx) and
+[Asking the user to raise a budget](docs/site/content/docs/tools/raise-budget.mdx).
 
 ## Development
 
@@ -813,186 +744,23 @@ A fresh send reopens a cancelled thread, preserving the existing cancellation
 contract. Failed cancellation cleanup blocks reopening with a typed `CANCELLED`
 receipt until a subsequent cancel successfully settles the recorded work.
 
-## Optional file extraction
-
-Mount `agevex/extract/convex.config` alongside the native Agent component. It
-works standalone, or under agevex via `registerAgent({ extract: extract.slot() })`
-with `authorize: authorizeAttached(() => runtime)`; see the
-extract docs page.
-
-```ts
-// convex/files.ts
-import { defineExtract, directText, firecrawlParse, visionOcr } from "agevex/extract";
-import { components, internal } from "./_generated/api.js";
-
-const extract = defineExtract(components.agevexExtract, {
-  agent: components.agent,
-  worker: internal.files.execute,
-  storageMetadata: internal.files.storageMetadata,
-  authorize: authorizeFileInThread,
-  backends: [
-    directText(),
-    firecrawlParse({ apiKey: () => process.env.FIRECRAWL_API_KEY! }),
-    visionOcr({ model: visionModel }),
-  ],
-});
-export const { execute, storageMetadata } = extract.internalFunctions();
-// Inside an authorized host action:
-// const job = await extract.run(ctx, { threadId, fileId });
-// const fileTools = extract.tools({ ctx, threadId });
-```
-
-The host must verify both access to `threadId` and the exact `fileId` attachment,
-including background `execute` calls with no user session. Keep an exact attachment
-reference; never scan messages. `fromUrl` returns a native Agent file that the host
-must attach before extraction. No public Convex endpoints are generated; host
-wrappers call the authorized helpers.
-
-Artifacts reuse `(fileId, backend, version, optionsHash)`; Agent dedupes by hash, so
-threads sharing bytes share one. Retryable failures (`PROVIDER_UNAVAILABLE`,
-`OBJECT_UNAVAILABLE`, `CHECKSUM_FAILED`) run again as the next attempt only on an
-explicit `run`, at most three attempts in total. Final failures and `unknown`
-outcomes never rerun, and a queued job never expires before it starts. `release`
-removes one namespace's index only; the admin `purge({ fileId })` tombstones the
-shared extraction, deletes payloads and every namespace's RAG entries (returns `{ more }`: loop; late output is fenced, usage survives). A paid result is published even if the file was detached mid-run.
-Change a backend version or supply a different SHA-256 `optionsHash` to request new work.
-
-Text cursors are UTF-8 byte offsets. `readText` and `readPages` return at most
-1 MiB text; pages also cap at 100. Resume pages with their `next` object. File
-tools return at most 64 KiB and references; full JSON stays in storage. Byte
-ceilings fit the default 64 MiB runtime (document 12 MiB, image 6 MiB, text 4 MiB,
-payload 6 MiB); the opt-in `"use node"` actions from `extractNodeExport` (registered
-as `options.node`) raise them to 50 MB / 10 MB / 8 MiB / 32 MiB. See the docs page.
-
-RAG is off by default. Pass `rag: { component, embedding, embeddingDimension,
-chunk?: { maxBytes } }` and mount `@convex-dev/rag` separately to enable
-`index`, `search`, and `search_files` (the agevex slot offers it only with
-`autoIndex: true`, which indexes each attached file into its thread). Use a
-dedicated mount/namespace for these
-bounded chunks. The host authorizes namespaces; tools use `threadId` as the
-namespace and recheck each result's attachment. Index text caps at 1 MiB;
-chunks are 1–8 KiB. Embedding models must be instantiated AI SDK v3/v4 models.
-Index calls for one (artifact, namespace) admit one embedding action; concurrent calls return
-`pending`, and completed calls reuse the recorded entry. Caller keys are scoped
-to the artifact. Explicit retries delete the exact prior native entry first.
-
-`bun run test:live:extract` loads keys from the main checkout's `.env.local` and
-makes two Firecrawl requests plus one `openrouter/free` OCR request. Explicit
-empty key environment values skip those paid probes. See the extract docs page
-for bounds and limits.
-
 ## Telemetry
 
-`agevex/telemetry` is an optional, action-scoped AI SDK 7 callback integration;
-no component mount, tables, Node APIs or new dependencies are required. Create
-one buffer per turn and consume the stream before flushing in `finally`:
+`agevex/telemetry` adapts a host-supplied AI SDK 7 integration:
 
 ```ts
-import { telemetry, langfuse, braintrust } from "agevex/telemetry";
+import { telemetry } from "agevex/telemetry";
+import type { Telemetry } from "ai";
 
-const trace = telemetry({
-  exporters: [
-    // Keys may be getters: they run at each export, never at construction.
-    langfuse({
-      baseUrl: "https://cloud.langfuse.com",
-      publicKey: () => process.env.LANGFUSE_PUBLIC_KEY!,
-      secretKey: () => process.env.LANGFUSE_SECRET_KEY!,
-    }),
-    // braintrust({ apiKey: () => process.env.BRAINTRUST_API_KEY!, projectId: () => process.env.BRAINTRUST_PROJECT_ID! }),
-  ],
-});
-try {
-  const result = streamText({
-    model,
-    prompt,
-    maxRetries: 0,
-    telemetry: {
-      integrations: [
-        trace.integration({
-          subject,
-          rootThreadId,
-          threadId,
-          runId,
-          agent: "Main",
-          turnKey,
-        }),
-      ],
-    },
-  });
-  await result.consumeStream();
-} finally {
-  await trace.flush(); // optional AbortSignal; one attempt, at most 3 s for exports
+export function telemetrySlot(integration: Telemetry, flush: () => Promise<void>) {
+  return telemetry({ integration, flush });
 }
+// registerAgent(components.agevex, { ...registration, telemetry: telemetrySlot(...) })
 ```
 
-Agent 0.7.7 forwards the same `telemetry` option in its `streamText` arguments.
-For managed turns, pass `telemetry: telemetry.slot({ exporters: [langfuse({
-baseUrl: "https://cloud.langfuse.com", publicKey, secretKey })] })` to
-`registerAgent`. Core supplies facts and flushes each turn's isolated buffer;
-export failures and cancellation discard it without failing the turn.
-`braintrust({ projectId })` and `langfuse({ baseUrl })` also accept getters
-resolved at export; a missing value sends nothing. `telemetry.slot({ enabled })`
-(boolean or sync/async getter, default `true`) is resolved once per turn: when it
-is not `true` that turn buffers no spans and makes no request.
-Per-call integrations replace AI SDK global integrations. AI SDK 7 has no
-`tracer` option.
-
-Prompts, instructions, model output and tool arguments/results are omitted by
-default. Opt in with `recordInputs: true` / `recordOutputs: true`; an optional
-`sanitize(value, attributeName)` transforms bounded attribute values and dynamic
-span name components before buffering (`undefined` omits an attribute; missing
-or rejected name components become `redacted`). SDK recording flags
-can further disable recording. Raw error diagnostics are never recorded.
-User/session/run/agent facts are included on every span; sanitize them when needed.
-
-`LIMITS` from this subpath fixes the buffer at 128 spans, 16 KiB of encoded
-attributes per span and 4 KiB per value, with truncation markers. Reuse stable
-`runId`, `turnKey` and call order for stable, deterministic SHA-256 trace/span ids
-across integrations. A retried action may export a duplicate: Langfuse v4 does
-not guarantee deduplication by id. Core never retries paid model steps
-automatically, so duplicates are rare. Hosts needing exactly-once export can
-export from their own durable outbox.
-`flush` seals and drains its buffer once, including unfinished spans as errors;
-provider failures, interrupted finish reasons and streams without model completion
-mark affected model, step and agent spans as errors with safe reasons. Export
-failures/timeouts are ignored and never retried. All configured exporters run
-concurrently with cancellation and a three-second deadline. Langfuse `baseUrl`
-is the host URL (an optional deployment path is preserved); Braintrust uses
-its US OTel endpoint and a project id.
-
-`bun run test:live` also runs the telemetry ingestion smoke test. It skips
-clearly unless all three `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` and
-`LANGFUSE_BASE_URL` entries exist in the main checkout's `.env.local`. This
-smoke test uses synthetic model events and one ingestion POST, with no paid
-model requests.
-
-`createAskUserTool({ inputSchema?, answerSchema? })` accepts a Zod type or closed
-JSON Schema with top-level `type: "object"` for model input (≤16 KiB).
-JSON input schemas default top-level `additionalProperties` to `false`.
-The default stays strict `{ question }`
-(≤2000 characters). `answerSchema` accepts a static JSON Schema or a synchronous
-`(validatedInput) => JsonSchema` callback, computed on the host during the turn.
-Each compact proposal stores validated input and its own schema (≤8 KiB, depth 8,
-32 fields), outside model-visible input. `pendingApprovals` exposes custom `input`
-and the stored `schema`; question-only inputs keep a single `question` copy with
-`input: null`. Custom inputs keep their question inside `input` only. Asks that
-exceed the combined 16 KiB pending item budget return `ASK_TOO_LARGE` without a pause.
-Schema property names must be ≤1024 non-control ASCII characters (U+0020–U+007E)
-and cannot start with `$`. Invalid input or derived schemas return `INVALID_QUESTION`
-or `INVALID_FORM_SCHEMA` without failing the turn. Optional `undefined` values in
-validated input and derived schemas are omitted before serialization checks.
-Async answer-schema callbacks fail at registration with a synchronous-callback error.
-The factory's marker works
-under any registration key. Use `answer({ threadId, toolCallId, value })` for a
-plain string or JSON validated against the stored schema; invalid answers stay pending.
-`Agent.askUser` defaults to root-only: children receive `ROOT_ONLY` without a
-human pause and should use `agevex_ask_parent`. Explicit true/false applies to
-either persisted role, including an Agent shared between root and child graphs.
-
-Breaking changes in v2: `respond.approved` becomes `respond.decision` (a rejection
-reason lives inside the decision), and `answer.text` becomes `answer.value`.
-Receipt payload fingerprints now use SHA-256 of canonical JSON with code-unit
-key ordering; prior fingerprint bytes are incompatible. Plain local approvals
-pin original input even without a schema validator; only edits parse the schema.
-Update host budget-consent wrappers to check `decision.kind === "approve"` and
-`!response.replayed` before recording consent. No persisted-data adapter is needed.
+`integration` may also be a synchronous factory receiving trusted run, thread,
+subject, agent and turn facts. Callbacks receive the same frozen facts as
+`event.agevex`. Callback and flush failures are isolated; execution wrappers
+cannot repeat model/tool work. Core bounds final flushing to three seconds.
+The host owns exporter dependencies, credentials, spans, content policy and
+buffers. See the [Braintrust wiring example](docs/site/content/docs/modules/telemetry.mdx).

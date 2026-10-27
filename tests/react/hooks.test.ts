@@ -54,7 +54,6 @@ it("skipped when id missing never subscribes or writes to a previous thread", as
       approvals: hooks.usePendingApprovals(),
       ask: hooks.useAsk(),
       title: hooks.useTitle(),
-      summary: hooks.useSummary(),
     }),
     { wrapper: t.wrapper },
   );
@@ -79,7 +78,7 @@ it("thread switch clears old data on the first render including stream and metad
 
     if (name.endsWith(":pendingApprovals")) return [pending];
 
-    return { text: "old private data", source: "user", version: 1 };
+    return { text: "old private data" };
   });
 
   const seen: unknown[] = [];
@@ -266,7 +265,7 @@ it("an app can retry a rejected send with the same intent key while fresh sends 
   expect(t.writes[2].args.requestKey).not.toBe(t.writes[3].args.requestKey);
 });
 
-it("title rename uses the observed version and runTree preserves the supplied reference's return type", async () => {
+it("title rename writes native metadata and runTree preserves the supplied reference's return type", async () => {
   const tree = makeFunctionReference<
     "query",
     { threadId: string; rootRunId?: string },
@@ -276,9 +275,7 @@ it("title rename uses the observed version and runTree preserves the supplied re
   const custom = createAgevexHooks({ ...api, runTree: tree });
 
   const t = transport((name) =>
-    name === "custom:tree"
-      ? { rootRunId: "run", nodes: ["Main"] }
-      : { text: "title", source: "user", version: 7 },
+    name === "custom:tree" ? { rootRunId: "run", nodes: ["Main"] } : { text: "title" },
   );
 
   const { result } = renderHook(
@@ -290,7 +287,7 @@ it("title rename uses the observed version and runTree preserves the supplied re
 
   expect(nodes).toEqual(["Main"]);
   await result.current.title.rename("new title");
-  expect(t.writes[0].args).toEqual({ threadId: "thread", text: "new title", expectedVersion: 7 });
+  expect(t.writes[0].args).toEqual({ threadId: "thread", text: "new title" });
 
   expect(
     t.watched.some((watch) => watch.name === "custom:tree" && watch.args.rootRunId === "run"),

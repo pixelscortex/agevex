@@ -5,6 +5,8 @@
     "architecture",
     "runtime",
     "background-text",
+    "agent-summaries",
+    "recording-usage",
     "delegation",
     "react-hooks",
     "main-builder-reviewer",

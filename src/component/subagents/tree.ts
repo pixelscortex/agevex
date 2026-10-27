@@ -1,11 +1,11 @@
 /** One reactive, request-scoped run tree. Native Agent owns all message bodies.
- * D = HOST_LIMITS.runLaunches.max + sideRunsPerRun.max = 58.
- * (1+D)*34 KiB assignments +D*4 KiB children +3*34 KiB ownership
- * +2*16 KiB root metadata +1 KiB ready probe = 2373 KiB core reads.
- * Meter's batched projection adds <=5160 KiB: combined <=7533 KiB <8 MiB;
+ * D = HOST_LIMITS.runLaunches.max = 50.
+ * (1+D)*14 KiB assignments +D*4 KiB children +3*14 KiB ownership
+ * +14 KiB root assignment +16 KiB run metadata +1 KiB ready probe = 987 KiB core reads.
+ * Any app usage projection is responsible for its own bounded reads.
  * The host checks both Convex and JSON output bytes against 128 KiB.
- * No per-node transcript, meter or settlement scans: reuse the already bounded
- * child set to project transitive ordinary delivery/group fences in memory.
+ * No per-node transcript or settlement scans: reuse the already bounded
+ * child set to project transitive delivery fences in memory.
  */
 import type { Doc } from "../_generated/dataModel.js";
 import type { QueryCtx } from "../_generated/server.js";
@@ -48,7 +48,7 @@ export async function requestTree(
 
   const children = await ctx.db
     .query("subagentRuns")
-    .withIndex("by_group", (q) => q.eq("parentRunId", run._id))
+    .withIndex("by_parent_run", (q) => q.eq("parentRunId", run._id))
     .take(TREE_LIMITS.descendants);
 
   children.sort((a, b) => a.sequence - b.sequence);
@@ -64,11 +64,7 @@ export async function requestTree(
       if (assignment) assignments.set(assignment._id, assignment);
     }
 
-    if (
-      !child.side &&
-      (child.deliveryStatus === "pending" || (child.join && child.join !== "joined"))
-    )
-      blocked.add(child.actorAssignmentId);
+    if (child.deliveryStatus === "pending") blocked.add(child.actorAssignmentId);
   }
 
   const ready = await readyForRun(ctx, root._id, run._id);
@@ -79,7 +75,6 @@ export async function requestTree(
       id: run._id,
       parentId: null,
       agent: root.agent,
-      task: run.taskPreview ?? "",
       ...state,
       createdAt: run._creationTime,
       startedAt: run.startedAt ?? null,
@@ -190,9 +185,8 @@ function childNode(
     id: run.runId,
     parentId: parents.get(run.actorAssignmentId)!,
     agent: run.agent,
-    task: run.taskPreview ?? "",
     ...state,
-    createdAt: run.createdAt,
+    createdAt: run._creationTime,
     startedAt: run.startedAt ?? null,
     finishedAt: runTimes(run).finishedAt,
     currentTool: currentTool(row, state),

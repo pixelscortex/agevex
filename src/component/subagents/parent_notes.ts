@@ -34,12 +34,12 @@ export function parentNoteFits(text: string) {
 }
 
 /** Constant-size live admission and exact receipt lookup; never read native history.
- * Four <=34 KiB assignment reads (three distinct rows), one <=4 KiB child
+ * Four <=16 KiB assignment reads (three distinct rows), one <=4 KiB child
  * and one <=16 KiB budget, repeated <=5 times across preflight and commit:
- * 5*156 KiB=780 KiB. Receipts (<=1 KiB each), patches and the <=64 KiB
- * expiry-head receipt probe keep admission metadata below 1.25 MiB.
+ * 5*84 KiB=420 KiB. Receipts (<=1 KiB each), patches and the <=64 KiB
+ * expiry-head receipt probe keep admission metadata below 1 MiB.
  * The host's one native save reads <=1 MiB tail (Agent messages.ts:298-322).
- * post/wake adds bounded group recovery (<2.25 MiB); combined <6 MiB.
+ * post/wake adds only bounded inbox and scheduling metadata; combined <4 MiB.
  * Including the hop reservation scan (headroom.ts), the whole host
  * transaction stays below 8 MiB /1,000 reads /128 writes. Notes require
  * queuedMessages < queueLength; owed final results may exceed that limit.

@@ -56,9 +56,6 @@ export function createAgevexHooks<Tree extends TreeRef = NonNullable<AgevexApi["
     useTitle(threadId?: string) {
       return useTitle(api, threadId);
     },
-    useSummary(threadId?: string) {
-      return useSummary(api, threadId);
-    },
   };
 }
 
@@ -155,20 +152,7 @@ function useTitle(api: Omit<AgevexApi, "runTree">, threadId?: string) {
     rename: async (text: string) => {
       const id = threadRequired(threadId);
 
-      if (data === undefined) throw new Error("agevex/react: wait for the title before renaming");
-
-      return rename({ threadId: id, text, expectedVersion: data.version });
+      return rename({ threadId: id, text });
     },
-  };
-}
-
-function useSummary(api: Omit<AgevexApi, "runTree">, threadId?: string) {
-  const data = useQuery(required(api, "summary"), threadId === undefined ? "skip" : { threadId });
-  const summarize = useMutation(required(api, "summarize"));
-
-  return {
-    ...queryState(threadId, data),
-    summarize: async () =>
-      summarize({ threadId: threadRequired(threadId), requestKey: requestKey() }),
   };
 }

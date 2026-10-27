@@ -1,12 +1,5 @@
-// The optional slot contracts (usage, budget, telemetry, sandbox, extract) and the
-// scoped meter.
-//
-// Optional modules implement these types; core never imports their components.
-// `scopedMeter` wraps a usage backend so every charge and charge operation gets a
-// deterministic opaque key per call, which makes metering idempotent under
-// replay. How each slot is invoked during a turn lives in `turn/slots.ts`.
-
-import { opaqueKey } from "./keys.js";
+/** Stateless host contracts. Apps own usage ledgers and budget policy; core
+ * contains no pricing, reconciliation workers or billing tables. */
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import type { Telemetry, ToolSet } from "ai";
 import type { ToolContext } from "./once.js";
@@ -21,7 +14,7 @@ export type SlotFacts = {
   threadId: string;
   runId: string;
   agent: string;
-  purpose?: "agent" | "hook" | "tool" | "title" | "summary";
+  purpose?: "agent" | "hook" | "tool" | "title";
   /** Delegation identity; absent on the root node. Never supplied by the model. */
   nodeId?: string;
 };
@@ -36,7 +29,7 @@ export type UsageView = {
 export type UsageViewArgs = {
   subject: string;
   runId: string;
-  /** At most 59 exclusive nodes, already discovered by the caller; null is root. */
+  /** At most 51 exclusive nodes, already discovered by the caller; null is root. */
   nodeIds: (string | null)[];
   partial?: boolean;
 };
@@ -46,29 +39,21 @@ export type UsageProjection = {
 };
 export type SlotReadCtx = Pick<SlotActionCtx, "runQuery" | "auth">;
 export type SlotActionCtx = GenericActionCtx<GenericDataModel>;
-export type ChargeCost = { usd: number; credits?: never } | { credits: number; usd?: never };
-export type MeterChargeBackend = {
+/** One native step or standalone task; apps dedupe by key in their own ledger.
+ * Standalone tasks/titles create no native message, so messageId is null there. */
+export type UsageEvent = SlotFacts & {
   key: string;
-  attach(args: { requestId: string; key: string }): Promise<unknown>;
-  correct(args: { quantity: number; key: string }): Promise<unknown>;
-  settle(args: ChargeCost & { key: string }): Promise<unknown>;
-  get(): Promise<unknown>;
-};
-export type MeterBackend = {
-  estimate(
-    provider: string,
-    args: { key: string; profile?: string; quantity: number },
-  ): Promise<MeterChargeBackend>;
-  record(
-    provider: string,
-    args: { key: string; usage?: unknown; providerMetadata?: unknown; requestId?: string },
-  ): Promise<MeterChargeBackend>;
+  model?: string;
+  provider?: string;
+  usage: unknown;
+  providerMetadata?: unknown;
+  requestId?: string;
+  messageId: string | null;
 };
 export type UsageSlot = {
-  scope(ctx: SlotActionCtx, facts: SlotFacts & { model?: string }): MeterBackend;
+  record(ctx: SlotActionCtx, event: UsageEvent): Promise<void>;
+  /** Optional app-owned projection; absent adapters leave run-tree usage null. */
   view?(ctx: SlotReadCtx, args: UsageViewArgs): Promise<UsageProjection>;
-  /** On-demand, read-only evidence discovery; never invokes a model. */
-  reconcile?(ctx: SlotActionCtx, args: { subject: string; runId: string }): Promise<unknown>;
 };
 export type BudgetSlot = {
   check(
@@ -83,101 +68,3 @@ export type TelemetrySlot = {
 export type SandboxSlot = {
   tools(context: ToolContext): ToolSet;
 };
-export type ExtractSlot = {
-  /** `subject` is the server-derived owner of the thread, so the adapter can
-   * authorize with `runtime.fileAttached` without reading core state. */
-  run(
-    ctx: SlotActionCtx,
-    args: { fileId: string; threadId: string; subject: string },
-  ): Promise<unknown>;
-  tools(context: ToolContext): ToolSet;
-};
-
-/** Public tool facade: the backend requires stable keys; managed calls supply
- * them automatically. Explicit keys allow several logically distinct charges. */
-export type MeterCharge = {
-  key: string;
-  attach(args: { requestId: string; key?: string }): Promise<unknown>;
-  correct(args: { quantity: number; key?: string }): Promise<unknown>;
-  settle(args: ChargeCost & { key?: string }): Promise<unknown>;
-  get(): Promise<unknown>;
-};
-export type ScopedMeter = {
-  estimate(
-    provider: string,
-    args: { key?: string; profile?: string; quantity: number },
-  ): Promise<MeterCharge>;
-  record(
-    provider: string,
-    args: { key?: string; usage?: unknown; providerMetadata?: unknown; requestId?: string },
-  ): Promise<MeterCharge>;
-};
-
-const noCharge: MeterCharge = {
-  key: "noop",
-  attach: async () => {},
-  correct: async () => {},
-  settle: async () => {},
-  get: async () => null,
-};
-
-export const noopMeter: ScopedMeter = {
-  estimate: async () => noCharge,
-  record: async () => noCharge,
-};
-
-/**
- * The meter a hook or tool call sees. Without a backend it is the no-op meter.
- *
- * Every charge key is derived from `callKey` plus an explicit key or a local
- * ordinal, and every charge operation key from the charge key plus the method,
- * so a replayed call reproduces exactly the same keys and the backend dedupes.
- */
-export function scopedMeter(backend: MeterBackend | undefined, callKey: string): ScopedMeter {
-  if (!backend) return noopMeter;
-
-  // Counters are local to one deterministic invocation. Method suffixes prevent
-  // attach/correct/settle from colliding in the meter's shared operation ledger.
-  let ordinal = 0;
-
-  const wrap = (charge: MeterChargeBackend): MeterCharge => {
-    const counts = { attach: 0, correct: 0, settle: 0 };
-
-    return {
-      key: charge.key,
-      get: () => charge.get(),
-      attach: async (args) =>
-        charge.attach({
-          ...args,
-          key: await opaqueKey("operation", charge.key, "attach", args.key ?? counts.attach++),
-        }),
-      correct: async (args) =>
-        charge.correct({
-          ...args,
-          key: await opaqueKey("operation", charge.key, "correct", args.key ?? counts.correct++),
-        }),
-      settle: async (args) =>
-        charge.settle({
-          ...args,
-          key: await opaqueKey("operation", charge.key, "settle", args.key ?? counts.settle++),
-        }),
-    };
-  };
-
-  return {
-    estimate: async (provider, args) =>
-      wrap(
-        await backend.estimate(provider, {
-          ...args,
-          key: await opaqueKey("charge", callKey, args.key ?? ordinal++),
-        }),
-      ),
-    record: async (provider, args) =>
-      wrap(
-        await backend.record(provider, {
-          ...args,
-          key: await opaqueKey("charge", callKey, args.key ?? ordinal++),
-        }),
-      ),
-  };
-}

@@ -14,29 +14,25 @@ bun run typecheck:tests
 bun run --cwd docs/site check:snippets
 ```
 
-Tests resolve package imports to source. Registry payloads also type-check in a
-fresh host against source, sharing the host's AI SDK dependency.
+Tests resolve package imports to source.
 
 Register the core with `agevex/test`, and each optional component with
-`agevex/meter/test`, `agevex/sandbox/test` or `agevex/extract/test`. Each helper
+`agevex/sandbox/test`. Each helper
 registers the component and its nested dependencies. The host registers its
 sibling native Agent separately.
 
 Core sources live in `src/component/` and `src/client/`. Optional modules live in
 `src/modules/<name>/`: `component/` runs in Convex, `client/` runs in the host,
 `shared/` contains pure contracts used by both, and `test.ts` registers tests.
-Telemetry and tools have no component; registry state runs in the installing host.
+Telemetry and tools have no component or tables.
 
 ```sh title="Terminal"
 bun run test:live
 ```
 
 Live tests use keys from the main checkout's `.env.local`:
-`OPENROUTER_API_KEY`, `DAYTONA_API_KEY`, and `FIRECRAWL_API_KEY`. Use
-`openrouter/free`, keep Firecrawl to at most three calls per full run, and never
-print credentials. Telemetry live checks additionally require the Langfuse keys
-and base URL configured there: `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`
-and `LANGFUSE_BASE_URL`.
+`OPENROUTER_API_KEY` and `DAYTONA_API_KEY`. Use `openrouter/free` and never
+print credentials. Exporter integration tests belong to the host application.
 
 Assert promised behavior: each test title names the guarantee it protects.
 Workflow journal replay tests preserve step ordering. Fake backends keep the

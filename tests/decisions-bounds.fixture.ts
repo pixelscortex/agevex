@@ -56,7 +56,6 @@ export const seed = mutation({
           deliveryToken: "fixture",
           coordinateHandle: "fixture",
           errorCode: null,
-          createdAt: Date.now(),
           sequence: offset,
           events: [],
         });
@@ -88,10 +87,10 @@ export const seed = mutation({
       });
     }
 
-    // Terminal history fills the query's entire 58-row hard maximum too.
+    // Terminal history fills the query's entire 50-row hard maximum too.
     for (
       let offset = HOST_LIMITS.activeChildrenPerRoot.max;
-      offset < HOST_LIMITS.runLaunches.max + HOST_LIMITS.sideRunsPerRun.max;
+      offset < HOST_LIMITS.runLaunches.max;
       offset++
     )
       await ctx.db.insert("subagentRuns", {
@@ -112,7 +111,6 @@ export const seed = mutation({
         deliveryToken: "fixture",
         coordinateHandle: "fixture",
         errorCode: null,
-        createdAt: Date.now(),
         sequence: offset,
         events: [],
       });
@@ -123,9 +121,8 @@ export const seed = mutation({
         ...root.limits,
         activeChildrenPerRoot: HOST_LIMITS.activeChildrenPerRoot.max,
         runLaunches: HOST_LIMITS.runLaunches.max,
-        sideRunsPerRun: HOST_LIMITS.sideRunsPerRun.max,
       },
-      nextRunSequence: HOST_LIMITS.runLaunches.max + HOST_LIMITS.sideRunsPerRun.max,
+      nextRunSequence: HOST_LIMITS.runLaunches.max,
     });
 
     if (args.sources.length * LIMITS.approvalsPerPause !== 256) throw new Error("NOT_MAXIMUM");

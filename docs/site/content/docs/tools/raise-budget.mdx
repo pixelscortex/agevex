@@ -1,0 +1,47 @@
+---
+title: Asking the user to raise a budget
+description: Compose the core budget hook with ask_user and host policy.
+status: Available
+---
+
+The host owns spending limits and consent. Register the core budget hook and a
+structured ask tool; its check callback reads your application ledger:
+
+```ts title="convex/budgetPolicy.ts"
+import type { BudgetSlot } from "agevex";
+import { createAskUserTool } from "agevex/tools";
+
+// check reads the host ledger for { subject, runId } and returns { allowed }.
+export function budgetAndQuestion(check: BudgetSlot["check"]) {
+  return {
+    budget: { check },
+    tools: {
+      ask_user: createAskUserTool({
+        answerSchema: {
+          type: "boolean",
+          title: "Allow a higher spending limit?",
+        },
+      }),
+    },
+  };
+}
+// Pass budget to registerAgent and tools to your Agent.
+// Ask before the hard limit is reached.
+```
+
+Prompt the agent to ask before its allowance is exhausted. Show the proposed
+limit and scope from trusted host policy beside the question. In one host
+mutation, authorize the owner, verify the exact pending ask and current run,
+apply an approved policy increase, and call core `answer` with `value: true`.
+A denial answers `false` without changing policy. Bind consent to that owner,
+thread, run and ask; repeated answers must not apply another increase.
+
+The next budget check reads the updated policy. Model input and an arbitrary
+boolean are never authority to raise a limit; your answer endpoint validates
+the host's approved proposal and deduplicates its policy write.
+
+If `BUDGET_EXCEEDED` has already stopped the run, the model cannot ask another
+question. Collect fresh consent in your application, then atomically update
+policy, cancel the stopped run and send a fresh request with a stable request
+key derived from the stopped run. Recheck that run identity in the transaction.
+Never retry the stopped model/tool effect: an uncertain paid outcome stays unknown.

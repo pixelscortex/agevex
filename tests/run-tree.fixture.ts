@@ -1,4 +1,4 @@
-/** Native fake models, real lanes, and an optional real meter for tree guarantees. */
+/** Native fake models, real lanes, and an optional app usage view for tree guarantees. */
 import { convexTest } from "convex-test";
 import native from "@convex-dev/agent/test";
 import {
@@ -15,8 +15,6 @@ import { mark } from "../src/component/turns/tools.js";
 import type { MutationCtx } from "../src/component/_generated/server.js";
 import type { Id } from "../src/component/_generated/dataModel.js";
 import agevex from "../src/test.js";
-import meterTest from "../src/modules/meter/test.js";
-import { defineMeter } from "../src/modules/meter/client/index.js";
 import {
   Agent,
   defineOnceTool,
@@ -122,7 +120,7 @@ function interceptMarkerRpc(
 
 export function setup(
   options: {
-    meter?: boolean;
+    usage?: Registration["usage"];
     limits?: Registration["limits"];
     boundary?: "approval" | "ask";
     marker?: (args: MarkerArgs) => Promise<void>;
@@ -171,17 +169,6 @@ export function setup(
     }),
   });
 
-  const meterComponent = meterTest.register(t);
-
-  const meter = defineMeter(meterComponent, {
-    providers: {
-      fake: {
-        inline: () => ({ usd: 0.01 }),
-        estimate: () => ({ usd: 0.005 }),
-      },
-    },
-  });
-
   const child = new Agent<object, ToolSet>(components.agent, {
     name: "Builder",
     languageModel: builder.textModel as LanguageModelV4,
@@ -201,7 +188,7 @@ export function setup(
     limits: options.limits,
     agents: [root],
     refs: { runTurn: runTurnReference, coordinate: coordinateReference },
-    usage: options.meter ? meter.usageSlot() : undefined,
+    usage: options.usage,
     authorize: async (ctx, scope) => {
       if (scope.operation === "delegate" || scope.operation === "deliver")
         return { subject: scope.subject };
@@ -215,7 +202,7 @@ export function setup(
     authorizeExecution: async () => {},
   });
 
-  return { t, meter, meterComponent };
+  return { t };
 }
 
 type Seed = ApiFromModules<{ treeSeed: typeof seed }>["treeSeed"];

@@ -38,20 +38,17 @@ cat > "$host/convex/convex.config.ts" <<'EOF'
 import { defineApp } from "convex/server";
 import agent from "@convex-dev/agent/convex.config";
 import agevex from "agevex/convex.config";
-import meter from "agevex/meter/convex.config";
 import sandbox from "agevex/sandbox/convex.config";
-import extract from "agevex/extract/convex.config";
 
 const app = defineApp();
 app.use(agent);
 app.use(agevex);
-app.use(meter);
 app.use(sandbox);
-app.use(extract);
 export default app;
 EOF
 
 cd "$host"
-env -u CONVEX_DEPLOYMENT -u CONVEX_URL CONVEX_AGENT_MODE=anonymous \
+env -u CONVEX_DEPLOYMENT -u CONVEX_URL -u CONVEX_DEPLOY_KEY \
+  -u CONVEX_SELF_HOSTED_URL -u CONVEX_SELF_HOSTED_ADMIN_KEY CONVEX_AGENT_MODE=anonymous \
   ./node_modules/convex/bin/main.js dev --once --typecheck disable
 echo "check:deploy: agevex and its modules push cleanly to a local Convex backend"

@@ -1,4 +1,4 @@
-# SDK docs and registry
+# SDK docs
 
 Local TanStack Start + Fumadocs site (React 19, Vite and Tailwind v4). This is an
 independent Bun package: it is not part of the root library’s build, published
@@ -14,28 +14,12 @@ Open <http://localhost:3000/docs>. The dev server binds to `127.0.0.1:3000`.
 The root URL redirects to `/docs`. Stop with Ctrl-C.
 
 ```sh
-bun run build        # registry build, then TanStack Start/Nitro Bun build
+bun run build        # TanStack Start/Nitro Bun build
 bun run typecheck    # generate route types, then check site TypeScript
 bun run start        # serve the production build locally
-bun run registry:build
 ```
 
-The registry command runs `bunx shadcn build`, writing
-one `public/r/<item>.json` per registry item and copying the index to
-`public/r/registry.json`.
-Install from the local server with:
-
-```sh
-bunx shadcn add http://localhost:3000/r/todo.json
-```
-
-The items are bounded tools with host-owned state; see `content/docs/tools/`.
-
-`site.config.ts` sets the provisional site title and registry namespace.
-When renaming the package, update the plain MDX examples too. The registry
-script updates the committed `registry.json` and generated item. The repository
-URL derives from that name. There is no production host or registered shadcn
-namespace yet.
+`site.config.ts` sets the site title, description and repository URL.
 
 Content lives in `content/docs`; every page must declare `status` as Available,
 In progress or Planned. `src/lib/source.ts` validates this at build time. Only

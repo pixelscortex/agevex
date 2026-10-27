@@ -216,81 +216,78 @@ it.each(["before", "after"] as const)(
   },
 );
 
-it.each(["each", "all"] as const)(
-  "a wait=%s final result delivers beyond a full message queue beside an approval continuation",
-  async (wait) => {
-    const t = setup({ runHops: HOST_LIMITS.runHops.max, queueLength: 4 }, "approval");
-    const parentHeld = gate();
-    const childHeld = gate();
+it("a final result delivers beyond a full message queue beside an approval continuation", async () => {
+  const t = setup({ runHops: HOST_LIMITS.runHops.max, queueLength: 4 }, "approval");
+  const parentHeld = gate();
+  const childHeld = gate();
 
-    v2.steps.Main = async (n) => {
-      if (n === 0) return [delegate("Reviewer", { wait })];
+  v2.steps.Main = async (n) => {
+    if (n === 0) return [delegate("Reviewer")];
 
-      if (n === 1) {
-        await parentHeld.promise;
+    if (n === 1) {
+      await parentHeld.promise;
 
-        return [call("human", {}, "human-call")];
-      }
-
-      return text("approved and read all results");
-    };
-
-    v2.steps.Reviewer = async () => {
-      await childHeld.promise;
-
-      return text("result survives approval pause");
-    };
-
-    const receipt = await open(t);
-
-    await waitFor(t, () => calls("Reviewer").length === 1);
-    const actor = await sender(t, receipt.threadId);
-
-    expect(await send(t, actor, "wake parent")).toMatchObject({ status: "accepted" });
-    await waitFor(t, () => calls("Main").length === 2);
-
-    for (let note = 0; note < 3; note++) {
-      await t.action(async () => {
-        await vi.advanceTimersByTimeAsync(LIMITS.parentNoteIntervalMs);
-      });
-
-      expect(await send(t, actor, `queued note ${note}`)).toMatchObject({ status: "accepted" });
+      return [call("human", {}, "human-call")];
     }
 
-    parentHeld.release();
+    return text("approved and read all results");
+  };
 
-    await waitFor(
-      t,
-      async () =>
-        !!(
-          await t.query(rawAssignment, {
-            assignmentId: receipt.assignmentId,
-          })
-        )?.approvalBlocked,
-    );
+  v2.steps.Reviewer = async () => {
+    await childHeld.promise;
 
-    expect(
-      (await t.query(rawAssignment, { assignmentId: receipt.assignmentId }))?.queuedMessages,
-    ).toBe(4);
+    return text("result survives approval pause");
+  };
 
-    childHeld.release();
+  const receipt = await open(t);
 
-    await waitFor(
-      t,
-      async () => (await deliveries(t, receipt.threadId))[0].deliveryStatus === "accepted",
-    );
+  await waitFor(t, () => calls("Reviewer").length === 1);
+  const actor = await sender(t, receipt.threadId);
 
-    // Three messages +one exact approval continuation +one owed result;
-    // delivery never needs a free message slot beside the control row.
-    expect(
-      (await t.query(rawAssignment, { assignmentId: receipt.assignmentId }))?.queuedMessages,
-    ).toBe(5);
+  expect(await send(t, actor, "wake parent")).toMatchObject({ status: "accepted" });
+  await waitFor(t, () => calls("Main").length === 2);
 
-    expect(JSON.stringify(await transcript(t, receipt.threadId))).toContain(
-      "result survives approval pause",
-    );
+  for (let note = 0; note < 3; note++) {
+    await t.action(async () => {
+      await vi.advanceTimersByTimeAsync(LIMITS.parentNoteIntervalMs);
+    });
 
-    await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
-    await drain(t);
-  },
-);
+    expect(await send(t, actor, `queued note ${note}`)).toMatchObject({ status: "accepted" });
+  }
+
+  parentHeld.release();
+
+  await waitFor(
+    t,
+    async () =>
+      !!(
+        await t.query(rawAssignment, {
+          assignmentId: receipt.assignmentId,
+        })
+      )?.approvalBlocked,
+  );
+
+  expect(
+    (await t.query(rawAssignment, { assignmentId: receipt.assignmentId }))?.queuedMessages,
+  ).toBe(4);
+
+  childHeld.release();
+
+  await waitFor(
+    t,
+    async () => (await deliveries(t, receipt.threadId))[0].deliveryStatus === "accepted",
+  );
+
+  // Three messages +one exact approval continuation +one owed result;
+  // delivery never needs a free message slot beside the control row.
+  expect(
+    (await t.query(rawAssignment, { assignmentId: receipt.assignmentId }))?.queuedMessages,
+  ).toBe(5);
+
+  expect(JSON.stringify(await transcript(t, receipt.threadId))).toContain(
+    "result survives approval pause",
+  );
+
+  await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
+  await drain(t);
+});

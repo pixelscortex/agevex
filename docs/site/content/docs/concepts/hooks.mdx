@@ -1,15 +1,15 @@
 ---
 title: Hooks
 icon: Webhook
-description: Turn and tool hooks, model routing, passive notes and side agents.
+description: Stateless turn and tool hooks, model choices and passive notes.
 status: Available
 ---
 
 Hooks belong to an `Agent` and run inside the existing action, adding no
 Workflow steps. The five hooks are `beforeTurn`, `afterTurn`, `beforeTool`,
-`afterTool` and `beforeDelegate`. Each returns one `HookResult`: `note`,
-`block`, `input`, `output`, `continue` or `model`, with a `HookContext` that
-omits `toolCallId`.
+`afterTool` and `beforeDelegate`. Hooks receive a `HookContext` that omits
+`toolCallId`. `afterTurn` is a notification returning void. Other hooks may
+return `note`, `block`, `input`, `output` or `model` as appropriate.
 
 ```ts title="convex/hooks.ts"
 import type { AgentHooks } from "agevex";
@@ -37,27 +37,23 @@ excluded. Ids are recorded atomically with native saves, without transcript read
 
 `text` keeps its existing scope: successful assistant text from the completing
 slice, joined with newlines. Earlier narration is available by exact message id.
-Tool continuations and approval pauses emit no hook until completion. A staged
-`afterTurn.continue` prompt starts a new reporting turn with a fresh id list.
+Tool continuations and approval pauses emit no `afterTurn` until completion.
+New user, queued or child work starts a fresh list; approval resumes keep it.
+The notification cannot request more work. Call the public send/runtime API
+from your own code when a follow-up is needed.
 
 Each slice saves at most one assistant row. Run `stepsPerTurn` and any non-default
 host `slicesPerTurn` cap bound the list, including approval resumes: at most
 64 ids, each at most 37 ASCII characters. Reporting state reserves 3 KiB within the
-assignment's 34 KiB envelope.
+assignment envelope.
 
-## Model routing at run start
+## Model choice per generation
 
-`beforeTurn` may return `model` only when `isRunStart` is true. The id must be
-in the registered allowlist, and the choice persists for that agent's run.
-Concurrent siblings share the first routing attempt: if its owner is denied,
-fails or is cancelled, the siblings use the committed model or their default.
-The classifier is never retried.
-
-## Bounded continuation
-
-`afterTurn.continue` requests another turn with the returned prompt. A run
-admits 3 continuations by default and 8 at the hard maximum; the prompt is at
-most 16,000 UTF-16 units and is staged for the next safe claim.
+`beforeTurn` runs before each model generation, including tool steps and approval
+resumes. It may return an id in the registered model allowlist. That choice is
+local to this generation: no assignment field, sibling lock or run model is
+changed. Return the model on every invocation to keep using it. Siblings run
+and choose independently. The prompt identifies the original reporting request.
 
 ## Notes and origins
 
@@ -72,18 +68,5 @@ awaiting a committed tool result. That claim saves every pending note in
 arrival order, after prior tool results. Ordinary tool-step slices never drain
 notes, and a note never starts a turn or schedules work.
 
-The authorized `messages` reader adds `origin: user | result | note | continue`
+The authorized `messages` reader adds `origin: user | result | note`
 with `from` for notes and `runId` for results; unclassified messages use `user`.
-
-## Side agents
-
-A side agent reviews the parent conversation on a cadence: `every: { turns: N }`
-or `every: { minutes: N }`, checked after a turn without a cron. It sees the
-delta only: recorded native ids, at most 24 recent messages and 48 KiB of
-text, tool output stripped. A skipped review keeps its delta.
-
-Side runs use the child lane and the root run's attribution, capped at 2 per
-run and 8 at the hard maximum. Their replies become passive notes; an empty
-reply and `NONE` add nothing. A side run never holds the parent's settlement
-fence, never fails the parent, and cancels with the root. Side agents keep
-their own configured model, so root model overrides do not apply to them.

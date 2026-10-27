@@ -8,7 +8,6 @@ import { newRootAssignment } from "../src/component/turns/assignments.js";
 import { newRun } from "../src/component/turns/runs.js";
 import { newDoneReceipt } from "../src/component/receipts/records.js";
 import { validModelOverrides } from "../src/component/models.js";
-import { TEXT_LIMITS, validText } from "../src/component/text/values.js";
 import { HOST_LIMITS, LIMITS, resolveLimits } from "../src/component/limits.js";
 import { fillAssignment, fullReport } from "./assignment-envelope.fixture.js";
 
@@ -57,7 +56,6 @@ export const seed = mutation({
           ...row.turnReport!,
           messageIds: [...row.turnReport!.messageIds, args.promptMessageId],
         },
-        modelStep: { messageId: args.promptMessageId, stepOrder: 0 },
       };
 
       const growth = LIMITS.assignmentBytes + Number(args.overflow) - getConvexSize(after);
@@ -92,52 +90,19 @@ function largest<T>(build: (n: number) => T, fits: (value: T) => boolean, high: 
   return build(low);
 }
 
-/** The biggest summary `validText` admits, in ASCII or 3-byte UTF-8. */
-function largestSummary() {
-  const fits = (text: string) => validText(text, "summary");
-
-  return [
-    largest((n) => "a".repeat(n), fits, TEXT_LIMITS.summaryBytes),
-    largest((n) => wide.repeat(n), fits, TEXT_LIMITS.summaryBytes),
-  ].sort((a, b) => getConvexSize(b) - getConvexSize(a))[0];
-}
-
 /** The biggest model map `validModelOverrides` admits (<=512 Convex bytes). */
 function largestModels() {
   return largest((n) => ({ m: wide.repeat(n) }), validModelOverrides, LIMITS.modelIdLength);
 }
 
-/** Root text metadata: handles, both jobs, the boundary and the full summary. */
-function textFields(runId: Id<"runs">) {
-  const boundary = { id: nativeId("b"), order: 2 ** 52, stepOrder: 2 ** 52, sequence: 2 ** 52 };
-
-  const job = {
-    key: crypto.randomUUID(),
-    runId,
-    epoch: 2 ** 52,
-    version: 2 ** 52,
-    status: "running" as const,
-    dispatched: true,
-    again: runId,
-    deferred: true,
-    titleRef: { id: nativeId("t"), order: 2 ** 52, stepOrder: 2 ** 52, bytes: 2 ** 52 },
-  };
-
+/** Native metadata handles are the only stored text configuration. */
+function textFields() {
   return {
     textConfig: {
       worker: handle,
       updateThread: handle,
       getThread: handle,
-      title: true,
-      summary: true,
-      everyTurns: TEXT_LIMITS.everyTurns,
     },
-    titleVersion: 2 ** 52,
-    titleSource: "auto" as const,
-    titleTask: job,
-    summaryTask: job,
-    textCompleted: boundary,
-    textSummary: { text: largestSummary(), through: boundary },
   };
 }
 
@@ -162,26 +127,6 @@ function approvalFields(inboxId: Id<"inbox">, proposalId: Id<"receipts">) {
         effective: true,
       })),
     },
-  };
-}
-
-/** Exact-id references: the context ring, every side review and the usage step. */
-function referenceFields() {
-  return {
-    modelStep: { messageId: nativeId("s"), stepOrder: 2 ** 52 },
-    contextMessages: Array.from({ length: LIMITS.contextMessages }, (_, i) => ({
-      id: nativeId(`c${i}`),
-      order: 2 ** 52,
-      stepOrder: 2 ** 52,
-      bytes: 2 ** 52,
-      sequence: 2 ** 52,
-    })),
-    reviewed: Array.from({ length: LIMITS.sideAgents }, (_, i) => ({
-      agent: name(i + 1),
-      turn: 2 ** 52,
-      at: 2 ** 52,
-      boundary: 2 ** 52,
-    })),
   };
 }
 
@@ -225,13 +170,9 @@ export const largestRow = mutation({
     );
 
     await ctx.db.patch("assignments", id, {
-      ...textFields(runId),
-      ...referenceFields(),
+      ...textFields(),
       ...approvalFields(inboxId, proposalId),
-      completedTurns: 2 ** 52,
       notesPending: 2 ** 52,
-      routingAgentIndex: 63,
-      hookContinue: true,
       models: largestModels(),
       workflowId: nativeId("w"),
       limits: resolveLimits(

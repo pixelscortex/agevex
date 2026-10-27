@@ -3,7 +3,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { jsonSchema, tool } from "ai";
-import { createAskUserTool } from "../../src/modules/tools/registry/ask-user/askUser.js";
+import { createAskUserTool } from "../../src/modules/tools/client/ask_user.js";
 import { assertFormSchema, DECISION_LIMITS, type JsonSchema } from "../../src/shared/decisions.js";
 import { main, helper } from "./fixture/host.js";
 import { setup, api, state, child } from "./setup.js";
@@ -435,7 +435,7 @@ it.each(["café", "$field"])(
 );
 
 it.each([true, false])(
-  "old registry markers without inputSchema still pause a valid question (validator: %s)",
+  "question markers without inputSchema still pause a valid question (validator: %s)",
   async (validator) => {
     const t = setup();
 

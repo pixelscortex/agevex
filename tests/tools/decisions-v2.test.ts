@@ -1,7 +1,7 @@
 // @vitest-environment edge-runtime
 // Human decisions exercise native fake-model pauses, receipts, fences and continuation.
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
-import { createAskUserTool } from "../../src/modules/tools/registry/ask-user/askUser.js";
+import { createAskUserTool } from "../../src/modules/tools/client/ask_user.js";
 import {
   assertFormSchema,
   DECISION_LIMITS,

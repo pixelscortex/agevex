@@ -47,8 +47,7 @@ A thrown tool body saves a sanitized `TOOL_FAILED` result when its claim is vali
 
 `tc.promptMessageId` identifies the native request this turn answers (the task
 message in a child). Core supplies it from the trusted turn claim, including
-across tool continuations and approval resumes. An `afterTurn` continuation
-uses its staged prompt; children and side reviews use their own task message.
+across tool continuations and approval resumes. Children use their own task message.
 The field is optional for contexts without a prompt.
 Use that id directly when associating an effect with its request.
 
@@ -69,6 +68,6 @@ requires a stable `key`, server-derived `attribution` and a model on the task
 or options. One repair re-ask is allowed for invalid structured output; unknown
 paid outcomes are never retried. See [slots](/docs/concepts/slots).
 
-Sandbox and extract have their own durable claims. They do not share the core
+Sandbox has its own durable claims. It does not share the core
 request ledger for all module operations. Receipt fencing controls admission;
 external exactly-once effects still require provider support.

@@ -3,12 +3,12 @@
  * registered `settlementContext`, `settle` and `escalate` endpoints.
  *
  * A child run may become terminal only when nothing can still produce work
- * for it: no ready inbox row, no pending descendant delivery, no unjoined
- * wait-"all" member (`settlementBlocked`). An idle child whose last blocker
+ * for it: no ready inbox row or pending descendant delivery (`settlementBlocked`).
+ * An idle child whose last blocker
  * clears settles from its recorded, host-verified last-turn outcome
  * (`settleIdleParent`, "R3") and notifies the host coordinator to deliver the
  * result upward. Called by wake, finish/failure paths, `settle`, `escalate`
- * and group release. Touches `subagentRuns` and the root's `activeRuns`;
+ * and delivery. Touches `subagentRuns` and the root's `activeRuns`;
  * reads `inbox` and `assignments`.
  */
 import { internal } from "../_generated/api.js";
@@ -31,68 +31,25 @@ import { settlementScope } from "./views.js";
  * descendants AND the terminal-to-delivery gap. The fence is transitive because
  * a child obeys the same rule before settling. No history scan is needed.
  */
-export async function hasPendingChildren(
-  ctx: QueryCtx | MutationCtx,
-  parent: Doc<"assignments">,
-  includeSide = false,
-) {
-  const ordinary = !!(await ctx.db
-    .query("subagentRuns")
-    .withIndex("by_parent_delivery", (q) =>
-      q.eq("actorAssignmentId", parent._id).eq("side", undefined).eq("deliveryStatus", "pending"),
-    )
-    .first());
-
-  if (ordinary || !includeSide) return ordinary;
-
+export async function hasPendingChildren(ctx: QueryCtx | MutationCtx, parent: Doc<"assignments">) {
   return !!(await ctx.db
     .query("subagentRuns")
     .withIndex("by_parent_delivery", (q) =>
-      q.eq("actorAssignmentId", parent._id).eq("side", true).eq("deliveryStatus", "pending"),
+      q.eq("actorAssignmentId", parent._id).eq("deliveryStatus", "pending"),
     )
     .first());
 }
 
-/** A terminal child whose native delivery has not committed is also future
- * inbox work. Fence that short settlement/delivery interval and unreleased
- * groups as well as live descendants; otherwise a result could reach a terminal
- * parent. Five indexed existence probes (<=3 KiB inbox + 4*4 KiB runs)
- * + one <=34 KiB root
- * read total <=53 KiB; no history is read.
+/** A pending native delivery is future inbox work and fences settlement just
+ * like a live descendant. Two indexed probes read <=3 KiB inbox +4 KiB run;
+ * no historical prefix or native message bodies are read.
  */
 export async function settlementBlocked(ctx: QueryCtx | MutationCtx, parent: Doc<"assignments">) {
-  if (await firstReady(ctx, parent._id)) return true;
-
-  if (await hasPendingChildren(ctx, parent)) return true;
-
-  const root = parent.rootAssignmentId
-    ? await ctx.db.get("assignments", parent.rootAssignmentId)
-    : parent;
-
-  if (!root) return false;
-
-  // Any not-yet-joined wait "all" member of this epoch fences settlement. One
-  // exact probe per unjoined state, rather than a range over the join literal
-  // order, so a renamed state can never silently fall outside the fence.
-  for (const join of ["open", "sealed", "ready"] as const)
-    if (
-      await ctx.db
-        .query("subagentRuns")
-        .withIndex("by_join", (q) =>
-          q
-            .eq("actorAssignmentId", parent._id)
-            .eq("rootCancellationEpoch", root.cancellationEpoch)
-            .eq("join", join),
-        )
-        .first()
-    )
-      return true;
-
-  return false;
+  return !!(await firstReady(ctx, parent._id)) || (await hasPendingChildren(ctx, parent));
 }
 
 /** Move a live run to its terminal status if its child is not fenced, release
- * the root's active slot, and re-check R3 on the ordinary parent. Returns
+ * the root's active slot, and re-check R3 on the immediate parent. Returns
  * false (writing nothing) when already terminal or still blocked;
  * `settleIdleParent` and escalate rely on that to notify exactly once
  * (`recordTurnOutcome` ignores it: its settle only records the outcome). */
@@ -131,15 +88,9 @@ export async function settleRunState(
     });
   }
 
-  // Side reviews never hold their watched parent behind R3, so their
-  // settlement cannot clear an R3 blocker either. Only ordinary descendants
-  // propagate this re-check; otherwise a best-effort review could finalize
-  // an idle watched run before its own verified outcome is ready.
-  if (!run.side) {
-    const parent = await ctx.db.get("assignments", run.actorAssignmentId);
+  const parent = await ctx.db.get("assignments", run.actorAssignmentId);
 
-    if (parent) await settleIdleParent(ctx, parent);
-  }
+  if (parent) await settleIdleParent(ctx, parent);
 
   return true;
 }
@@ -156,14 +107,14 @@ export async function scheduleNotify(ctx: MutationCtx, run: Doc<"subagentRuns">)
 }
 
 /** R3 is an invariant, not just a turn-end check. Delivery failure and an
- * empty join can remove the last blocker without creating another turn. Use
+ * blocked delivery can remove the last blocker without creating another turn. Use
  * only the host-verified outcome recorded by settle; a native save alone is
  * not proof that the last turn reported a valid result. The same notification
  * path propagates the terminal outcome to the next ancestor without paid work.
- * Depth <=2 bounds propagation to at most 2 * (6*34 KiB assignment reads +
- * 2*4 KiB run reads + 19 KiB indexed fence probes) <=462 KiB metadata,
- * including patch reads and the watched thread's context references. No native
- * bodies are read here; side settlement never enters this ancestor path.
+ * Depth <=2 bounds propagation to at most 2 * (6*16 KiB assignment reads +
+ * 2*4 KiB run reads +7 KiB indexed fence probes) <=222 KiB metadata,
+ * including patch reads. No native
+ * bodies are read here.
  * Returns true when the child's run is (now) terminal.
  */
 export async function settleIdleParent(ctx: MutationCtx, parent: Doc<"assignments">) {

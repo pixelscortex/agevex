@@ -6,10 +6,9 @@
   "sideEffects": false,
   "scripts": {
     "dev": "vp dev --host 127.0.0.1",
-    "build": "bun run registry:build && vp build",
+    "build": "vp build",
     "start": "vp preview --host 127.0.0.1 --port 3000",
     "typecheck": "bun run scripts/typecheck.ts",
-    "registry:build": "bun run scripts/build-registry.ts",
     "fmt": "bun run --cwd ../.. fmt",
     "fmt:check": "bun run --cwd ../.. fmt:check",
     "lint": "bun run --cwd ../.. lint",

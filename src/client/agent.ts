@@ -2,7 +2,7 @@
 //
 // It is the native `@convex-dev/agent` Agent plus the metadata the managed
 // runtime reads at registration: a name, declared tools, `subagents`,
-// `sideAgents`, `hooks` and the sandbox opt-in. Generation, tools, threads and
+// `hooks` and the sandbox opt-in. Generation, tools, threads and
 // streams stay entirely native. `registerAgent` (`registration/graph.ts`)
 // validates the graph these fields describe. Touches no tables.
 
@@ -10,7 +10,7 @@ import { Agent as NativeAgent, type AgentComponent, type Config } from "@convex-
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import type { Instructions, LanguageModel, StopCondition, ToolSet } from "ai";
 import type { RunSettings } from "../component/run_settings.js";
-import type { AgentHooks, SideAgent, ManagedAgent } from "./types.js";
+import type { AgentHooks, ManagedAgent } from "./types.js";
 
 // Replace the native model property before restating it: intersecting the two
 // gateway id unions exceeds TypeScript's representable union size as the model
@@ -43,7 +43,6 @@ type AgentOptions<Tools extends ToolSet> = Omit<Config, "languageModel"> & {
   run?: RunSettings;
   sandbox?: boolean;
   hooks?: AgentHooks;
-  sideAgents?: readonly SideAgent[];
 };
 
 // Equivalent supported constructor inputs, without the upstream intersection of
@@ -76,7 +75,6 @@ export class Agent<
   readonly sandbox: boolean;
   readonly subagents: readonly ManagedAgent[];
   readonly hooks?: AgentHooks;
-  readonly sideAgents: readonly SideAgent[];
   /**
    * Native tools declared on this agent, kept so the managed runtime can merge
    * its reserved delegation tool with them. Inherited native behavior is
@@ -94,7 +92,6 @@ export class Agent<
     this.sandbox = options.sandbox ?? false;
     this.subagents = options.subagents ?? [];
     this.hooks = options.hooks;
-    this.sideAgents = options.sideAgents ?? [];
     this.declaredTools = options.tools ?? EMPTY_TOOLS;
   }
 }

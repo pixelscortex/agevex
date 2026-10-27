@@ -16,10 +16,8 @@ import { claimTurn, loadExecution } from "./claim.js";
 import type { Turn, TurnOutcome } from "./context.js";
 import { finishTurn } from "./finish.js";
 import { generateTurn } from "./generation.js";
-import { completeRouting } from "./routing.js";
 import { flushTelemetry } from "./slots.js";
 import { settleToolProgress } from "./tool-progress.js";
-import { reconcileUsage } from "./usage.js";
 
 /** Build the registered `runTurn` action for one registration. */
 export function buildRunTurn(rt: RuntimeContext): RegisteredAction<"internal", TurnArgs, null> {
@@ -47,7 +45,6 @@ async function runTurn(rt: RuntimeContext, ctx: RunnerCtx, args: TurnArgs): Prom
     return await executeTurn(rt, turn);
   } finally {
     await settleToolProgress(turn);
-    await reconcileUsage(rt, turn);
     await flushTelemetry(rt.config, turn.facts, turn.turnKey);
   }
 }
@@ -59,7 +56,7 @@ async function runTurn(rt: RuntimeContext, ctx: RunnerCtx, args: TurnArgs): Prom
  * code; a generation that handed the turn on itself (`null`) is not finalized.
  */
 async function executeTurn(rt: RuntimeContext, turn: Turn): Promise<null> {
-  const { claimed, managed } = turn;
+  const { claimed } = turn;
 
   await observe(rt, turn.rawCtx, {
     type: "turn.claimed",
@@ -76,16 +73,6 @@ async function executeTurn(rt: RuntimeContext, turn: Turn): Promise<null> {
     : await generateTurn(rt, turn);
 
   if (!outcome) return null;
-
-  // Authorization runs before the generation try/finally. A denial
-  // must settle the same routing attempt as generation/hook failures;
-  // queue's terminal fences also cover actions that never return here.
-  if (
-    outcome.errorCode === "AUTHORIZATION_DENIED" &&
-    claimed.isRunStart &&
-    managed.hooks?.beforeTurn
-  )
-    await completeRouting(rt, turn);
 
   return finishTurn(rt, turn, outcome);
 }

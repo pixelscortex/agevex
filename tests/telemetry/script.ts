@@ -6,9 +6,9 @@ import type {
   LanguageModelV4Usage,
 } from "@ai-sdk/provider";
 import { z } from "zod";
-import type { Facts } from "../../src/modules/telemetry/client/index.js";
+import type { TelemetryFacts } from "../../src/modules/telemetry/client/index.js";
 
-export const facts: Facts = {
+export const facts: TelemetryFacts = {
   subject: "owner",
   rootThreadId: "root",
   threadId: "child",

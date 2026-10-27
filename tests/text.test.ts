@@ -1,14 +1,13 @@
 // @vitest-environment edge-runtime
-/** Background title/summary contracts through real native Agent and Workflow. */
+/** Background title contracts through real native Agent and Workflow. */
 import { beforeEach, afterEach, it, expect, vi } from "vite-plus/test";
 import { convexTest } from "convex-test";
 import native from "@convex-dev/agent/test";
 import agevex from "../src/test.js";
-import { getConvexSize } from "convex/values";
-import { components, rawAssignment } from "./fixture/api.js";
+import { components } from "./fixture/api.js";
 import schema from "./fixture/schema.js";
 import { requireReceipt } from "./receipt.js";
-import { state, reset, exports, api, titleModel, summaryModel, registration } from "./text.host.js";
+import { state, reset, exports, api, titleModel, registration } from "./text.host.js";
 const modules = import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]);
 
 function setup() {
@@ -40,7 +39,6 @@ const drain = (t: Test) => t.finishAllScheduledFunctions(() => vi.advanceTimersB
 const send = (t: Test, threadId: string, key: string) =>
   owner(t).mutation(api.agents.send, { threadId, text: key, requestKey: key });
 
-const summary = (t: Test, threadId: string) => owner(t).query(api.agents.summary, { threadId });
 const title = (t: Test, threadId: string) => owner(t).query(api.agents.title, { threadId });
 const activity = (t: Test, threadId: string) => owner(t).query(api.agents.activity, { threadId });
 
@@ -123,22 +121,14 @@ it("user rename wins over a late generated title and identical rename replays", 
   const receipt = await open(t);
 
   await until(t, () => state.titleCalls.length === 1);
-  const args = { threadId: receipt.threadId, text: "User title", expectedVersion: 0 };
+  const args = { threadId: receipt.threadId, text: "User title" };
 
   expect(await owner(t).mutation(api.agents.rename, args)).toMatchObject({ replayed: false });
   expect(await owner(t).mutation(api.agents.rename, args)).toMatchObject({ replayed: true });
   held.release();
   await drain(t);
 
-  expect(await title(t, receipt.threadId)).toEqual({
-    text: "User title",
-    source: "user",
-    version: 1,
-  });
-
-  await expect(
-    owner(t).mutation(api.agents.rename, { ...args, text: "Conflicting title" }),
-  ).rejects.toThrow("VERSION_CONFLICT");
+  expect(await title(t, receipt.threadId)).toEqual({ text: "User title" });
 
   await send(t, receipt.threadId, "later");
   await drain(t);
@@ -153,113 +143,7 @@ it("title disabled makes no metadata model call", async () => {
   await drain(t);
   expect(state.titleCalls).toHaveLength(0);
   expect(state.mainCalls).toHaveLength(1);
-  expect(await title(t, receipt.threadId)).toEqual({ text: null, source: null, version: 0 });
-});
-
-it("summary runs only when opted in and request keys replay scheduling", async () => {
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-  expect(state.summaryCalls).toHaveLength(0);
-
-  await expect(
-    owner(t).mutation(api.agents.summarize, { threadId: receipt.threadId, requestKey: "disabled" }),
-  ).rejects.toThrow("SUMMARY_DISABLED");
-
-  state.summary = { model: summaryModel };
-  await send(t, receipt.threadId, "enabled");
-  await drain(t);
-  expect(state.summaryCalls).toHaveLength(0);
-  const args = { threadId: receipt.threadId, requestKey: "requested" };
-
-  expect(await owner(t).mutation(api.agents.summarize, args)).toEqual({ status: "queued" });
-  expect(await owner(t).mutation(api.agents.summarize, args)).toEqual({ status: "replayed" });
-  await drain(t);
-  expect(state.summaryCalls).toHaveLength(1);
-  expect(await summary(t, receipt.threadId)).toMatchObject({ text: "Summary of earlier turns" });
-});
-
-it("every-N cadence counts completed root turns", async () => {
-  state.summary = { model: summaryModel, everyTurns: 2 };
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-  expect(state.summaryCalls).toHaveLength(0);
-  await send(t, receipt.threadId, "two");
-  await drain(t);
-  expect(state.summaryCalls).toHaveLength(1);
-  const first = await summary(t, receipt.threadId);
-
-  await send(t, receipt.threadId, "three");
-  await drain(t);
-  expect(await summary(t, receipt.threadId)).toEqual(first);
-  await send(t, receipt.threadId, "four");
-  await drain(t);
-  expect(state.summaryCalls).toHaveLength(2);
-  expect((await summary(t, receipt.threadId))?.throughMessageId).not.toBe(first?.throughMessageId);
-  expect(JSON.stringify(state.summaryCalls[1].prompt)).toContain("Summary of earlier turns");
-});
-
-it("summary failure leaves the conversation and prior summary unaffected without paid retries", async () => {
-  state.summary = { model: summaryModel, everyTurns: 1 };
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-  const before = await summary(t, receipt.threadId);
-
-  state.failSummary = true;
-  await send(t, receipt.threadId, "two");
-  await drain(t);
-  expect(state.summaryCalls).toHaveLength(2);
-  expect(await summary(t, receipt.threadId)).toEqual(before);
-
-  expect(await activity(t, receipt.threadId)).toMatchObject({
-    turnStatus: "idle",
-    errorCode: null,
-  });
-
-  await send(t, receipt.threadId, "three");
-  await drain(t);
-  expect(state.summaryCalls).toHaveLength(2);
-  expect(state.mainCalls).toHaveLength(3);
-});
-
-it("background usage records title and summary purpose with the triggering root run", async () => {
-  state.summary = { model: summaryModel, everyTurns: 1 };
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-  const runId = (await activity(t, receipt.threadId)).runId;
-
-  expect(state.usage.filter((entry) => entry.facts.purpose === "title")).toEqual([
-    {
-      facts: expect.objectContaining({ purpose: "title", runId, rootThreadId: receipt.threadId }),
-      requestId: "request-title",
-    },
-  ]);
-
-  expect(state.usage.filter((entry) => entry.facts.purpose === "summary")).toEqual([
-    { facts: expect.objectContaining({ purpose: "summary", runId }), requestId: "request-summary" },
-  ]);
-
-  expect(state.titleCalls[0].maxOutputTokens).toBe(128);
-  expect(state.summaryCalls[0].maxOutputTokens).toBe(2048);
-});
-
-it("display summaries always leave native context unchanged", async () => {
-  state.summary = { model: summaryModel, everyTurns: 1 };
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-  await send(t, receipt.threadId, "second task");
-  await drain(t);
-  expect(JSON.stringify(state.mainCalls[1].prompt)).toContain("first user message");
-  expect(JSON.stringify(state.mainCalls[1].prompt)).not.toContain("Conversation summary:");
+  expect(await title(t, receipt.threadId)).toEqual({ text: null });
 });
 
 it("title generation survives cancellation while retaining incurred usage", async () => {
@@ -275,82 +159,6 @@ it("title generation survives cancellation while retaining incurred usage", asyn
   await drain(t);
   expect((await title(t, receipt.threadId)).text).toBe("Generated title");
   expect(state.usage.some((entry) => entry.facts.purpose === "title")).toBe(true);
-});
-
-it("foreign subjects cannot read or change thread metadata", async () => {
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-  const foreign = t.withIdentity({ subject: "bob" });
-
-  await expect(foreign.query(api.agents.title, { threadId: receipt.threadId })).rejects.toThrow(
-    "FORBIDDEN",
-  );
-
-  await expect(foreign.query(api.agents.summary, { threadId: receipt.threadId })).rejects.toThrow(
-    "FORBIDDEN",
-  );
-
-  await expect(
-    foreign.mutation(api.agents.rename, {
-      threadId: receipt.threadId,
-      text: "foreign",
-      expectedVersion: 0,
-    }),
-  ).rejects.toThrow("FORBIDDEN");
-
-  await expect(
-    foreign.mutation(api.agents.summarize, { threadId: receipt.threadId, requestKey: "foreign" }),
-  ).rejects.toThrow("FORBIDDEN");
-});
-
-it("concurrent summary requests serialize and coalesce newer boundaries", async () => {
-  state.title = false;
-  state.summary = { model: summaryModel, everyTurns: 1 };
-  const held = gate();
-
-  state.summaryGate = held.promise;
-  const t = setup();
-  const receipt = await open(t);
-
-  await until(t, () => state.summaryCalls.length === 1);
-  await send(t, receipt.threadId, "second");
-
-  await until(
-    t,
-    async () =>
-      state.mainCalls.length === 2 && (await activity(t, receipt.threadId)).turnStatus === "idle",
-  );
-
-  expect(state.summaryCalls).toHaveLength(1);
-  held.release();
-  state.summaryGate = undefined;
-  await drain(t);
-  expect(state.summaryCalls).toHaveLength(2);
-  expect(JSON.stringify(state.summaryCalls[1].prompt)).toContain("second");
-});
-
-it("a known-invalid summary can be explicitly requested again without retrying its receipt", async () => {
-  state.title = false;
-  state.summary = { model: summaryModel, everyTurns: 1 };
-  state.invalidSummary = true;
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-  expect(state.summaryCalls).toHaveLength(1);
-  expect(await summary(t, receipt.threadId)).toBeNull();
-  state.invalidSummary = false;
-
-  await owner(t).mutation(api.agents.summarize, {
-    threadId: receipt.threadId,
-    requestKey: "fresh",
-  });
-
-  await drain(t);
-  expect(state.summaryCalls).toHaveLength(2);
-  expect(await summary(t, receipt.threadId)).not.toBeNull();
 });
 
 it("metadata timeout stops waiting for an uncooperative model and never retries a late answer", async () => {
@@ -408,24 +216,6 @@ it("background authorization is rechecked before metadata spend", async () => {
   });
 });
 
-it("usage recording failure never prevents metadata or retries generation", async () => {
-  state.usageFails = true;
-  state.summary = { model: summaryModel, everyTurns: 1 };
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-  expect((await title(t, receipt.threadId)).text).toBe("Generated title");
-  expect(await summary(t, receipt.threadId)).not.toBeNull();
-  expect(state.titleCalls).toHaveLength(1);
-  expect(state.summaryCalls).toHaveLength(1);
-
-  expect(await activity(t, receipt.threadId)).toMatchObject({
-    turnStatus: "idle",
-    errorCode: null,
-  });
-});
-
 it("title uses the configured prompt and rejects oversized output without a repair call", async () => {
   state.title = { model: titleModel, prompt: "Describe this in three words." };
   state.titleText = "x".repeat(121);
@@ -441,270 +231,6 @@ it("title uses the configured prompt and rejects oversized output without a repa
     turnStatus: "idle",
     errorCode: null,
   });
-});
-
-it("a configured title or summary output cap reaches the model call", async () => {
-  state.title = { model: titleModel, maxOutputTokens: 40 };
-  state.summary = { model: summaryModel, maxOutputTokens: 300 };
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-  await owner(t).mutation(api.agents.summarize, { threadId: receipt.threadId, requestKey: "cap" });
-  await drain(t);
-  expect(state.titleCalls.map((call) => call.maxOutputTokens)).toEqual([40]);
-  expect(state.summaryCalls.map((call) => call.maxOutputTokens)).toEqual([300]);
-});
-
-it("without a configured cap the title keeps 128 output tokens and the summary 2048", async () => {
-  state.summary = { model: summaryModel };
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-
-  await owner(t).mutation(api.agents.summarize, {
-    threadId: receipt.threadId,
-    requestKey: "default",
-  });
-
-  await drain(t);
-  expect(state.titleCalls.map((call) => call.maxOutputTokens)).toEqual([128]);
-  expect(state.summaryCalls.map((call) => call.maxOutputTokens)).toEqual([2048]);
-});
-
-it("an out-of-range output cap is refused at registration", () => {
-  for (const maxOutputTokens of [0, -1, 1.5, 4097, Number.NaN]) {
-    state.title = { model: titleModel, maxOutputTokens };
-    expect(() => registration()).toThrow("INVALID_TEXT_OPTIONS");
-    reset();
-    state.summary = { model: summaryModel, maxOutputTokens };
-    expect(() => registration()).toThrow("INVALID_TEXT_OPTIONS");
-    reset();
-  }
-});
-
-it("summary hard-maximum windows bound full native reads", async () => {
-  state.title = false;
-  state.summary = { model: summaryModel };
-  // Twelve native assistant docs at 210 KiB each overflow the 2 MiB exact-read
-  // budget while the 24-ref ring is full. Provider metadata is not model input.
-  state.padding = "x".repeat(210 << 10);
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-
-  for (let n = 2; n <= 12; n++) {
-    await send(t, receipt.threadId, `turn ${n}`);
-    await drain(t);
-  }
-
-  await owner(t).mutation(api.agents.summarize, {
-    threadId: receipt.threadId,
-    requestKey: "maximum",
-  });
-
-  await drain(t);
-  expect(state.summaryCalls).toHaveLength(1);
-  expect(await summary(t, receipt.threadId)).not.toBeNull();
-  const serialized = JSON.stringify(state.summaryCalls[0].prompt);
-
-  expect(new TextEncoder().encode(serialized).length).toBeLessThan(48 << 10);
-  await send(t, receipt.threadId, "after bounded window");
-  await drain(t);
-  const context = JSON.stringify(state.mainCalls[state.mainCalls.length - 1].prompt);
-
-  expect(context).toContain("first user message");
-  expect(context).not.toContain("Conversation summary:");
-});
-
-it("summary input obeys its byte ceiling even when the full ring fits the read budget", async () => {
-  state.title = false;
-  state.summary = { model: summaryModel };
-  state.answer = "x".repeat(20 << 10);
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-
-  for (let n = 2; n <= 12; n++) {
-    await send(t, receipt.threadId, `turn ${n}`);
-    await drain(t);
-  }
-
-  await owner(t).mutation(api.agents.summarize, {
-    threadId: receipt.threadId,
-    requestKey: "bytes",
-  });
-
-  await drain(t);
-  expect(state.summaryCalls).toHaveLength(1);
-  expect(JSON.stringify(state.summaryCalls[0].prompt).length).toBeLessThan(49 << 10);
-  await send(t, receipt.threadId, "preserve unsummarized prefix");
-  await drain(t);
-
-  expect(JSON.stringify(state.mainCalls[state.mainCalls.length - 1].prompt)).toContain(
-    "first user message",
-  );
-});
-
-it("a maximum encoded summary and full reference ring stay within the assignment envelope", async () => {
-  state.title = false;
-  state.summary = { model: summaryModel, everyTurns: 1 };
-  state.summaryText = "x".repeat((8 << 10) - 16);
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-
-  for (let n = 2; n <= 12; n++) {
-    await send(t, receipt.threadId, `turn ${n}`);
-    await drain(t);
-  }
-
-  expect((await summary(t, receipt.threadId))?.text).toBe(state.summaryText);
-
-  const row = await t.query(rawAssignment, { assignmentId: receipt.assignmentId });
-
-  expect(row?.contextMessages).toHaveLength(24);
-
-  expect(getConvexSize(row)).toBeLessThanOrEqual(32 << 10);
-});
-
-it("escaped summary output is bounded by encoded bytes and cannot inflate the metadata row", async () => {
-  state.title = false;
-  state.summary = { model: summaryModel, everyTurns: 1 };
-  state.summaryText = "\u0000".repeat(2000);
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-  expect(await summary(t, receipt.threadId)).toBeNull();
-  expect(state.summaryCalls).toHaveLength(1);
-
-  expect(await activity(t, receipt.threadId)).toMatchObject({
-    turnStatus: "idle",
-    errorCode: null,
-  });
-});
-
-it("an early on-demand summary waits for a completed boundary without occupying a worker", async () => {
-  state.title = false;
-  state.summary = { model: summaryModel };
-  const held = gate();
-
-  state.mainGate = held.promise;
-  const t = setup();
-  const receipt = await open(t);
-
-  expect(
-    await owner(t).mutation(api.agents.summarize, {
-      threadId: receipt.threadId,
-      requestKey: "early",
-    }),
-  ).toEqual({ status: "queued" });
-
-  await until(t, () => state.mainCalls.length === 1);
-  expect(state.summaryCalls).toHaveLength(0);
-  held.release();
-  await drain(t);
-  expect(state.summaryCalls).toHaveLength(1);
-  expect(await summary(t, receipt.threadId)).not.toBeNull();
-});
-
-it("slow authorization does not consume the model dispatch lease", async () => {
-  state.title = false;
-  state.summary = { model: summaryModel, everyTurns: 1 };
-  const held = gate();
-
-  state.authorizeGate = held.promise;
-  const t = setup();
-  const receipt = await open(t);
-
-  await until(t, () => state.authorizing === 1);
-
-  await t.action(async () => {
-    await vi.advanceTimersByTimeAsync(40_000);
-  });
-
-  held.release();
-  await drain(t);
-  expect(state.summaryCalls).toHaveLength(1);
-  expect(await summary(t, receipt.threadId)).not.toBeNull();
-});
-
-it("cancellation during pre-dispatch authorization leaves summaries retryable", async () => {
-  state.title = false;
-  state.summary = { model: summaryModel };
-  const held = gate();
-
-  state.authorizeGate = held.promise;
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-
-  await owner(t).mutation(api.agents.summarize, {
-    threadId: receipt.threadId,
-    requestKey: "first-summary",
-  });
-
-  await until(t, () => state.authorizing === 1);
-  await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
-  held.release();
-  await drain(t);
-  expect(state.summaryCalls).toHaveLength(0);
-  state.authorizeGate = undefined;
-  await send(t, receipt.threadId, "new run");
-  await drain(t);
-
-  await owner(t).mutation(api.agents.summarize, {
-    threadId: receipt.threadId,
-    requestKey: "fresh",
-  });
-
-  await drain(t);
-  expect(state.summaryCalls).toHaveLength(1);
-  expect(await summary(t, receipt.threadId)).not.toBeNull();
-});
-
-it("a fresh summary key works after an unknown outcome without replaying paid work", async () => {
-  state.title = false;
-  state.summary = { model: summaryModel, everyTurns: 1 };
-  state.failSummary = true;
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-  state.failSummary = false;
-  await send(t, receipt.threadId, "next cadence");
-  await drain(t);
-  expect(state.summaryCalls).toHaveLength(1);
-  const args = { threadId: receipt.threadId, requestKey: "fresh" };
-
-  expect(await owner(t).mutation(api.agents.summarize, args)).toEqual({ status: "queued" });
-  await drain(t);
-  expect(await owner(t).mutation(api.agents.summarize, args)).toEqual({ status: "replayed" });
-  await drain(t);
-  expect(state.summaryCalls).toHaveLength(2);
-  expect(await summary(t, receipt.threadId)).not.toBeNull();
-});
-
-it("cadence summaries resume at the next cadence point after a known failure", async () => {
-  state.title = false;
-  state.summary = { model: summaryModel, everyTurns: 1 };
-  state.invalidSummary = true;
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-  expect(await summary(t, receipt.threadId)).toBeNull();
-  state.invalidSummary = false;
-  await send(t, receipt.threadId, "next cadence");
-  await drain(t);
-  expect(state.summaryCalls).toHaveLength(2);
-  expect(await summary(t, receipt.threadId)).not.toBeNull();
 });
 
 it.each(["before dispatch", "during dispatch"])(
@@ -730,53 +256,75 @@ it.each(["before dispatch", "during dispatch"])(
   },
 );
 
-it("background string models use the host default provider", async () => {
-  const resolved: string[] = [];
+it("foreign subjects cannot read or rename a title", async () => {
+  const t = setup();
+  const receipt = await open(t);
 
+  await drain(t);
+  const foreign = t.withIdentity({ subject: "bob" });
+
+  await expect(foreign.query(api.agents.title, { threadId: receipt.threadId })).rejects.toThrow(
+    "FORBIDDEN",
+  );
+
+  await expect(
+    foreign.mutation(api.agents.rename, { threadId: receipt.threadId, text: "foreign" }),
+  ).rejects.toThrow("FORBIDDEN");
+});
+
+it.each([undefined, 40])("title output cap reaches the provider (%s)", async (maxOutputTokens) => {
+  state.title = { model: titleModel, maxOutputTokens };
+  const t = setup();
+
+  await open(t);
+  await drain(t);
+  expect(state.titleCalls.map((call) => call.maxOutputTokens)).toEqual([maxOutputTokens ?? 128]);
+});
+
+it("title output caps are validated before acceptance", () => {
+  for (const maxOutputTokens of [0, -1, 1.5, 4097, Number.NaN]) {
+    state.title = { model: titleModel, maxOutputTokens };
+    expect(() => registration()).toThrow("INVALID_TEXT_OPTIONS");
+  }
+});
+
+it("title usage failures mark the run partial without repeating paid work", async () => {
+  state.usageFails = true;
+  const t = setup();
+  const receipt = await open(t);
+
+  await drain(t);
+  expect((await title(t, receipt.threadId)).text).toBe("Generated title");
+  expect(state.titleCalls).toHaveLength(1);
+  const runId = (await activity(t, receipt.threadId)).runId!;
+
+  expect(await t.query(components.agevex.turns.slices.usageReporting, { runId })).toBe(true);
+
+  expect(await activity(t, receipt.threadId)).toMatchObject({
+    turnStatus: "idle",
+    errorCode: null,
+  });
+});
+
+it("title string models preserve provider response identity and attribution", async () => {
   vi.stubGlobal("AI_SDK_DEFAULT_PROVIDER", {
     specificationVersion: "v4",
-    languageModel: (id: string) => {
-      resolved.push(id);
-
-      return id === "host/title" ? titleModel : summaryModel;
-    },
+    languageModel: () => titleModel,
   });
 
   state.title = { model: "host/title" };
-  state.summary = { model: "host/summary", everyTurns: 1 };
   const t = setup();
   const receipt = await open(t);
 
   await drain(t);
-  expect(resolved).toEqual(expect.arrayContaining(["host/title", "host/summary"]));
-  expect((await title(t, receipt.threadId)).text).toBe("Generated title");
-  expect(await summary(t, receipt.threadId)).not.toBeNull();
-  expect(state.titleCalls).toHaveLength(1);
-  expect(state.summaryCalls).toHaveLength(1);
-});
 
-it("cadence resumes after cancel during dispatch", async () => {
-  state.title = false;
-  state.summary = { model: summaryModel, everyTurns: 1 };
-  const held = gate();
-
-  state.summaryGate = held.promise;
-  const t = setup();
-  const receipt = await open(t);
-
-  await until(t, () => state.summaryCalls.length === 1);
-  await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
-  held.release();
-  await drain(t);
-  expect(await summary(t, receipt.threadId)).toBeNull();
-  expect(state.usage.filter((entry) => entry.facts.purpose === "summary")).toHaveLength(1);
-
-  // drain includes the expired lease: a known discarded result must stay
-  // retryable even after its old expiry runs, without an explicit summary key.
-  state.summaryGate = undefined;
-  await send(t, receipt.threadId, "next cadence");
-  await drain(t);
-  expect(state.summaryCalls).toHaveLength(2);
-  expect(await summary(t, receipt.threadId)).not.toBeNull();
-  expect(state.usage.filter((entry) => entry.facts.purpose === "summary")).toHaveLength(2);
+  expect(state.usage.find((entry) => entry.facts.purpose === "title")).toMatchObject({
+    facts: {
+      subject: "alice",
+      threadId: receipt.threadId,
+      rootThreadId: receipt.threadId,
+      runId: (await activity(t, receipt.threadId)).runId,
+    },
+    requestId: "request-title",
+  });
 });

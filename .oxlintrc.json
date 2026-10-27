@@ -44,8 +44,7 @@
     "docs/site/.output/**",
     "docs/site/.nitro/**",
     "docs/site/.tanstack/**",
-    "docs/site/src/routeTree.gen.ts",
-    "docs/site/public/r/**"
+    "docs/site/src/routeTree.gen.ts"
   ],
   "overrides": [
     {

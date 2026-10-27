@@ -1,10 +1,10 @@
-import { delegationState } from "./delegation-state.js";
 // @vitest-environment edge-runtime
 import { beforeEach, afterEach, it, expect, vi } from "vite-plus/test";
 import { convexTest } from "convex-test";
 import agent from "@convex-dev/agent/test";
 import { storeFile } from "@convex-dev/agent";
 import { tool } from "ai";
+import { telemetry } from "../src/modules/telemetry/client/index.js";
 import { z } from "zod";
 import agevex from "../src/test.js";
 import schema from "./fixture/schema.js";
@@ -12,8 +12,7 @@ import { fixture, reset, exports, api, registration, text, call, main } from "./
 import { components, rawAssignment } from "./fixture/api.js";
 import { requireReceipt } from "./receipt.js";
 import { LIMITS, registerAgent } from "../src/client/index.js";
-import { scopedMeter } from "../src/client/slots.js";
-import type { SlotFacts, MeterBackend, MeterChargeBackend } from "../src/client/slots.js";
+import type { UsageEvent, UsageSlot, SlotFacts } from "../src/client/slots.js";
 import { HOST_LIMITS, type Limits } from "../src/component/limits.js";
 const modules = import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]);
 
@@ -72,49 +71,6 @@ const waitFor = async (t: Test, check: () => boolean) =>
     })
     .toBe(true);
 
-function meter() {
-  const scopes: SlotFacts[] = [];
-  const operations: { op: string; provider?: string; args: Record<string, unknown> }[] = [];
-
-  const handle = (key: string): MeterChargeBackend => ({
-    key,
-    attach: async (args) => {
-      operations.push({ op: "attach", args });
-    },
-    correct: async (args) => {
-      operations.push({ op: "correct", args });
-    },
-    settle: async (args) => {
-      operations.push({ op: "settle", args });
-    },
-    get: async () => null,
-  });
-
-  const backend: MeterBackend = {
-    estimate: async (provider, args) => {
-      operations.push({ op: "estimate", provider, args });
-
-      return handle(args.key);
-    },
-    record: async (provider, args) => {
-      operations.push({ op: "record", provider, args });
-
-      return handle(args.key);
-    },
-  };
-
-  return {
-    scopes,
-    operations,
-    slot: {
-      scope: (_ctx: unknown, facts: SlotFacts) => {
-        scopes.push(facts);
-
-        return backend;
-      },
-    },
-  };
-}
 async function upload(t: Test, subject = "alice", content = "file text") {
   const file = await t.action(
     async (ctx) =>
@@ -142,100 +98,35 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-it.each(["managed", "metered_once"])(
-  "%s receives attributed meter and stable default charge/operation keys",
-  async (name) => {
-    const usage = meter();
+it("each saved model step records one exact-id usage event and replay records none", async () => {
+  const usage = usageRecorder();
 
-    fixture.slots.usage = usage.slot;
-    fixture.steps.Main = (n) => (n === 0 ? call(name, {}) : text("finished"));
-
-    fixture.toolWork = async (tc) => {
-      const charge = await tc.meter.estimate("paid", { quantity: 1 });
-
-      await charge.attach({ requestId: "request" });
-      await charge.correct({ quantity: 2 });
-      await charge.settle({ usd: 0.01 });
-      await tc.meter.record("paid", {});
-
-      return "done";
-    };
-
-    const t = setup();
-    const receipt = await open(t);
-
-    await drain(t);
-    const tc = fixture.toolContext!;
-
-    expect(tc).toMatchObject({
-      subject: "alice",
-      rootThreadId: receipt.threadId,
-      threadId: receipt.threadId,
-      agent: "Main",
-    });
-
-    expect(usage.scopes).toContainEqual({
-      purpose: "tool",
-      subject: "alice",
-      rootThreadId: receipt.threadId,
-      threadId: receipt.threadId,
-      runId: tc.runId,
-      agent: "Main",
-    });
-
-    const operations = usage.operations.filter(
-      (op) => op.provider === "paid" || ["attach", "correct", "settle"].includes(op.op),
-    );
-
-    const keys = operations.map((op) => op.args.key);
-
-    expect(keys).toHaveLength(5);
-    expect(new Set(keys).size).toBe(5);
-
-    for (const key of keys) expect(key).toMatch(/^[a-f0-9]{64}$/);
-
-    expect((await status(t, receipt.threadId)).errorCode).toBeNull();
-  },
-);
-
-it("managed tools receive a no-op meter when no usage slot is registered", async () => {
-  fixture.steps.Main = (n) => (n === 0 ? call("managed", {}) : text("finished"));
-
-  fixture.toolWork = async (tc) => {
-    const c = await tc.meter.record("anything", {});
-
-    await c.attach({ requestId: "r" });
-    await c.correct({ quantity: 1 });
-    await c.settle({ credits: 2 });
-
-    return "done";
-  };
-
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-  expect(fixture.toolContext?.subject).toBe("alice");
-  expect((await status(t, receipt.threadId)).errorCode).toBeNull();
-});
-
-it("each saved model step records one exact-id charge and replay records none", async () => {
-  const usage = meter();
-
+  fixture.generationIds = true;
   fixture.slots.usage = usage.slot;
   fixture.steps.Main = (n) => (n === 0 ? call("managed", {}) : text("finished"));
   const t = setup();
   const receipt = await open(t);
 
   await drain(t);
-  expect(usage.operations).toHaveLength(2);
+  expect(usage.events).toHaveLength(2);
 
-  expect(usage.scopes.some((facts) => "model" in facts && typeof facts.model === "string")).toBe(
+  for (const event of usage.events) {
+    expect(event.messageId).toBeTruthy();
+
+    const [native] = await t.query(components.agent.messages.getMessagesByIds, {
+      messageIds: [event.messageId!],
+    });
+
+    expect(event.usage).toEqual(native!.usage);
+    expect(event.requestId).toBeTruthy();
+  }
+
+  expect(usage.events.some((facts) => "model" in facts && typeof facts.model === "string")).toBe(
     true,
   );
 
-  expect(usage.operations[0].args.key).toMatch(/^[a-f0-9]{64}$/);
-  expect(new Set(usage.operations.map((op) => op.args.key)).size).toBe(2);
+  expect(usage.events[0].key).toMatch(/^[a-f0-9]{64}$/);
+  expect(new Set(usage.events.map((op) => op.key)).size).toBe(2);
 
   const execution = (await t.query(rawAssignment, {
     assignmentId: receipt.assignmentId,
@@ -249,17 +140,14 @@ it("each saved model step records one exact-id charge and replay records none", 
 
   await owner(t).mutation(api.agents.open, { agent: "Main", prompt: "hello", requestKey: "first" });
   await drain(t);
-  expect(usage.operations).toHaveLength(2);
+  expect(usage.events).toHaveLength(2);
 });
 
 it("usage recording failure preserves a successful paid turn", async () => {
   fixture.slots.usage = {
-    scope: () => ({
-      ...meter().slot.scope({}, {} as SlotFacts),
-      record: async () => {
-        throw new Error("unavailable");
-      },
-    }),
+    record: async () => {
+      throw new Error("unavailable");
+    },
   };
 
   const t = setup();
@@ -268,6 +156,9 @@ it("usage recording failure preserves a successful paid turn", async () => {
   await drain(t);
   expect((await status(t, receipt.threadId)).errorCode).toBeNull();
   expect(fixture.calls).toHaveLength(1);
+  const runId = (await status(t, receipt.threadId)).runId!;
+
+  expect(await t.query(components.agevex.turns.slices.usageReporting, { runId })).toBe(true);
 });
 
 it.each([0, HOST_LIMITS.notesPending.max])(
@@ -400,7 +291,7 @@ it("telemetry integration and flush failures cannot fail the turn", async () => 
 });
 
 it("an uncooperative telemetry flush cannot hold an action longer than three seconds", async () => {
-  fixture.slots.telemetry = { integration: () => ({}), flush: () => new Promise(() => {}) };
+  fixture.slots.telemetry = telemetry({ integration: {}, flush: () => new Promise(() => {}) });
   const t = setup();
   const receipt = await open(t);
 
@@ -672,56 +563,6 @@ it("open and send reject another subject's files before saving a native attachme
   expect(JSON.stringify((await transcript(t, receipt.threadId)).page)).not.toContain("foreign");
 });
 
-it("each attached file starts extraction and file tools are bound to the owned thread", async () => {
-  const admitted: { fileId: string; threadId: string }[] = [];
-  const bound: unknown[] = [];
-
-  fixture.slots.extract = {
-    run: async (_ctx, args) => {
-      admitted.push(args);
-    },
-    tools: (tc) => {
-      bound.push(tc);
-
-      return {
-        read_file: tool({ inputSchema: z.object({}), execute: () => "text" }),
-        search_files: tool({ inputSchema: z.object({}), execute: () => [] }),
-      };
-    },
-  };
-
-  const t = setup();
-  const files: string[] = [];
-
-  for (let n = 0; n < LIMITS.filesPerMessage; n++)
-    files.push(await upload(t, "alice", `extract ${n}`));
-
-  const receipt = await open(t, files);
-
-  await drain(t);
-
-  expect(admitted).toEqual(
-    files.map((fileId) => ({ fileId, threadId: receipt.threadId, subject: "alice" })),
-  );
-
-  expect(bound[0]).toMatchObject({ threadId: receipt.threadId, subject: "alice" });
-  expect(JSON.stringify(fixture.calls[0].args.prompt)).toContain("Attached files");
-
-  expect(
-    fixture.calls[0].args.prompt.some(
-      (message) =>
-        Array.isArray(message.content) && message.content.some((part) => part.type === "file"),
-    ),
-  ).toBe(false);
-
-  for (const fileId of files)
-    expect(
-      await t.query((ctx) =>
-        registration().fileAttached(ctx, { threadId: receipt.threadId, subject: "alice", fileId }),
-      ),
-    ).toBe(true);
-});
-
 it("one message never binds more than filesPerMessage attachments, so forMessage returns every bound file", async () => {
   const t = setup();
   const native = "native-files";
@@ -756,7 +597,7 @@ it("one message never binds more than filesPerMessage attachments, so forMessage
   );
 });
 
-it("without extract the hard maximum of attachments reaches the model as native file parts", async () => {
+it("the hard maximum of attachments reaches the model as native file parts", async () => {
   const t = setup();
   const files = [];
 
@@ -790,7 +631,7 @@ it("without extract the hard maximum of attachments reaches the model as native 
 });
 
 it("child model usage retains the root thread and shared user-run attribution", async () => {
-  const usage = meter();
+  const usage = usageRecorder();
 
   fixture.slots.usage = usage.slot;
 
@@ -801,8 +642,8 @@ it("child model usage retains the root thread and shared user-run attribution", 
   const receipt = await open(t);
 
   await drain(t);
-  const root = usage.scopes.find((facts) => facts.agent === "Main")!;
-  const child = usage.scopes.find((facts) => facts.agent === "Builder")!;
+  const root = usage.events.find((facts) => facts.agent === "Main")!;
+  const child = usage.events.find((facts) => facts.agent === "Builder")!;
 
   expect(child).toMatchObject({
     subject: "alice",
@@ -842,177 +683,6 @@ it("concurrent telemetry actions flush their own turn facts", async () => {
   expect(new Set(opened).size).toBe(2);
   expect(closed.sort()).toEqual(opened.sort());
 });
-
-it.each(["admitted", "full before claim", "full during denial"])(
-  "budget notes deliver once at the next result claim with the backlog %s",
-  async (backlog) => {
-    const continuation = gate();
-    const denial = gate();
-    const descendant = gate();
-    let continuing = false;
-    let denyNext = false;
-    let checking = false;
-
-    fixture.builderHooks.afterTurn = async (_hc, event) => {
-      if (event.turn !== 1) return;
-
-      continuing = true;
-      await continuation.promise;
-      denyNext = true;
-
-      return { continue: "inspect while helper runs" };
-    };
-
-    fixture.slots.budget = {
-      check: async () => {
-        if (!denyNext) return { allowed: true };
-
-        denyNext = false;
-        checking = true;
-        await denial.promise;
-
-        return { allowed: false };
-      },
-    };
-
-    fixture.steps.Main = (n) =>
-      n === 0
-        ? call("agevex_delegate", { agent: "Builder", task: "build with a helper" })
-        : text("root done");
-
-    fixture.steps.Builder = (n) =>
-      n === 0
-        ? call("agevex_delegate", { agent: "Critic", task: "check the work" })
-        : text("recovered from helper result");
-
-    fixture.steps.Critic = async () => {
-      await descendant.promise;
-
-      return text("helper result");
-    };
-
-    const t = setup({ notesPending: HOST_LIMITS.notesPending.max });
-    const receipt = await open(t);
-
-    await waitFor(t, () => continuing && fixture.calls.some((call) => call.agent === "Critic"));
-
-    const builderRun = (await delegationState(t, receipt.threadId)).find(
-      (run) => run.agent === "Builder",
-    )!;
-
-    const threadId = builderRun.childThreadId!;
-
-    if (backlog !== "full before claim") {
-      continuation.release();
-      await waitFor(t, () => checking);
-    }
-
-    if (backlog !== "admitted")
-      for (let n = 0; n < HOST_LIMITS.notesPending.max; n++)
-        await owner(t).mutation(api.agents.note, {
-          threadId,
-          text: `note ${n}` + '"'.repeat(LIMITS.noteLength - `note ${n}`.length),
-          from: "host",
-        });
-
-    continuation.release();
-    await waitFor(t, () => checking);
-    denial.release();
-
-    await expect
-      .poll(async () => {
-        await t.action(async () => {
-          await vi.advanceTimersByTimeAsync(100);
-        });
-
-        return (
-          await t.query(rawAssignment, {
-            assignmentId: builderRun.childAssignmentId!,
-          })
-        )?.turnStatus;
-      })
-      .toBe("idle");
-
-    expect(fixture.calls.filter((call) => call.agent === "Builder")).toHaveLength(1);
-
-    const early = (await transcript(t, threadId)).page.filter(
-      (message) => message.origin === "note",
-    );
-
-    expect(early.every((message) => message.from === "host")).toBe(true);
-
-    if (backlog !== "full before claim") expect(early).toHaveLength(0);
-
-    if (backlog === "full during denial")
-      await expect(
-        owner(t).mutation(api.agents.note, {
-          threadId,
-          text: "over cap",
-          from: "host",
-        }),
-      ).rejects.toMatchObject({ data: { code: "NOTES_PENDING_LIMIT" } });
-
-    descendant.release();
-    await drain(t);
-
-    const prompt = JSON.stringify(
-      fixture.calls.filter((call) => call.agent === "Builder")[1].args.prompt,
-    );
-
-    const budgetNotes = backlog === "full during denial" ? 0 : 1;
-
-    expect(prompt.match(/BUDGET_EXCEEDED/g) ?? []).toHaveLength(budgetNotes);
-    // The maximum escaped backlog exceeds one byte-limited transcript page.
-    let cursor: string | null = null;
-    const delivered: { id: string; from?: string; text: string }[] = [];
-
-    for (;;) {
-      const page: Awaited<ReturnType<typeof transcript>> = await owner(t).query(
-        api.agents.messages,
-        {
-          threadId,
-          paginationOpts: { cursor, numItems: 100 },
-        },
-      );
-
-      const notes = page.page.filter(
-        (message) =>
-          message.origin === "note" && (message.from === "host" || message.from === "budget"),
-      );
-
-      expect(
-        notes.every((message) => message.role === "user" && message.status === "success"),
-      ).toBe(true);
-
-      delivered.push(...notes);
-
-      if (page.isDone) break;
-
-      cursor = page.continueCursor;
-    }
-
-    const hostNotes = backlog === "admitted" ? 0 : HOST_LIMITS.notesPending.max;
-
-    expect(delivered).toHaveLength(hostNotes + budgetNotes);
-    expect(new Set(delivered.map((message) => message.id)).size).toBe(delivered.length);
-    expect(delivered.filter((message) => message.from === "budget")).toHaveLength(budgetNotes);
-    expect(delivered.filter((message) => message.from === "host")).toHaveLength(hostNotes);
-
-    for (let n = 0; n < hostNotes; n++)
-      expect(delivered.filter((message) => message.text.includes(`note ${n}&quot;`))).toHaveLength(
-        1,
-      );
-
-    // Only a safe claim frees capacity; denial never drains or displaces notes.
-    expect(
-      await owner(t).mutation(api.agents.note, {
-        threadId,
-        text: "capacity reused",
-        from: "host",
-      }),
-    ).toBe(true);
-  },
-);
 
 it("upload ownership survives effect receipt cleanup without keeping purge work alive", async () => {
   const t = setup();
@@ -1069,38 +739,11 @@ it.each(["x".repeat(129), "😀".repeat(100)])(
 );
 
 it.each(["x".repeat(250), "id:delta:reserved"])(
-  "opaque charge and operation keys are bounded and replay stable (%s)",
-  async (id) => {
-    const usage = meter();
-
-    const invoke = async () => {
-      const scoped = scopedMeter(usage.slot.scope({}, {} as SlotFacts), id);
-      const c = await scoped.estimate("paid", { quantity: 1 });
-
-      await c.attach({ requestId: "original" });
-      await c.correct({ quantity: 2 });
-      await c.settle({ usd: 1 });
-      await scoped.record("paid", { key: id });
-    };
-
-    await invoke();
-    await invoke();
-    const keys = usage.operations.map((op) => op.args.key);
-
-    expect(keys.slice(0, 5)).toEqual(keys.slice(5));
-
-    for (const key of keys) expect(key).toMatch(/^[a-f0-9]{64}$/);
-
-    expect(new Set(keys.slice(0, 5)).size).toBe(5);
-  },
-);
-
-it.each(["x".repeat(250), "id:delta:reserved"])(
   "once tools accept long/reserved ids and retain native attribution (%s)",
   async (id) => {
     fixture.steps.Main = (n) =>
       n === 0
-        ? [{ type: "tool-call", toolName: "metered_once", toolCallId: id, input: "{}" }]
+        ? [{ type: "tool-call", toolName: "once_only", toolCallId: id, input: "{}" }]
         : text("finished");
 
     const t = setup();
@@ -1330,3 +973,16 @@ it("public thread ids reject oversized UTF-8 facts with typed errors", async () 
     }),
   ).rejects.toThrow("INVALID_THREADID");
 });
+
+/** Record the public callback facts without a second billing component. */
+function usageRecorder() {
+  const events: UsageEvent[] = [];
+
+  const slot: UsageSlot = {
+    record: async (_ctx, event) => {
+      events.push(event);
+    },
+  };
+
+  return { events, slot };
+}

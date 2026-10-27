@@ -8,9 +8,8 @@
 // host policy, save native messages, and admit them through
 // `subagents.messages.messageChild` / `subagents.messages.askParent` in one transaction.
 
-import { saveMessage } from "@convex-dev/agent";
 import type { FunctionReturnType } from "convex/server";
-import { saveTrackedMessage } from "../native-saves.js";
+import { saveMessage } from "@convex-dev/agent";
 import type { CoordinatorCtx, RuntimeContext } from "../registration/context.js";
 import type { CoordinateArgs, ManagedAgent } from "../types.js";
 import { verifyChildMessage } from "./verify.js";
@@ -38,8 +37,8 @@ export async function interact(
   // Each native save reads at most its one <=1 MiB tail document.
   // message: one <=128 KiB saved text projection; ask: two such
   // saves +one <=128 KiB exact question verification. Add <=2.25 MiB
-  // bounded inbox/group recovery, <128 KiB fixed admission metadata and
-  // two <=58-row hop-reservation scans (464 KiB): either transaction
+  // bounded inbox recovery, <128 KiB fixed admission metadata and
+  // two <=50-row hop-reservation scans (400 KiB): either transaction
   // stays <8 MiB, <1,000 reads and <128 writes.
   // No backlog or transcript body scan participates in admission.
   const text = (args.op === "message" ? args.text : args.question).trim();
@@ -126,7 +125,7 @@ async function messageChild(
   childAgent: ManagedAgent,
   text: string,
 ) {
-  const { messageId } = await saveTrackedMessage(rt, ctx, childAgent.component, {
+  const { messageId } = await saveMessage(ctx, childAgent.component, {
     threadId: target.childThreadId,
     prompt: text,
     userId: target.subject,
@@ -164,7 +163,7 @@ async function askParent(
 
   if (!parentAgent) throw new Error("FORBIDDEN");
 
-  const { messageId: parentMessageId } = await saveTrackedMessage(rt, ctx, parentAgent.component, {
+  const { messageId: parentMessageId } = await saveMessage(ctx, parentAgent.component, {
     threadId: target.parentThreadId,
     prompt: target.agent + " asks (run " + target.runId + "):\n\n" + text,
     agentName: target.agent,

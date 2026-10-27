@@ -1,4 +1,3 @@
-import { delegationState } from "./delegation-state.js";
 // @vitest-environment edge-runtime
 import { beforeEach, afterEach, it, expect, vi } from "vite-plus/test";
 import { convexTest } from "convex-test";
@@ -6,9 +5,9 @@ import agent from "@convex-dev/agent/test";
 import { listMessages } from "@convex-dev/agent";
 import agevex from "../src/test.js";
 import schema from "./fixture/schema.js";
-import { fixture, reset, exports, api, critic, text, call } from "./hooks.host.js";
+import { fixture, reset, exports, api, text, call } from "./hooks.host.js";
+import type { AgentHooks, HookContext } from "../src/client/index.js";
 import { requireReceipt } from "./receipt.js";
-import { createFunctionHandle } from "convex/server";
 import { HOST_LIMITS, LIMITS, type Limits } from "../src/component/limits.js";
 import { components, rawAssignment } from "./fixture/api.js";
 const modules = import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]);
@@ -94,9 +93,6 @@ it("beforeTurn notes become escaped user-role context in the same turn", async (
   fixture.hooks.beforeTurn = async (hc) => {
     expect(hc.subject).toBe("alice");
     expect(hc.signal.aborted).toBe(false);
-    const charge = await hc.meter.estimate("test", { quantity: 1 });
-
-    await charge.settle({ usd: 0 });
 
     return { note: '<advice from="x">' };
   };
@@ -132,50 +128,6 @@ it("a host contextHandler runs exactly once and controls the model context", asy
 
   expect(prompt).toContain("host context marker");
   expect(prompt.match(/host-visible advice/g)).toHaveLength(1);
-});
-
-it("continuation instructions and their replies retain chronological order", async () => {
-  fixture.steps.Main = (n) => text(`reply${n}`);
-
-  fixture.hooks.afterTurn = (_hc, event) =>
-    event.turn <= 2 ? { continue: `instruction${event.turn}` } : undefined;
-
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-  const prompt = JSON.stringify(calls()[2].args.prompt);
-  const ordered = ["reply0", "instruction1", "reply1", "instruction2"];
-
-  for (let n = 1; n < ordered.length; n++)
-    expect(prompt.indexOf(ordered[n])).toBeGreaterThan(prompt.indexOf(ordered[n - 1]));
-
-  await send(t, receipt.threadId, "later request");
-  await drain(t);
-  const history = JSON.stringify(calls()[3].args.prompt);
-  const chronology = ["instruction1", "reply1", "instruction2", "reply2"];
-
-  for (const entry of chronology) expect(history.match(new RegExp(entry, "g"))).toHaveLength(1);
-
-  for (let n = 1; n < chronology.length; n++)
-    expect(history.indexOf(chronology[n])).toBeGreaterThan(history.indexOf(chronology[n - 1]));
-});
-
-it("beforeTurn receives each continuation's own prompt", async () => {
-  const prompts: string[] = [];
-
-  fixture.hooks.beforeTurn = (_hc, event) => {
-    prompts.push(event.prompt);
-  };
-
-  fixture.hooks.afterTurn = (_hc, event) =>
-    event.turn <= 2 ? { continue: `instruction${event.turn}` } : undefined;
-
-  const t = setup();
-
-  await open(t);
-  await drain(t);
-  expect(prompts).toEqual(["first request", "instruction1", "instruction2"]);
 });
 
 it("a note posted during A is delivered once to the earlier-queued request B", async () => {
@@ -266,61 +218,6 @@ it("a throwing tool hook fails the turn with HOOK_FAILED and keeps its private d
   expect(JSON.stringify(await messages(t, receipt.threadId))).not.toContain("private hook failure");
 });
 
-it("model routing applies only at run start and persists across hook continuations", async () => {
-  const starts: boolean[] = [];
-
-  fixture.hooks.beforeTurn = (_hc, event) => {
-    starts.push(event.isRunStart);
-
-    return event.isRunStart ? { model: "routed" } : undefined;
-  };
-
-  fixture.hooks.afterTurn = (_hc, event) =>
-    event.turn === 1 ? { continue: "check again" } : undefined;
-
-  const t = setup();
-
-  await open(t);
-  await drain(t);
-  expect(starts).toEqual([true, false]);
-  expect(calls("Routed")).toHaveLength(2);
-  expect(calls()).toHaveLength(0);
-});
-
-it("afterTurn control prompts appear once after the response while future requests stay hidden", async () => {
-  const held = gate();
-
-  fixture.steps.Main = async (n) => {
-    if (n === 0) await held.promise;
-
-    return text(`response-${n}`);
-  };
-
-  fixture.hooks.afterTurn = (_hc, event) =>
-    event.turn < 3 ? { continue: "check again" } : undefined;
-
-  const t = setup();
-  const receipt = await open(t);
-
-  await waitFor(t, () => calls().length === 1);
-  await send(t, receipt.threadId, "future request must stay hidden");
-  held.release();
-  await drain(t);
-
-  for (let n = 1; n <= 2; n++) {
-    const prompt = JSON.stringify(calls()[n].args.prompt);
-
-    expect(prompt.match(/check again/g)).toHaveLength(n);
-    expect(prompt).not.toContain("future request must stay hidden");
-    expect(prompt.lastIndexOf("check again")).toBeGreaterThan(prompt.indexOf(`response-${n - 1}`));
-  }
-
-  expect(JSON.stringify(calls()[3].args.prompt)).toContain("future request must stay hidden");
-  const transcript = JSON.stringify(await messages(t, receipt.threadId));
-
-  expect(transcript.match(/check again/g)).toHaveLength(4); // Native content and text projection, two distinct prompts.
-});
-
 it.each(["idle", "mid-slice"])(
   "%s notes wait for the next turn, then appear once across its slices",
   async (arrival) => {
@@ -375,68 +272,6 @@ it.each(["idle", "mid-slice"])(
     expect(JSON.stringify(calls()[4].args.prompt).match(/unique control advice/g)).toHaveLength(1);
   },
 );
-
-it("distinct identical requests and notes persist once across hook turns", async () => {
-  fixture.hooks.beforeTurn = () => ({ note: "same advice" });
-
-  fixture.hooks.afterTurn = (_hc, event) =>
-    event.turn < 2 ? { continue: "continue marker" } : undefined;
-
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-  const second = JSON.stringify(calls()[1].args.prompt);
-
-  expect(second.match(/same advice/g)).toHaveLength(2); // Two distinct native notes, once each.
-  expect(second.match(/continue marker/g)).toHaveLength(1);
-  fixture.hooks = {};
-  // An ordinary user request can match a note body without being deduplicated.
-  await send(t, receipt.threadId, '<note from="Main">same advice</note>');
-  await drain(t);
-  expect(JSON.stringify(calls()[2].args.prompt).match(/same advice/g)).toHaveLength(3);
-});
-
-it("maximum native control history fits platform limits across all eight hook continuations", async () => {
-  // Posted hook notes wait for the following claim, including hook continuations.
-  fixture.hooks.beforeTurn = async (hc) => {
-    const row = await hc.ctx.runQuery(components.agevex.turns.send.assignment, {
-      threadId: hc.threadId,
-    });
-
-    for (let n = 0; n < HOST_LIMITS.notesPending.max; n++)
-      expect(
-        await hc.ctx.runMutation(components.agevex.hooks.notes.addNote, {
-          assignmentId: row!.assignmentId,
-          text: '"'.repeat(LIMITS.noteLength),
-          from: '"'.repeat(LIMITS.requestKeyLength),
-        }),
-      ).toBe(true);
-  };
-
-  fixture.hooks.afterTurn = () => ({ continue: "￿".repeat(LIMITS.messageLength) });
-
-  const t = setup(
-    {
-      notesPending: HOST_LIMITS.notesPending.max,
-      continuesPerRun: HOST_LIMITS.continuesPerRun.max,
-    },
-    true,
-  );
-
-  await open(t);
-  await drain(t);
-  expect(calls()).toHaveLength(HOST_LIMITS.continuesPerRun.max + 1);
-  const prompt = calls()[HOST_LIMITS.continuesPerRun.max].args.prompt;
-
-  expect(
-    prompt.filter((message) => JSON.stringify(message.content).includes("<note from=")),
-  ).toHaveLength(HOST_LIMITS.continuesPerRun.max * HOST_LIMITS.notesPending.max);
-
-  expect(prompt.filter((message) => JSON.stringify(message.content).includes("￿"))).toHaveLength(
-    HOST_LIMITS.continuesPerRun.max,
-  );
-}, 30_000);
 
 it("maximum in-flight notes retain tool adjacency and appear once within platform limits", async () => {
   // Only pending admission bounds the batch, including the full escaped payload.
@@ -509,26 +344,6 @@ it("registration rejects a sixteenth active descendant to preserve cancel headro
   expect(() => exports({ activeChildrenPerRoot: 16 })).toThrow(
     "INVALID_LIMITS: activeChildrenPerRoot exceeds maximum 15",
   );
-});
-
-it("model returned after run start or outside beforeTurn fails with HOOK_FAILED", async () => {
-  fixture.hooks.beforeTurn = (_hc, event) => (event.isRunStart ? undefined : { model: "routed" });
-  fixture.hooks.afterTurn = () => ({ continue: "again" });
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-  expect((await status(t, receipt.threadId)).errorCode).toBe("HOOK_FAILED");
-  expect(calls()).toHaveLength(1);
-});
-
-it("afterTurn continuations stop at the per-run cap even when the hook keeps requesting work", async () => {
-  fixture.hooks.afterTurn = () => ({ continue: "review again" });
-  const t = setup({ continuesPerRun: HOST_LIMITS.continuesPerRun.max });
-
-  await open(t);
-  await drain(t);
-  expect(calls()).toHaveLength(1 + HOST_LIMITS.continuesPerRun.max);
 });
 
 it("an idle note never starts a turn and is included when the next user request arrives", async () => {
@@ -767,7 +582,7 @@ it("two idle notes at capacity stay pending until the next request and are deliv
   expect(prompt.indexOf("idle second")).toBeGreaterThan(prompt.indexOf("idle first"));
 });
 
-it("authorized messages identify user, delegation result, note and continue origins from recorded ids", async () => {
+it("authorized messages identify user, delegation result and note origins from recorded ids", async () => {
   fixture.steps.Main = (n) =>
     n === 0 ? call("agevex_delegate", { agent: "Builder", task: "origin task" }) : text("done");
 
@@ -782,16 +597,6 @@ it("authorized messages identify user, delegation result, note and continue orig
     from: "critic",
   });
 
-  let continued = false;
-
-  fixture.hooks.afterTurn = () => {
-    if (continued) return;
-
-    continued = true;
-
-    return { continue: "origin followup" };
-  };
-
   await send(t, receipt.threadId, "read origins");
   await drain(t);
   const page = (await messages(t, receipt.threadId)).page;
@@ -803,10 +608,6 @@ it("authorized messages identify user, delegation result, note and continue orig
   expect(page.find((message) => message.text.includes("origin advice"))).toMatchObject({
     origin: "note",
     from: "critic",
-  });
-
-  expect(page.find((message) => message.text === "origin followup")).toMatchObject({
-    origin: "continue",
   });
 
   const runs = await owner(t).query(api.agents.delegations, {
@@ -827,31 +628,6 @@ it("authorized messages identify user, delegation result, note and continue orig
       paginationOpts: { cursor: null, numItems: 100 },
     }),
   ).rejects.toThrow("FORBIDDEN");
-});
-
-it("delegations and runTree distinguish side runs from ordinary children", async () => {
-  fixture.sides = [{ agent: critic, every: { turns: 1 }, sees: "delta" }];
-
-  fixture.steps.Main = (n) =>
-    n === 0 ? call("agevex_delegate", { agent: "Builder", task: "ordinary task" }) : text("done");
-
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-  const tree = await delegationState(t, receipt.threadId);
-
-  const runs = (
-    await owner(t).query(api.agents.delegations, {
-      threadId: receipt.threadId,
-      paginationOpts: { cursor: null, numItems: 100 },
-    })
-  ).page;
-
-  for (const records of [tree, runs]) {
-    expect(records.find((run) => run.agent === "Builder")).toMatchObject({ side: false });
-    expect(records.some((run) => run.agent === "Critic" && run.side === true)).toBe(true);
-  }
 });
 
 it("a note arriving in a running slice waits for the next turn", async () => {
@@ -928,305 +704,6 @@ it("notes enforce their hard count and length bounds and authorize the watched t
   expect(calls()).toHaveLength(2);
 });
 
-it("side reviews follow turn cadence, preserve skipped deltas and deliver passive notes readable in both threads", async () => {
-  fixture.sides = [{ agent: critic, every: { turns: 2 }, sees: "delta" }];
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-  expect(calls("Critic")).toHaveLength(0);
-  await send(t, receipt.threadId, "second boundary");
-  await drain(t);
-  expect(calls("Critic")).toHaveLength(1);
-  const first = JSON.stringify(calls("Critic")[0].args.prompt);
-
-  expect(first).toContain("first request");
-  expect(first).toContain("second boundary");
-  await send(t, receipt.threadId, "third boundary");
-  await drain(t);
-  await send(t, receipt.threadId, "fourth boundary");
-  await drain(t);
-  const second = JSON.stringify(calls("Critic")[1].args.prompt);
-
-  expect(second).toContain("third boundary");
-  expect(second).not.toContain("first request");
-  expect(calls()).toHaveLength(4);
-  const tree = await delegationState(t, receipt.threadId);
-  const child = tree.find((run) => run.agent === "Critic")!;
-
-  expect(
-    (await messages(t, child.childThreadId!)).page.some((message) => message.role === "assistant"),
-  ).toBe(true);
-
-  expect(
-    (await messages(t, receipt.threadId)).page.some((message) =>
-      message.text.includes('<note from="Critic">'),
-    ),
-  ).toBe(true);
-});
-
-it("minute cadence compares to the last review without scheduled review chains", async () => {
-  fixture.sides = [{ agent: critic, every: { minutes: 1 }, sees: "delta" }];
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-  expect(calls("Critic")).toHaveLength(0);
-  await vi.advanceTimersByTimeAsync(60_000);
-  await send(t, receipt.threadId, "after minute");
-  await drain(t);
-  expect(calls("Critic")).toHaveLength(1);
-  await send(t, receipt.threadId, "too soon");
-  await drain(t);
-  expect(calls("Critic")).toHaveLength(1);
-  await vi.advanceTimersByTimeAsync(60_000);
-  await send(t, receipt.threadId, "another minute");
-  await drain(t);
-  expect(calls("Critic")).toHaveLength(2);
-});
-
-it("side cap is separate from model delegation and NONE posts no note", async () => {
-  fixture.sides = [{ agent: critic, every: { turns: 1 }, sees: "delta" }];
-
-  fixture.hooks.afterTurn = (_hc, event) =>
-    event.turn <= 3 ? { continue: "more work" } : undefined;
-
-  fixture.steps.Critic = () => text("NONE");
-  const t = setup({ sideRunsPerRun: 2 });
-  const receipt = await open(t);
-
-  await drain(t);
-  expect(calls("Critic")).toHaveLength(2);
-  expect(calls()).toHaveLength(4);
-
-  expect(
-    (await messages(t, receipt.threadId)).page.some((message) =>
-      message.text.includes('<note from="Critic">'),
-    ),
-  ).toBe(false);
-});
-
-it("a delegated parent settles while its side run is held, and a side failure never fails that parent", async () => {
-  const held = gate();
-
-  fixture.steps.Main = (n) =>
-    n === 0 ? call("agevex_delegate", { agent: "Builder", task: "work" }) : text("parent finished");
-
-  fixture.steps.Critic = async () => {
-    await held.promise;
-    throw new Error("critic failed privately");
-  };
-
-  const t = setup();
-  const receipt = await open(t);
-
-  await waitFor(t, () => calls("Critic").length === 1 && calls().length === 2);
-  expect((await status(t, receipt.threadId)).turnStatus).toBe("idle");
-  held.release();
-  await drain(t);
-  expect((await status(t, receipt.threadId)).errorCode).toBeNull();
-  expect(calls()).toHaveLength(2);
-});
-
-it.each(
-  (["turn end", "failed each delivery", "empty all release"] as const).flatMap((path) =>
-    (["before", "after"] as const).map((sideSettlement) => ({ path, sideSettlement })),
-  ),
-)(
-  "passive notes and side reviews never fence R3 at $path, with side settlement $sideSettlement the parent",
-  async ({ path, sideSettlement }) => {
-    const t = setup(
-      Object.fromEntries(Object.entries(HOST_LIMITS).map(([name, { max }]) => [name, max])),
-    );
-
-    const receipt = await open(t);
-    const root = { assignmentId: receipt.assignmentId, turnToken: `${receipt.assignmentId}:0` };
-
-    await t.mutation(components.agevex.turns.slices.claim, root);
-
-    const launch = async (
-      parent: typeof root,
-      agent: string,
-      extra: { side?: boolean; group?: string; wait?: "all" } = {},
-    ) => {
-      const response = await t.mutation(api.agents.coordinate!, {
-        op: "launch",
-        assignmentId: parent.assignmentId,
-        turnToken: parent.turnToken,
-        toolCallId: crypto.randomUUID(),
-        agent,
-        task: "review the work",
-        ...extra,
-      });
-
-      if (response?.status !== "queued") throw new Error(JSON.stringify(response));
-
-      const tree = await delegationState(t, receipt.threadId);
-      const child = tree.find((run) => run.runId === response.runId)!;
-
-      const turn = {
-        assignmentId: child.childAssignmentId!,
-        turnToken: `${child.childAssignmentId}:0`,
-      };
-
-      const claimed = await t.mutation(components.agevex.turns.slices.claim, turn);
-
-      return { ...turn, threadId: child.childThreadId!, ...claimed!.subagent! };
-    };
-
-    const builder = await launch(root, "Builder");
-
-    const ordinary =
-      path === "turn end"
-        ? null
-        : await launch(
-            builder,
-            "Critic",
-            path === "empty all release" ? { group: "empty", wait: "all" } : {},
-          );
-
-    const saved = await t.run(async (ctx) =>
-      ctx.runMutation(components.agevex.turns.slices.write, {
-        assignmentId: builder.assignmentId,
-        executionId: builder.turnToken,
-        cancellationEpoch: 0,
-        handle: await createFunctionHandle(components.agent.messages.addMessages),
-        nativeMessages: {
-          getMessages: await createFunctionHandle(components.agent.messages.getMessagesByIds),
-          finalizeMessage: await createFunctionHandle(components.agent.messages.finalizeMessage),
-        },
-        args: {
-          threadId: builder.threadId,
-          agentName: "Builder",
-          messages: [{ message: { role: "assistant", content: "verified Builder outcome" } }],
-        },
-      }),
-    );
-
-    await t.mutation(components.agevex.hooks.state.hookState, {
-      assignmentId: builder.assignmentId,
-      executionId: builder.turnToken,
-      complete: true,
-    });
-
-    const side = await launch(builder, "Critic", { side: true });
-
-    // Fill the sole passive-note allowance; unsaved bodies stay bounded here.
-    // Inbox rows remain present throughout both settlement paths, under
-    // the enforced 8 MiB transaction gate; R3 must inspect only ready work.
-    for (let n = 0; n < HOST_LIMITS.notesPending.max; n++)
-      expect(
-        await owner(t).mutation(api.agents.note, {
-          threadId: builder.threadId,
-          text: `passive review ${n}`,
-          from: "critic",
-        }),
-      ).toBe(true);
-
-    const builderStatus = async () =>
-      (await delegationState(t, receipt.threadId)).find((run) => run.runId === builder.runId)!
-        .status;
-
-    const fail = async (child: typeof side) => {
-      await t.mutation(components.agevex.subagents.settle.settle, {
-        assignmentId: child.assignmentId,
-        turnToken: child.turnToken,
-        runId: child.runId,
-        childResultMessageId: null,
-        errorCode: "GENERATION_FAILED",
-      });
-
-      await t.mutation(components.agevex.subagents.deliver.deliver, {
-        runId: child.runId,
-        deliveryToken: child.deliveryToken,
-        deliveryStatus: "failed",
-        parentMessageId: null,
-        errorCode: "DELIVERY_FAILED",
-      });
-
-      await t.mutation(components.agevex.turns.slices.finish, {
-        assignmentId: child.assignmentId,
-        turnToken: child.turnToken,
-        errorCode: null,
-      });
-    };
-
-    if (sideSettlement === "before" && !ordinary) {
-      await fail(side);
-      expect(await builderStatus()).toBe("running");
-    }
-
-    expect(
-      await t.mutation(api.agents.coordinate!, {
-        op: "settle",
-        assignmentId: builder.assignmentId,
-        turnToken: builder.turnToken,
-        runId: builder.runId,
-        resultMessageId: (saved as { messages: { _id: string }[] }).messages[0]._id,
-        errorCode: null,
-      }),
-    ).toEqual(ordinary ? { status: "deferred", runId: builder.runId } : null);
-
-    await t.mutation(components.agevex.turns.slices.finish, {
-      assignmentId: builder.assignmentId,
-      turnToken: builder.turnToken,
-      errorCode: null,
-    });
-
-    if (ordinary) {
-      expect(await builderStatus()).toBe("running");
-
-      if (sideSettlement === "before") {
-        await fail(side);
-        expect(await builderStatus()).toBe("running");
-      }
-
-      await fail(ordinary);
-    }
-
-    expect(await builderStatus()).toBe("completed");
-
-    if (sideSettlement === "after") {
-      await fail(side);
-      expect(await builderStatus()).toBe("completed");
-    }
-
-    await t.mutation(api.agents.coordinate!, {
-      op: "notify",
-      runId: builder.runId,
-      deliveryToken: builder.deliveryToken,
-    });
-
-    await t.mutation(components.agevex.turns.slices.finish, { ...root, errorCode: null });
-    await drain(t);
-    expect(calls("Builder")).toHaveLength(0);
-    expect(calls("Critic")).toHaveLength(0);
-    expect(calls()).toHaveLength(1);
-    expect(JSON.stringify(calls()[0].args.prompt)).toContain("verified Builder outcome");
-  },
-);
-
-it("cancel stops side runs and fences their late notes", async () => {
-  fixture.sides = [{ agent: critic, every: { turns: 1 }, sees: "delta" }];
-  const held = gate();
-
-  fixture.steps.Critic = async () => {
-    await held.promise;
-
-    return text("late review");
-  };
-
-  const t = setup();
-  const receipt = await open(t);
-
-  await waitFor(t, () => calls("Critic").length === 1);
-  await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
-  held.release();
-  await drain(t);
-  expect((await status(t, receipt.threadId)).subagents.active).toBe(0);
-  expect(JSON.stringify(await messages(t, receipt.threadId))).not.toContain("late review");
-});
-
 it("cancel removes an in-flight note without reading its body in the cancel transaction", async () => {
   const held = gate();
 
@@ -1280,310 +757,6 @@ it("beforeDelegate can refuse a child without calling generic tool hooks or spen
   expect((await status(t, receipt.threadId)).errorCode).toBeNull();
 });
 
-it("a model result from afterTurn is rejected even on the first turn", async () => {
-  fixture.hooks.afterTurn = () => ({ model: "routed" });
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-  expect((await status(t, receipt.threadId)).errorCode).toBe("HOOK_FAILED");
-});
-
-it("all side and continuation hard maxima leave the model delegation budget available", async () => {
-  fixture.sides = [{ agent: critic, every: { turns: 1 }, sees: "delta" }];
-  fixture.steps.Critic = () => text("NONE");
-
-  fixture.steps.Main = (n) =>
-    n === HOST_LIMITS.continuesPerRun.max
-      ? call("agevex_delegate", { agent: "Builder", task: "one model launch" })
-      : text("root work");
-
-  fixture.hooks.afterTurn = (_hc, event) =>
-    event.turn <= HOST_LIMITS.continuesPerRun.max
-      ? { continue: "continue bounded work" }
-      : undefined;
-
-  const t = setup({
-    continuesPerRun: HOST_LIMITS.continuesPerRun.max,
-    sideRunsPerRun: HOST_LIMITS.sideRunsPerRun.max,
-    activeChildrenPerRoot: HOST_LIMITS.activeChildrenPerRoot.max,
-    runLaunches: 1,
-  });
-
-  const receipt = await open(t);
-
-  await drain(t);
-  expect(calls("Critic")).toHaveLength(HOST_LIMITS.sideRunsPerRun.max);
-  expect(calls("Builder")).toHaveLength(1);
-  expect((await status(t, receipt.threadId)).errorCode).toBeNull();
-});
-
-it("an empty side reply produces no note and never fails its watched turn", async () => {
-  fixture.sides = [{ agent: critic, every: { turns: 1 }, sees: "delta" }];
-  fixture.steps.Critic = () => text("");
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-  expect((await status(t, receipt.threadId)).errorCode).toBeNull();
-
-  expect(
-    (await messages(t, receipt.threadId)).page.some((message) =>
-      message.text.includes('<note from="Critic">'),
-    ),
-  ).toBe(false);
-});
-
-it("a maximum-size delta reads bounded exact source ids and sends at most 48 KiB of recent text", async () => {
-  fixture.sides = [{ agent: critic, every: { turns: 1 }, sees: "delta" }];
-
-  const t = setup(
-    Object.fromEntries(Object.entries(HOST_LIMITS).map(([name, { max }]) => [name, max])),
-  );
-
-  const receipt = await open(t);
-
-  const fence = {
-    assignmentId: receipt.assignmentId,
-    executionId: `${receipt.assignmentId}:0`,
-    cancellationEpoch: 0,
-  };
-
-  expect(
-    await t.mutation(components.agevex.turns.slices.claim, {
-      assignmentId: receipt.assignmentId,
-      turnToken: fence.executionId,
-    }),
-  ).not.toBeNull();
-
-  // Each native source is ~900 KiB (body plus text projection). The full ring
-  // exceeds 16 MiB; a transcript/body scan would fail the enforced 8 MiB gate.
-  for (let index = 0; index < LIMITS.contextMessages; index++) {
-    await t.run(async (ctx) =>
-      ctx.runMutation(components.agevex.turns.slices.write, {
-        ...fence,
-        handle: await createFunctionHandle(components.agent.messages.addMessages),
-        nativeMessages: {
-          getMessages: await createFunctionHandle(components.agent.messages.getMessagesByIds),
-          finalizeMessage: await createFunctionHandle(components.agent.messages.finalizeMessage),
-        },
-        args: {
-          threadId: receipt.threadId,
-          messages: [
-            { message: { role: "assistant", content: `source-${index}:` + "界".repeat(150_000) } },
-          ],
-        },
-      }),
-    );
-  }
-
-  await t.mutation(components.agevex.hooks.state.hookState, {
-    assignmentId: receipt.assignmentId,
-    executionId: fence.executionId,
-    complete: true,
-  });
-
-  expect(
-    await t.mutation(api.agents.coordinate!, {
-      op: "launch",
-      side: true,
-      assignmentId: receipt.assignmentId,
-      turnToken: fence.executionId,
-      toolCallId: "max-delta",
-      agent: "Critic",
-      task: "review exact delta",
-    }),
-  ).toMatchObject({ status: "queued" });
-
-  await t.mutation(components.agevex.turns.slices.finish, {
-    assignmentId: receipt.assignmentId,
-    turnToken: fence.executionId,
-    errorCode: null,
-  });
-
-  await drain(t);
-
-  const prompt = calls("Critic")[0]
-    .args.prompt.map((message) => JSON.stringify(message.content))
-    .join("\n");
-
-  expect(new TextEncoder().encode(prompt).byteLength).toBeLessThan(
-    LIMITS.contextBytes + LIMITS.taskLength,
-  );
-
-  expect(prompt).toContain(`source-${LIMITS.contextMessages - 1}:`);
-  expect(prompt).not.toContain("source-0:");
-});
-
-it("concurrent sibling turns share the first run-start model decision without duplicate classifiers", async () => {
-  const held = gate();
-  const starts: boolean[] = [];
-
-  fixture.steps.Main = (n) =>
-    n === 0
-      ? [
-          ...call("agevex_delegate", { agent: "Builder", task: "one" }),
-          ...call("agevex_delegate", { agent: "Builder", task: "two" }),
-        ]
-      : text("done");
-
-  fixture.builderHooks.beforeTurn = async (_hc, event) => {
-    starts.push(event.isRunStart);
-
-    if (event.isRunStart) {
-      await held.promise;
-
-      return { model: "routed" };
-    }
-  };
-
-  const t = setup();
-
-  await open(t);
-  await waitFor(t, () => starts.length === 2);
-  expect(starts).toEqual([true, false]);
-  expect(calls("Builder")).toHaveLength(0);
-  expect(calls("Routed")).toHaveLength(0);
-  held.release();
-  await drain(t);
-  expect(calls("Routed")).toHaveLength(2);
-  expect(calls("Builder")).toHaveLength(0);
-});
-
-it("a denied first Builder releases waiting siblings to the default model without repeating routing", async () => {
-  const held = gate();
-  let authorizations = 0;
-  const starts: boolean[] = [];
-
-  fixture.steps.Main = (n) =>
-    n === 0
-      ? [
-          ...call("agevex_delegate", { agent: "Builder", task: "denied first Builder" }),
-          ...call("agevex_delegate", { agent: "Builder", task: "waiting sibling Builder" }),
-        ]
-      : text("done");
-
-  fixture.authorizeExecution = async (_ctx, scope) => {
-    if (scope.agent === "Builder" && ++authorizations === 1) {
-      await held.promise;
-      throw new Error("private execution denial");
-    }
-  };
-
-  fixture.builderHooks.beforeTurn = (_hc, event) => {
-    starts.push(event.isRunStart);
-
-    if (event.isRunStart) throw new Error("classifier must never be retried");
-  };
-
-  const t = setup();
-  const receipt = await open(t);
-
-  await waitFor(t, () => starts.length === 1);
-  expect(starts).toEqual([false]);
-  expect(calls("Builder")).toHaveLength(0);
-  held.release();
-  await drain(t);
-  expect(calls("Builder")).toHaveLength(1);
-  expect(JSON.stringify(calls("Builder")[0].args.prompt)).toContain("waiting sibling Builder");
-  expect(starts).toEqual([false]);
-  const tree = await delegationState(t, receipt.threadId);
-
-  expect(tree.filter((run) => run.agent === "Builder").map((run) => run.status)).toEqual(
-    expect.arrayContaining(["failed", "completed"]),
-  );
-
-  expect(JSON.stringify(await messages(t, receipt.threadId))).not.toContain(
-    "private execution denial",
-  );
-});
-
-it.each(["hook failure", "abandoned action"])(
-  "a routing owner's %s releases its sibling without repeating the classifier",
-  async (path) => {
-    const held = gate();
-    const starts: boolean[] = [];
-    let ownerThreadId = "";
-
-    fixture.steps.Main = (n) =>
-      n === 0
-        ? [
-            ...call("agevex_delegate", { agent: "Builder", task: "first routing owner" }),
-            ...call("agevex_delegate", { agent: "Builder", task: "waiting sibling" }),
-          ]
-        : text("done");
-
-    fixture.builderHooks.beforeTurn = async (hc, event) => {
-      starts.push(event.isRunStart);
-
-      if (event.isRunStart) {
-        ownerThreadId = hc.threadId;
-        await held.promise;
-
-        if (path === "hook failure") throw new Error("private classifier failure");
-
-        return { model: "routed" };
-      }
-    };
-
-    const t = setup();
-    const receipt = await open(t);
-
-    await waitFor(t, () => starts.length === 2);
-
-    if (path === "abandoned action") {
-      const tree = await delegationState(t, receipt.threadId);
-      const first = tree.find((run) => run.childThreadId === ownerThreadId)!;
-
-      await t.mutation(components.agevex.turns.failures.ambiguous, {
-        assignmentId: first.childAssignmentId!,
-        turnToken: `${first.childAssignmentId}:0`,
-      });
-
-      // The uncooperative owner is still held. Durable terminal fencing must
-      // release the sibling before the owner's finally block can possibly run.
-      await waitFor(t, () => calls("Builder").length === 1);
-    }
-
-    held.release();
-    await drain(t);
-    expect(starts).toEqual([true, false]);
-    expect(calls("Builder")).toHaveLength(1);
-    expect(calls("Routed")).toHaveLength(0);
-    expect(JSON.stringify(calls("Builder")[0].args.prompt)).toContain("waiting sibling");
-
-    expect(JSON.stringify(await messages(t, receipt.threadId))).not.toContain(
-      "private classifier failure",
-    );
-  },
-);
-
-it("queued future prompts never hide an earlier assistant response from the next review delta", async () => {
-  fixture.sides = [{ agent: critic, every: { turns: 1 }, sees: "delta" }];
-  const held = gate();
-
-  fixture.steps.Main = async (n) => {
-    if (n === 0) await held.promise;
-
-    return text(`actual reply ${n}`);
-  };
-
-  fixture.steps.Critic = () => text("NONE");
-  const t = setup();
-  const receipt = await open(t);
-
-  await waitFor(t, () => calls().length === 1);
-  await send(t, receipt.threadId, "queued second request");
-  await send(t, receipt.threadId, "queued third request");
-  held.release();
-  await drain(t);
-  expect(calls("Critic")).toHaveLength(3);
-  const second = JSON.stringify(calls("Critic")[1].args.prompt);
-
-  expect(second).toContain("actual reply 1");
-  expect(second).not.toContain("actual reply 0");
-});
-
 it("a note posted before the first claim precedes the first prompt and never starts another turn", async () => {
   const t = setup(undefined, true);
   const receipt = await open(t);
@@ -1607,127 +780,6 @@ it("a note posted before the first claim precedes the first prompt and never sta
   expect(
     (await messages(t, receipt.threadId)).page.filter((message) => message.origin === "note"),
   ).toHaveLength(1);
-});
-
-it.each([false, true])(
-  "an afterTurn note waits for the next claim (hook continue=%s) and persists exactly once",
-  async (continuation) => {
-    fixture.hooks.afterTurn = (_hc, event) =>
-      event.turn === 1
-        ? { note: "after-turn advice", ...(continuation ? { continue: "follow-up work" } : {}) }
-        : undefined;
-
-    const t = setup(undefined, true);
-    const receipt = await open(t);
-
-    await drain(t);
-    expect(JSON.stringify(calls()[0].args.prompt)).not.toContain("after-turn advice");
-
-    if (!continuation) {
-      expect(calls()).toHaveLength(1);
-
-      expect(
-        (await messages(t, receipt.threadId)).page.some((message) => message.origin === "note"),
-      ).toBe(false);
-
-      await send(t, receipt.threadId, "follow-up work");
-      await drain(t);
-    }
-
-    const prompt = JSON.stringify(calls()[1].args.prompt);
-
-    expect(prompt.match(/after-turn advice/g)).toHaveLength(1);
-    expect(prompt.indexOf("Main answer 0")).toBeLessThan(prompt.indexOf("after-turn advice"));
-    expect(prompt.indexOf("after-turn advice")).toBeLessThan(prompt.indexOf("follow-up work"));
-    await send(t, receipt.threadId, "one more request");
-    await drain(t);
-
-    expect(
-      (await messages(t, receipt.threadId)).page.filter((message) => message.origin === "note"),
-    ).toMatchObject([
-      { from: "Main", origin: "note", text: '<note from="Main">after-turn advice</note>' },
-    ]);
-  },
-);
-
-it("an in-flight note survives a failed child turn and is delivered once at the next result claim", async () => {
-  const failure = gate();
-  const descendant = gate();
-
-  fixture.builderHooks.afterTurn = (_hc, event) =>
-    event.turn === 1 ? { continue: "inspect while helper runs" } : undefined;
-
-  fixture.steps.Main = (n) =>
-    n === 0
-      ? call("agevex_delegate", { agent: "Builder", task: "build with a helper" })
-      : text("root done");
-
-  fixture.steps.Builder = async (n) => {
-    if (n === 0) return call("agevex_delegate", { agent: "Critic", task: "check the work" });
-
-    if (n === 1) {
-      await failure.promise;
-      throw new Error("paid turn failed");
-    }
-
-    return text("recovered from child result");
-  };
-
-  fixture.steps.Critic = async () => {
-    await descendant.promise;
-
-    return text("helper result");
-  };
-
-  const t = setup(undefined, true);
-  const receipt = await open(t);
-
-  await waitFor(t, () => calls("Builder").length === 2 && calls("Critic").length >= 1);
-
-  const builderRun = (await delegationState(t, receipt.threadId)).find(
-    (run) => run.agent === "Builder",
-  )!;
-
-  await owner(t).mutation(api.agents.note, {
-    threadId: builderRun.childThreadId!,
-    text: "survives failure",
-    from: "watchdog",
-  });
-
-  failure.release();
-
-  await expect
-    .poll(async () => {
-      await t.action(async () => {
-        await vi.advanceTimersByTimeAsync(100);
-      });
-
-      return (
-        await t.query(rawAssignment, {
-          assignmentId: builderRun.childAssignmentId!,
-        })
-      )?.turnStatus;
-    })
-    .toBe("idle");
-
-  expect(
-    (await messages(t, builderRun.childThreadId!)).page.some(
-      (message) => message.origin === "note",
-    ),
-  ).toBe(false);
-
-  descendant.release();
-  await drain(t);
-
-  expect(JSON.stringify(calls("Builder")[2].args.prompt).match(/survives failure/g)).toHaveLength(
-    1,
-  );
-
-  expect(
-    (await messages(t, builderRun.childThreadId!)).page.filter((message) =>
-      message.text.includes("survives failure"),
-    ),
-  ).toMatchObject([{ origin: "note", from: "watchdog" }]);
 });
 
 it("claim-time notes follow every result in a multi-tool step and precede the next prompt", async () => {
@@ -1798,51 +850,6 @@ it("claim-time notes follow every result in a multi-tool step and precede the ne
   // Native Agent executes both tools concurrently; only their completion before
   // the note is promised above, not the order in which their effects finish.
   expect([...fixture.effects].sort()).toEqual(["first effect", "second effect"]);
-});
-
-it("cancel discards a staged hook continuation and its notes before a fresh send", async () => {
-  const t = setup({ notesPending: HOST_LIMITS.notesPending.max }, true);
-  const receipt = await open(t);
-
-  const row = (await t.query(rawAssignment, {
-    assignmentId: receipt.assignmentId,
-  }))!;
-
-  await t.mutation(components.agevex.turns.slices.claim, {
-    assignmentId: receipt.assignmentId,
-    turnToken: row.turnToken!,
-  });
-
-  await t.mutation(components.agevex.hooks.state.continueAdmission, {
-    assignmentId: receipt.assignmentId,
-    executionId: row.turnToken!,
-    prompt: "cancelled continuation".padEnd(LIMITS.messageLength, "x"),
-  });
-
-  for (let i = 0; i < HOST_LIMITS.notesPending.max; i++)
-    await owner(t).mutation(api.agents.note, {
-      threadId: receipt.threadId,
-      text: "cancelled advice".padEnd(LIMITS.noteLength, "x"),
-      from: "critic",
-    });
-
-  await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
-  await send(t, receipt.threadId, "fresh request after staged continuation");
-
-  await owner(t).mutation(api.agents.note, {
-    threadId: receipt.threadId,
-    text: "fresh advice",
-    from: "critic",
-  });
-
-  await drain(t);
-  expect(calls()).toHaveLength(1);
-  const prompt = JSON.stringify(calls()[0].args.prompt);
-
-  expect(prompt).toContain("fresh request after staged continuation");
-  expect(prompt.match(/fresh advice/g)).toHaveLength(1);
-  expect(prompt).not.toContain("cancelled continuation");
-  expect(prompt).not.toContain("cancelled advice");
 });
 
 it.each([true, false])(
@@ -1960,3 +967,100 @@ it.each([true, false])(
     expect(fixture.effects).toEqual(approved ? ["approval effect"] : []);
   },
 );
+
+it("a beforeTurn model choice applies only to its own generation step", async () => {
+  let steps = 0;
+  const prompts: string[] = [];
+
+  fixture.hooks.beforeTurn = (_hc, event) => {
+    prompts.push(event.prompt);
+
+    return steps++ === 0 ? { model: "routed" } : undefined;
+  };
+
+  fixture.steps.Routed = () => call("echo", { text: "routed effect" });
+  const t = setup();
+  const receipt = await open(t);
+
+  await drain(t);
+  expect(calls("Routed")).toHaveLength(1);
+  expect(calls()).toHaveLength(1);
+  expect(prompts).toEqual(["first request", "first request"]);
+  await send(t, receipt.threadId, "next request");
+  await drain(t);
+  expect(calls("Routed")).toHaveLength(1);
+  expect(calls()).toHaveLength(2);
+});
+
+it("beforeTurn keeps a model across tool steps by returning it every time", async () => {
+  fixture.hooks.beforeTurn = () => ({ model: "routed" });
+
+  fixture.steps.Routed = (n) => (n === 0 ? call("echo", { text: "effect" }) : text("finished"));
+  const t = setup();
+
+  await open(t);
+  await drain(t);
+  expect(calls("Routed")).toHaveLength(2);
+  expect(calls()).toHaveLength(0);
+});
+
+it("a model choice outside the registered allowlist fails before paid generation", async () => {
+  fixture.hooks.beforeTurn = () => ({ model: "unregistered" });
+  const t = setup();
+  const receipt = await open(t);
+
+  await drain(t);
+  expect(fixture.calls).toHaveLength(0);
+  expect((await status(t, receipt.threadId)).errorCode).toBe("HOOK_FAILED");
+});
+
+it("concurrent sibling beforeTurn hooks choose models independently without a routing lock", async () => {
+  const held = gate();
+  let decisions = 0;
+
+  fixture.steps.Main = (n) =>
+    n === 0
+      ? [
+          ...call("agevex_delegate", { agent: "Builder", task: "held model decision" }),
+          ...call("agevex_delegate", { agent: "Builder", task: "independent decision" }),
+        ]
+      : text("done");
+
+  fixture.builderHooks.beforeTurn = async () => {
+    if (++decisions === 1) {
+      await held.promise;
+
+      return { model: "routed" };
+    }
+  };
+
+  const t = setup();
+
+  await open(t);
+  await waitFor(t, () => calls("Builder").length === 1);
+  expect(decisions).toBe(2);
+  expect(calls("Routed")).toHaveLength(0);
+  held.release();
+  await drain(t);
+  expect(calls("Routed")).toHaveLength(1);
+  expect(calls("Builder")).toHaveLength(1);
+});
+
+it("afterTurn is a notification whose accidental return values cannot change execution", async () => {
+  const notified: number[] = [];
+
+  fixture.hooks.afterTurn = ((_hc: HookContext, event: { turn: number }) => {
+    notified.push(event.turn);
+
+    return { continue: "must not run", model: "unregistered", note: "must not save" };
+  }) as unknown as AgentHooks["afterTurn"];
+
+  const t = setup();
+  const receipt = await open(t);
+
+  await drain(t);
+  expect(calls()).toHaveLength(1);
+  expect(notified).toHaveLength(1);
+  expect((await status(t, receipt.threadId)).turnStatus).toBe("idle");
+  expect(JSON.stringify(await messages(t, receipt.threadId))).not.toContain("must not");
+});

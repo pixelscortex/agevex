@@ -612,7 +612,7 @@ it("cancel leaves unrelated native pending placeholders untouched", async () => 
   expect(messages.every((message) => message?.status === "pending")).toBe(true);
 });
 
-it.each(["routing", "approval"])(
+it.each(["running", "approval"])(
   "cancel settles %s with maximum children, pending notes, controls and ready backlog",
   async (mode) => {
     const limits = Object.fromEntries(
@@ -651,8 +651,6 @@ it.each(["routing", "approval"])(
     expect(
       await t.mutation(components.agevex.turns.slices.claim, {
         ...root,
-        agentIndex: 0,
-        routeModel: true,
       }),
     ).not.toBeNull();
 
@@ -662,7 +660,6 @@ it.each(["routing", "approval"])(
       const child = await t.run(async (ctx) => {
         const reserved = await ctx.runMutation(components.agevex.subagents.launch.reserve, {
           ...root,
-          side: i < HOST_LIMITS.sideRunsPerRun.max,
           toolCallId: "large-child-" + i,
           agent: "Researcher",
           payloadFingerprint: "large-child-" + i,
@@ -701,8 +698,6 @@ it.each(["routing", "approval"])(
         await t.mutation(components.agevex.turns.slices.claim, {
           assignmentId: child.assignmentId,
           turnToken: child.turnToken,
-          agentIndex: i + 1,
-          routeModel: true,
         }),
       ).not.toBeNull();
 
@@ -858,9 +853,6 @@ it.each(["routing", "approval"])(
 
       expect(getConvexSize(row)).toBeLessThan(LIMITS.assignmentBytes);
       expect(!!row?.approvalBlocked).toBe(mode === "approval");
-
-      if (mode === "routing") expect(row?.routingAgentIndex).toBeDefined();
-      else expect(row?.routingAgentIndex).toBeUndefined();
     }
 
     // Inspect the actual public cancel transaction, including ownership reads.
@@ -879,10 +871,6 @@ it.each(["routing", "approval"])(
     expect(after.inbox.every((item: { passive?: boolean }) => item.passive)).toBe(true);
     expect(after.runs).toHaveLength(before.runs.length);
     expect(after.runs.every((run: { cancelled: boolean }) => run.cancelled)).toBe(true);
-
-    expect(
-      after.runs.every((run: { routingAgents?: bigint }) => (run.routingAgents ?? 0n) === 0n),
-    ).toBe(true);
 
     for (const turn of turns)
       expect(await t.query(rawAssignment, { assignmentId: turn.assignmentId })).toMatchObject({
@@ -911,7 +899,6 @@ it.each(["routing", "approval"])(
       });
 
       expect(row?.pendingGeneration).toBeUndefined();
-      expect(row?.routingAgentIndex).toBeUndefined();
     }
 
     expect(await activity(t, receipt.threadId)).toMatchObject({

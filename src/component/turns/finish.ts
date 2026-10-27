@@ -8,17 +8,15 @@
  * the child idles instead of escalating. Otherwise the assignment becomes
  * `recovery_required` and the child's run is escalated to a failed
  * settlement (`subagents.settle.escalate`). Paid generations are never retried.
- * Touches `assignments`, `inbox` (the reserved head / staged continuation)
+ * Touches `assignments`, `inbox` (the reserved head)
  * and, via escalate, `subagentRuns`.
  */
 import { internal } from "../_generated/api.js";
 import type { MutationCtx } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
 import { settlementBlocked } from "../subagents/settle.js";
-import { sealGroups } from "../subagents/groups.js";
 import { disarmRecovery } from "./recovery.js";
 import { disarmSlice } from "./boundaries.js";
-import { completeTextTurn } from "../text/jobs.js";
 import { wake } from "./wake.js";
 import { endRootTurn } from "./run_lifecycle.js";
 
@@ -27,7 +25,7 @@ type ErrorCode = Doc<"assignments">["errorCode"];
 /** End the running turn `turnToken`: success idles the thread and wakes
  * queued work; a failure code is deferred behind the settlement fence
  * (children) or parks the thread in recovery_required. Either way the slice
- * is disarmed and the turn's open wait cohorts are sealed first. */
+ * is disarmed first. */
 export async function finishTurn(
   ctx: MutationCtx,
   args: { assignmentId: Id<"assignments">; turnToken: string; errorCode: ErrorCode },
@@ -38,7 +36,6 @@ export async function finishTurn(
     return null;
 
   await disarmSlice(ctx, row);
-  await sealGroups(ctx, row);
 
   if (args.errorCode && (await deferChildFailure(ctx, row, args.errorCode))) return null;
 
@@ -54,7 +51,6 @@ export async function finishTurn(
       promptMessageId: undefined,
     });
 
-    await completeTextTurn(ctx, row);
     await wake(ctx, { ...row, turnStatus: "idle" });
   }
 
@@ -124,21 +120,11 @@ export async function deferChildFailure(
   // Escalation obeys the same fence, so it cannot settle over pending work.
   await failChild(ctx, row, code);
   await disarmSlice(ctx, row);
-  await sealGroups(ctx, row);
-
-  // A continuation staged by afterTurn (continueAdmission) is consumed only by
-  // the next slice's claim, which this failure just forfeited. Left behind, the
-  // row stays out of the ready range and wake would overwrite inboxId with the
-  // next ready row, orphaning it; cancel would then delete that ready row twice
-  // (once as the "staged continuation", once in its ready loop) and throw.
-  // Delete it here, as cancel does, and drop both pointers.
-  if (row.hookContinue && row.inboxId) await ctx.db.delete("inbox", row.inboxId);
 
   await ctx.db.patch("assignments", row._id, {
     turnStatus: "idle",
     turnToken: undefined,
     promptMessageId: undefined,
-    ...(row.hookContinue ? { hookContinue: false, inboxId: undefined } : {}),
     errorCode: null,
   });
 

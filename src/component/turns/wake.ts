@@ -1,9 +1,8 @@
 /**
  * The doorbell: publishing work to an assignment's loop workflow.
  *
- * Every transaction that can create or unblock work (accept, delivery, group
- * release, answers, finished turns, cancellation cleanup) ends by calling
- * `wake` in the same transaction. wake drains empty joined cohorts, settles
+ * Every transaction that can create or unblock work (accept, delivery, answers, finished turns, cancellation cleanup) ends by calling
+ * `wake` in the same transaction. wake settles
  * an idle child whose last blocker cleared (R3), reserves at most one ready
  * inbox row as the next queued turn, starts or rings the loop workflow, and
  * leaves exactly the right recovery check armed. The loop's side of the
@@ -12,7 +11,6 @@
  * `assignments`, reads the ready `inbox` range and `subagentRuns`.
  */
 import type { WorkflowId } from "@convex-dev/workflow";
-import { api } from "../_generated/api.js";
 import type { MutationCtx } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
 import { laneManager, startLoop } from "../workflows/lanes.js";
@@ -58,12 +56,10 @@ export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = tru
     return;
   }
 
-  row = await drainEmptyCohorts(ctx, row);
-
   await closeRootRun(ctx, row);
 
   // Re-evaluate R3 after every blocker-clearing wake, including failed delivery
-  // and empty group release. Idle children cannot wait for nonexistent work.
+  // and cancelled delivery. Idle children cannot wait for nonexistent work.
   // answer/respond retain their inbox anchor until claim consumes it. That
   // anchor fences R3 even after the last approval is cleared; claim then marks
   // the turn running and clears lastTurnResult in the same transaction. Never
@@ -89,30 +85,6 @@ export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = tru
 
   if (await needsRecovery(ctx, current)) await armRecovery(ctx, current);
   else await disarmRecovery(ctx, current);
-}
-
-/**
- * Drain empty ready cohorts until either
- * work is published or no cohort remains, so several all-failed groups
- * sealed by the same last slice cannot strand an idle child. A child owns
- * one run budget: <=50 members TOTAL, <=50 indexed probes/releases,
- * <8 MiB metadata and <1,000 reads/writes at all host maxima. Root loops
- * keep their existing one-cohort cadence; claim drains ready FIFO work.
- * Returns the freshly read row after the last release.
- */
-async function drainEmptyCohorts(ctx: MutationCtx, row: Doc<"assignments">) {
-  const releases = row.childRunId ? row.limits.runLaunches : 1;
-
-  for (let i = 0; i < releases; i++) {
-    if (!(await ctx.runMutation(api.subagents.deliver.releaseGroups, { assignmentId: row._id })))
-      break;
-
-    row = (await ctx.db.get("assignments", row._id))!;
-
-    if (await needsRecovery(ctx, row)) break;
-  }
-
-  return row;
 }
 
 /** Reserve the oldest ready row as the next queued turn of an idle, unpaused

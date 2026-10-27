@@ -4,19 +4,10 @@ description: Pause for a bounded question and resume with the user's validated s
 status: Available
 ---
 
-```sh
-bunx shadcn add http://localhost:3000/r/ask-user.json
-```
-
-Start the docs site or replace its origin. This installs
-`convex/agevexTools/askUser.ts` and `ai`, `convex`, `zod`; the host must already
-have `agevex`.
-
-Use a TypeScript host with `"tsx": true` in `components.json` before installing
-so shadcn preserves the tool's types.
+Import the tool directly; no schema or installation step is needed.
 
 ```ts title="In your agevex Agent registration"
-import { createAskUserTool } from "./agevexTools/askUser.js";
+import { createAskUserTool } from "agevex/tools";
 
 const tools = { ask_user: createAskUserTool() };
 // Include ...tools in your Agent's tools and keep host authorization policies.
@@ -50,7 +41,7 @@ the same answer replays the original result; different values are a typed
 `KEY_CONFLICT`; foreign, unrecorded or cancelled calls are rejected. Deferred
 calls share core's 16-call pause bound with approvals.
 
-No item table or host schema snippet is needed, and the item adds no model
+No extra table is needed, and the tool adds no model
 calls, paid effects or retries. The host's UI and authorization stay host-owned.
 
 ## Structured answers and agent policy

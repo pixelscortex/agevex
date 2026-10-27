@@ -5,7 +5,7 @@ status: Available
 ---
 
 `agevex_message_parent` is installed automatically on delegated child turns.
-Roots and side reviewers do not receive it. These examples are model tool calls, not JavaScript
+Roots do not receive it. These examples are model tool calls, not JavaScript
 SDK exports:
 
 ```ts
@@ -21,7 +21,7 @@ blocking question and `agevex_message_child` for a parent's follow-up or answer.
 The recipient comes from persisted delegation state; there is no target input.
 
 A note wakes a sleeping parent at its next safe turn, including while waiting
-on a wait-all group. A running parent finishes current tools/results first.
+for child results. A running parent finishes current tools/results first.
 Unresolved approval and deferred calls remain paused. Accepted notes precede
 that child's final result in FIFO commit order; consecutive notes/results can
 share one model turn. Woken turns record usage normally.
@@ -43,7 +43,6 @@ launching more; `RUN_BUDGET` remains the denial for launch or hop budget exhaust
 | Denial code                                 | Meaning                                                              |
 | ------------------------------------------- | -------------------------------------------------------------------- |
 | `MESSAGE_EMPTY`                             | Text is blank or whitespace only.                                    |
-| `SIDE_RUN`                                  | Side reviews cannot send progress to the watched parent.             |
 | `MESSAGE_TOO_LARGE`                         | Encoded text exceeds 2 KiB.                                          |
 | `MESSAGE_RATE_LIMIT`                        | Less than 5 seconds since this child's last accepted note.           |
 | `MESSAGE_LIMIT`                             | This child has exhausted its accepted-note allowance.                |

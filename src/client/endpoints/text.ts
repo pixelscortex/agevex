@@ -1,118 +1,50 @@
-/** Subject-authorized root metadata endpoints. Native Agent owns title text;
- * core owns its rename fence and the bounded summary coverage metadata. */
+/** Subject-authorized native thread titles. Agent owns the metadata. */
 import { getThreadMetadata, updateThreadMetadata } from "@convex-dev/agent";
 import { mutationGeneric, queryGeneric } from "convex/server";
 import { v } from "convex/values";
-import { response } from "../../component/text/requests.js";
 import { validText } from "../../component/text/values.js";
 import { ownedThread, type EndpointContext } from "./access.js";
 
-/** Subscribe to the native title and its optimistic rename version. */
+const response = v.object({ messageId: v.string(), replayed: v.boolean() });
+
+/** Subscribe to the native thread title. */
 export function titleEndpoint(ep: EndpointContext) {
   return queryGeneric({
     args: { threadId: v.string() },
-    returns: v.object({
-      text: v.union(v.null(), v.string()),
-      source: v.union(v.null(), v.literal("auto"), v.literal("user")),
-      version: v.number(),
-    }),
+    returns: v.object({ text: v.union(v.null(), v.string()) }),
     handler: async (ctx, args) => {
       const row = await ownedThread(ep, ctx, args.threadId, "title");
-
-      const state = await ctx.runQuery(ep.component.text.state.view, {
-        assignmentId: row.assignmentId,
-      });
-
       const native = await getThreadMetadata(ctx, row.native.component, args);
 
-      return {
-        text: native.title ?? null,
-        source: state.source ?? (native.title !== undefined ? "user" : null),
-        version: state.version,
-      };
+      return { text: native.title ?? null };
     },
   });
 }
 
-/** Repeated identical renames replay once; conflicting versions never overwrite. */
+/** The native title itself is the rename state. Repeated identical writes are
+ * harmless, and an automatic title's atomic native check always respects it. */
 export function renameEndpoint(ep: EndpointContext) {
   return mutationGeneric({
-    args: { threadId: v.string(), text: v.string(), expectedVersion: v.number() },
+    args: { threadId: v.string(), text: v.string() },
     returns: response,
     handler: async (ctx, args) => {
       const row = await ownedThread(ep, ctx, args.threadId, "rename");
 
-      if (
-        !validText(args.text, "title") ||
-        !Number.isSafeInteger(args.expectedVersion) ||
-        args.expectedVersion < 0
-      )
-        throw new Error("INVALID_TITLE");
-
-      const state = await ctx.runQuery(ep.component.text.state.view, {
-        assignmentId: row.assignmentId,
-      });
+      if (!validText(args.text, "title")) throw new Error("INVALID_TITLE");
 
       const native = await getThreadMetadata(ctx, row.native.component, {
         threadId: args.threadId,
       });
 
-      if (
-        state.version === args.expectedVersion + 1 &&
-        state.source === "user" &&
-        native.title === args.text
-      )
-        return { messageId: args.threadId, replayed: true };
+      const replayed = native.title === args.text;
 
-      const result = await ctx.runMutation(ep.component.text.requests.rename, {
-        assignmentId: row.assignmentId,
-        text: args.text,
-        expectedVersion: args.expectedVersion,
-      });
+      if (!replayed)
+        await updateThreadMetadata(ctx, row.native.component, {
+          threadId: args.threadId,
+          patch: { title: args.text },
+        });
 
-      await updateThreadMetadata(ctx, row.native.component, {
-        threadId: args.threadId,
-        patch: { title: args.text },
-      });
-
-      return result;
-    },
-  });
-}
-
-/** Summary text is display-only; native context remains unchanged. */
-export function summaryEndpoint(ep: EndpointContext) {
-  return queryGeneric({
-    args: { threadId: v.string() },
-    returns: v.union(v.null(), v.object({ text: v.string(), throughMessageId: v.string() })),
-    handler: async (ctx, args) => {
-      const row = await ownedThread(ep, ctx, args.threadId, "summary");
-
-      const state = await ctx.runQuery(ep.component.text.state.view, {
-        assignmentId: row.assignmentId,
-      });
-
-      return state.summary
-        ? { text: state.summary.text, throughMessageId: state.summary.through.id }
-        : null;
-    },
-  });
-}
-
-/** Explicit request keys dedupe queued work; no action waits for the model. */
-export function summarizeEndpoint(ep: EndpointContext) {
-  return mutationGeneric({
-    args: { threadId: v.string(), requestKey: v.string() },
-    returns: v.object({ status: v.union(v.literal("queued"), v.literal("replayed")) }),
-    handler: async (ctx, args) => {
-      const row = await ownedThread(ep, ctx, args.threadId, "summarize");
-
-      if (!ep.config.summary) throw new Error("SUMMARY_DISABLED");
-
-      return ctx.runMutation(ep.component.text.requests.summarize, {
-        assignmentId: row.assignmentId,
-        requestKey: args.requestKey,
-      });
+      return { messageId: args.threadId, replayed };
     },
   });
 }

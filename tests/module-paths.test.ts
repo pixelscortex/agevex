@@ -54,7 +54,7 @@ describe("component module paths", () => {
 
   it("finds the core and module components", () => {
     expect(dirs.map((dir) => relative(SRC, dir)).sort()).toEqual(
-      expect.arrayContaining(["component", "modules/meter/component"]),
+      expect.arrayContaining(["component", "modules/sandbox/component"]),
     );
   });
 

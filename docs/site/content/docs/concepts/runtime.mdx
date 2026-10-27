@@ -13,7 +13,7 @@ and `sandboxComplete`. See the complete [registration](/docs/getting-started).
 Export `runTurn`, `textTask` and `coordinate` as internal host functions. Only roots go in
 `registration.agents`; reachable children belong in each Agent's `subagents`.
 Direct native Agent calls remain unmanaged. `refs.textTask` is required for
-default-on titles or opt-in summaries; see [background text](/docs/concepts/background-text).
+default-on titles; see [background text](/docs/concepts/background-text).
 
 ## Execute bounded slices
 
@@ -79,10 +79,8 @@ All require the host authorization policy. Optional arguments use `?`.
 | `respond`          | `threadId, approvalId, decision`              | `{ messageId, replayed }`                             |
 | `pendingApprovals` | `threadId, rootRunId?`                        | Bounded root and owned child decisions                |
 | `answer`           | `threadId, toolCallId, value`                 | `{ messageId, replayed }`                             |
-| `title`            | `threadId`                                    | `{ text, source, version }`                           |
-| `rename`           | `threadId, text, expectedVersion`             | `{ messageId, replayed }`                             |
-| `summary`          | `threadId`                                    | `{ text, throughMessageId }` or null                  |
-| `summarize`        | `threadId, requestKey`                        | `{ status: "queued" or "replayed" }`                  |
+| `title`            | `threadId`                                    | `{ text }`                                            |
+| `rename`           | `threadId, text`                              | `{ messageId, replayed }`                             |
 | `cancel`           | `threadId`                                    | `null`                                                |
 | `messages`         | `threadId, paginationOpts`                    | Native message page with origin metadata              |
 | `streams`          | `threadId, streamArgs`                        | Native stream synchronization result                  |
@@ -169,19 +167,17 @@ is omitted; an explicit host slice override also caps the Workflow turn.
 An approval resume continues the same logical turn: it keeps the steps already
 spent and does not grant new ones. If the turn's last allowed step requests
 approval, approving it ends the turn with `SLICE_LIMIT` and the thread enters
-`recovery_required`. The approved tool does not run. An `afterTurn`
-continuation staged after the last allowed step is dropped the same way, before
-it is saved. When agents use approvals, set `stepsPerTurn` (and any host
+`recovery_required`. The approved tool does not run. When agents use approvals, set `stepsPerTurn` (and any host
 `slicesPerTurn`) with headroom above the steps you expect before a pause.
 
 ## Usage and budget boundaries
 
-Optional usage is recorded after every saved model step and app observation.
+Optional usage is recorded after every saved model step .
 The budget slot checks observed run totals before the next model or local tool
-boundary. Provider-cost lookups correct the same meter charges after work;
+boundary. Apps reconcile provider costs in their own ledger;
 they never replay generation. Budget denial stops with `BUDGET_EXCEEDED`, with
 in-flight overshoot accepted. See [slots](/docs/concepts/slots) and
-[meter](/docs/modules/meter) for coverage and reconciliation.
+[recording usage](/docs/concepts/recording-usage) for coverage and reconciliation.
 
 ## Shared lane capacity
 

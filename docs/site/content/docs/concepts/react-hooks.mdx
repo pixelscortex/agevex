@@ -1,6 +1,7 @@
 ---
 title: React hooks
 description: Headless subscriptions over your app's authorized functions.
+status: Available
 ---
 
 `agevex/react` supplies hooks. Bring your own UI and use your existing
@@ -22,8 +23,6 @@ export const {
   answer,
   title,
   rename,
-  summary,
-  summarize,
 } = runtime.authorizedEndpoints();
 ```
 
@@ -101,7 +100,5 @@ Pass the pending item to the action so a descendant approval addresses its own
 thread. Read each ask's schema/question to build your form. The server validates
 structured answers and edited inputs. Hooks never imply approval before a receipt.
 
-`useTitle` returns the title metadata in `data` and `rename(text)`, using the
-observed version to prevent overwrites. `useSummary` returns summary data and
-`summarize()`. `useRunTree` preserves the supplied function ref's return type;
+`useTitle` returns the native title in `data` and `rename(text)`. `useRunTree` preserves the supplied function ref's return type;
 its shape follows your exported endpoint.

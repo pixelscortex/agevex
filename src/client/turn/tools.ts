@@ -12,7 +12,6 @@ import { fingerprint } from "../keys.js";
 import { opaqueKey } from "../keys.js";
 import { bindOnceTool } from "../once.js";
 import type { RuntimeContext } from "../registration/context.js";
-import { scopedMeter } from "../slots.js";
 import { RESERVED_TOOL_NAMES } from "../tool-names.js";
 import { installCollaborationTools } from "./collaboration-tools.js";
 import { boundToolDeadlines } from "./deadlines.js";
@@ -24,7 +23,7 @@ import { askUserMarker } from "../../shared/tool-markers.js";
 
 /** Build the complete tool set for one generation. */
 export async function buildTurnTools(rt: RuntimeContext, gen: Generation): Promise<ToolSet> {
-  const { turn, hc, backend } = gen;
+  const { turn, hc } = gen;
   const { rawCtx, args, claimed, managed } = turn;
   const eligible = (rt.graph.edges.get(claimed.agent)?.size ?? 0) > 0;
 
@@ -44,7 +43,6 @@ export async function buildTurnTools(rt: RuntimeContext, gen: Generation): Promi
           cancellationEpoch: claimed.cancellationEpoch,
         },
         rt.limits.leaseMs,
-        backend,
       ),
     ]),
   );
@@ -100,10 +98,10 @@ function mergeSlotTools(...bags: ToolSet[]): ToolSet {
  *
  * `beforeTool` may block (the model gets a `HOOK_BLOCKED` denial) or rewrite the
  * input; `afterTool` may rewrite the output, including every value a streaming
- * tool yields. The tool receives an opaque per-call key and a per-call meter.
+ * tool yields. The tool receives an opaque per-call key.
  */
 function withToolHooks(rt: RuntimeContext, gen: Generation, name: string, declared: Tool): Tool {
-  const { turn, hc, hook, backend, fence } = gen;
+  const { turn, hc, hook, fence } = gen;
   const { managed, facts } = turn;
   const execute = declared.execute!;
 
@@ -142,7 +140,6 @@ function withToolHooks(rt: RuntimeContext, gen: Generation, name: string, declar
         ...hc,
         toolCallId: callKey,
         nativeToolCallId: options.toolCallId,
-        meter: scopedMeter(backend, callKey),
       };
 
       // Plain AI tools receive options.context; native createTool

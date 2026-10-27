@@ -6,7 +6,7 @@ import { newRootAssignment } from "../src/component/turns/assignments.js";
 import { newRun } from "../src/component/turns/runs.js";
 import { newSubagentRun } from "../src/component/subagents/runs.js";
 import { HOST_LIMITS, LIMITS, resolveLimits } from "../src/component/limits.js";
-import { TREE_LIMITS, taskPreview } from "../src/component/run_tree_values.js";
+import { TREE_LIMITS } from "../src/component/run_tree_values.js";
 import { resolveRunSettings } from "../src/component/run_settings.js";
 import { closeRootRun, endRootTurn } from "../src/component/turns/run_lifecycle.js";
 
@@ -57,7 +57,6 @@ export const seedMaximum = mutation({
         {
           rootAssignmentId: rootId,
           taskMessageId: "task-root",
-          taskPreview: taskPreview("界".repeat(256)),
         },
       ),
     );
@@ -111,7 +110,6 @@ async function maximumChild(
   const run = newSubagentRun({
     request: {
       agent: `Child-${i}`,
-      side: i >= root.limits.runLaunches || undefined,
       payloadFingerprint: "hash",
       coordinateHandle: "opaque",
     },
@@ -120,8 +118,6 @@ async function maximumChild(
     root,
     budget,
     depth: 1,
-    wait: "each",
-    group: undefined,
     dedupKey: `dedup-${i}`,
     sequence: i + 1,
     now: Date.now(),
@@ -134,7 +130,6 @@ async function maximumChild(
     childAssignmentId: childId,
     childThreadId: `child-${i}`,
     taskMessageId: `task-${i}`,
-    taskPreview: taskPreview("界".repeat(256)),
     startedAt: Date.now(),
     events: [{ phase: "completed", at: Date.now(), errorCode: null }],
   } satisfies Omit<Doc<"subagentRuns">, "_id" | "_creationTime">);
@@ -152,7 +147,7 @@ export const maximumSizes = query({
 
     const children = await ctx.db
       .query("subagentRuns")
-      .withIndex("by_group", (q) => q.eq("parentRunId", rootRunId))
+      .withIndex("by_parent_run", (q) => q.eq("parentRunId", rootRunId))
       .take(TREE_LIMITS.descendants);
 
     const assignments = await Promise.all(
@@ -187,7 +182,6 @@ export const envelopeLifecycle = mutation({
       rootAssignmentId: assignmentId,
       rootCancellationEpoch: 0,
       taskMessageId: "task",
-      taskPreview: taskPreview("界".repeat(256)),
     };
 
     const settings = Array.from({ length: LIMITS.agents }, (_, i) => ({
@@ -229,10 +223,6 @@ export const envelopeLifecycle = mutation({
     await ctx.db.patch("runs", runId, {
       startedAt: Date.now(),
       resultMessageId: "m".repeat(64),
-      startedAgents: (1n << 63n) - 1n,
-      routingAgents: (1n << 63n) - 1n,
-      continues: HOST_LIMITS.continuesPerRun.max,
-      sideRuns: HOST_LIMITS.sideRunsPerRun.max,
       launches: HOST_LIMITS.runLaunches.max,
       hops: HOST_LIMITS.runHops.max,
     });
@@ -267,12 +257,7 @@ export const emptyRoot = mutation({
 export const lifecycle = mutation({
   args: {
     assignmentId: v.id("assignments"),
-    block: v.union(
-      v.literal("delivery"),
-      v.literal("group"),
-      v.literal("ready"),
-      v.literal("clear"),
-    ),
+    block: v.union(v.literal("delivery"), v.literal("ready"), v.literal("clear")),
   },
   handler: async (ctx, { assignmentId, block }) => {
     const root = (await ctx.db.get("assignments", assignmentId))!;
@@ -280,7 +265,7 @@ export const lifecycle = mutation({
 
     const members = await ctx.db
       .query("subagentRuns")
-      .withIndex("by_group", (q) => q.eq("parentRunId", budget._id))
+      .withIndex("by_parent_run", (q) => q.eq("parentRunId", budget._id))
       .take(TREE_LIMITS.descendants);
 
     for (const row of members) await ctx.db.delete("subagentRuns", row._id);
@@ -320,15 +305,12 @@ export const lifecycle = mutation({
           root,
           budget,
           depth: 1,
-          wait: "each",
-          group: undefined,
           dedupKey: "gap",
           sequence: 1,
           now: Date.now(),
         }),
         status: "completed",
         deliveryStatus: block === "delivery" ? "pending" : "failed",
-        ...(block === "group" ? { join: "sealed" as const } : {}),
       });
 
     await closeRootRun(ctx, { ...root, turnStatus: "idle" });

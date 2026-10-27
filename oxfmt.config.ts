@@ -25,7 +25,5 @@ export default defineConfig({
     "docs/site/.nitro/**",
     "docs/site/.tanstack/**",
     "docs/site/src/routeTree.gen.ts",
-    "docs/site/public/r/**",
-    "docs/site/registry.json",
   ],
 });

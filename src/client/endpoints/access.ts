@@ -20,7 +20,7 @@ export type EndpointContext = {
   config: Registration;
   limits: Limits;
   settings: SettingsSnapshot;
-  /** Every agent in the registered graph, by name: roots, children and side agents. */
+  /** Every agent in the registered graph, by name: roots and children. */
   managedAgents: Map<string, ManagedAgent>;
 };
 
@@ -29,8 +29,6 @@ export type ThreadOperation =
   | "pendingApprovals"
   | "title"
   | "rename"
-  | "summary"
-  | "summarize"
   | "send"
   | "respond"
   | "answer"
@@ -63,8 +61,6 @@ export function createEndpointContext(
     managedAgents.set(managed.name, managed);
 
     for (const child of managed.subagents) include(child);
-
-    for (const side of managed.sideAgents ?? []) include(side.agent);
   }
 
   for (const root of config.agents) include(root);

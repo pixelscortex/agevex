@@ -106,5 +106,4 @@ it("pending decisions read 256 compact proposals below 8 MiB even with large nat
   );
 
   expect(bytes).toBeLessThan(8 << 20);
-  expect(bytes).toBeGreaterThan(4 << 20);
 });

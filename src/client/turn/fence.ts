@@ -6,10 +6,10 @@
 // and a fenced action context whose every native write goes through
 // `turns.slices.write`, which re-checks the execution, token and epoch in the write's own
 // transaction (the transactional write fence). Built by `turn/generation.ts`;
-// the model call, hooks, slot tools, extract admission and hook notes use
+// the model call, hooks, slot tools, hook notes use
 // `TurnFence.ctx`. Receipt-bound tools (`bindOnceTool`) get the raw context plus
-// explicit fence args, and the runner's own control reads and writes (routing,
-// usage capture, the post-step snapshot, `continueAfterToolCalls`) use `Turn.rawCtx`.
+// explicit fence args, and the runner's own control reads and writes (usage
+// reporting, the post-step snapshot, `continueAfterToolCalls`) use `Turn.rawCtx`.
 
 import { createFunctionHandle, getFunctionAddress } from "convex/server";
 import { ConvexError } from "convex/values";
@@ -191,7 +191,7 @@ function fencedContext(
       try {
         const saved = await rawCtx.runMutation(
           rt.component.turns.slices.write,
-          await fencedWriteArgs(rt, turn, ref, payload),
+          await fencedWriteArgs(turn, ref, payload),
         );
 
         if (functionKey(ref) === addMessagesKey) {
@@ -222,11 +222,10 @@ function fencedContext(
  * `rejectStale` makes a fenced-out write throw `CANCELLED` instead of silently
  * returning. A native stream start also passes the stream-abort handle so the
  * component can close it on cancel; a native message save also passes what the
- * component needs to record deferred tool calls and the model step's usage ids
+ * component needs to record deferred tool calls
  * from that same save, without any transcript discovery.
  */
 async function fencedWriteArgs(
-  rt: RuntimeContext,
   turn: Turn,
   ref: Parameters<RunnerCtx["runMutation"]>[0],
   payload: unknown,
@@ -249,7 +248,6 @@ async function fencedWriteArgs(
           // Tools without execute are native deferred calls (Agent
           // 0.7.7 example/convex/chat/human.ts:125-157). Supply
           // names only at the native-save seam; no transcript scan.
-          trackUsage: !!rt.config.usage,
           askUserTools: await askUserTools(managed.declaredTools, payload as AskUserSave),
           deferredTools: deferredToolNames(managed),
           nativeMessages: {

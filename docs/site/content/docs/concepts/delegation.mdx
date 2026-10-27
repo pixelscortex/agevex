@@ -1,7 +1,7 @@
 ---
 title: Delegation
 icon: Network
-description: Groups, delivery rules, run trees and per-agent model overrides.
+description: Child delivery rules, run trees and per-agent model overrides.
 status: Available
 ---
 
@@ -10,21 +10,13 @@ another agent's `subagents`. Registration allows two edges from each root;
 `limits.maxDepth: 1` lowers that, and cycles or deeper graphs fail at
 registration.
 
-Parents receive `agevex_delegate` with `{ agent, task, group?, wait? }` and
+Parents receive `agevex_delegate` with `{ agent, task, wait?: "each" }` and
 `agevex_message_child` with `{ runId, text }`. Children receive
 `agevex_ask_parent` with `{ question }` and
 [`agevex_message_parent`](/docs/concepts/message-parent) with `{ text }`.
 
-## Groups
-
-`wait` defaults to `"each"`: each settled result reaches the parent
-immediately. With `wait: "all"`, the group's final results wake its parent once, after the
-launching slice ends and every member settles, failures included. Membership
-seals when that slice ends, so a later launch into the same group returns
-`GROUP_CLOSED`. A group holds at most `activeChildrenPerRoot` members: 5 by
-default, 15 at the hard maximum. Names are at most 200 characters, and
-omitting the name selects the unnamed group. Mixing `"each"` and `"all"`
-members in one group returns `GROUP_CONFLICT`.
+Each settled result reaches the parent independently. `wait` defaults to
+`"each"`; that is its only supported value.
 
 ## Delivery rules
 
@@ -48,7 +40,7 @@ frees its result slot and hop. If even that last write fails, the run stays
 ## Questions and follow-ups
 
 One open question pauses the child as `asking`, and its verified question wakes
-the parent immediately, even inside a waiting group. The parent answers with
+the parent immediately. The parent answers with
 `agevex_message_child`. Each child accepts 4 follow-ups, 8 at the hard maximum.
 Questions and follow-ups spend the run's hops and use `limits.taskLength`: 4,000
 UTF-16 units by default, 16,000 at the hard maximum.
@@ -57,7 +49,7 @@ UTF-16 units by default, 16,000 at the hard maximum.
 
 `agevex_message_parent({ text })` sends a short message to the immediate
 persisted parent and lets the child keep working. A sleeping parent wakes at
-its next safe turn, even while a wait-all group still has running members.
+its next safe turn.
 A running parent finishes its current tools/results first; progress never
 bypasses an unresolved approval or deferred call. Woken turns record normal usage.
 
@@ -79,14 +71,14 @@ A user prompt starts one run. Launches, delivered results, notes, questions,
 answers and follow-ups share 12 launches and 24 hops, with hard maxima of 50
 and 100. Each launch reserves its result's hop; each question reserves its
 answer hop. Notes, questions and follow-ups cannot spend those reserved hops.
-Final results and joined groups always enter the ready queue, even above
+Final results always enter the ready queue, even above
 `queueLength`. The queue limit applies to messages: user sends, parent notes,
 questions and child follow-ups are refused at capacity (`QUEUE_FULL` for user
 sends, `QUEUE_LIMIT` for component enqueues). Answers and approval continuations
 retain their control allowance. Messages are refused until the queue drains
 below its limit. Launch admission bounds outstanding result work per assignment
-across user requests at `runLaunches`: pending deliveries, unreleased join members
-and queued result rows. A joined row replaces its members; claim frees capacity.
+across user requests at `runLaunches`: pending deliveries
+and queued result rows. Claim frees capacity.
 Reaching this separate bound returns `RESULTS_PENDING`: wait for or claim child
 results before launching more. `RUN_BUDGET` means a launch or hop budget is
 exhausted. A root admits at most 5 active
@@ -111,18 +103,17 @@ const builder = tree?.nodes.find((node) => node.agent === "Builder");
 const builderThreadId = builder?.messages.threadId;
 ```
 
-Each node includes `agent`, a task preview of at most 256 encoded bytes,
-`createdAt`, nullable `startedAt`/`finishedAt`, `currentTool`, exclusive `usage`,
+Each node includes `agent`, `createdAt`, nullable `startedAt`/`finishedAt`, `currentTool`, exclusive `usage`,
 and `messages` links (`threadId`, plus stored `taskId`, `resultId`,
 `parentResultId` and `questionId` when available). A reserved child may have an
-empty `threadId` until attachment. Full task bodies stay in native messages.
+empty `threadId` until attachment. Task bodies stay in native messages; read them through `messages.taskId`.
 
 Projected statuses are `queued`, `running`, `asleep`, `done` and `failed`.
 Waiting parents remain `asleep` with `reason: "children"`, `"approval"` or
 `"ask"`; a budget stop uses `"budget"`, recovery failures use `"recovery"`, and
 cancellation is `failed` with `"cancelled"`. `error` is a stored error code.
-An idle turn alone never means done: ready work, ordinary pending deliveries
-and unjoined groups fence root completion. Side reviews may finish later.
+An idle turn alone never means done: ready work and pending deliveries
+fence root completion.
 
 `currentTool` is the last-started still-active local tool, including managed
 collaboration tools. It is not a concurrent tool inventory, and finished nodes
@@ -132,16 +123,14 @@ tool result. Slice completion clears stale markers, and late writes are fenced.
 Cancelling live work preserves any root outcome and finish time already recorded.
 
 Without a usage adapter's query-safe `view`, envelope and node usage are `null`.
-`meter.usageSlot()` supplies live exclusive totals, so each node is summed once
-to obtain the envelope total, including root title/summary work. `estimatedUsd`
-and `settledUsd` remain separate; `unknown` and `reporting` describe coverage.
-Corrections replace estimated cost without repeating generation.
+Apps may supply exclusive node and run totals through `usage.view`; their
+queries own read bounds. `estimatedUsd` and `settledUsd` remain separate;
+`unknown` and `reporting` describe coverage. See [recording usage](/docs/concepts/recording-usage).
 
-The tree includes at most 50 ordinary launches and 8 side reviews, plus the
-root. Reads stay below 8 MiB including the meter projection; output is capped
+The tree includes at most 50 launches plus the root. Reads stay below 8 MiB for core coordination; output is capped
 at 128 KiB. `delegations({ threadId, paginationOpts })` retains its existing
 history contract across requests: newest-first, at most 50 runs per page, with
-stored statuses and `side: boolean` distinguishing side reviews.
+stored statuses.
 
 ## Per-agent model overrides
 
@@ -153,6 +142,5 @@ send updates the next run only: omitting `models` inherits the last accepted
 thread policy, and `{}` restores the Agent defaults. A map holds at most 8
 entries and 512 Convex-encoded bytes, with ids of at most 200 characters.
 
-The model calls `agevex_delegate` with `agent: "Builder"`, a task,
-`group: "draft"` and `wait: "all"`. This is a managed model tool, not a
+The model calls `agevex_delegate` with `agent: "Builder"` and a task. This is a managed model tool, not a
 JavaScript function exported to the host.

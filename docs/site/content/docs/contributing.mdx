@@ -12,9 +12,9 @@ status: Available
 | `src/client/`                     | Core host runtime; package entry is `index.ts`                                   |
 | `src/modules/<name>/`             | Optional module's `component/`, `client/`, `shared/` and `test.ts`, where needed |
 | `src/modules/telemetry/client/`   | Host-only telemetry                                                              |
-| `src/modules/tools/registry/`     | Installable host state and tool sources                                          |
+| `src/modules/tools/client/`       | Stateless deferred question factory                                              |
 | `src/testing/`, `tests/<module>/` | Shared fake backends and behavior tests                                          |
-| `docs/site/`                      | Independent Bun docs and registry app                                            |
+| `docs/site/`                      | Independent Bun docs app                                                         |
 | `.agents/skills/`                 | Pinned Convex guidance; `skills-lock.json` records versions                      |
 
 Read [AGENTS.md](https://github.com/pixelscortex/agevex/blob/HEAD/AGENTS.md)
@@ -36,8 +36,7 @@ bun run --cwd docs/site build
 
 `check` runs Oxfmt, type-aware Oxlint, library/test/docs type checks and the
 Convex lint gate. `test` runs offline fake backends with two workers and needs
-no prior build. Use `bun run fmt` to format. After editing registry sources,
-run `bun run registry:build` and `bun run test:tools`.
+no prior build. Use `bun run fmt` to format. Run `bun run test:tools` after editing the question factory.
 
 ## Documentation checks
 
@@ -55,10 +54,8 @@ bun run test:live
 
 Live checks are opt-in. Their loaders read the main checkout's
 `/Volumes/mypixel/pxc/agevex/.env.local`. Required names are
-`OPENROUTER_API_KEY`, `DAYTONA_API_KEY`, `FIRECRAWL_API_KEY`,
-`LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` and `LANGFUSE_BASE_URL`.
-Never print their values. Use `openrouter/free`, at most three Firecrawl calls,
-and one smallest, cheapest image per full live run.
+`OPENROUTER_API_KEY` and `DAYTONA_API_KEY`.
+Never print their values. Use `openrouter/free`.
 
 ## Conventions
 

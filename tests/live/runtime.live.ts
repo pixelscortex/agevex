@@ -18,7 +18,7 @@ const api = anyApi as unknown as ApiFromModules<{ agents: typeof agents }>;
 const modules = import.meta.glob(["./convex/**/*.ts", "./convex/**/*.js"]);
 
 it.skipIf(!process.env.OPENROUTER_API_KEY)(
-  "live structured task, metered turn, delegation, depth-two round trip and passive critic review",
+  "live structured task, metered turn, delegation, depth-two round trip",
   async () => {
     const scenarios = [];
 
@@ -61,13 +61,11 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
       scenarios.push({ scenario: "structured-task", usage: taskCharge?.usage });
       expect(taskCharge?.usage).toBeTruthy();
 
-      for (const scenario of ["plain", "delegation", "depth", "critic"] as const) {
+      for (const scenario of ["plain", "delegation", "depth"] as const) {
         live.scenario = scenario;
         const delegation = scenario === "delegation";
         const depth = scenario === "depth";
-        const critic = scenario === "critic";
 
-        live.criticCalls = 0;
         const before = { input: live.inputTokens, output: live.outputTokens };
         const t = convexTest(schema, modules);
 
@@ -84,7 +82,7 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
 
         const receipt = await owner
           .mutation(api.agents.open, {
-            agent: critic ? "Watched" : "Main",
+            agent: "Main",
             prompt: depth
               ? "Do a depth-two task: delegate one short task to Builder, which delegates to Reviewer, then answer after Builder completes."
               : delegation
@@ -117,9 +115,8 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
           .toEqual({
             status: "idle",
             active: 0,
-            history: delegation || depth ? 2 : critic ? 1 : 0,
+            history: delegation || depth ? 2 : 0,
             rootCalls: depth ? 2 : delegation ? 3 : 1,
-            // Passive critic notes have their own capacity, never ready work.
             queued: 0,
             errorCode: null,
           });
@@ -140,103 +137,6 @@ it.skipIf(!process.env.OPENROUTER_API_KEY)(
             },
             usage: expect.any(Object),
           });
-        }
-
-        if (critic) {
-          expect(live.criticCalls).toBe(1);
-
-          // Side delivery admits a pending note without starting another turn.
-          // Wait for admission, then claim it with a real follow-up request.
-          await expect
-            .poll(
-              async () => {
-                const deliveries = await owner.query(api.agents.delegations, {
-                  threadId: receipt.threadId,
-                  paginationOpts: { cursor: null, numItems: 20 },
-                });
-
-                const failed = deliveries.page.find(
-                  (run) => run.deliveryStatus === "failed" || run.deliveryStatus === "blocked",
-                );
-
-                if (failed) throw new Error(`LIVE_CRITIC_DELIVERY_FAILED:${failed.errorCode}`);
-
-                return deliveries.page.some((run) => run.deliveryStatus === "accepted");
-              },
-              { timeout: 180_000, interval: 200 },
-            )
-            .toBe(true);
-
-          const beforeClaim = await owner.query(api.agents.messages, {
-            threadId: receipt.threadId,
-            paginationOpts: { cursor: null, numItems: 20 },
-          });
-
-          expect(beforeClaim.page.some((message) => message.origin === "note")).toBe(false);
-
-          const reviews = await owner.query(api.agents.delegations, {
-            threadId: receipt.threadId,
-            paginationOpts: { cursor: null, numItems: 20 },
-          });
-
-          const firstReview = await owner.query(api.agents.messages, {
-            threadId: reviews.page[0].childThreadId!,
-            paginationOpts: { cursor: null, numItems: 20 },
-          });
-
-          const reply = firstReview.page.find(
-            (message) => message.role === "assistant" && message.text.trim(),
-          )!.text;
-
-          // A real provider may choose the documented NONE response even when
-          // the scenario asks for useful advice. That reply posts no note;
-          // every other nonempty review must persist once at the next claim.
-          const expectedNotes = reply.trim() === "NONE" ? 0 : 1;
-
-          requireReceipt(
-            await owner.mutation(api.agents.send, {
-              threadId: receipt.threadId,
-              text: "Read the critic note and reply in three words.",
-              requestKey: "consume critic note",
-            }),
-          );
-
-          await expect
-            .poll(
-              async () => {
-                const status = await owner.query(api.agents.activity, {
-                  threadId: receipt.threadId,
-                });
-
-                if (status.turnStatus === "recovery_required")
-                  throw new Error(`LIVE_TURN_FAILED:${status.errorCode}`);
-
-                return {
-                  status: status.turnStatus,
-                  active: status.subagents.active,
-                  rootCalls: live.rootCalls,
-                  criticCalls: live.criticCalls,
-                  queued: status.queuedMessages,
-                };
-              },
-              { timeout: 180_000, interval: 200 },
-            )
-            .toEqual({ status: "idle", active: 0, rootCalls: 2, criticCalls: 2, queued: 0 });
-
-          const afterClaim = await owner.query(api.agents.messages, {
-            threadId: receipt.threadId,
-            paginationOpts: { cursor: null, numItems: 20 },
-          });
-
-          expect(
-            afterClaim.page.filter(
-              (message) => message.origin === "note" && message.from === "Critic",
-            ),
-            JSON.stringify({
-              reply,
-              afterClaim: afterClaim.page,
-            }),
-          ).toHaveLength(expectedNotes);
         }
 
         if (delegation) {

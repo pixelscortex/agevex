@@ -34,29 +34,6 @@
       "types": "./dist/component/_generated/component.d.ts"
     },
     "./test": "./src/testing/test.ts",
-    "./meter": {
-      "types": "./dist/modules/meter/client/index.d.ts",
-      "default": "./dist/modules/meter/client/index.js"
-    },
-    "./meter/convex.config": {
-      "types": "./dist/modules/meter/component/convex.config.d.ts",
-      "default": "./dist/modules/meter/component/convex.config.js"
-    },
-    "./meter/_generated/component.js": {
-      "types": "./dist/modules/meter/component/_generated/component.d.ts"
-    },
-    "./meter/test": "./src/modules/meter/test.ts",
-    "./extract": {
-      "types": "./dist/modules/extract/client/index.d.ts",
-      "default": "./dist/modules/extract/client/index.js"
-    },
-    "./extract/convex.config": {
-      "types": "./dist/modules/extract/component/convex.config.d.ts",
-      "default": "./dist/modules/extract/component/convex.config.js"
-    },
-    "./extract/_generated/component.js": {
-      "types": "./dist/modules/extract/component/_generated/component.d.ts"
-    },
     "./sandbox": {
       "types": "./dist/modules/sandbox/client/index.d.ts",
       "default": "./dist/modules/sandbox/client/index.js"
@@ -73,7 +50,6 @@
       "types": "./dist/modules/telemetry/client/index.d.ts",
       "default": "./dist/modules/telemetry/client/index.js"
     },
-    "./extract/test": "./src/modules/extract/test.ts",
     "./tools": {
       "types": "./dist/modules/tools/client/index.d.ts",
       "default": "./dist/modules/tools/client/index.js"
@@ -81,6 +57,10 @@
     "./react": {
       "types": "./dist/react/index.d.ts",
       "default": "./dist/react/index.js"
+    },
+    "./usage": {
+      "types": "./dist/usage/index.d.ts",
+      "default": "./dist/usage/index.js"
     }
   },
   "scripts": {
@@ -96,16 +76,10 @@
     "lint:convex:check": "bun run scripts/check-convex-lint.ts",
     "check": "bun run fmt:check && bun run lint && bun run typecheck && bun run typecheck:tests && bun run lint:convex:check && bun run --cwd docs/site check",
     "test": "vp test --run",
-    "test:live": "vp test --run --config vite.live.config.ts && bun run test:meter:live && bun run test:live:extract && vp test --run --config tests/sandbox/vite.live.config.ts && bun run test:live:telemetry",
-    "test:meter:live": "vp test --run --config tests/meter/live.config.ts",
-    "test:live:extract": "vp test --run --config tests/extract/vite.live.config.ts",
-    "test:tools": "vp test --run tests/tools",
-    "registry:build": "bun run --cwd docs/site registry:build",
-    "test:live:telemetry": "vp test --run --config tests/telemetry/vite.live.config.ts --reporter verbose"
+    "test:live": "vp test --run --config vite.live.config.ts && vp test --run --config tests/sandbox/vite.live.config.ts",
+    "test:tools": "vp test --run tests/tools"
   },
   "dependencies": {
-    "@convex-dev/aggregate": "^0.3.4",
-    "@convex-dev/rag": "0.7.8",
     "@convex-dev/workflow": "0.4.10",
     "@convex-dev/workpool": "0.4.14",
     "@daytona/convex": "2.1.0",
