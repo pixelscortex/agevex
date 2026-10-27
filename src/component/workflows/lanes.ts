@@ -62,8 +62,7 @@ export function laneManager(child: boolean, limits: Pick<Limits, "rootLane" | "c
  * Start an assignment's loop workflow in its lane and return the workflow id
  * (the caller records it on the row in the same transaction). Called by wake
  * when no loop exists and by the done callback to rotate a finished loop.
- * `slicesPerTurn` is passed only when the host overrode it, so default rows
- * keep the original version-1 argument shape.
+ * The default slice bound is implicit; explicit overrides travel with the loop.
  */
 export function startLoop(
   ctx: MutationCtx,

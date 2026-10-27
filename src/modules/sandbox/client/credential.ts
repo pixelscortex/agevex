@@ -1,8 +1,7 @@
 /**
  * Lazy credential option for the Daytona adapter.
  * Hosts whose rules forbid reading env at module init pass a getter; it runs
- * only when a Daytona call is made, never at construction. Each module keeps
- * its own copy because optional modules must not import one another.
+ * only when a Daytona call is made, never at construction.
  */
 import { LIMITS } from "../shared/limits.js";
 
