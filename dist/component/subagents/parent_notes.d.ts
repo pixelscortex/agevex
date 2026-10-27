@@ -12,7 +12,7 @@ export declare const parentNoteContext: import("convex/server").RegisteredQuery<
     code: "FORBIDDEN" | "STALE_TURN" | "RUN_BUDGET" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "MESSAGE_RATE_LIMIT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
 } | {
     kind: "ready";
-    runId: string;
+    runId: import("convex/values").GenericId<"subagentRuns">;
     agent: string;
     subject: string;
     childThreadId: string;

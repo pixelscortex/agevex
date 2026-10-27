@@ -1,6 +1,7 @@
 /** Root lifecycle snapshots survive later sends on the same assignment.
  * Closure uses exact request-scoped existence probes, never delegation history.
  */
+import { approvalBlocked } from "../approvals.js";
 import type { MutationCtx, QueryCtx } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
 
@@ -17,7 +18,7 @@ export function readyForRun(ctx: QueryCtx, assignmentId: Id<"assignments">, runI
 /** Transitive delivery fences, scoped to one request.
  * One probe <=4 KiB, plus <=1 KiB ready work.
  */
-export async function rootRunBlocked(ctx: QueryCtx, root: Doc<"assignments">, runId: Id<"runs">) {
+async function rootRunBlocked(ctx: QueryCtx, root: Doc<"assignments">, runId: Id<"runs">) {
   if (await readyForRun(ctx, root._id, runId)) return true;
 
   if (
@@ -56,7 +57,7 @@ export async function closeRootRun(ctx: MutationCtx, root: Doc<"assignments">, r
   )
     return;
 
-  if (root.runId === runId && (root.turnStatus !== "idle" || root.approvalBlocked)) return;
+  if (root.runId === runId && (root.turnStatus !== "idle" || approvalBlocked(root))) return;
 
   if (await rootRunBlocked(ctx, root, runId)) return;
 

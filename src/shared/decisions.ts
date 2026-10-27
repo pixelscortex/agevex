@@ -1,6 +1,10 @@
 // Shared decision bounds and a deliberately small, closed JSON Schema form dialect.
 // Reject unsupported keywords rather than silently accepting an unchecked constraint.
-import { ConvexError, convexToJson, getConvexSize, v, type Infer, type Value } from "convex/values";
+import { ConvexError, convexToJson, v, type Infer, type Value } from "convex/values";
+
+import { canonicalJson, valueBytes } from "./json.js";
+
+export { canonicalJson, valueBytes as decisionBytes } from "./json.js";
 
 export const DECISION_LIMITS = {
   valueBytes: 16 << 10,
@@ -63,13 +67,7 @@ export function assertJson(value: unknown, maxBytes: number = DECISION_LIMITS.va
 
   visit(value, 0);
 
-  if (
-    Math.max(
-      getConvexSize(value as Value),
-      new TextEncoder().encode(JSON.stringify(value)).length,
-    ) > maxBytes
-  )
-    throw new ConvexError({ code: "VALUE_TOO_LARGE" });
+  if (valueBytes(value) > maxBytes) throw new ConvexError({ code: "VALUE_TOO_LARGE" });
 }
 
 /** Validate the app's schema at construction, including all nested fields and keywords. */
@@ -221,30 +219,6 @@ export function validateAnswer(value: unknown, schema?: JsonSchema): void {
   };
 
   if (!matches(schema, value)) throw new ConvexError({ code: "INVALID_ANSWER" });
-}
-
-/** Larger UTF-8 JSON/Convex representation governs every decision envelope. */
-export function decisionBytes(value: unknown): number {
-  return Math.max(
-    getConvexSize(value as Value),
-    new TextEncoder().encode(JSON.stringify(value)).length,
-  );
-}
-
-/** Canonical JSON treats object order as transport detail, including form enum values. */
-export function canonicalJson(value: unknown): string {
-  const canonical = (part: unknown): unknown =>
-    Array.isArray(part)
-      ? part.map(canonical)
-      : part && typeof part === "object"
-        ? Object.fromEntries(
-            Object.entries(part)
-              .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-              .map(([key, item]) => [key, canonical(item)]),
-          )
-        : part;
-
-  return JSON.stringify(canonical(value));
 }
 
 const FORM_KEYWORDS: readonly string[] = [

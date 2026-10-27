@@ -28,7 +28,7 @@ export declare function settlementScope(ctx: QueryCtx, args: {
     turnToken: string;
     runId: string;
 }): Promise<{
-    runId: string;
+    runId: import("convex/values").GenericId<"subagentRuns">;
     agent: string;
     subject: string;
     childThreadId: string;
@@ -56,7 +56,7 @@ export declare const deliveryContextFields: {
  * whether the parent side can still accept it (`rootAvailable`). Null when
  * the run is not terminal, already delivered, or its root/parent is gone. */
 export declare function terminalContext(ctx: QueryCtx, run: Doc<"subagentRuns">): Promise<{
-    runId: string;
+    runId: import("convex/values").GenericId<"subagentRuns">;
     agent: string;
     rootAgent: string;
     parentAgent: string;
@@ -81,12 +81,12 @@ export declare function delegationPage(ctx: QueryCtx, root: Doc<"assignments">, 
             errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | "DELIVERY_UNKNOWN" | null;
             phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
             at: number;
-            runId: string;
+            runId: import("convex/values").GenericId<"subagentRuns">;
             agent: string;
         }[];
         finishedAt: number | null;
         deliveryAt: number | null;
-        runId: string;
+        runId: import("convex/values").GenericId<"subagentRuns">;
         childThreadId: string | null;
         agent: string;
         status: "failed" | "running" | "completed" | "queued" | "asking";

@@ -82,7 +82,7 @@ async function finalizeControl(ctx, handles, control, slotId) {
  * Exact anchor <=1 MiB + six native merge heads <=6 MiB + one save/result
  * <=130 KiB + assignment/ref metadata <128 KiB: <8 MiB <16 MiB per control.
  */
-export async function controlOrder(ctx, row, getMessages) {
+async function controlOrder(ctx, row, getMessages) {
     const anchor = row.promptMessageId;
     const [message] = (await ctx.runQuery(getMessages, {
         messageIds: [anchor],
@@ -98,7 +98,7 @@ function noteMessage(text, from) {
     return { role: "user", content: `<note from="${escape(from)}">${escape(text)}</note>` };
 }
 /** Save one note natively at `order` (from controlOrder) and return the doc. */
-export async function saveNote(ctx, row, addMessages, order, text, from) {
+async function saveNote(ctx, row, addMessages, order, text, from) {
     const saved = (await ctx.runMutation(addMessages, {
         threadId: row.threadId,
         order,
@@ -118,7 +118,7 @@ function validNote(text, from) {
 /** turns.slices.write fences hook notes by execution/epoch; external notes serialize
  * against cancellation here. Every post retains only its bounded raw payload.
  * Refuses past the assignment's `notesPending` cap. */
-export async function queueNote(ctx, args) {
+async function queueNote(ctx, args) {
     const row = await ctx.db.get("assignments", args.assignmentId);
     if (!row || row.cancelled || !validNote(args.text, args.from))
         throw new Error("INVALID_NOTE");
@@ -147,7 +147,7 @@ export async function queueNote(ctx, args) {
  * have committed their results. Otherwise share the pending-note admission cap
  * and defer delivery to a safe claim. turns.slices.write supplies the epoch fence.
  */
-export async function saveBeforeTurnNote(ctx, args) {
+async function saveBeforeTurnNote(ctx, args) {
     const row = await ctx.db.get("assignments", args.assignmentId);
     if (!row ||
         row.cancelled ||
@@ -183,7 +183,7 @@ export async function saveBeforeTurnNote(ctx, args) {
  * The epoch index fences a fresh send even when it precedes this job. Each
  * cancelled epoch has <=24 notes, so no chain or history prefix is needed.
  */
-export async function dropCancelledNotes(ctx, assignmentId, epoch) {
+async function dropCancelledNotes(ctx, assignmentId, epoch) {
     const row = await ctx.db.get("assignments", assignmentId);
     if (!row)
         return;

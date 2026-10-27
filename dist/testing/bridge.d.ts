@@ -4,7 +4,7 @@
 export declare const delegationState: import("convex/server").RegisteredQuery<"internal", {
     threadId: string;
 }, Promise<{
-    runId: string;
+    runId: import("convex/values").GenericId<"subagentRuns">;
     parentAssignmentId: import("convex/values").GenericId<"assignments">;
     childAssignmentId: import("convex/values").GenericId<"assignments"> | null;
     agent: string;

@@ -46,7 +46,7 @@ export async function terminate(ctx, row, result) {
         owner.state !== "deleting" &&
         !(await hasJobs(ctx, row.scopeKey)))
         await ctx.db.patch("sandboxes", owner._id, {
-            cleanupAt: Math.max(owner.lastUsedAt + owner.ttl, owner.leaseUntil),
+            cleanupAt: Math.max(owner.idleExpiresAt, owner.leaseUntil),
         });
     return {
         type: "sandbox.job.completed",

@@ -9,6 +9,7 @@
  * the receipt (`replayed: true`); a different payload for the same call is a
  * KEY_CONFLICT. Touches `assignments.approvals`, `inbox` and `receipts`.
  */
+import { approvalBlocked } from "../approvals.js";
 import type { MessageDoc } from "@convex-dev/agent";
 import type { FunctionHandle } from "convex/server";
 import { ConvexError, getConvexSize, v } from "convex/values";
@@ -31,7 +32,7 @@ import { wake } from "./wake.js";
 /** `replayed` is true when an identical retry was served from the response
  * receipt, so a host can tell a first decision from a replay (e.g. to record
  * single-use consent only once). */
-export const vResponseResult = v.object({ messageId: v.string(), replayed: v.boolean() });
+const vResponseResult = v.object({ messageId: v.string(), replayed: v.boolean() });
 
 type ResponseReceipt = { scope: string; key: string; fingerprint: string };
 
@@ -81,7 +82,7 @@ async function saveResponseReceipt(ctx: MutationCtx, receipt: ResponseReceipt, m
  * response saved directly through Agent is not seen by this runtime.
  * Saves the native approval response, marks the request resolved, and once
  * every request is resolved releases the pause into its continuation turn. */
-export async function respondToApproval(
+async function respondToApproval(
   ctx: MutationCtx,
   args: {
     assignmentId: Id<"assignments">;
@@ -114,7 +115,14 @@ export async function respondToApproval(
 
   const decision = approvals?.requests[index];
 
-  if (!row.approvalBlocked || row.cancelled || !approvals || approvals.cleanupPending || !decision)
+  if (
+    !approvalBlocked(row) ||
+    row.cancelled ||
+    !approvals ||
+    approvals.cleanupPending ||
+    approvals.epoch !== row.cancellationEpoch ||
+    !decision
+  )
     throw new ConvexError({ code: "APPROVAL_NOT_FOUND" });
 
   if (decision.resolved) throw new ConvexError({ code: "APPROVAL_ALREADY_RESOLVED" });
@@ -149,12 +157,13 @@ export async function respondToApproval(
       : request,
   );
 
-  await ctx.db.patch("assignments", row._id, { approvals: { ...approvals, requests } });
+  const updated = { ...approvals, requests };
+
+  await ctx.db.patch("assignments", row._id, { approvals: updated });
 
   if (requests.every((request) => request.resolved)) {
     await ctx.db.patch("inbox", approvals.inboxId, { messageId });
-    await ctx.db.patch("assignments", row._id, { approvalBlocked: false });
-    await wake(ctx, { ...row, approvalBlocked: false });
+    await wake(ctx, { ...row, approvals: updated });
   }
 
   return { messageId, replayed: false };
@@ -168,7 +177,7 @@ export async function respondToApproval(
  * At most 16 fixed-size references are reindexed per answer.
  * No tool payload is copied into coordination state, even for large inputs.
  */
-export async function answerDeferredCall(
+async function answerDeferredCall(
   ctx: MutationCtx,
   args: { assignmentId: Id<"assignments">; subject: string; toolCallId: string; value: unknown },
 ) {
@@ -202,7 +211,7 @@ export async function answerDeferredCall(
   if (
     !pause ||
     !request ||
-    !row.approvalBlocked ||
+    !approvalBlocked(row) ||
     row.cancelled ||
     pause.cleanupPending ||
     pause.epoch !== row.cancellationEpoch
@@ -229,14 +238,13 @@ export async function answerDeferredCall(
 
   const remaining = pause.requests.filter((_, offset) => offset !== index);
   const approvals = remaining.length ? { ...pause, requests: remaining } : undefined;
-  const blocked = remaining.some((entry) => !entry.resolved);
 
-  await ctx.db.patch("assignments", row._id, { approvals, approvalBlocked: blocked });
+  await ctx.db.patch("assignments", row._id, { approvals });
   // Always retain the last saved result as the future prompt, including a
   // partial answer. A concurrent answer/respond serializes on this same row.
   await ctx.db.patch("inbox", pause.inboxId, { messageId });
 
-  if (!blocked) await wake(ctx, { ...row, approvals, approvalBlocked: false });
+  if (!approvalBlocked({ approvals })) await wake(ctx, { ...row, approvals });
 
   return { messageId, replayed: false };
 }

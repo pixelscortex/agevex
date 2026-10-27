@@ -1,4 +1,5 @@
 import { type Infer } from "convex/values";
+export { canonicalJson, valueBytes as decisionBytes } from "./json.js";
 export declare const DECISION_LIMITS: {
     readonly valueBytes: number;
     readonly schemaBytes: number;
@@ -64,7 +65,3 @@ export declare function assertJson(value: unknown, maxBytes?: number): void;
 export declare function assertFormSchema(schema: JsonSchema): void;
 /** Validate without coercion; a malformed answer must leave the native call pending. */
 export declare function validateAnswer(value: unknown, schema?: JsonSchema): void;
-/** Larger UTF-8 JSON/Convex representation governs every decision envelope. */
-export declare function decisionBytes(value: unknown): number;
-/** Canonical JSON treats object order as transport detail, including form enum values. */
-export declare function canonicalJson(value: unknown): string;

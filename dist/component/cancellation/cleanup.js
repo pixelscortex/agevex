@@ -5,7 +5,7 @@ import { approvalKey, saveResponses } from "../approvals.js";
 import { wake } from "../turns/wake.js";
 import { v } from "convex/values";
 /** Exactly one recorded placeholder per transaction, including native payload reads. */
-export async function finalize(ctx, pending) {
+async function finalize(ctx, pending) {
     const [message] = await ctx.runQuery(pending.getMessages, { messageIds: [pending.messageId] });
     // Native ids survive order reuse. Deletion and an already terminal message
     // are both no-ops; finalizeMessage also compares pending status atomically.
@@ -16,7 +16,7 @@ export async function finalize(ctx, pending) {
         });
 }
 /** Abort the execution's tracked stream (if any), then fail its placeholder. */
-export async function failPendingGeneration(ctx, pending) {
+async function failPendingGeneration(ctx, pending) {
     // Stream creation is tracked atomically too: never list a thread's streams
     // after cancellation, when a fresh generation may already own another one.
     if (pending.stream) {
@@ -37,7 +37,7 @@ export async function failPendingGeneration(ctx, pending) {
 }
 /** Close the first recorded request natively: an "execution-denied" result
  * for its call and, for an undecided approval, a denial response. */
-export async function denyFirstRequest(ctx, row, approvals) {
+async function denyFirstRequest(ctx, row, approvals) {
     const request = approvals.requests[0];
     const messageId = request.messageId;
     // One exact request document per transaction (<= 1 MiB), plus native save
@@ -95,7 +95,7 @@ async function cancelledDecision(message, request) {
 /** Drop the handled request; chain the next cleanup job, or release the
  * pause and wake the assignment when none remain: a send accepted after the
  * cancel may have queued work that the pause was holding back. */
-export async function continueOrRelease(ctx, row, approvals, approvalEpoch) {
+async function continueOrRelease(ctx, row, approvals, approvalEpoch) {
     const assignmentId = row._id;
     // Native deletion is also terminal for this exact reference. Never search
     // another order/message for a replacement after cancellation.
@@ -113,9 +113,8 @@ export async function continueOrRelease(ctx, row, approvals, approvalEpoch) {
     else {
         await ctx.db.patch("assignments", assignmentId, {
             approvals: undefined,
-            approvalBlocked: false,
         });
-        await wake(ctx, { ...row, approvals: undefined, approvalBlocked: false });
+        await wake(ctx, { ...row, approvals: undefined });
     }
 }
 /** Backstop for an action that crashed or was killed before its abort listener. */

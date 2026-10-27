@@ -20,7 +20,7 @@ import { newChildAssignment } from "../turns/assignments.js";
 import { wake } from "../turns/wake.js";
 import { delegateScope } from "./views.js";
 import { canOweResult, reserveFor } from "./headroom.js";
-export const reserveArgs = {
+const reserveArgs = {
     assignmentId: v.id("assignments"),
     turnToken: v.string(),
     toolCallId: v.string(),
@@ -28,7 +28,7 @@ export const reserveArgs = {
     payloadFingerprint: v.string(),
     coordinateHandle: v.string(),
 };
-export const reservation = v.union(v.object({ kind: v.literal("reserved"), runId: v.string() }), v.object({ kind: v.literal("replay"), runId: v.string(), agent: v.string() }), v.object({ kind: v.literal("denied"), code: denialCode }));
+const reservation = v.union(v.object({ kind: v.literal("reserved"), runId: v.string() }), v.object({ kind: v.literal("replay"), runId: v.string(), agent: v.string() }), v.object({ kind: v.literal("denied"), code: denialCode }));
 const denied = (code) => ({ kind: "denied", code });
 /**
  * Reservation, run-budget spend and active-child count commit with the host's
@@ -38,7 +38,7 @@ const denied = (code) => ({ kind: "denied", code });
  * Root counters include every descendant. Depth is checked from the immediate
  * parent run, so a shared child definition cannot bypass the configured bound.
  */
-export async function reserveRun(ctx, args) {
+async function reserveRun(ctx, args) {
     // The agent name becomes the child assignment's `agent`; the handle is
     // stored on the run row. Bound both before any read or write.
     assertName(args.agent, "agent");
@@ -55,7 +55,7 @@ export async function reserveRun(ctx, args) {
     if (duplicate) {
         if (duplicate.payloadFingerprint !== args.payloadFingerprint)
             return denied("DELEGATION_CONFLICT");
-        return { kind: "replay", runId: duplicate.runId, agent: duplicate.agent };
+        return { kind: "replay", runId: duplicate._id, agent: duplicate.agent };
     }
     if (root.activeRuns >= root.limits.activeChildrenPerRoot)
         return denied("ACTIVE_LIMIT");
@@ -73,12 +73,10 @@ export async function reserveRun(ctx, args) {
         launches: budget.launches + 1,
         hops: budget.hops + 1,
     });
-    const runId = crypto.randomUUID();
     const now = Date.now();
     const sequence = root.nextRunSequence + 1;
-    await ctx.db.insert("subagentRuns", newSubagentRun({
+    const runId = await ctx.db.insert("subagentRuns", newSubagentRun({
         request: args,
-        runId,
         actor: row,
         root,
         budget,
@@ -115,7 +113,7 @@ async function reservationScope(ctx, args) {
         return denied("DEPTH_LIMIT");
     return { kind: "scope", row, root, depth };
 }
-export const attachArgs = {
+const attachArgs = {
     runId: v.string(),
     childThreadId: v.string(),
     promptMessageId: v.string(),
@@ -127,7 +125,7 @@ export const attachArgs = {
  * child action, leaving scheduler capacity available for those children.
  * Idempotent: an already attached run is a no-op.
  */
-export async function attachChild(ctx, args) {
+async function attachChild(ctx, args) {
     const run = await runById(ctx, args.runId);
     if (!run || run.childAssignmentId)
         return null;

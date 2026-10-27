@@ -1,3 +1,7 @@
+/** Root lifecycle snapshots survive later sends on the same assignment.
+ * Closure uses exact request-scoped existence probes, never delegation history.
+ */
+import { approvalBlocked } from "../approvals.js";
 /** One ready row <=1 KiB; passive notes and other user requests are excluded. */
 export function readyForRun(ctx, assignmentId, runId) {
     return ctx.db
@@ -8,7 +12,7 @@ export function readyForRun(ctx, assignmentId, runId) {
 /** Transitive delivery fences, scoped to one request.
  * One probe <=4 KiB, plus <=1 KiB ready work.
  */
-export async function rootRunBlocked(ctx, root, runId) {
+async function rootRunBlocked(ctx, root, runId) {
     if (await readyForRun(ctx, root._id, runId))
         return true;
     if (await ctx.db
@@ -37,7 +41,7 @@ export async function closeRootRun(ctx, root, runId = root.runId) {
     if (run.rootCancellationEpoch !== undefined &&
         run.rootCancellationEpoch !== root.cancellationEpoch)
         return;
-    if (root.runId === runId && (root.turnStatus !== "idle" || root.approvalBlocked))
+    if (root.runId === runId && (root.turnStatus !== "idle" || approvalBlocked(root)))
         return;
     if (await rootRunBlocked(ctx, root, runId))
         return;

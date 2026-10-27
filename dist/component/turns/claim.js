@@ -1,3 +1,16 @@
+/**
+ * `turns.slices.claim`: the host action's admission to run ONE paid model slice.
+ *
+ * The first slice of a queued turn consumes its reserved inbox head (and any
+ * consecutive results of the same run), flushes posted notes into native
+ * history, marks the turn running and arms the slice watchdog. Later slices
+ * of the same turn need a fresh slice id while the turn is between slices.
+ * The claim also records run start and, for a
+ * child, marks its delegation running. It returns the execution scope the
+ * action generates under. Touches `assignments`, `inbox`, `runs` and
+ * `subagentRuns`; notes go through hooks/notes.ts.
+ */
+import { approvalBlocked } from "../approvals.js";
 import { v } from "convex/values";
 import { internal } from "../_generated/api.js";
 import { scope, turnOrigin as vTurnOrigin } from "../schema.js";
@@ -47,7 +60,7 @@ export const vClaim = v.object({
 export async function claimSlice(ctx, args) {
     const { assignmentId, turnToken, sliceId } = args;
     const row = await ctx.db.get("assignments", assignmentId);
-    if (!row || row.cancelled || row.approvalBlocked || row.turnToken !== turnToken)
+    if (!row || row.cancelled || approvalBlocked(row) || row.turnToken !== turnToken)
         return null;
     // An open question is a valid pause, never corrupt execution state. This
     // guard also protects repeated/stale dispatches before any inbox deletion.
@@ -233,7 +246,7 @@ async function claimChild(ctx, row, first, claim) {
     return {
         ...claim,
         subagent: {
-            runId: run.runId,
+            runId: run._id,
             agent: run.agent,
             rootAgent: root.agent,
             actorAgent: run.actorAgent,

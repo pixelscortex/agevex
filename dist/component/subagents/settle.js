@@ -41,7 +41,7 @@ export async function settlementBlocked(ctx, parent) {
  * false (writing nothing) when already terminal or still blocked;
  * `settleIdleParent` and escalate rely on that to notify exactly once
  * (`recordTurnOutcome` ignores it: its settle only records the outcome). */
-export async function settleRunState(ctx, run, status, errorCode, childResultMessageId) {
+async function settleRunState(ctx, run, status, errorCode, childResultMessageId) {
     if (isSettled(run.status))
         return false;
     const child = run.childAssignmentId
@@ -73,9 +73,9 @@ export async function settleRunState(ctx, run, status, errorCode, childResultMes
 /** Schedule the host coordinator's delivery of a newly terminal run. The
  * notify action runs outside this transaction and records a failed delivery
  * if the coordinator throws. */
-export async function scheduleNotify(ctx, run) {
+async function scheduleNotify(ctx, run) {
     await ctx.scheduler.runAfter(0, internal.subagents.deliver.notify, {
-        runId: run.runId,
+        runId: run._id,
         deliveryToken: run.deliveryToken,
         coordinateHandle: run.coordinateHandle,
     });
@@ -114,7 +114,7 @@ export async function settleIdleParent(ctx, parent) {
  * settle its run if nothing fences settlement. A fenced outcome waits on the
  * run (R3 settles it later from `lastTurnResult`). Only the turn that owns
  * the token may report; anything else is FORBIDDEN. */
-export async function recordTurnOutcome(ctx, args) {
+async function recordTurnOutcome(ctx, args) {
     const child = await ctx.db.get("assignments", args.assignmentId);
     if (!child || child.childRunId !== args.runId || child.turnToken !== args.turnToken)
         throw new Error("FORBIDDEN");
@@ -139,7 +139,7 @@ export async function recordTurnOutcome(ctx, args) {
  * terminally (turns/finish.ts failChild). Records the failure as the
  * last-turn outcome first, so a fenced run still fails once its blockers
  * clear; notifies only on the first successful settlement. */
-export async function escalateRun(ctx, runId, code) {
+async function escalateRun(ctx, runId, code) {
     const run = await runById(ctx, runId);
     if (!run || isSettled(run.status))
         return null;

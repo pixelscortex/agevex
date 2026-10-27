@@ -12,7 +12,7 @@ import type { WithoutSystemFields } from "convex/server";
 import type { MutationCtx, QueryCtx } from "../_generated/server.js";
 import type { Doc } from "../_generated/dataModel.js";
 type SubagentRun = Doc<"subagentRuns">;
-/** The run with this public run id (unique `by_run` index), or null. */
+/** Public delegation ids are native document ids; malformed or foreign ids miss. */
 export declare function runById(ctx: QueryCtx | MutationCtx, runId: string): Promise<{
     _id: import("convex/values").GenericId<"subagentRuns">;
     _creationTime: number;
@@ -36,7 +36,6 @@ export declare function runById(ctx: QueryCtx | MutationCtx, runId: string): Pro
     status: "failed" | "running" | "completed" | "queued" | "asking";
     agent: string;
     errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | "DELIVERY_UNKNOWN" | null;
-    runId: string;
     rootAssignmentId: import("convex/values").GenericId<"assignments">;
     sequence: number;
     rootCancellationEpoch: number;
@@ -87,7 +86,6 @@ export declare function newSubagentRun(fields: {
         payloadFingerprint: string;
         coordinateHandle: string;
     };
-    runId: string;
     actor: Doc<"assignments">;
     root: Doc<"assignments">;
     budget: Doc<"runs">;

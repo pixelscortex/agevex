@@ -3,7 +3,7 @@ export type { RunNode, RunTree } from "../component/run_tree_values.js";
 export { Agent } from "./agent.js";
 export { DELEGATE_TOOL_NAME, MESSAGE_CHILD_TOOL_NAME, ASK_PARENT_TOOL_NAME, MESSAGE_PARENT_TOOL_NAME, registerAgent, } from "./runtime.js";
 export type { HookContext, HookResult, AgentHooks, Activity, Receipt, Registration, AuthorizationScope, ExecutionScope, CoordinateArgs, CoordinateResult, DelegationResult, DelegationDenialCode, TurnArgs, TurnOrigin, ManagedAgent, AgentEvent, ObserveAgentEvent, } from "./types.js";
-export { LIMITS, PLATFORM } from "../component/limits.js";
+export { HOST_LIMITS } from "../component/limits.js";
 export type { Limits } from "../component/limits.js";
 export { defineOnceTool } from "./once.js";
 export type { NoteArgs } from "./host/notes.js";

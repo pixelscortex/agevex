@@ -26,7 +26,7 @@ const deliveryPhase = {
 };
 /** Each terminal delivery spends one hop and appends ready work immediately.
  * The delivery token is the capability; a repeated delivery is a no-op. */
-export async function applyDelivery(ctx, args) {
+async function applyDelivery(ctx, args) {
     const run = await runById(ctx, args.runId);
     if (!run || run.deliveryToken !== args.deliveryToken)
         throw new Error("FORBIDDEN");

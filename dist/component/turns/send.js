@@ -27,7 +27,7 @@ export const acceptArgs = {
 };
 /** The typed duplicate/conflict receipt for an already accepted request, or
  * null for a new one. Shares the `request:<subject>` ledger scope. */
-export async function requestReceipt(ctx, subject, requestKey, fingerprint) {
+async function requestReceipt(ctx, subject, requestKey, fingerprint) {
     const row = await findReceipt(ctx, `request:${subject}`, requestKey);
     if (!row)
         return null;
@@ -40,7 +40,7 @@ export async function requestReceipt(ctx, subject, requestKey, fingerprint) {
 }
 /** Admit one host send; see the file header. Throws (rolling back the native
  * save) for a foreign thread, recovery_required or a full ready queue. */
-export async function acceptSend(ctx, args) {
+async function acceptSend(ctx, args) {
     assertAdmissible(args);
     const duplicate = await requestReceipt(ctx, args.subject, args.requestKey, args.fingerprint);
     if (duplicate)
@@ -90,7 +90,7 @@ export async function acceptSend(ctx, args) {
         result: { assignmentId: row._id, threadId: args.threadId, position },
     }));
     if (first && args.textConfig)
-        await queueText(ctx, (await ctx.db.get("assignments", row._id)), "title", runId, args.promptMessageId);
+        await queueText(ctx, (await ctx.db.get("assignments", row._id)), runId, args.promptMessageId);
     await wake(ctx, { ...row, queuedMessages: row.queuedMessages + 1 });
     return {
         assignmentId: row._id,

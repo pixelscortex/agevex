@@ -83,7 +83,9 @@ export const LIMITS = {
     daytonaRequestMs: 30_000,
     disabledAutoDelete: -1,
     // Including Convex field names and system metadata, our validated sandbox
-    // rows fit in 8 KiB and jobs in 64 KiB. These are conservative byte budgets,
+    // rows (eight fields, including one idle deadline) fit in 8 KiB and jobs in
+    // 64 KiB. The deadline replaces two numbers, freeing one field and its name.
+    // These are conservative byte budgets,
     // not payload allowances. No command or file body is stored in either table.
     sandboxRowBytes: 8 * 1024,
     jobRowBytes: 64 * 1024,

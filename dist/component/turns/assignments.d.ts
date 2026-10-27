@@ -60,7 +60,6 @@ export declare function assignmentByThread(ctx: Pick<QueryCtx, "db">, threadId: 
     } | undefined;
     turnOrigin?: "user" | "subagent_result" | undefined;
     inboxId?: import("convex/values").GenericId<"inbox"> | undefined;
-    approvalBlocked?: boolean | undefined;
     approvals?: {
         cleanupPending?: boolean | undefined;
         epoch: number;

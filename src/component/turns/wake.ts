@@ -10,6 +10,7 @@
  * (`turns.loop.reconcile`) re-rings a loop whose ping was lost. Touches
  * `assignments`, reads the ready `inbox` range and `subagentRuns`.
  */
+import { approvalBlocked } from "../approvals.js";
 import type { WorkflowId } from "@convex-dev/workflow";
 import type { MutationCtx } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
@@ -92,7 +93,7 @@ export async function wake(ctx: MutationCtx, row: Doc<"assignments">, ring = tru
  * and turn origin. The inbox row itself stays until claim deletes it, so
  * `queuedMessages` drops now and position math counts the reserved head. */
 async function reserveHead(ctx: MutationCtx, row: Doc<"assignments">) {
-  if (row.turnStatus !== "idle" || row.approvalBlocked) return;
+  if (row.turnStatus !== "idle" || approvalBlocked(row)) return;
 
   const next = await firstReady(ctx, row._id);
 
@@ -126,7 +127,7 @@ async function startOrRing(ctx: MutationCtx, row: Doc<"assignments">, ring: bool
     ring &&
     row.loopWaiting &&
     !row.pinged &&
-    !row.approvalBlocked &&
+    !approvalBlocked(row) &&
     row.turnStatus !== "running"
   ) {
     const manager = laneManager(!!row.childRunId, row.limits);
@@ -146,7 +147,7 @@ export async function nextQueuedTurn(
 
   if (!row || row.cancelled || row.turnStatus === "recovery_required") return null;
 
-  if (row.approvalBlocked) {
+  if (approvalBlocked(row)) {
     // The loop awaits ping for every null result, including approval pauses.
     // Publish that wait before returning so a fresh send can ring the loop
     // after the native approval response is recorded. No journal step changes.

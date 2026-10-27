@@ -1,6 +1,8 @@
 // Shared decision bounds and a deliberately small, closed JSON Schema form dialect.
 // Reject unsupported keywords rather than silently accepting an unchecked constraint.
-import { ConvexError, convexToJson, getConvexSize, v } from "convex/values";
+import { ConvexError, convexToJson, v } from "convex/values";
+import { canonicalJson, valueBytes } from "./json.js";
+export { canonicalJson, valueBytes as decisionBytes } from "./json.js";
 export const DECISION_LIMITS = {
     valueBytes: 16 << 10,
     schemaBytes: 8 << 10,
@@ -38,7 +40,7 @@ export function assertJson(value, maxBytes = DECISION_LIMITS.valueBytes) {
         Object.values(part).forEach((item) => visit(item, depth + 1));
     };
     visit(value, 0);
-    if (Math.max(getConvexSize(value), new TextEncoder().encode(JSON.stringify(value)).length) > maxBytes)
+    if (valueBytes(value) > maxBytes)
         throw new ConvexError({ code: "VALUE_TOO_LARGE" });
 }
 /** Validate the app's schema at construction, including all nested fields and keywords. */
@@ -146,21 +148,6 @@ export function validateAnswer(value, schema) {
     };
     if (!matches(schema, value))
         throw new ConvexError({ code: "INVALID_ANSWER" });
-}
-/** Larger UTF-8 JSON/Convex representation governs every decision envelope. */
-export function decisionBytes(value) {
-    return Math.max(getConvexSize(value), new TextEncoder().encode(JSON.stringify(value)).length);
-}
-/** Canonical JSON treats object order as transport detail, including form enum values. */
-export function canonicalJson(value) {
-    const canonical = (part) => Array.isArray(part)
-        ? part.map(canonical)
-        : part && typeof part === "object"
-            ? Object.fromEntries(Object.entries(part)
-                .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-                .map(([key, item]) => [key, canonical(item)]))
-            : part;
-    return JSON.stringify(canonical(value));
 }
 const FORM_KEYWORDS = [
     "type",

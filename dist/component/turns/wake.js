@@ -1,3 +1,16 @@
+/**
+ * The doorbell: publishing work to an assignment's loop workflow.
+ *
+ * Every transaction that can create or unblock work (accept, delivery, answers, finished turns, cancellation cleanup) ends by calling
+ * `wake` in the same transaction. wake settles
+ * an idle child whose last blocker cleared (R3), reserves at most one ready
+ * inbox row as the next queued turn, starts or rings the loop workflow, and
+ * leaves exactly the right recovery check armed. The loop's side of the
+ * doorbell is `nextQueuedTurn` (`turns.loop.next`); `reconcileDoorbell`
+ * (`turns.loop.reconcile`) re-rings a loop whose ping was lost. Touches
+ * `assignments`, reads the ready `inbox` range and `subagentRuns`.
+ */
+import { approvalBlocked } from "../approvals.js";
 import { laneManager, startLoop } from "../workflows/lanes.js";
 import { firstReady } from "./inbox.js";
 import { runById } from "../subagents/runs.js";
@@ -61,7 +74,7 @@ export async function wake(ctx, row, ring = true) {
  * and turn origin. The inbox row itself stays until claim deletes it, so
  * `queuedMessages` drops now and position math counts the reserved head. */
 async function reserveHead(ctx, row) {
-    if (row.turnStatus !== "idle" || row.approvalBlocked)
+    if (row.turnStatus !== "idle" || approvalBlocked(row))
         return;
     const next = await firstReady(ctx, row._id);
     if (!next)
@@ -89,7 +102,7 @@ async function startOrRing(ctx, row, ring) {
     if (ring &&
         row.loopWaiting &&
         !row.pinged &&
-        !row.approvalBlocked &&
+        !approvalBlocked(row) &&
         row.turnStatus !== "running") {
         const manager = laneManager(!!row.childRunId, row.limits);
         await manager.sendEvent(ctx, { workflowId: row.workflowId, name: "ping" });
@@ -102,7 +115,7 @@ export async function nextQueuedTurn(ctx, assignmentId) {
     let row = await ctx.db.get("assignments", assignmentId);
     if (!row || row.cancelled || row.turnStatus === "recovery_required")
         return null;
-    if (row.approvalBlocked) {
+    if (approvalBlocked(row)) {
         // The loop awaits ping for every null result, including approval pauses.
         // Publish that wait before returning so a fresh send can ring the loop
         // after the native approval response is recorded. No journal step changes.

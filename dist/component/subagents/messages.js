@@ -150,7 +150,7 @@ export async function interactionTarget(ctx, args) {
     const { run, root, parent, child, actor } = value;
     return {
         kind: "ready",
-        runId: run.runId,
+        runId: run._id,
         agent: run.agent,
         subject: root.subject,
         childThreadId: child.threadId,
@@ -179,7 +179,7 @@ export const interactionResult = v.union(v.object({ kind: v.literal("denied"), c
 /** `subagents.messages.messageChild`: the exact native follow-up id is saved in the
  * child's inbox in the same transaction. Answers an open question (resuming
  * the child) when the child is asking; spends one hop either way. */
-export async function sendToChild(ctx, args) {
+async function sendToChild(ctx, args) {
     const value = await interaction(ctx, { ...args, op: "message" });
     if (value.kind === "denied")
         throw new Error(value.code);
@@ -191,11 +191,11 @@ export async function sendToChild(ctx, args) {
     });
     await ctx.db.patch("runs", budget._id, { hops: budget.hops + 1 });
     await post(ctx, child, budget._id, args.messageId, "parent", run.status === "asking");
-    return { status: "accepted", runId: run.runId };
+    return { status: "accepted", runId: run._id };
 }
 /** `subagents.messages.askParent`: asking holds the active slot. Its native assistant id and the parent's inbox id commit with
  * BOTH native saves; spends one hop. */
-export async function askParentRun(ctx, args) {
+async function askParentRun(ctx, args) {
     const value = await interaction(ctx, { ...args, op: "ask" });
     if (value.kind === "denied")
         throw new Error(value.code);
@@ -206,7 +206,7 @@ export async function askParentRun(ctx, args) {
     });
     await ctx.db.patch("runs", budget._id, { hops: budget.hops + 1 });
     await post(ctx, parent, budget._id, args.parentMessageId, "note");
-    return { status: "accepted", runId: run.runId };
+    return { status: "accepted", runId: run._id };
 }
 /** Trusted target projection for the host's atomic native message saves. */
 export const interactionContext = query({

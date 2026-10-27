@@ -39,9 +39,9 @@ async function performTextTask(rt, ctx, args, state, dispatch) {
         assignmentId: args.assignmentId,
         threadId: state.threadId,
         turnOrigin: "user",
-        purpose: args.kind,
+        purpose: "title",
     });
-    const options = rt.config[args.kind];
+    const options = rt.config["title"];
     if (options === false)
         throw new Error("TEXT_DISABLED");
     if (rt.config.budget && !(await rt.config.budget.check(ctx, state)).allowed)
@@ -73,7 +73,7 @@ async function performTextTask(rt, ctx, args, state, dispatch) {
  * commit or cause a second call. Structured invalid responses are known failures. */
 async function generate(rt, ctx, args, model, prompt, dispatch) {
     const controller = new AbortController();
-    const options = rt.config[args.kind];
+    const options = rt.config["title"];
     let timer;
     let abort;
     const timeout = new Promise((_resolve, reject) => {
@@ -83,7 +83,7 @@ async function generate(rt, ctx, args, model, prompt, dispatch) {
         const pending = generateText({
             model,
             output: Output.object({
-                schema: z.object({ text: z.string().refine((text) => validText(text, args.kind)) }),
+                schema: z.object({ text: z.string().refine((text) => validText(text)) }),
             }),
             prompt,
             maxRetries: LIMITS.modelRetries,
@@ -138,7 +138,7 @@ async function recordUsage(rt, ctx, args, state, model, dispatch) {
             purpose: "title",
             model: typeof model === "string" ? model : model.modelId,
             provider: typeof model === "string" ? model.split("/")[0] : model.provider,
-            key: await opaqueKey("thread-text-usage", args.assignmentId, args.key),
+            key: await opaqueKey("thread-text-usage", args.assignmentId, "title"),
             messageId: null,
             usage: dispatch.usage,
             providerMetadata: dispatch.metadata,

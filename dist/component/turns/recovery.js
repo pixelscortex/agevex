@@ -9,6 +9,7 @@
  * and reads the ready `inbox` range. Also home of `cancelIfPending`, the
  * shared "retire my own scheduled job" step used by slice watchdogs too.
  */
+import { approvalBlocked } from "../approvals.js";
 import { internal } from "../_generated/api.js";
 import { LIMITS } from "../limits.js";
 import { firstReady } from "./inbox.js";
@@ -58,7 +59,7 @@ export async function disarmRecovery(ctx, row) {
  * ready inbox row exists. One indexed probe. */
 export async function needsRecovery(ctx, row) {
     if (row.cancelled ||
-        row.approvalBlocked ||
+        approvalBlocked(row) ||
         row.turnStatus === "running" ||
         row.turnStatus === "recovery_required")
         return false;

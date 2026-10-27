@@ -32,8 +32,7 @@ export declare function laneManager(child: boolean, limits: Pick<Limits, "rootLa
  * Start an assignment's loop workflow in its lane and return the workflow id
  * (the caller records it on the row in the same transaction). Called by wake
  * when no loop exists and by the done callback to rotate a finished loop.
- * `slicesPerTurn` is passed only when the host overrode it, so default rows
- * keep the original version-1 argument shape.
+ * The default slice bound is implicit; explicit overrides travel with the loop.
  */
 export declare function startLoop(ctx: MutationCtx, row: Doc<"assignments">, child: boolean): Promise<WorkflowId>;
 export declare const rootTurn: import("convex/server").RegisteredMutation<"internal", import("@convex-dev/workflow").WorkflowArgs<{

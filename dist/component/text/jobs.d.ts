@@ -10,4 +10,4 @@ export type TextJob = {
 export declare const textScope: (assignmentId: Id<"assignments">) => string;
 /** The title caller runs only at first acceptance;
  * neither failure nor lease expiry ever schedules another paid attempt. */
-export declare function queueText(ctx: MutationCtx, row: Doc<"assignments">, kind: "title", runId: Id<"runs">, messageId?: string): Promise<boolean>;
+export declare function queueText(ctx: MutationCtx, row: Doc<"assignments">, runId: Id<"runs">, messageId?: string): Promise<boolean>;

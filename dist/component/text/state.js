@@ -5,14 +5,12 @@ import { mutation, internalMutation } from "../_generated/server.js";
 import { internal } from "../_generated/api.js";
 import { findReceipt } from "../receipts/records.js";
 import { textScope } from "./jobs.js";
-import { TEXT_LIMITS, textKind, validText } from "./values.js";
-export const jobArgs = { assignmentId: v.id("assignments"), kind: textKind, key: v.string() };
+import { TEXT_LIMITS, validText } from "./values.js";
+const jobArgs = { assignmentId: v.id("assignments") };
 /** Title generation describes the first accepted message and survives cancellation. */
 async function liveJob(ctx, args) {
-    if (args.key !== "title")
-        return null;
     const row = await ctx.db.get("assignments", args.assignmentId);
-    const receipt = await findReceipt(ctx, textScope(args.assignmentId), args.key);
+    const receipt = await findReceipt(ctx, textScope(args.assignmentId), "title");
     const job = receipt?.result;
     if (!row?.textConfig || receipt?.status !== "running" || !job)
         return null;
@@ -23,7 +21,7 @@ async function hasNativeTitle(ctx, row) {
     const thread = await ctx.runQuery(row.textConfig.getThread, { threadId: row.threadId });
     return thread?.title !== undefined;
 }
-export const snapshot = v.object({
+const snapshot = v.object({
     subject: v.string(),
     agent: v.string(),
     threadId: v.string(),
@@ -86,7 +84,7 @@ export const expire = internalMutation({
     args: jobArgs,
     returns: v.null(),
     handler: async (ctx, args) => {
-        const receipt = await findReceipt(ctx, textScope(args.assignmentId), args.key);
+        const receipt = await findReceipt(ctx, textScope(args.assignmentId), "title");
         if (receipt?.status === "running" &&
             receipt.leaseUntil !== undefined &&
             receipt.leaseUntil <= Date.now()) {
@@ -110,7 +108,7 @@ export const commit = mutation({
     },
     returns: v.boolean(),
     handler: async (ctx, args) => {
-        const receipt = await findReceipt(ctx, textScope(args.assignmentId), args.key);
+        const receipt = await findReceipt(ctx, textScope(args.assignmentId), "title");
         if (receipt?.status !== "running")
             return false;
         const live = await liveJob(ctx, args);
@@ -122,7 +120,7 @@ export const commit = mutation({
             !expired &&
             args.status === "done" &&
             args.text !== undefined &&
-            validText(args.text, args.kind));
+            validText(args.text));
         const status = expired || (args.status === "unknown" && paid) ? "unknown" : done ? "done" : "failed";
         await ctx.db.patch("receipts", receipt._id, {
             status,
@@ -133,7 +131,7 @@ export const commit = mutation({
             return false;
         if (await hasNativeTitle(ctx, live.row))
             return true;
-        await ctx.runMutation(live.row.textConfig.updateThread, { threadId: live.row.threadId, patch: { [args.kind]: args.text } });
+        await ctx.runMutation(live.row.textConfig.updateThread, { threadId: live.row.threadId, patch: { title: args.text } });
         return true;
     },
 });

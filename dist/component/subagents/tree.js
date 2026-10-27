@@ -1,3 +1,13 @@
+/** One reactive, request-scoped run tree. Native Agent owns all message bodies.
+ * D = HOST_LIMITS.runLaunches.max = 50.
+ * (1+D)*14 KiB assignments +D*4 KiB children +3*14 KiB ownership
+ * +14 KiB root assignment +16 KiB run metadata +1 KiB ready probe = 987 KiB core reads.
+ * Any app usage projection is responsible for its own bounded reads.
+ * The host checks both Convex and JSON output bytes against 128 KiB.
+ * No per-node transcript or settlement scans: reuse the already bounded
+ * child set to project transitive delivery fences in memory.
+ */
+import { approvalBlocked } from "../approvals.js";
 import { TREE_LIMITS } from "../run_tree_values.js";
 import { readyForRun } from "../turns/run_lifecycle.js";
 import { runTimes } from "./runs.js";
@@ -34,7 +44,7 @@ export async function requestTree(ctx, root, rootRunId) {
     const blocked = new Set();
     for (const child of children) {
         if (child.childAssignmentId) {
-            parents.set(child.childAssignmentId, child.runId);
+            parents.set(child.childAssignmentId, child._id);
             const assignment = await ctx.db.get("assignments", child.childAssignmentId);
             if (assignment)
                 assignments.set(assignment._id, assignment);
@@ -94,7 +104,7 @@ function assignmentState(row) {
         return null;
     if (row.cancelled)
         return { status: "failed", reason: "cancelled" };
-    if (row.approvalBlocked)
+    if (approvalBlocked(row))
         return {
             status: "asleep",
             reason: row.approvals?.requests.some((request) => !request.deferred && !request.resolved)
@@ -132,7 +142,7 @@ function childNode(run, assignments, parents, blocked) {
                         ? { status: "asleep", reason: "children" }
                         : { status: run.status === "queued" ? "queued" : "asleep" }));
     return {
-        id: run.runId,
+        id: run._id,
         parentId: parents.get(run.actorAssignmentId),
         agent: run.agent,
         ...state,

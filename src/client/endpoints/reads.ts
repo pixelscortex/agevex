@@ -23,7 +23,8 @@ import {
   type PaginationOptions,
   type PaginationResult,
 } from "convex/server";
-import { ConvexError, getConvexSize, v, type Validator } from "convex/values";
+import { ConvexError, v, type Validator } from "convex/values";
+import { valueBytes } from "../../shared/json.js";
 import { LIMITS } from "../../component/limits.js";
 import { assertFact } from "../../component/facts.js";
 import { activity, subagentRun, vPaginationResult } from "../../component/schema.js";
@@ -242,11 +243,7 @@ export function runTreeEndpoint(ep: EndpointContext) {
           node.usage = nodes.get(node.parentId === null ? null : node.id) ?? null;
       }
 
-      if (
-        Math.max(getConvexSize(tree), new TextEncoder().encode(JSON.stringify(tree)).byteLength) >
-        TREE_LIMITS.outputBytes
-      )
-        throw new Error("RUN_TREE_TOO_LARGE");
+      if (valueBytes(tree) > TREE_LIMITS.outputBytes) throw new Error("RUN_TREE_TOO_LARGE");
 
       return tree;
     },

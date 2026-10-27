@@ -1,15 +1,3 @@
-/**
- * Approval pauses: when a model step asks for tool approval (or calls a
- * declared no-execute "deferred" tool the host must answer), the turn stops
- * and waits for `turns.approvals.respond` / `turns.approvals.answer`.
- *
- * All of it runs inside `turns.slices.write`, in the same transaction as the native
- * assistant save that contains the requests: count them against
- * `LIMITS.approvalsPerPause` before the save, retire requests whose results
- * the save carries, collect the new requests as fixed-size hashes, and
- * suspend the turn with one continuation inbox row. Touches
- * `assignments.approvals`/`approvalBlocked` and `inbox`.
- */
 import type { MessageDoc } from "@convex-dev/agent";
 import type { MutationCtx } from "../_generated/server.js";
 import type { Doc } from "../_generated/dataModel.js";
@@ -39,7 +27,7 @@ export declare function retireConsumedApprovals(ctx: MutationCtx, row: Doc<"assi
 export declare function collectPause(ctx: MutationCtx, messages: MessageDoc[], deferredTools: Set<string>, askTools?: Record<string, PreparedAskUser>): Promise<Pause>;
 /** Suspend the running turn on the requests just recorded: close the slice,
  * insert the continuation row at the head of the ready FIFO, and commit
- * `approvalBlocked` with the request hashes and native handles. */
+ * the request hashes and native handles. */
 export declare function suspendForApprovals(ctx: MutationCtx, row: Doc<"assignments">, pause: Pause, handles: {
     getMessages: string;
     addMessages: string;

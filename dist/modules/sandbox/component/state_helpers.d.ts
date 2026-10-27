@@ -11,8 +11,7 @@ export declare function sandbox(ctx: Pick<QueryCtx, "db">, scopeKey: string): Pr
     leaseUntil: number;
     provider: string;
     scopeKey: string;
-    lastUsedAt: number;
-    ttl: number;
+    idleExpiresAt: number;
 } | null>;
 /** Reject oversized metadata before inserting or terminating a row. */
 export declare function checkSize(value: unknown, maximum: number): void;

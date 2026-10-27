@@ -1,34 +1,10 @@
-/**
- * Delivering a terminal child's result to its parent thread: `notify`,
- * `deliveryContext`, `deliver` and `failDelivery`.
- *
- * `notify` asks the host coordinator to deliver; the coordinator reads
- * `deliveryContext`, saves the result natively in the parent thread and then
- * calls `deliver` (or `notify` records `failDelivery`). One delivery per run:
- * it records the outcome on the run, spends one hop of the shared budget for
- * accepted results, and enqueues the result as ready parent work or wakes
- * the parent to re-check settlement. Touches `subagentRuns`, `runs`, `inbox`
- * and the parent's counters.
- */
-import { type MutationCtx } from "../_generated/server.js";
-import type { Doc } from "../_generated/dataModel.js";
-type Delivery = {
-    runId: string;
-    deliveryToken: string;
-    deliveryStatus: "accepted" | "failed" | "blocked";
-    parentMessageId: string | null;
-    errorCode: Doc<"subagentRuns">["errorCode"];
-};
-/** Each terminal delivery spends one hop and appends ready work immediately.
- * The delivery token is the capability; a repeated delivery is a no-op. */
-export declare function applyDelivery(ctx: MutationCtx, args: Delivery): Promise<null>;
 /** The coordinator's view of a terminal run it was notified about. The
  * delivery token proves the caller holds this run's delivery capability. */
 export declare const deliveryContext: import("convex/server").RegisteredQuery<"public", {
     runId: string;
     deliveryToken: string;
 }, Promise<{
-    runId: string;
+    runId: import("convex/values").GenericId<"subagentRuns">;
     agent: string;
     rootAgent: string;
     parentAgent: string;
@@ -66,4 +42,3 @@ export declare const failDelivery: import("convex/server").RegisteredMutation<"i
     runId: string;
     deliveryToken: string;
 }, Promise<null>>;
-export {};

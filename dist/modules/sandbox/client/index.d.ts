@@ -35,7 +35,6 @@ export declare function sandboxCompletion(runtime: {
 export declare function defineSandbox(options: SandboxOptions): {
     limits: {
         readonly cleanupBatch: number;
-        readonly ttl: number;
         readonly pollMinMs: number;
         readonly pollMaxMs: number;
         readonly commandTimeoutS: number;
@@ -45,6 +44,7 @@ export declare function defineSandbox(options: SandboxOptions): {
         readonly listEntries: number;
         readonly exportBytes: number;
         readonly exportBytesNode: number;
+        readonly ttl: number;
         readonly jobTimeoutMs: number;
         readonly jobsPerSandbox: number;
     };

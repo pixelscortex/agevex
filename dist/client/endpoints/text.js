@@ -25,7 +25,7 @@ export function renameEndpoint(ep) {
         returns: response,
         handler: async (ctx, args) => {
             const row = await ownedThread(ep, ctx, args.threadId, "rename");
-            if (!validText(args.text, "title"))
+            if (!validText(args.text))
                 throw new Error("INVALID_TITLE");
             const native = await getThreadMetadata(ctx, row.native.component, {
                 threadId: args.threadId,

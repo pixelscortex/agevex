@@ -26,9 +26,8 @@ export async function reserveSandbox(ctx, args) {
             provider: args.provider,
             sandboxId: undefined,
             state: "creating",
-            ttl: args.ttl,
             claim,
-            lastUsedAt: now,
+            idleExpiresAt: now + args.ttl,
             leaseUntil,
             cleanupAt: Math.max(now + args.ttl, leaseUntil),
         });
@@ -51,9 +50,8 @@ export async function reserveSandbox(ctx, args) {
         }
         const leaseUntil = now + LIMITS.actionBudgetMs;
         await ctx.db.patch("sandboxes", row._id, {
-            lastUsedAt: now,
+            idleExpiresAt: now + args.ttl,
             leaseUntil,
-            ttl: args.ttl,
             cleanupAt: Math.max(now + args.ttl, leaseUntil),
         });
         return { status: "existing", sandboxId: row.sandboxId, claim: row.claim };
@@ -111,12 +109,13 @@ export async function reserveBackgroundJob(ctx, args) {
 /** Initial lifecycle row: binding facts plus a lease that protects the paid create. */
 function newSandboxRow(args, claim, leaseUntil, now) {
     return {
-        // Binding facts retain the caller’s validated scope, provider and TTL.
-        ...args,
+        // Store only the trusted binding and the absolute idle deadline.
+        scopeKey: args.scopeKey,
+        provider: args.provider,
         // The claim and lease prevent a lost create from admitting a second VM.
         state: "creating",
         claim,
-        lastUsedAt: now,
+        idleExpiresAt: now + args.ttl,
         leaseUntil,
         cleanupAt: Math.max(now + args.ttl, leaseUntil),
     };

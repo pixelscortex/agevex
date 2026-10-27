@@ -15,7 +15,7 @@ import { v } from "convex/values";
  * Control rows with a native id never retain bodies; no history prefix is read.
  * Only rows belonging to this subject's assignment are reported.
  */
-export async function messageOrigins(ctx, args) {
+async function messageOrigins(ctx, args) {
     if (args.messageIds.length > LIMITS.messagePage)
         throw new Error("INVALID_PAGE");
     const row = await ctx.db.get("assignments", args.assignmentId);
@@ -39,7 +39,7 @@ export async function messageOrigins(ctx, args) {
             .withIndex("by_result_message", (q) => q.eq("resultMessageId", id))
             .unique();
         if (result?.actorAssignmentId === row._id)
-            origins[id] = { origin: "result", runId: result.runId };
+            origins[id] = { origin: "result", runId: result._id };
     }
     return origins;
 }

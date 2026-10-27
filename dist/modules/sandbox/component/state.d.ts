@@ -16,8 +16,7 @@ export declare const get: import("convex/server").RegisteredQuery<"public", {
     leaseUntil: number;
     provider: string;
     scopeKey: string;
-    lastUsedAt: number;
-    ttl: number;
+    idleExpiresAt: number;
 } | null>>;
 /** Admission is transactional: a lost create result cannot authorize another create. */
 export declare const reserve: import("convex/server").RegisteredMutation<"public", {
@@ -67,8 +66,7 @@ export declare const expired: import("convex/server").RegisteredQuery<"public", 
     leaseUntil: number;
     provider: string;
     scopeKey: string;
-    lastUsedAt: number;
-    ttl: number;
+    idleExpiresAt: number;
 }[]>>;
 /** Recheck expiry atomically with delete admission to close the idle/use race. */
 export declare const claimDelete: import("convex/server").RegisteredMutation<"public", {

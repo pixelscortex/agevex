@@ -1,3 +1,15 @@
+/**
+ * Resolving an approval pause: `respond` (approve/deny a tool approval
+ * request) and `answer` (supply the result of a deferred tool call).
+ *
+ * Each response saves its native message and an idempotency receipt in one
+ * transaction, marks or removes the matching recorded request, points the
+ * pause's continuation inbox row at the newest saved message, and wakes the
+ * assignment once nothing is left undecided. An identical retry replays from
+ * the receipt (`replayed: true`); a different payload for the same call is a
+ * KEY_CONFLICT. Touches `assignments.approvals`, `inbox` and `receipts`.
+ */
+import { approvalBlocked } from "../approvals.js";
 import { ConvexError, getConvexSize, v } from "convex/values";
 import { mutation } from "../_generated/server.js";
 import { LIMITS } from "../limits.js";
@@ -9,7 +21,7 @@ import { wake } from "./wake.js";
 /** `replayed` is true when an identical retry was served from the response
  * receipt, so a host can tell a first decision from a replay (e.g. to record
  * single-use consent only once). */
-export const vResponseResult = v.object({ messageId: v.string(), replayed: v.boolean() });
+const vResponseResult = v.object({ messageId: v.string(), replayed: v.boolean() });
 /**
  * Native responses commit once with their receipt, so a lost host response can
  * replay even after the pending-call reference has been consumed. Hash the
@@ -45,7 +57,7 @@ async function saveResponseReceipt(ctx, receipt, messageId) {
  * response saved directly through Agent is not seen by this runtime.
  * Saves the native approval response, marks the request resolved, and once
  * every request is resolved releases the pause into its continuation turn. */
-export async function respondToApproval(ctx, args) {
+async function respondToApproval(ctx, args) {
     const row = await ctx.db.get("assignments", args.assignmentId);
     if (!row || row.subject !== args.subject)
         throw new ConvexError({ code: "FORBIDDEN" });
@@ -56,7 +68,12 @@ export async function respondToApproval(ctx, args) {
     const key = await approvalKey(args.approvalId);
     const index = approvals?.requests.findIndex((request) => !request.deferred && request.key === key) ?? -1;
     const decision = approvals?.requests[index];
-    if (!row.approvalBlocked || row.cancelled || !approvals || approvals.cleanupPending || !decision)
+    if (!approvalBlocked(row) ||
+        row.cancelled ||
+        !approvals ||
+        approvals.cleanupPending ||
+        approvals.epoch !== row.cancellationEpoch ||
+        !decision)
         throw new ConvexError({ code: "APPROVAL_NOT_FOUND" });
     if (decision.resolved)
         throw new ConvexError({ code: "APPROVAL_ALREADY_RESOLVED" });
@@ -80,11 +97,11 @@ export async function respondToApproval(ctx, args) {
             ...(args.effectiveInput !== undefined ? { effective: true } : {}),
         }
         : request);
-    await ctx.db.patch("assignments", row._id, { approvals: { ...approvals, requests } });
+    const updated = { ...approvals, requests };
+    await ctx.db.patch("assignments", row._id, { approvals: updated });
     if (requests.every((request) => request.resolved)) {
         await ctx.db.patch("inbox", approvals.inboxId, { messageId });
-        await ctx.db.patch("assignments", row._id, { approvalBlocked: false });
-        await wake(ctx, { ...row, approvalBlocked: false });
+        await wake(ctx, { ...row, approvals: updated });
     }
     return { messageId, replayed: false };
 }
@@ -96,7 +113,7 @@ export async function respondToApproval(ctx, args) {
  * At most 16 fixed-size references are reindexed per answer.
  * No tool payload is copied into coordination state, even for large inputs.
  */
-export async function answerDeferredCall(ctx, args) {
+async function answerDeferredCall(ctx, args) {
     const row = await ctx.db.get("assignments", args.assignmentId);
     if (!row || row.subject !== args.subject)
         throw new ConvexError({ code: "FORBIDDEN" });
@@ -112,7 +129,7 @@ export async function answerDeferredCall(ctx, args) {
     const request = pause?.requests[index];
     if (!pause ||
         !request ||
-        !row.approvalBlocked ||
+        !approvalBlocked(row) ||
         row.cancelled ||
         pause.cleanupPending ||
         pause.epoch !== row.cancellationEpoch)
@@ -132,13 +149,12 @@ export async function answerDeferredCall(ctx, args) {
     await ctx.db.delete("receipts", request.proposalId);
     const remaining = pause.requests.filter((_, offset) => offset !== index);
     const approvals = remaining.length ? { ...pause, requests: remaining } : undefined;
-    const blocked = remaining.some((entry) => !entry.resolved);
-    await ctx.db.patch("assignments", row._id, { approvals, approvalBlocked: blocked });
+    await ctx.db.patch("assignments", row._id, { approvals });
     // Always retain the last saved result as the future prompt, including a
     // partial answer. A concurrent answer/respond serializes on this same row.
     await ctx.db.patch("inbox", pause.inboxId, { messageId });
-    if (!blocked)
-        await wake(ctx, { ...row, approvals, approvalBlocked: false });
+    if (!approvalBlocked({ approvals }))
+        await wake(ctx, { ...row, approvals });
     return { messageId, replayed: false };
 }
 /** Agent 0.7.7 example/convex/chat/human.ts:135-148 uses exactly this

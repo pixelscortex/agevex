@@ -20,19 +20,17 @@ declare const _default: {
             leaseUntil: number;
             provider: string;
             scopeKey: string;
-            lastUsedAt: number;
-            ttl: number;
+            idleExpiresAt: number;
         }, {
             scopeKey: import("convex/values").VString<string, "required">;
             provider: import("convex/values").VString<string, "required">;
             sandboxId: import("convex/values").VString<string | undefined, "optional">;
             state: import("convex/values").VUnion<"stopped" | "unknown" | "ready" | "creating" | "deleting" | "deleted", [import("convex/values").VLiteral<"creating", "required">, import("convex/values").VLiteral<"ready", "required">, import("convex/values").VLiteral<"stopped", "required">, import("convex/values").VLiteral<"unknown", "required">, import("convex/values").VLiteral<"deleting", "required">, import("convex/values").VLiteral<"deleted", "required">], "required", never>;
-            lastUsedAt: import("convex/values").VFloat64<number, "required">;
-            ttl: import("convex/values").VFloat64<number, "required">;
+            idleExpiresAt: import("convex/values").VFloat64<number, "required">;
             claim: import("convex/values").VString<string, "required">;
             leaseUntil: import("convex/values").VFloat64<number, "required">;
             cleanupAt: import("convex/values").VFloat64<number | undefined, "optional">;
-        }, "required", "state" | "claim" | "leaseUntil" | "provider" | "scopeKey" | "sandboxId" | "lastUsedAt" | "ttl" | "cleanupAt">, {
+        }, "required", "state" | "claim" | "leaseUntil" | "provider" | "scopeKey" | "sandboxId" | "idleExpiresAt" | "cleanupAt">, {
             by_scope: ["scopeKey", "_creationTime"];
             by_cleanup: ["cleanupAt", "_creationTime"];
         }, {}, {}>;

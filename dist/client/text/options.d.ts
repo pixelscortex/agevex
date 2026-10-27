@@ -15,8 +15,6 @@ export type ThreadTextOptions = {
 };
 export type TextTaskArgs = {
     assignmentId: string;
-    kind: "title";
-    key: string;
 };
 /** Fail before request acceptance when the host cannot dispatch metadata work. */
 export declare function assertTextOptions(config: Registration): void;

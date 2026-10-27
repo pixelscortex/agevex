@@ -8,11 +8,8 @@ export declare const TEXT_LIMITS: {
     readonly leaseMs: 35000;
     readonly titleTokens: 128;
 };
-export declare const textKind: import("convex/values").VLiteral<"title", "required">;
 export declare const textArgs: {
     assignmentId: import("convex/values").VString<string, "required">;
-    kind: import("convex/values").VLiteral<"title", "required">;
-    key: import("convex/values").VString<string, "required">;
 };
 export declare const textConfig: import("convex/values").VObject<{
     worker: string;
@@ -24,4 +21,4 @@ export declare const textConfig: import("convex/values").VObject<{
     getThread: import("convex/values").VString<string, "required">;
 }, "required", "worker" | "updateThread" | "getThread">;
 /** Count encoded output as well as characters before updating native metadata. */
-export declare function validText(text: string, _kind: "title"): boolean;
+export declare function validText(text: string): boolean;

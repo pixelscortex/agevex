@@ -62,6 +62,6 @@ export function newChildAssignment(fields) {
         // Linkage: root, shared run budget and the delegation that created it.
         rootAssignmentId: run.rootAssignmentId,
         runId: run.parentRunId,
-        childRunId: run.runId,
+        childRunId: run._id,
     };
 }

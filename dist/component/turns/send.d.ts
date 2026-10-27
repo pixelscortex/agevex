@@ -1,5 +1,3 @@
-import { type ObjectType } from "convex/values";
-import { type MutationCtx, type QueryCtx } from "../_generated/server.js";
 export declare const acceptArgs: {
     subject: import("convex/values").VString<string, "required">;
     agent: import("convex/values").VString<string, "required">;
@@ -88,38 +86,6 @@ export declare const acceptArgs: {
         getThread: import("convex/values").VString<string, "required">;
     }, "optional", "worker" | "updateThread" | "getThread">;
 };
-/** The typed duplicate/conflict receipt for an already accepted request, or
- * null for a new one. Shares the `request:<subject>` ledger scope. */
-export declare function requestReceipt(ctx: Pick<QueryCtx, "db">, subject: string, requestKey: string, fingerprint: string): Promise<{
-    status: "rejected";
-    code: "KEY_CONFLICT";
-} | {
-    receiptId: import("convex/values").GenericId<"receipts">;
-    status: "duplicate";
-    assignmentId: string;
-    threadId: string;
-    position: number;
-    code?: undefined;
-} | null>;
-/** Admit one host send; see the file header. Throws (rolling back the native
- * save) for a foreign thread, recovery_required or a full ready queue. */
-export declare function acceptSend(ctx: MutationCtx, args: ObjectType<typeof acceptArgs>): Promise<{
-    status: "rejected";
-    code: "KEY_CONFLICT";
-} | {
-    receiptId: import("convex/values").GenericId<"receipts">;
-    status: "duplicate";
-    assignmentId: string;
-    threadId: string;
-    position: number;
-    code?: undefined;
-} | {
-    assignmentId: import("convex/values").GenericId<"assignments">;
-    threadId: string;
-    receiptId: import("convex/values").GenericId<"receipts">;
-    status: "accepted";
-    position: number;
-}>;
 /**
  * Replay lookup after host authorization, before admission or native saves.
  * Use the host-authorized subject, never a supplied thread's stored owner:

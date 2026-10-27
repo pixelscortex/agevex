@@ -282,8 +282,6 @@ export declare function registerAgent(component: ComponentApi, config: Registrat
         runTurn: import("convex/server").RegisteredAction<"internal", import("./types.js").TurnArgs, null>;
         coordinate: import("convex/server").RegisteredMutation<"internal", import("./types.js").CoordinateArgs, import("./types.js").CoordinateResult>;
         textTask: import("convex/server").RegisteredAction<"internal", {
-            kind: "title";
-            key: string;
             assignmentId: string;
         }, Promise<null>>;
     };

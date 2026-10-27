@@ -3,9 +3,6 @@
  * values cross our steps. These platform facts are never host overrides.
  */
 export declare const PLATFORM: {
-    readonly journalBytes: number;
-    readonly stepBytes: number;
-    readonly nodeActionMs: number;
     readonly convexActionMs: number;
     readonly scheduledConcurrency: 8;
 };
@@ -96,8 +93,10 @@ export declare const HOST_LIMITS: {
  * fixture tests/save-bounds.fixture.ts fills every remaining writer bound:
  * approvals <=4,802 B; report <=2,635 B; metadata handles <=806 B;
  * pending generation <=988 B; runTurn <=258 B; names <=1,204 B;
- * model map <=510 B; limits <=309 B; remaining fields/names/overhead <=1,064 B.
- * Total <=12,576 B; 14,336-12,576=1,760 B headroom at every writer cap.
+ * model map <=510 B; limits <=309 B; remaining fields/names/overhead <=1,048 B.
+ * Total <=12,560 B; 14,336-12,560=1,776 B headroom at every writer cap.
+ * Native child ids need <=37 bytes (one more than UUIDs); their reference is
+ * included above. Child rows use their system id, freeing the old UUID field.
  * No summary body, context ring, review history, cadence or text job is stored.
  * activeTools is excluded from save growth: write clears it first, and the
  * progress writer separately refuses a marker crossing assignmentBytes.

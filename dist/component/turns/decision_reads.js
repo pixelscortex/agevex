@@ -1,4 +1,5 @@
 // Exact-id pending-call reads and receipt lookup; never discover calls in history.
+import { approvalBlocked } from "../approvals.js";
 import { ConvexError, v } from "convex/values";
 import { query } from "../_generated/server.js";
 import { approvalKey, keyString } from "../approvals.js";
@@ -100,7 +101,7 @@ export const pending = query({
                 row.runId === runId)
                 rows.push(row);
         }
-        const paused = rows.filter((r) => r.approvalBlocked && !r.cancelled && !r.approvals?.cleanupPending);
+        const paused = rows.filter((r) => approvalBlocked(r) && !r.cancelled && !r.approvals?.cleanupPending);
         if (paused.length > DECISION_LIMITS.assignments)
             throw new ConvexError({ code: "PENDING_LIMIT" });
         const result = [];

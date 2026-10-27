@@ -8,8 +8,7 @@ export declare const sandboxDocument: import("convex/values").VObject<{
     leaseUntil: number;
     provider: string;
     scopeKey: string;
-    lastUsedAt: number;
-    ttl: number;
+    idleExpiresAt: number;
 }, {
     _id: import("convex/values").VId<import("convex/values").GenericId<"sandboxes">, "required">;
     _creationTime: import("convex/values").VFloat64<number, "required">;
@@ -17,12 +16,11 @@ export declare const sandboxDocument: import("convex/values").VObject<{
     provider: import("convex/values").VString<string, "required">;
     sandboxId: import("convex/values").VString<string | undefined, "optional">;
     state: import("convex/values").VUnion<"stopped" | "unknown" | "ready" | "creating" | "deleting" | "deleted", [import("convex/values").VLiteral<"creating", "required">, import("convex/values").VLiteral<"ready", "required">, import("convex/values").VLiteral<"stopped", "required">, import("convex/values").VLiteral<"unknown", "required">, import("convex/values").VLiteral<"deleting", "required">, import("convex/values").VLiteral<"deleted", "required">], "required", never>;
-    lastUsedAt: import("convex/values").VFloat64<number, "required">;
-    ttl: import("convex/values").VFloat64<number, "required">;
+    idleExpiresAt: import("convex/values").VFloat64<number, "required">;
     claim: import("convex/values").VString<string, "required">;
     leaseUntil: import("convex/values").VFloat64<number, "required">;
     cleanupAt: import("convex/values").VFloat64<number | undefined, "optional">;
-}, "required", "_id" | "_creationTime" | "state" | "claim" | "leaseUntil" | "provider" | "scopeKey" | "sandboxId" | "lastUsedAt" | "ttl" | "cleanupAt">;
+}, "required", "_id" | "_creationTime" | "state" | "claim" | "leaseUntil" | "provider" | "scopeKey" | "sandboxId" | "idleExpiresAt" | "cleanupAt">;
 export declare const jobDocument: import("convex/values").VObject<{
     code?: "SANDBOX_JOB_DEADLINE" | undefined;
     providerJobId?: string | undefined;

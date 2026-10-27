@@ -247,7 +247,6 @@ export default defineSchema({
     // Set by wake with the reserved head; read by claim and write.
     turnOrigin: v.optional(turnOrigin),
     inboxId: v.optional(v.id("inbox")),
-    approvalBlocked: v.optional(v.boolean()),
     // At most LIMITS.approvalsPerPause fixed-size approval keys, never payloads.
     approvals: v.optional(
       v.object({
@@ -394,7 +393,6 @@ export default defineSchema({
   subagentRuns: defineTable({
     // Captured atomically with the initial native task; tree never reads bodies.
     taskMessageId: v.optional(v.string()),
-    runId: v.string(),
     rootCancellationEpoch: v.number(),
     parentRunId: v.id("runs"),
     dedupKey: v.string(),
@@ -446,7 +444,6 @@ export default defineSchema({
   })
     .index("by_result_message", ["resultMessageId"])
     .index("by_dedup", ["dedupKey"])
-    .index("by_run", ["runId"])
     .index("by_root_sequence", ["rootAssignmentId", "sequence"])
     .index("by_root_status", ["rootAssignmentId", "status"])
     // Launch admission also pins the epoch to bound outstanding result work

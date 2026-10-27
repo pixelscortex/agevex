@@ -1,12 +1,10 @@
 import { LIMITS } from "../limits.js";
-import { getConvexSize } from "convex/values";
+import { valueBytes } from "../../shared/json.js";
 import { TREE_LIMITS } from "../run_tree_values.js";
-/** The run with this public run id (unique `by_run` index), or null. */
+/** Public delegation ids are native document ids; malformed or foreign ids miss. */
 export async function runById(ctx, runId) {
-    return ctx.db
-        .query("subagentRuns")
-        .withIndex("by_run", (q) => q.eq("runId", runId))
-        .unique();
+    const id = ctx.db.normalizeId("subagentRuns", runId);
+    return id ? ctx.db.get("subagentRuns", id) : null;
 }
 /** True once a run reached a terminal status. Delivery may still be pending. */
 export function isSettled(status) {
@@ -51,7 +49,6 @@ export function runTimes(run) {
 export function newSubagentRun(fields) {
     const { request, actor, root, now } = fields;
     const row = {
-        runId: fields.runId,
         // The root epoch this delegation belongs to; cancel bumps it to fence.
         rootCancellationEpoch: root.cancellationEpoch,
         depth: fields.depth,
@@ -84,8 +81,6 @@ export function newSubagentRun(fields) {
  * at task attachment so native reference growth cannot break the 4 KiB read budget.
  */
 export function assertRunMetadata(row) {
-    if (Math.max(getConvexSize(row), new TextEncoder().encode(JSON.stringify(row)).byteLength) +
-        TREE_LIMITS.childGrowthBytes >
-        TREE_LIMITS.childBytes)
+    if (valueBytes(row) + TREE_LIMITS.childGrowthBytes > TREE_LIMITS.childBytes)
         throw new Error("RUN_METADATA_TOO_LARGE");
 }

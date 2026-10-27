@@ -225,7 +225,7 @@ export async function interactionTarget(ctx: QueryCtx, args: InteractionArgs) {
 
   return {
     kind: "ready" as const,
-    runId: run.runId,
+    runId: run._id,
     agent: run.agent,
     subject: root.subject,
     childThreadId: child.threadId,
@@ -259,7 +259,7 @@ export const interactionResult = v.union(
 /** `subagents.messages.messageChild`: the exact native follow-up id is saved in the
  * child's inbox in the same transaction. Answers an open question (resuming
  * the child) when the child is asking; spends one hop either way. */
-export async function sendToChild(
+async function sendToChild(
   ctx: MutationCtx,
   args: {
     assignmentId: Doc<"assignments">["_id"];
@@ -283,12 +283,12 @@ export async function sendToChild(
   await ctx.db.patch("runs", budget._id, { hops: budget.hops + 1 });
   await post(ctx, child, budget._id, args.messageId, "parent", run.status === "asking");
 
-  return { status: "accepted" as const, runId: run.runId };
+  return { status: "accepted" as const, runId: run._id };
 }
 
 /** `subagents.messages.askParent`: asking holds the active slot. Its native assistant id and the parent's inbox id commit with
  * BOTH native saves; spends one hop. */
-export async function askParentRun(
+async function askParentRun(
   ctx: MutationCtx,
   args: {
     assignmentId: Doc<"assignments">["_id"];
@@ -311,7 +311,7 @@ export async function askParentRun(
   await ctx.db.patch("runs", budget._id, { hops: budget.hops + 1 });
   await post(ctx, parent, budget._id, args.parentMessageId, "note");
 
-  return { status: "accepted" as const, runId: run.runId };
+  return { status: "accepted" as const, runId: run._id };
 }
 
 /** Trusted target projection for the host's atomic native message saves. */

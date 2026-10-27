@@ -1,3 +1,16 @@
+/**
+ * Approval pauses: when a model step asks for tool approval (or calls a
+ * declared no-execute "deferred" tool the host must answer), the turn stops
+ * and waits for `turns.approvals.respond` / `turns.approvals.answer`.
+ *
+ * All of it runs inside `turns.slices.write`, in the same transaction as the native
+ * assistant save that contains the requests: count them against
+ * `LIMITS.approvalsPerPause` before the save, retire requests whose results
+ * the save carries, collect the new requests as fixed-size hashes, and
+ * suspend the turn with one continuation inbox row. Touches
+ * `assignments.approvals` and `inbox`.
+ */
+import { approvalBlocked } from "../approvals.js";
 import { ConvexError, getConvexSize } from "convex/values";
 import { LIMITS } from "../limits.js";
 import { approvalKey, callKey, keyString } from "../approvals.js";
@@ -135,11 +148,11 @@ async function addDeferredCalls(ctx, pause, messages, deferredTools, askTools) {
 }
 /** Suspend the running turn on the requests just recorded: close the slice,
  * insert the continuation row at the head of the ready FIFO, and commit
- * `approvalBlocked` with the request hashes and native handles. */
+ * the request hashes and native handles. */
 export async function suspendForApprovals(ctx, row, pause, handles) {
     await disarmSlice(ctx, row);
     await disarmRecovery(ctx, row);
-    if (row.approvalBlocked)
+    if (approvalBlocked(row))
         throw new ConvexError({ code: "APPROVAL_ALREADY_PENDING" });
     if (row.approvals?.requests.length)
         throw new ConvexError({ code: "APPROVAL_RESULTS_MISSING" });
@@ -162,7 +175,6 @@ export async function suspendForApprovals(ctx, row, pause, handles) {
     // immediately after this mutation. No later action owns this fact.
     await ctx.db.patch("assignments", row._id, {
         turnReport: row.turnReport ? { ...row.turnReport, resumeInboxId: inboxId } : undefined,
-        approvalBlocked: true,
         approvals: {
             inboxId,
             requests: pause.requests,

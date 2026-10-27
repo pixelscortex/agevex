@@ -5,7 +5,7 @@ import { LIMITS } from "../limits.js";
 export const textScope = (assignmentId) => `thread-text:${assignmentId}`;
 /** The title caller runs only at first acceptance;
  * neither failure nor lease expiry ever schedules another paid attempt. */
-export async function queueText(ctx, row, kind, runId, messageId) {
+export async function queueText(ctx, row, runId, messageId) {
     if (!row.textConfig || row.childRunId)
         return false;
     const key = "title";
@@ -27,9 +27,9 @@ export async function queueText(ctx, row, kind, runId, messageId) {
         },
     });
     try {
-        await laneManager(true, row.limits).start(ctx, internal.text.worker.work, { assignmentId: row._id, kind, key, handle: row.textConfig.worker }, {
+        await laneManager(true, row.limits).start(ctx, internal.text.worker.work, { assignmentId: row._id, handle: row.textConfig.worker }, {
             startAsync: true,
-            context: { assignmentId: row._id, kind, key },
+            context: { assignmentId: row._id },
             onComplete: internal.text.worker.done,
         });
     }

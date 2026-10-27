@@ -100,9 +100,7 @@ export const claimDelete = mutation({
         if (!row || row.state === "deleted" || row.state === "deleting")
             return null;
         if (args.expiredOnly &&
-            (row.cleanupAt === undefined ||
-                row.cleanupAt > Date.now() ||
-                row.lastUsedAt + row.ttl > Date.now()))
+            (row.cleanupAt === undefined || row.cleanupAt > Date.now() || row.idleExpiresAt > Date.now()))
             return null;
         if (!row.sandboxId) {
             // An abandoned create has no identity we can safely delete. Retain its

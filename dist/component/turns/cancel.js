@@ -9,7 +9,7 @@ import { RUN_LIMITS } from "../run_settings.js";
 import { v } from "convex/values";
 /** Cancel the root thread owned by `subject` and all its live descendants.
  * Returns the affected native threads so the host can abort their streams. */
-export async function cancelRoot(ctx, args) {
+async function cancelRoot(ctx, args) {
     const root = await ctx.db.get("assignments", args.assignmentId);
     if (!root || root.subject !== args.subject || root.childRunId)
         throw new Error("FORBIDDEN");
@@ -109,7 +109,6 @@ function cancelledState(row, approvalCleanup) {
         pinged: false,
         queuedMessages: 0,
         notesPending: 0,
-        approvalBlocked: !!approvalCleanup,
         approvals: approvalCleanup ? { ...row.approvals, cleanupPending: true } : undefined,
     };
 }

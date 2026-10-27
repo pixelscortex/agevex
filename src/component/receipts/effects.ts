@@ -36,7 +36,7 @@ export type TurnFence = {
 };
 
 /** False when the call names an assignment whose turn it no longer owns. */
-export async function fenceHolds(ctx: MutationCtx, fence: TurnFence) {
+async function fenceHolds(ctx: MutationCtx, fence: TurnFence) {
   if (!fence.assignmentId) return true;
 
   const row = await ctx.db.get("assignments", fence.assignmentId);
@@ -53,7 +53,7 @@ export async function fenceHolds(ctx: MutationCtx, fence: TurnFence) {
 /** Claim `(scope, key)` for one effect attempt, or report why not: a
  * recorded outcome to replay, a live claim, a fingerprint conflict, an
  * `unknown` outcome (never re-run unless `repeatSafe`), or a stale turn. */
-export async function beginEffect(
+async function beginEffect(
   ctx: MutationCtx,
   args: TurnFence & {
     scope: string;
@@ -114,7 +114,7 @@ export async function beginEffect(
 
 /** Record the outcome of the current claim. A stale claim is ignored; a
  * claim whose lease already expired becomes `unknown` instead. */
-export async function completeEffect(
+async function completeEffect(
   ctx: MutationCtx,
   args: TurnFence & { scope: string; key: string; claim: string; failed?: boolean; result: Value },
 ) {

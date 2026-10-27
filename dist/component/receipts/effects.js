@@ -25,7 +25,7 @@ import { internal } from "../_generated/api.js";
  * claim then no longer matches anything. */
 export const unclaimed = { claim: undefined, leaseUntil: undefined };
 /** False when the call names an assignment whose turn it no longer owns. */
-export async function fenceHolds(ctx, fence) {
+async function fenceHolds(ctx, fence) {
     if (!fence.assignmentId)
         return true;
     const row = await ctx.db.get("assignments", fence.assignmentId);
@@ -38,7 +38,7 @@ export async function fenceHolds(ctx, fence) {
 /** Claim `(scope, key)` for one effect attempt, or report why not: a
  * recorded outcome to replay, a live claim, a fingerprint conflict, an
  * `unknown` outcome (never re-run unless `repeatSafe`), or a stale turn. */
-export async function beginEffect(ctx, args) {
+async function beginEffect(ctx, args) {
     if (!(await fenceHolds(ctx, args)))
         return { status: "stale" };
     const row = await findReceipt(ctx, args.scope, args.key);
@@ -79,7 +79,7 @@ export async function beginEffect(ctx, args) {
 }
 /** Record the outcome of the current claim. A stale claim is ignored; a
  * claim whose lease already expired becomes `unknown` instead. */
-export async function completeEffect(ctx, args) {
+async function completeEffect(ctx, args) {
     if (!(await fenceHolds(ctx, args)))
         return null;
     const row = await findReceipt(ctx, args.scope, args.key);

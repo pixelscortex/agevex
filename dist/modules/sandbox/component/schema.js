@@ -13,8 +13,7 @@ export default defineSchema({
         provider: v.string(),
         sandboxId: v.optional(v.string()),
         state: sandboxState,
-        lastUsedAt: v.number(),
-        ttl: v.number(),
+        idleExpiresAt: v.number(),
         // Reservation fences lost create responses; lease expiry NEVER grants a
         // second create. cleanupAt is the indexed, conservative idle deadline.
         claim: v.string(),

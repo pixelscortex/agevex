@@ -5,7 +5,7 @@
 // implementation is organised by concept; see `client/README.md` for the map.
 export { Agent } from "./agent.js";
 export { DELEGATE_TOOL_NAME, MESSAGE_CHILD_TOOL_NAME, ASK_PARENT_TOOL_NAME, MESSAGE_PARENT_TOOL_NAME, registerAgent, } from "./runtime.js";
-export { LIMITS, PLATFORM } from "../component/limits.js";
+export { HOST_LIMITS } from "../component/limits.js";
 export { defineOnceTool } from "./once.js";
 export { defineTask, runTask } from "./tasks.js";
 export { assertFormSchema, validateAnswer, } from "../shared/decisions.js";

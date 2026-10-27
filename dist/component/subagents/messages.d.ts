@@ -69,7 +69,6 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         } | undefined;
         turnOrigin?: "user" | "subagent_result" | undefined;
         inboxId?: import("convex/values").GenericId<"inbox"> | undefined;
-        approvalBlocked?: boolean | undefined;
         approvals?: {
             cleanupPending?: boolean | undefined;
             epoch: number;
@@ -164,7 +163,6 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         } | undefined;
         turnOrigin?: "user" | "subagent_result" | undefined;
         inboxId?: import("convex/values").GenericId<"inbox"> | undefined;
-        approvalBlocked?: boolean | undefined;
         approvals?: {
             cleanupPending?: boolean | undefined;
             epoch: number;
@@ -237,7 +235,6 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         status: "failed" | "running" | "completed" | "queued" | "asking";
         agent: string;
         errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | "DELIVERY_UNKNOWN" | null;
-        runId: string;
         rootAssignmentId: import("convex/values").GenericId<"assignments">;
         sequence: number;
         rootCancellationEpoch: number;
@@ -298,7 +295,6 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         } | undefined;
         turnOrigin?: "user" | "subagent_result" | undefined;
         inboxId?: import("convex/values").GenericId<"inbox"> | undefined;
-        approvalBlocked?: boolean | undefined;
         approvals?: {
             cleanupPending?: boolean | undefined;
             epoch: number;
@@ -393,7 +389,6 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         } | undefined;
         turnOrigin?: "user" | "subagent_result" | undefined;
         inboxId?: import("convex/values").GenericId<"inbox"> | undefined;
-        approvalBlocked?: boolean | undefined;
         approvals?: {
             cleanupPending?: boolean | undefined;
             epoch: number;
@@ -483,7 +478,7 @@ export declare function interactionTarget(ctx: QueryCtx, args: InteractionArgs):
     code: "FORBIDDEN" | "STALE_TURN" | "RUN_BUDGET" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "MESSAGE_RATE_LIMIT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
 } | {
     kind: "ready";
-    runId: string;
+    runId: import("convex/values").GenericId<"subagentRuns">;
     agent: string;
     subject: string;
     childThreadId: string;
@@ -541,29 +536,6 @@ export declare const interactionResult: import("convex/values").VUnion<{
     actorAgent: import("convex/values").VString<string, "required">;
     parentAgent: import("convex/values").VString<string, "required">;
 }, "required", "kind" | "agent" | "subject" | "runId" | "rootAssignmentId" | "childThreadId" | "actorAgent" | "parentThreadId" | "rootThreadId" | "rootAgent" | "parentAgent">], "required", "kind" | "agent" | "subject" | "runId" | "rootAssignmentId" | "childThreadId" | "actorAgent" | "code" | "parentThreadId" | "rootThreadId" | "rootAgent" | "parentAgent">;
-/** `subagents.messages.messageChild`: the exact native follow-up id is saved in the
- * child's inbox in the same transaction. Answers an open question (resuming
- * the child) when the child is asking; spends one hop either way. */
-export declare function sendToChild(ctx: MutationCtx, args: {
-    assignmentId: Doc<"assignments">["_id"];
-    turnToken: string;
-    runId: string;
-    messageId: string;
-}): Promise<{
-    status: "accepted";
-    runId: string;
-}>;
-/** `subagents.messages.askParent`: asking holds the active slot. Its native assistant id and the parent's inbox id commit with
- * BOTH native saves; spends one hop. */
-export declare function askParentRun(ctx: MutationCtx, args: {
-    assignmentId: Doc<"assignments">["_id"];
-    turnToken: string;
-    questionMessageId: string;
-    parentMessageId: string;
-}): Promise<{
-    status: "accepted";
-    runId: string;
-}>;
 /** Trusted target projection for the host's atomic native message saves. */
 export declare const interactionContext: import("convex/server").RegisteredQuery<"public", {
     runId?: string | undefined;
@@ -575,7 +547,7 @@ export declare const interactionContext: import("convex/server").RegisteredQuery
     code: "FORBIDDEN" | "STALE_TURN" | "RUN_BUDGET" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "MESSAGE_RATE_LIMIT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
 } | {
     kind: "ready";
-    runId: string;
+    runId: import("convex/values").GenericId<"subagentRuns">;
     agent: string;
     subject: string;
     childThreadId: string;
@@ -594,7 +566,7 @@ export declare const messageChild: import("convex/server").RegisteredMutation<"p
     assignmentId: import("convex/values").GenericId<"assignments">;
 }, Promise<{
     status: "accepted";
-    runId: string;
+    runId: import("convex/values").GenericId<"subagentRuns">;
 }>>;
 /** A child's question to its parent; see `askParentRun`. */
 export declare const askParent: import("convex/server").RegisteredMutation<"public", {
@@ -604,7 +576,7 @@ export declare const askParent: import("convex/server").RegisteredMutation<"publ
     parentMessageId: string;
 }, Promise<{
     status: "accepted";
-    runId: string;
+    runId: import("convex/values").GenericId<"subagentRuns">;
 }>>;
 /** Only a recorded open question can be authenticated; never scan history. */
 export declare const questionContext: import("convex/server").RegisteredQuery<"public", {
