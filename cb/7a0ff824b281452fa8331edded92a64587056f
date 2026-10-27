@@ -1,0 +1,25 @@
+src/modules/telemetry/client/index.ts
+  s_d863bd773ba186::t_4ec39a6473bc05 76-81,84-94,101-102
+  s_d863bd773ba186::t_6ebe19ced4bc5a 95-100
+  s_d863bd773ba186::t_26c2a132312424 133
+src/client/turn/fence.ts
+  s_d863bd773ba186::t_f2a931b24799b7 194
+tests/telemetry/telemetry.test.ts
+  s_d863bd773ba186::t_fe64305c3dcae0 33-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cb7a0ff824b281452fa8331edded92a64587056f",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
