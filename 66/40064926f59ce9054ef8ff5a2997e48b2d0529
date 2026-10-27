@@ -1,0 +1,213 @@
+dist/client/slots.d.ts
+  s_d863bd773ba186::t_63e2853dd16b28 45,48-50,59-60
+dist/client/tasks.js
+  s_d863bd773ba186::t_d16fb82742e996 200,203,274,276,284-285
+dist/client/text/task.js
+  s_d863bd773ba186::t_748a034ad4897b 101,113,117-119,124,148-149
+dist/client/turn/context.d.ts
+  s_d863bd773ba186::t_452ee3207834ab 7,21-28,89-92
+dist/client/turn/context.js
+  s_d863bd773ba186::t_4bea6b5c442f22 28-42
+dist/client/turn/deadlines.js
+  s_d863bd773ba186::t_bd3405fb3c947c 8,13,15,22-23,29,48,53-54
+dist/client/turn/fence.d.ts
+  s_d863bd773ba186::t_0d2ef6c2ba07cb 9-10
+dist/client/turn/fence.js
+  s_d863bd773ba186::t_250f4f5bde99b9 19-20,53,62,66-67,142-145,187
+dist/client/turn/finish.js
+  s_d863bd773ba186::t_d40cd2e7873e28 46-47,57
+dist/client/turn/generation.js
+  s_d863bd773ba186::t_a6f0162e93d2fc 20,33,38-40,67-68
+dist/client/turn/slots.d.ts
+  s_d863bd773ba186::t_42176939c95524 3,5-9
+dist/client/turn/slots.js
+  s_d863bd773ba186::t_0fa3b4c8ba1935 3,12-19,21-25,27,29,34-37,41-42
+dist/client/turn/step-usage.d.ts
+  s_d863bd773ba186::t_baef0b3a2f1bd7 1-30
+dist/client/turn/step-usage.js
+  s_d863bd773ba186::t_5462417ea944c8 1-86
+dist/client/turn/usage.d.ts
+  s_d863bd773ba186::t_b88edbda8802fe 6-18
+dist/client/turn/usage.js
+  s_d863bd773ba186::t_4b7690a5a1e697 1-44
+dist/client/types.d.ts
+  s_d863bd773ba186::t_93fa7131074b38 360
+dist/component/cancellation/cleanup.d.ts
+  s_d863bd773ba186::t_df428fd31e5254 1-11,25,43,55
+dist/component/cancellation/cleanup.js
+  s_d863bd773ba186::t_bc4d858aa78ec1 19-40,47
+dist/component/limits.d.ts
+  s_d863bd773ba186::t_359b1d1fd7437e 79-80,85-89,92,95-98,114-133,189-191
+dist/component/limits.js
+  s_d863bd773ba186::t_2f6a729a64ecea 59-60,65-69,72,75-78,94-113,130-131,141,200-203
+dist/component/run_settings.d.ts
+  s_d863bd773ba186::t_fe5c45ffb6c898 34
+dist/component/run_settings.js
+  s_d863bd773ba186::t_36ec19345c659e 27,69
+dist/component/schema.d.ts
+  s_d863bd773ba186::t_8aad83c26900e8 191,198,206,220-221,233,265-268,326,358,370,377,385,462-468,471
+dist/component/schema.js
+  s_d863bd773ba186::t_15e329c7370e44 98-99,120-123,127-129,193-195,243
+dist/component/subagents/messages.d.ts
+  s_d863bd773ba186::t_d3702802947b13 41-42,54,86-89,135-136,148,180-183,267-268,280,312-315,361-362,374,406-409
+dist/component/subagents/tree.js
+  s_d863bd773ba186::t_b312f5038c817e 3-4,165
+dist/component/turns/assignments.d.ts
+  s_d863bd773ba186::t_e1742d29f596c0 32-33,45,77-80
+dist/component/turns/boundaries.d.ts
+  s_d863bd773ba186::t_ef9e2b61f59889 1-2,6
+dist/component/turns/boundaries.js
+  s_d863bd773ba186::t_30a66483e4767b 4,6-9,21,24-27,39-40
+dist/component/turns/cancel.d.ts
+  s_d863bd773ba186::t_a47a937c63414a 1
+dist/component/turns/cancel.js
+  s_d863bd773ba186::t_09bd39058b2e2e 4,82-89,105-107,129
+dist/component/turns/claim.js
+  s_d863bd773ba186::t_9862c4486280ee 6,16,69-73,92,196-198,203,206
+dist/component/turns/failures.d.ts
+  s_d863bd773ba186::t_20fc02219da532 1,3,5
+dist/component/turns/failures.js
+  s_d863bd773ba186::t_0e07f6123507ec 1,3-6,9-11,14
+dist/component/turns/finish.d.ts
+  s_d863bd773ba186::t_f84ccf45e998ca 25-37
+dist/component/turns/finish.js
+  s_d863bd773ba186::t_1f1fda4a832a1c 1-2,4,8,78-86,89-91,94-99,107-109,114,117-134
+dist/component/turns/inbox.d.ts
+  s_d863bd773ba186::t_d8a1e478264f87 8
+dist/component/turns/loop.d.ts
+  s_d863bd773ba186::t_ec60a23c583a15 1,3,5
+dist/component/turns/loop.js
+  s_d863bd773ba186::t_15fa8623951022 1,4-5,7-9
+dist/component/turns/slices.d.ts
+  s_d863bd773ba186::t_cb258b0c3bd228 5-6,94
+dist/component/turns/slices.js
+  s_d863bd773ba186::t_195418e3b751da 29-30
+dist/component/turns/tools.js
+  s_d863bd773ba186::t_14f759f22ae309 21,25,27
+dist/component/turns/wake.d.ts
+  s_d863bd773ba186::t_591702f1ab71a2 3,5-7,9-14,16-44
+dist/component/turns/wake.js
+  s_d863bd773ba186::t_7c52fa0142ac41 1-3,7-8,12,16,18-20,22-23,26-28,32-43,45-48,52,66-92,94-96,98,100-103,105-107,109-122,124-126,128-129
+dist/component/turns/write.d.ts
+  s_d863bd773ba186::t_86a769e5567b14 47,51-52
+dist/component/turns/write.js
+  s_d863bd773ba186::t_b4e697206da575 31,98
+dist/component/workflows/lanes.d.ts
+  s_d863bd773ba186::t_a19a2f0a3adc1a 1-3,25-35,46-49,62,76-79,92
+dist/component/workflows/lanes.js
+  s_d863bd773ba186::t_7026648fc9f065 1-3,5,59,68-71,102-108,112-129,131,136-140,146,151-162,165-166,168-177
+dist/component/workflows/worker.d.ts
+  s_d863bd773ba186::t_97167024ffea7a 1
+dist/component/workflows/worker.js
+  s_d863bd773ba186::t_5be7236bedd433 1-2,7,15
+dist/test.d.ts
+  s_d863bd773ba186::t_b86d84806e2776 21-22,34,66-69,127,159,171,178,186,263-269,272
+dist/test.js
+  s_d863bd773ba186::t_410777b44af884 58-61
+dist/testing/bridge.d.ts
+  s_d863bd773ba186::t_aa36525ffaa663 33,58
+dist/testing/bridge.js
+  s_d863bd773ba186::t_514a01a8813165 57,60-62,118
+dist/testing/crash.d.ts
+  s_d863bd773ba186::t_ed57138199547b 1-7
+dist/testing/crash.js
+  s_d863bd773ba186::t_a25cd8787cb5a5 1-41
+dist/testing/expect-journal.js
+  s_d863bd773ba186::t_902980753e3a55 40-41,47-50
+dist/testing/journal.d.ts
+  s_d863bd773ba186::t_cb83eab9b427db 29-41
+dist/testing/journal.js
+  s_d863bd773ba186::t_a0ceed4de0a644 8-9,11,64,90-160
+package.json
+  s_d863bd773ba186::t_477ce23616cd14 80-81
+src/client/README.md
+  s_d863bd773ba186::t_a8a2fb1d87d54a 30,35-51,81,138-139
+src/client/slots.ts
+  s_d863bd773ba186::t_49965c22f8d0af 43,46-48,57-58
+src/client/tasks.ts
+  s_d863bd773ba186::t_5bfcb16eb1121e 336,340,446,449,459-460
+src/client/text/task.ts
+  s_d863bd773ba186::t_eb01fbf338ddc8 28-30,163,178,183-187,191,223-224
+src/client/turn/context.ts
+  s_d863bd773ba186::t_8dbf8a4459bb30 23,40-43,121-139
+src/client/turn/deadlines.ts
+  s_d863bd773ba186::t_18711af0a8d741 10,16,19,29-32,41,62,68-76
+src/client/turn/fence.ts
+  s_d863bd773ba186::t_e819801d2d58a1 21-22,30-31,84,94,99-101,194-202,249
+src/client/turn/finish.ts
+  s_d863bd773ba186::t_0561efa275b00e 62-63,74
+src/client/turn/generation.ts
+  s_d863bd773ba186::t_12f160c04e2b9f 23,37,44-47,73
+src/client/turn/slots.ts
+  s_d863bd773ba186::t_167f48b272f602 3,14,16-18,20-26,28-34,37-38,41,46-54,58-60
+src/client/turn/step-usage.ts
+  s_d863bd773ba186::t_22faa97074e68d 1-132
+src/client/turn/usage.ts
+  s_d863bd773ba186::t_87c22f993fe443 6-61
+src/client/types.ts
+  s_d863bd773ba186::t_f0a86c5f0f5c1f 384
+src/component/README.md
+  s_d863bd773ba186::t_0155c271b38d33 13-14,16,33,35,54,59-60,76-82,98,108,132-149
+src/component/cancellation/cleanup.ts
+  s_d863bd773ba186::t_1988d202701b44 50-78,85
+src/component/limits.ts
+  s_d863bd773ba186::t_f39b9d9638c6f3 62-63,68-72,75,78-81,97-116,133-134,144,203-206
+src/component/run_settings.ts
+  s_d863bd773ba186::t_ed955a93081889 33,92
+src/component/schema.ts
+  s_d863bd773ba186::t_dab3e7cb18e1d6 183-184,206-209,213-215,285-287,335
+src/component/subagents/tree.ts
+  s_d863bd773ba186::t_f6cd5f1c720950 3-4,207
+src/component/turns/boundaries.ts
+  s_d863bd773ba186::t_28e969fc11eeaa 1-2,10,12-15,39,41,43-46,65-66
+src/component/turns/cancel.ts
+  s_d863bd773ba186::t_49b10b804a14be 5,8,14,19,134-141,158-160,189
+src/component/turns/claim.ts
+  s_d863bd773ba186::t_802fe738ee97c9 6,20,90-96,125,262,269-270,275,279
+src/component/turns/failures.ts
+  s_d863bd773ba186::t_6d9f48514f9592 1,3-4,6-7,10-12,15
+src/component/turns/finish.ts
+  s_d863bd773ba186::t_88367ad73e4bba 1-2,4,10,108-115,117,119,124-126,131-138,148-151,156,160-180
+src/component/turns/inbox.ts
+  s_d863bd773ba186::t_434403be96d14c 8
+src/component/turns/loop.ts
+  s_d863bd773ba186::t_ce7f732e29ae6f 1,4,6,8-15
+src/component/turns/slices.ts
+  s_d863bd773ba186::t_c20f4d10e80eb0 30-31
+src/component/turns/tools.ts
+  s_d863bd773ba186::t_873f1f0bbd0083 23,28,30
+src/component/turns/wake.ts
+  s_d863bd773ba186::t_d61da9972f3a1d 1-3,6,10-11,15-16,20,23-25,27-28,32-34,39-51,54-57,61,77-110,113-115,117-118,121-128,132-133,136,138-142,144-146,148-151,153-154,157-159,162,164
+src/component/turns/write.ts
+  s_d863bd773ba186::t_b43baeff599122 63,156
+src/component/workflows/lanes.ts
+  s_d863bd773ba186::t_c98e14a662603f 1-3,5-10,17,77,89-95,138-145,147-154,157-176,179-183,189,194-195,197-204,206,208-209,212-213,216-220,222-224,226-228
+src/component/workflows/worker.ts
+  s_d863bd773ba186::t_a80159a5408b36 1-2,9,18-25
+src/test.ts
+  s_d863bd773ba186::t_488530de02e424 84-88
+src/testing/bridge.ts
+  s_d863bd773ba186::t_c275cd57baea74 78,81-82,84,154
+src/testing/crash.ts
+  s_d863bd773ba186::t_a81507573c56a3 1-47
+src/testing/expect-journal.ts
+  s_d863bd773ba186::t_ad247c984bbb9e 98-99,108-113
+src/testing/journal.ts
+  s_d863bd773ba186::t_448500769c9023 8-16,18,92,122-211
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6640064926f59ce9054ef8ff5a2997e48b2d0529",
+  "prompts": {},
+  "sessions": {
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "unknown"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
