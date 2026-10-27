@@ -345,6 +345,7 @@ it("mixed approval and free-text calls resume only after both native protocols a
     nativeMessages: {
       getMessages: await createFunctionHandle(components.agent.messages.getMessagesByIds),
       finalizeMessage: await createFunctionHandle(components.agent.messages.finalizeMessage),
+      failMessage: await createFunctionHandle(components.agent.messages.updateMessage),
     },
   }));
 

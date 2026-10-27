@@ -224,6 +224,7 @@ async function nativeHandles(t: Test) {
     nativeMessages: {
       getMessages: await createFunctionHandle(components.agent.messages.getMessagesByIds),
       finalizeMessage: await createFunctionHandle(components.agent.messages.finalizeMessage),
+      failMessage: await createFunctionHandle(components.agent.messages.updateMessage),
     },
   }));
 }
@@ -706,8 +707,8 @@ it("an oversized approval step commits APPROVAL_LIMIT before the native save and
 
   expect(row.approvals).toBeUndefined();
   expect(row.turnToken).toBeUndefined();
-  expect(row.watchdogId).toBeUndefined();
-  expect(row.recoveryJobId).toBeUndefined();
+  expect(row.lastSlice?.active ?? false).toBe(false);
+  expect(row.wakeEventId).toBeUndefined();
   expect(turn.writeResult).toBeNull();
 
   // An action's later failure cannot overwrite the transaction's typed failure.

@@ -25,8 +25,8 @@ Workflow steps. Journals rotate before their 8 MiB ceiling.
 A slice rechecks authorization and budget, runs hooks, executes one native model
 step and records exact saved ids. Tool calls can admit the next slice. The default
 is 16 slices per turn, at most 64. Model retries and paid action retries are
-disabled. Per-agent model and tool deadlines bound waiting; the watchdog is
-derived from their validated combined action budget.
+disabled. Per-agent model and tool deadlines bound waiting inside the step.
+Workpool recovery detects killed steps on its normal cadence.
 An uncertain outcome enters `recovery_required`; it never silently regenerates.
 
 ## Authorize at both boundaries
@@ -142,9 +142,12 @@ default Convex runtime, never `"use node"` (ten-minute action ceiling). Provider
 output limits may be smaller. Direct native calls remain unmanaged.
 
 Registration validates individual bounds and the combined action budget:
-`modelTimeoutMs + 16 * toolTimeoutMs + 60_000 <= 1_800_000`.
-The client slice deadline is capped at five minutes; the server watchdog starts
-at claim and allows a further 30 seconds for clean `RUN_TIMEOUT` finalization. At most sixteen tool calls are accepted per
+`modelTimeoutMs + 16 * toolTimeoutMs + 30_000 <= 1_800_000`.
+The in-action slice deadline is capped at five minutes and aborts hanging provider
+calls for clean `RUN_TIMEOUT` finalization. Killed or scheduler-cancelled steps
+are detected by Workpool recovery: jobs older than about five minutes are scanned
+about once per minute. Workflow then finalizes the failed turn without retrying
+paid work. agevex adds no alarm, polling or recovery-check job. At most sixteen tool calls are accepted per
 slice; local tools execute serially. Model time excludes tools. Tool timeouts
 abort the slice, signal cooperative tools and stop waiting for uncooperative
 ones. External effects can still finish; late managed writes are fenced and
@@ -188,3 +191,27 @@ One mounted component owns one shared pair of pools. Registrations on that
 mount must agree. Lane bounds are validated at registration; sends do not
 compare against historical assignments. Sleeping workflows use no action slots;
 per-agent run settings do not create additional pools.
+
+Wake handoff uses an exact Workflow event. In one mutation, the loop either
+reserves ready work or creates and stores `wakeEventId`; it awaits that id.
+The queue check runs inline, so creation and await registration commit together.
+Producers insert work, send the stored event and clear the pointer in their
+transaction when work is claimable. Early delivery is durable. Questions and
+approvals use this same wait. Cancellation fences writes and lets the old loop
+consume its event before stopping, so rotation and cleanup leave no orphan event.
+
+The fenced failure mutation uses the workflow id, turn token and cancellation
+epoch captured for the failed turn, closes the recorded native placeholder and stream by exact ids, marks
+usage ambiguous and escalates child failures. Admission persists the turn token
+before dispatch, so a failed or cancelled loop driver can finalize its turn
+without a returned failure payload. Successful loop completion also finalizes
+any captured turn still running. Rotation preserves a queued successor's token
+and starts a fresh loop for it. If this finalizer throws, Workflow
+records `onCompleteFailures`; agevex adds no automatic repair. Hosts should
+inspect that upstream table when diagnosing an incomplete failure handoff.
+`bun run probe:crash` measures scheduler-cancel detection on a private local
+anonymous backend, without a provider or cloud deployment.
+Crash cleanup marks a pending placeholder failed through Agent's exact-id update
+API; it does not materialize stream deltas. Native history and note origins remain.
+Unrelated root requests can proceed; ready controls for a terminal ambiguous
+request are retired so neither queued nor late results restart unknown paid work.

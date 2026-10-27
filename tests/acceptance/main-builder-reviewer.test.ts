@@ -7,6 +7,7 @@ import { gate } from "../message-parent.fixture.js";
 import { requireReceipt } from "../receipt.js";
 import { setup, evidence, node } from "./work.fixture.js";
 import type { MessageDoc } from "@convex-dev/agent";
+import type { FunctionReturnType } from "convex/server";
 
 type Test = ReturnType<typeof setup>;
 const owner = (t: Test) => t.withIdentity({ subject: "alice" });
@@ -142,30 +143,7 @@ it("Main → Builder → Reviewer delivers one note before the result, fences Bu
 
   const active = (await owner(t).query(api.agents.runTree, { threadId: receipt.threadId }))!;
 
-  expect(active.nodes).toHaveLength(3);
-
-  expect(active.nodes).toEqual([
-    expect.objectContaining({
-      id: active.rootRunId,
-      parentId: null,
-      agent: "Main",
-      status: "asleep",
-      reason: "children",
-    }),
-    expect.objectContaining({
-      id: build.runId,
-      parentId: active.rootRunId,
-      agent: "Builder",
-      status: "asleep",
-      reason: "children",
-    }),
-    expect.objectContaining({
-      id: review.runId,
-      parentId: build.runId,
-      agent: "Reviewer",
-      status: "running",
-    }),
-  ]);
+  expectActiveTree(active, build, review);
 
   expect(build.status).toBe("running");
   expect(review.status).toBe("running");
@@ -220,47 +198,7 @@ it("Main → Builder → Reviewer delivers one note before the result, fences Bu
     "fixed body",
   ]);
 
-  for (const [agent, nodeId] of [
-    ["Main", undefined],
-    ["Builder", build.runId],
-    ["Reviewer", review.runId],
-  ] as const) {
-    const usage = evidence.filter((entry) => entry.facts.agent === agent);
-
-    expect(usage.length).toBeGreaterThan(0);
-
-    expect(usage.every((entry) => entry.facts.nodeId === nodeId && entry.usage !== undefined)).toBe(
-      true,
-    );
-  }
-
-  expect(new Set(evidence.map((entry) => entry.key)).size).toBe(evidence.length);
-  expect(evidence).toHaveLength(v2.calls.length);
-  const done = (await owner(t).query(api.agents.runTree, { threadId: receipt.threadId }))!;
-
-  expect(done.rootRunId).toBe(active.rootRunId);
-
-  expect(done.nodes.map(({ id, parentId, agent }) => ({ id, parentId, agent }))).toEqual(
-    active.nodes.map(({ id, parentId, agent }) => ({ id, parentId, agent })),
-  );
-
-  expect(done.nodes.every((node) => node.status === "done" && node.currentTool === null)).toBe(
-    true,
-  );
-
-  expect(done.usage).toBeNull();
-  expect(done.nodes.every((node) => node.usage === null)).toBe(true);
-
-  for (const agent of ["Main", "Builder", "Reviewer"]) {
-    const own = evidence.filter((entry) => entry.facts.agent === agent);
-    const tokens = own.map((entry) => entry.usage as NonNullable<MessageDoc["usage"]>);
-
-    expect(own).toHaveLength(calls(agent).length);
-
-    expect(tokens.every((value) => value.promptTokens! > 0 && value.completionTokens! > 0)).toBe(
-      true,
-    );
-  }
+  await expectCompletedTree(t, receipt.threadId, active, build, review);
 });
 
 it("the default root-only policy denies a child ask_user without creating a human pause", async () => {
@@ -389,3 +327,86 @@ it("cancel mid-review fences all three agents and discards late review output", 
     "review complete",
   );
 });
+
+/** Active ownership stays attached to the exact delegation hierarchy. */
+function expectActiveTree(
+  active: NonNullable<FunctionReturnType<typeof api.agents.runTree>>,
+  build: Awaited<ReturnType<typeof history>>[number],
+  review: Awaited<ReturnType<typeof history>>[number],
+) {
+  expect(active.nodes).toHaveLength(3);
+
+  expect(active.nodes).toEqual([
+    expect.objectContaining({
+      id: active.rootRunId,
+      parentId: null,
+      agent: "Main",
+      status: "asleep",
+      reason: "children",
+    }),
+    expect.objectContaining({
+      id: build.runId,
+      parentId: active.rootRunId,
+      agent: "Builder",
+      status: "asleep",
+      reason: "children",
+    }),
+    expect.objectContaining({
+      id: review.runId,
+      parentId: build.runId,
+      agent: "Reviewer",
+      status: "running",
+    }),
+  ]);
+}
+
+/** Native usage and tree identity survive every completed agent turn. */
+async function expectCompletedTree(
+  t: Test,
+  threadId: string,
+  active: NonNullable<FunctionReturnType<typeof api.agents.runTree>>,
+  build: Awaited<ReturnType<typeof history>>[number],
+  review: Awaited<ReturnType<typeof history>>[number],
+) {
+  for (const [agent, nodeId] of [
+    ["Main", undefined],
+    ["Builder", build.runId],
+    ["Reviewer", review.runId],
+  ] as const) {
+    const usage = evidence.filter((entry) => entry.facts.agent === agent);
+
+    expect(usage.length).toBeGreaterThan(0);
+
+    expect(usage.every((entry) => entry.facts.nodeId === nodeId && entry.usage !== undefined)).toBe(
+      true,
+    );
+  }
+
+  expect(new Set(evidence.map((entry) => entry.key)).size).toBe(evidence.length);
+  expect(evidence).toHaveLength(v2.calls.length);
+  const done = (await owner(t).query(api.agents.runTree, { threadId: threadId }))!;
+
+  expect(done.rootRunId).toBe(active.rootRunId);
+
+  expect(done.nodes.map(({ id, parentId, agent }) => ({ id, parentId, agent }))).toEqual(
+    active.nodes.map(({ id, parentId, agent }) => ({ id, parentId, agent })),
+  );
+
+  expect(done.nodes.every((node) => node.status === "done" && node.currentTool === null)).toBe(
+    true,
+  );
+
+  expect(done.usage).toBeNull();
+  expect(done.nodes.every((node) => node.usage === null)).toBe(true);
+
+  for (const agent of ["Main", "Builder", "Reviewer"]) {
+    const own = evidence.filter((entry) => entry.facts.agent === agent);
+    const tokens = own.map((entry) => entry.usage as NonNullable<MessageDoc["usage"]>);
+
+    expect(own).toHaveLength(calls(agent).length);
+
+    expect(tokens.every((value) => value.promptTokens! > 0 && value.completionTokens! > 0)).toBe(
+      true,
+    );
+  }
+}

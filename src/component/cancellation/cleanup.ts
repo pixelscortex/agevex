@@ -47,14 +47,42 @@ async function finalize(ctx: MutationCtx, pending: PendingGeneration) {
 }
 
 /** Abort the execution's tracked stream (if any), then fail its placeholder. */
-async function failPendingGeneration(ctx: MutationCtx, pending: PendingGeneration) {
+export async function failPendingGeneration(ctx: MutationCtx, pending: PendingGeneration) {
+  await abortPendingStream(ctx, pending);
+  await finalize(ctx, pending);
+}
+
+/** Crash cleanup needs no recovered output: avoid finalizeMessage's native
+ * delta materialization and six merge heads. Only the exact placeholder is
+ * read and patched (<=4 MiB including native patch/return reads), regardless of the
+ * transcript or stream backlog. The enclosing mutation owns token/epoch fences.
+ */
+export async function failCrashedGeneration(ctx: MutationCtx, pending: PendingGeneration) {
+  await abortPendingStream(ctx, pending);
+
+  const [message]: ({ status: string } | null)[] = await ctx.runQuery(
+    pending.getMessages as FunctionHandle<"query">,
+    { messageIds: [pending.messageId] },
+  );
+
+  if (message?.status === "pending")
+    await ctx.runMutation(pending.failMessage as FunctionHandle<"mutation">, {
+      messageId: pending.messageId,
+      // Both status strings are seven bytes. No new error field can push a
+      // maximum-size native document over 1 MiB; the turn records ambiguity.
+      patch: { status: "failed" },
+    });
+}
+
+/** Both terminal paths abort only the stream recorded by the creating write. */
+async function abortPendingStream(ctx: MutationCtx, pending: PendingGeneration) {
   // Stream creation is tracked atomically too: never list a thread's streams
   // after cancellation, when a fresh generation may already own another one.
   if (pending.stream) {
     try {
       await ctx.runMutation(pending.stream.abort as FunctionHandle<"mutation">, {
         streamId: pending.stream.id,
-        reason: "CANCELLED",
+        reason: "EXECUTION_ENDED",
       });
     } catch (error) {
       // Native deletion may already have removed this exact stream.
@@ -65,8 +93,6 @@ async function failPendingGeneration(ctx: MutationCtx, pending: PendingGeneratio
         throw error;
     }
   }
-
-  await finalize(ctx, pending);
 }
 
 /** Close the first recorded request natively: an "execution-denied" result

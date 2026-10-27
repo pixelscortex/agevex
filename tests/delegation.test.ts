@@ -4,7 +4,7 @@ import { requireReceipt } from "./receipt.js";
 // Every case runs against the real registered coordinator, the real component
 // mutations and the native Agent transcripts, with mock models only. Nothing
 // here contacts a provider, reads a key or reaches the network.
-import { sliceWatchdogMs, resolveRunSettings } from "../src/component/run_settings.js";
+import { failLoop, finalizeFailure } from "./failure.fixture.js";
 import { it, expect, vi, afterEach, beforeEach } from "vite-plus/test";
 import { createThread, listMessages, saveMessage } from "@convex-dev/agent";
 import { createFunctionHandle } from "convex/server";
@@ -19,9 +19,8 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-// Queue-owned recovery adds control jobs that claim cancels immediately. Allow
-// the real scheduler harness to settle those timers as well as both Workflow
-// lanes; the default 100 iterations can expire after the run is already idle.
+// Both real Workflow lanes have several control steps per turn; let the
+// scheduler settle their bounded handoffs before checking final state.
 const drain = (t: ReturnType<typeof setup>) =>
   t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100), 2000);
 
@@ -803,13 +802,13 @@ it("refuses child execution the host revokes, without a second generation", asyn
   expect(state.offers.filter((o) => o.agent === "Researcher")).toHaveLength(0);
 });
 
-it("escalates a stalled child run once and makes one bounded notification attempt", async () => {
+it("escalates a failed Workflow child run once and makes one bounded notification attempt", async () => {
   const t = setup();
   const receipt = await open(t);
   const { childTurn } = await launchChild(t, receipt.assignmentId);
 
-  // Claim the queued child exactly as the Workflow slice would. That arms
-  // the claim-armed watchdog and moves the run to `running`; the dispatch that
+  // Claim the queued child exactly as the Workflow slice would. It moves
+  // the run to `running`; the dispatch that
   // is already queued then observes an owned token and no-ops, so no model ever
   // runs and no abort timer is left behind.
   const claimed = (await t.mutation(components.agevex.turns.slices.claim, childTurn)) as {
@@ -830,19 +829,11 @@ it("escalates a stalled child run once and makes one bounded notification attemp
     subagents: { active: 1, history: 0, total: 1 },
   });
 
-  // Detection only: nothing changes before the window armed by `claim` ends.
-  await vi.advanceTimersByTimeAsync(sliceWatchdogMs(resolveRunSettings()) - 1_000);
+  const failure = await failLoop(t, childTurn.assignmentId);
 
-  expect((await runs(t, receipt.threadId)).page[0]).toMatchObject({
-    status: "running",
-    deliveryStatus: "pending",
-  });
-
-  await vi.advanceTimersByTimeAsync(2_000);
+  await t.mutation(finalizeFailure, failure);
   await t.finishInProgressScheduledFunctions();
 
-  // Crossing the watchdog records the terminal failure and moves the counters
-  // exactly once; it never takes the turn over or replays a generation.
   expect((await runs(t, receipt.threadId)).page[0]).toMatchObject({
     status: "failed",
     errorCode: "EXECUTION_AMBIGUOUS",
@@ -875,7 +866,7 @@ it("escalates a stalled child run once and makes one bounded notification attemp
       all.filter((text) => text.includes("Researcher failed the delegated task")),
     );
 
-  // A healthy root is not poisoned by a stalled child.
+  // A healthy root is not poisoned by a failed child step.
   expect(await activity(t, receipt.threadId)).toMatchObject({
     turnStatus: "idle",
     errorCode: null,
@@ -922,7 +913,7 @@ it("never strands an active run when the settlement transaction fails", async ()
   await drain(t);
   await drain(t);
   // The outcome could not be recorded, so the child turn is never released back
-  // to idle — that would clear the only watchdog which could still record this
+  // to idle — that would release the failure ownership needed to record this
   // run. The dispatcher's ambiguity path records the terminal failure and makes
   // the one bounded notification attempt instead.
   const page = (await runs(t, receipt.threadId)).page[0];
@@ -1157,9 +1148,8 @@ it("delivers a committed child result even when child finalization fails", async
   expect(state.offers.filter((offer) => offer.tools.includes("agevex_delegate"))).toHaveLength(2);
   expect(state.offers.filter((offer) => offer.agent === "Researcher")).toHaveLength(1);
   // The fault is never claimed twice: the escalated child run stays terminal
-  // with one accepted notification, and its armed watchdog — which ignores a
-  // recovery-required turn — cannot re-record or re-deliver anything.
-  await vi.advanceTimersByTimeAsync(sliceWatchdogMs(resolveRunSettings()) + 1_000);
+  // with one accepted notification; no later activity may re-deliver it.
+  await vi.advanceTimersByTimeAsync(301_000);
   await drain(t);
 
   expect((await runs(t, receipt.threadId)).page[0].events.map((e) => e.phase)).toEqual([

@@ -1,0 +1,85 @@
+/** Local-only fault host: deliberately bypass the in-action provider deadline. */
+import { internalAction, internalMutation, internalQuery } from "./_generated/server";
+import { components, internal } from "./_generated/api";
+import { createFunctionHandle } from "convex/server";
+import { createThread, saveMessage } from "@convex-dev/agent";
+import { resolveLimits } from "agevex/dist/component/limits.js";
+import { v } from "convex/values";
+
+/** A real pending native placeholder is created through agevex's fenced write. */
+export const runTurn = internalAction({
+  args: { assignmentId: v.string(), turnToken: v.string(), sliceId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const claim = await ctx.runMutation(components.agevex.turns.slices.claim, args);
+    if (!claim) return null;
+    const nativeMessages = {
+      getMessages: await createFunctionHandle(components.agent.messages.getMessagesByIds),
+      finalizeMessage: await createFunctionHandle(components.agent.messages.finalizeMessage),
+      failMessage: await createFunctionHandle(components.agent.messages.updateMessage),
+    };
+    const saved = await ctx.runMutation(components.agevex.turns.slices.write, {
+      assignmentId: args.assignmentId,
+      executionId: args.turnToken,
+      cancellationEpoch: claim.cancellationEpoch,
+      handle: await createFunctionHandle(components.agent.messages.addMessages),
+      nativeMessages,
+      args: {
+        threadId: claim.threadId,
+        promptMessageId: claim.promptMessageId,
+        messages: [{ message: { role: "assistant", content: [] }, status: "pending" }],
+      },
+    });
+    await ctx.runMutation(components.agevex.turns.slices.write, {
+      assignmentId: args.assignmentId, executionId: args.turnToken,
+      cancellationEpoch: claim.cancellationEpoch,
+      handle: await createFunctionHandle(components.agent.streams.create),
+      nativeStream: await createFunctionHandle(components.agent.streams.abort),
+      args: { threadId: claim.threadId, order: saved.messages[0].order,
+        stepOrder: saved.messages[0].stepOrder, format: "UIMessageChunk" },
+    });
+    // No provider call, timer, loop or completion. The test cancels this step's
+    // scheduler job; Workpool's unchanged recovery cadence must detect it.
+    await new Promise<never>(() => {});
+    return null;
+  },
+});
+
+/** Accept one bounded request using only this local host's internal action. */
+export const start = internalMutation({
+  args: {},
+  returns: v.any(),
+  handler: async (ctx) => {
+    const threadId = await createThread(ctx, components.agent, {});
+    const message = await saveMessage(ctx, components.agent, {
+      threadId, message: { role: "user", content: "local crash probe" },
+    });
+    return ctx.runMutation(components.agevex.turns.send.accept, {
+      subject: "local-probe", agent: "Probe", threadId,
+      requestKey: "crash", fingerprint: "crash", promptMessageId: message.messageId,
+      runTurn: await createFunctionHandle(internal.probe.runTurn), limits: resolveLimits(),
+    });
+  },
+});
+
+/** Observe the public assignment outcome; no inspection or mutation in production. */
+export const outcome = internalQuery({
+  args: { threadId: v.string() },
+  returns: v.any(),
+  handler: async (ctx, args) => ({
+    ...await ctx.runQuery(components.agevex.turns.send.activity, {
+      ...args, subject: "local-probe",
+    }),
+    ...await ctx.runQuery(components.agevex.crash_probe.result, args),
+  }),
+});
+
+/** Exact-id postcondition: an already aborted stream returns false. */
+export const nativeClosed = internalMutation({
+  args: { messageId: v.string(), streamId: v.string() }, returns: v.any(),
+  handler: async (ctx, { messageId, streamId }) => {
+    const [message] = await ctx.runQuery(components.agent.messages.getMessagesByIds, { messageIds: [messageId] });
+    const streamWasOpen = await ctx.runMutation(components.agent.streams.abort, { streamId, reason: "probe verification" });
+    return { messageStatus: message?.status ?? null, streamWasOpen };
+  },
+});

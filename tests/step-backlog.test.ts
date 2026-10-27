@@ -1,5 +1,5 @@
 // @vitest-environment edge-runtime
-import { sliceWatchdogMs, resolveRunSettings } from "../src/component/run_settings.js";
+import { failLoop } from "./failure.fixture.js";
 import { requireReceipt } from "./receipt.js";
 import { it, expect, vi, afterEach, beforeEach } from "vite-plus/test";
 import { setup, api, components, state } from "./setup.js";
@@ -15,7 +15,7 @@ const drain = (t: ReturnType<typeof setup>) =>
   t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1_000), 2000);
 
 // A healthy generation stays inside the 90s provider deadline. This fixture
-// lowers tool time to 1s, deriving a 136s watchdog: only queue time exceeds it.
+// lowers tool time to 1s: queue time never spends a generation deadline.
 const GENERATION_MS = 60_000;
 
 const open = (alice: ReturnType<ReturnType<typeof setup>["withIdentity"]>, prompt: string) =>
@@ -53,37 +53,6 @@ it("a backlog larger than pool capacity runs every turn exactly once", async () 
   }
 }, 15_000);
 
-it("an expired watchdog timer cannot strand a turn that is still queued", async () => {
-  const t = setup();
-  const alice = t.withIdentity({ subject: "alice" });
-  const receipt = await open(alice, "queued survivor");
-
-  // `stalled` is internal to the queue component, so the test addresses it by
-  // path, the way a leftover scheduled timer would.
-  const watchdog = (components.agevex.turns.failures as Record<string, unknown>)
-    .stalled as Parameters<typeof t.mutation>[0];
-
-  await t.mutation(watchdog, {
-    assignmentId: receipt.assignmentId,
-    turnToken: `${receipt.assignmentId}:0`,
-  });
-
-  expect(await alice.query(api.agents.activity, { threadId: receipt.threadId })).toMatchObject({
-    turnStatus: "queued",
-    errorCode: null,
-  });
-
-  await drain(t);
-  expect(state.calls).toHaveLength(1);
-
-  expect(await alice.query(api.agents.activity, { threadId: receipt.threadId })).toMatchObject({
-    turnStatus: "idle",
-    queuedMessages: 0,
-    errorCode: null,
-    assignmentStatus: "open",
-  });
-});
-
 it("a claimed turn keeps the full execution window", async () => {
   const t = setup();
   const alice = t.withIdentity({ subject: "alice" });
@@ -92,21 +61,21 @@ it("a claimed turn keeps the full execution window", async () => {
 
   expect(await t.mutation(components.agevex.turns.slices.claim, args)).not.toBeNull();
 
-  await vi.advanceTimersByTimeAsync(sliceWatchdogMs(resolveRunSettings()) - 1_000);
+  await vi.advanceTimersByTimeAsync(300_000);
 
   expect(await alice.query(api.agents.activity, { threadId: receipt.threadId })).toMatchObject({
     turnStatus: "running",
     errorCode: null,
   });
 
-  await vi.advanceTimersByTimeAsync(2_000);
+  await failLoop(t, receipt.assignmentId);
 
   expect(await alice.query(api.agents.activity, { threadId: receipt.threadId })).toMatchObject({
     turnStatus: "recovery_required",
     errorCode: "EXECUTION_AMBIGUOUS",
   });
 
-  // The watchdog only detects: it never takes the turn over or replays it.
+  // Workflow failure never takes over or replays the paid generation.
   expect(state.calls).toHaveLength(0);
   expect(await t.mutation(components.agevex.turns.slices.claim, args)).toBeNull();
 });

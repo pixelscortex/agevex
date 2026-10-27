@@ -158,7 +158,7 @@ it("cancelled nodes fail and stale tool edges cannot resurrect progress", async 
   const marker = {
     assignmentId: row._id,
     turnToken: row.turnToken!,
-    sliceId: row.lastSlice,
+    sliceId: row.lastSlice?.id,
     key: "f".repeat(64),
     name: "write_card",
   };
@@ -192,7 +192,7 @@ it("concurrent markers reveal the last-started still-active tool and slice fence
 
   await waitFor(t, () => v2.calls.length > 0);
   const row = (await t.query(rawAssignment, { assignmentId: receipt.assignmentId }))!;
-  const identity = { assignmentId: row._id, turnToken: row.turnToken!, sliceId: row.lastSlice };
+  const identity = { assignmentId: row._id, turnToken: row.turnToken!, sliceId: row.lastSlice?.id };
   const first = { ...identity, key: "a".repeat(64) };
   const second = { ...identity, key: "b".repeat(64) };
 

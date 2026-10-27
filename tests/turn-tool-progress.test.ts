@@ -43,7 +43,9 @@ it.each(["start", "clear"])(
       await waitFor(t, async () => {
         const row = await t.query(rawAssignment, { assignmentId: receipt.assignmentId });
 
-        return progress.started.length === 1 && row?.turnStatus === "running" && !row.watchdogId;
+        return (
+          progress.started.length === 1 && row?.turnStatus === "running" && !row.lastSlice?.active
+        );
       });
 
       expect(returned).toBe(false);

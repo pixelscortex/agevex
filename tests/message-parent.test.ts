@@ -492,7 +492,7 @@ it.each(["approval", "deferred"] as const)(
       status: "accepted",
     });
 
-    // Let the doorbell and its pending scheduled work run; the native guard must
+    // Let the event and Workflow's pending steps run; the native guard must
     // retain the pause rather than accidentally making a progress turn runnable.
     for (let i = 0; i < 5; i++)
       await t.action(async () => {

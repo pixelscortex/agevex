@@ -77,7 +77,8 @@
     "check": "bun run fmt:check && bun run lint && bun run typecheck && bun run typecheck:tests && bun run lint:convex:check && bun run --cwd docs/site check",
     "test": "vp test --run",
     "test:live": "vp test --run --config vite.live.config.ts && vp test --run --config tests/sandbox/vite.live.config.ts",
-    "test:tools": "vp test --run tests/tools"
+    "test:tools": "vp test --run tests/tools",
+    "probe:crash": "bun scripts/probe-crash.ts"
   },
   "dependencies": {
     "@convex-dev/workflow": "0.4.10",

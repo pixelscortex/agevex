@@ -1,30 +1,18 @@
-/**
- * Slice boundaries of a running turn.
- *
- * A turn runs as up to `slicesPerTurn` paid model slices. claim arms a
- * watchdog per slice; `disarmSlice` closes it (also on every terminal path).
- * A running turn without a watchdog is "between slices": `closeSlice`
- * (`turns.slices.continueTurn`) puts it there and publishes results released by the
- * slice, and `admitNextSlice` (`turns.slices.betweenSlices`) lets the turn workflow
- * run another slice while the run budget allows. Touches `assignments`,
- * `runs` (budget read).
+/** Slice boundaries preserve replay refusal and release only the in-flight bit.
+ * Workpool owns crashed-step detection; no scheduled alarm belongs to a slice.
  */
 import type { MutationCtx } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
 import { resolveRunSettings } from "../run_settings.js";
 import { finishTurn } from "./finish.js";
-import { cancelIfPending } from "./recovery.js";
 import { wake } from "./wake.js";
 
-/** Close the in-flight slice: retire its
- * watchdog. Leaves `turnStatus` alone, so a running turn without a watchdog
- * reads as "between slices". */
+/** Close a slice without forgetting the id whose paid work must not replay. */
 export async function disarmSlice(ctx: MutationCtx, row: Doc<"assignments">) {
-  // A watchdog firing now already owns its scheduled job. Clear the slice
-  // fence without attempting to cancel that in-progress detector itself.
-  if (row.watchdogId) await cancelIfPending(ctx, row.watchdogId);
-
-  await ctx.db.patch("assignments", row._id, { watchdogId: undefined, activeTools: undefined });
+  await ctx.db.patch("assignments", row._id, {
+    lastSlice: row.lastSlice ? { ...row.lastSlice, active: false } : undefined,
+    activeTools: undefined,
+  });
 }
 
 /** The host action finished one slice and will run another: close the slice
@@ -48,14 +36,14 @@ export async function closeSlice(
   )
     return null;
 
-  // Disarming the slice's watchdog while the turn stays running is what
-  // marks it between slices (claim and betweenSlices read that pair).
-  // Keep the claimed ready-work prompt as the generation boundary across
-  // slices. Native Agent includes the whole response order, including
-  // tool results and notes in stepOrder chronology.
+  // A closed slice retains its id but releases next-slice admission.
   await disarmSlice(ctx, row);
+
   // A running slice cannot be claimed by wake; its next slice still owns it.
-  await wake(ctx, { ...row, watchdogId: undefined });
+  await wake(ctx, {
+    ...row,
+    lastSlice: row.lastSlice ? { ...row.lastSlice, active: false } : undefined,
+  });
 
   return null;
 }
@@ -74,8 +62,8 @@ export async function admitNextSlice(
     row.cancelled ||
     row.turnToken !== args.executionId ||
     row.turnStatus !== "running" ||
-    // An armed watchdog means the slice never reached continueTurn.
-    row.watchdogId
+    // Only continueTurn releases the active slice.
+    row.lastSlice?.active
   )
     return null;
 

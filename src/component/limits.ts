@@ -59,25 +59,26 @@ export const HOST_LIMITS = {
  * budgets=168 distinct runs. Cancel deduplicates these before guard/patch.
  * SDK bookkeeping reserves 64A=1,024 reads/writes at <=3 KiB read/4 KiB write
  * per row (Workflow 0.4.10 workflow.ts:350-455; Workpool 0.4.14 lib.ts:137-259).
- * Every assignment has one state patch, current-run patch, two scheduler
- * cancels and one exact-id cleanup job; retain conservative old row allowances.
+ * Every assignment has one state patch, current-run patch, one exact event
+ * delivery and one exact-id cleanup job; SDK reserves cover Workflow handoff.
  * Writes <=2I+N+5A+C+1+64A=6,368 <16,000.
  * Reads <=3I+2N+5A+2C+2+64A+U=9,368 <32,000.
  * Indexed queries <=3 child-status ranges +A inbox ranges +64A=1,043 <4,096.
  * Bytes read (KiB): ready scan/delete 2I=4,864; run guard/patch 2U*16=5,376;
- * assignments 2A*14=448; scheduler 2A*4=128; children 2C*4=120;
- * final root 2*14=28; SDK 64A*3=3,072; cleanup jobs A*4=64.
- * Total <=14,100 KiB <16,384 KiB, leaving 2,284 KiB headroom.
- * Bytes written (KiB): U*16+I+N+2A*14+A*16+2A*4+C*4+16+64A*4
- * =10,508 KiB <16 MiB. No staged hook continuation or routing locks remain.
+ * assignments 2A*13=416; event delivery 2A*4=128; children 2C*4=120;
+ * final root 2*13=26; SDK 64A*3=3,072; cleanup jobs A*4=64.
+ * Total <=14,066 KiB <16,384 KiB, leaving 2,318 KiB headroom.
+ * Bytes written (KiB): U*16+I+N+2A*13+A*16+2A*4+C*4+16+64A*4
+ * =10,476 KiB <16 MiB. No staged hook continuation or routing locks remain.
  * Native messages/placeholders are NEVER read by cancel; cleanup is separate.
  *
- * Assignment envelope is 14 KiB, including native/system fields. The all-fields
+ * Assignment envelope is 13 KiB, including native/system fields. The all-fields
  * fixture tests/save-bounds.fixture.ts fills every remaining writer bound:
  * approvals <=4,802 B; report <=2,635 B; metadata handles <=806 B;
- * pending generation <=988 B; runTurn <=258 B; names <=1,204 B;
- * model map <=510 B; limits <=309 B; remaining fields/names/overhead <=1,048 B.
- * Total <=12,560 B; 14,336-12,560=1,776 B headroom at every writer cap.
+ * pending generation <=1,280 B; runTurn <=258 B; names <=1,204 B;
+ * model map <=510 B; limits <=309 B; remaining fields/names/overhead <=900 B.
+ * Captured Workflow turn identity <=87 B (field name plus execution token).
+ * Total <=12,791 B; 13,312-12,791=521 B headroom at every writer cap.
  * Native child ids need <=37 bytes (one more than UUIDs); their reference is
  * included above. Child rows use their system id, freeing the old UUID field.
  * No summary body, context ring, review history, cadence or text job is stored.
@@ -93,6 +94,26 @@ export const HOST_LIMITS = {
  * tests/claim-bounds.test.ts). Native result verification reads one <=1 MiB
  * message; task <=16,000 UTF-16 units, at most one native save per delegation.
  * The run tree reads <=50 launch rows <=4 KiB each (200 KiB).
+ *
+ * Failed-step finalization is one transaction, including its Workflow callback.
+ * The recorded failMessage handle updates the exact placeholder directly;
+ * unlike finalizeMessage it never materializes persisted stream deltas or
+ * reads native merge heads. Reserve four <=1 MiB placeholder reads: the outer
+ * getMessagesByIds, updateMessage's get, patch read and returned get.
+ * Root-only retirement probes <=152 distinct run rows *16 KiB =2,432 KiB,
+ * plus ready scan/delete <=304 KiB. Reserve 256 KiB for assignment/native
+ * stream metadata and 512 KiB for Workflow completion, rotation and cleanup:
+ * 4,096+2,432+304+256+512=7,600 KiB <16,384 KiB.
+ * Child finalization has no root-ready scan; bounded depth-two settlement
+ * adds <=222 KiB instead, remaining below that root ceiling. Loop cleanup
+ * reads only <=100 small id-only journal steps (50 next +50 turn/event),
+ * with nested turn journals handed to upstream cleanup jobs, never read here.
+ * tests/failure-bounds.test.ts measures the whole completion callback with a
+ * maximum native placeholder, the full 100-step loop journal, recoverable and
+ * >16 MiB persisted delta backlogs, six near-1 MiB native merge heads and all
+ * 152 distinct maximum-size failed-run rows, with transaction limits enabled. Neither
+ * delta count nor body size enters failure's read budget. It writes metadata
+ * and one native placeholder (<1 MiB fixture), never replaying paid effects.
  */
 export const LIMITS = {
   notesPending: HOST_LIMITS.notesPending.default,
@@ -109,8 +130,8 @@ export const LIMITS = {
   // (crates/common/src/bootstrap_model/components/handles.rs:83-90): an 11-byte
   // prefix, a <=37-byte base32 document id (value/src/id_v6.rs:35-49) and the
   // advisory path, e.g. `messages.js:addMessages`. Real agevex/Agent handles are
-  // ~60-100 bytes, so 256 leaves 2.5x margin while keeping the nine handles an
-  // assignment may hold to <=2.25 KiB of its envelope.
+  // ~60-100 bytes, so 256 leaves 2.5x margin while keeping the ten handles an
+  // assignment may hold to <=2.5 KiB of its envelope.
   functionHandleBytes: 256,
   // Subjects and agent names stored on assignments. The host client already narrows both to 128 UTF-8 bytes
   // (facts.ts); the component bounds its own writers independently.
@@ -120,7 +141,7 @@ export const LIMITS = {
   taskRepairs: 1,
   taskPromptLength: 16_000,
   agents: 64,
-  assignmentBytes: 14 << 10,
+  assignmentBytes: 13 << 10,
   turnReportBytes: 3 << 10,
   messageIdBytes: 37,
   maxDepth: HOST_LIMITS.maxDepth.default,
@@ -173,8 +194,6 @@ export const LIMITS = {
   leaseMs: HOST_LIMITS.leaseMs.default,
   receiptRetentionMs: 7 * 24 * 60 * 60_000,
   receiptResultBytes: 64 << 10,
-  reconcileIntervalMs: 30_000,
-  reconcileMaxIntervalMs: 5 * 60_000,
   // Query + delete reads + the continuation probe: (2*50+1)*64 KiB
   // = 6.3125 MiB for results, leaving >1 MiB for receipt metadata under 8 MiB.
   purgeBatch: 50,

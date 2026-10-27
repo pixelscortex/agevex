@@ -1,3 +1,4 @@
+import { failLoop, finalizeFailure } from "./failure.fixture.js";
 import { approvalState } from "./approval-state.js";
 import { delegationState } from "./delegation-state.js";
 // @vitest-environment edge-runtime
@@ -457,6 +458,7 @@ async function nativeSave(
       nativeMessages: {
         getMessages: await createFunctionHandle(components.agent.messages.getMessagesByIds),
         finalizeMessage: await createFunctionHandle(components.agent.messages.finalizeMessage),
+        failMessage: await createFunctionHandle(components.agent.messages.updateMessage),
       },
       args: {
         threadId: turn.threadId,
@@ -725,6 +727,7 @@ it("both results deliver beyond a full queue beside a reserved approval head", a
       nativeMessages: {
         getMessages: await createFunctionHandle(components.agent.messages.getMessagesByIds),
         finalizeMessage: await createFunctionHandle(components.agent.messages.finalizeMessage),
+        failMessage: await createFunctionHandle(components.agent.messages.updateMessage),
       },
       deferredTools: [],
       args: {
@@ -2209,9 +2212,12 @@ it.each([1, HOST_LIMITS.queueLength.max])(
       const dispatch = componentsGeneric().agevex.workflows.worker
         .dispatch as unknown as FunctionReference<"action", "internal", typeof args, null>;
 
-      await t.action(dispatch, args);
-      // Duplicate dispatch completion must neither decrement nor escalate again.
-      await t.action(dispatch, args);
+      await expect(t.action(dispatch, args)).rejects.toThrow("pre-claim dispatch failure");
+      const failure = await failLoop(t, row._id);
+
+      // The real Workflow callback owns finalization; duplicates cannot retire
+      // the reserved head or escalate a second time.
+      await t.mutation(finalizeFailure, failure);
 
       const current = (await t.query(rawAssignment, {
         assignmentId: row._id,
@@ -2401,6 +2407,7 @@ it.each(
         nativeMessages: {
           getMessages: await createFunctionHandle(components.agent.messages.getMessagesByIds),
           finalizeMessage: await createFunctionHandle(components.agent.messages.finalizeMessage),
+          failMessage: await createFunctionHandle(components.agent.messages.updateMessage),
         },
         deferredTools: response === "answer" ? ["askHuman"] : [],
         args: {
@@ -2566,6 +2573,7 @@ it.each([1, HOST_LIMITS.messagesPerChild.max])(
         nativeMessages: {
           getMessages: await createFunctionHandle(components.agent.messages.getMessagesByIds),
           finalizeMessage: await createFunctionHandle(components.agent.messages.finalizeMessage),
+          failMessage: await createFunctionHandle(components.agent.messages.updateMessage),
         },
         deferredTools: ["askHuman"],
         args: {
