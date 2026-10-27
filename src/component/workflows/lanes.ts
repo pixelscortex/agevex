@@ -86,9 +86,9 @@ const args = {
   slicesPerTurn: v.optional(v.number()),
 };
 
-// Completion must carry the failed turn's identity. Reading the assignment's
-// current token in done could fail its successor if the old action finished
-// the turn and then threw before returning to Workpool.
+// Ordinary step failure returns its identity. Driver failure has no return
+// value: loop.next persists the same token before handing the turn to Workflow.
+// Neither path borrows a current token that could already name a successor.
 const failedTurn = v.object({ executionId: v.string(), epoch: v.number() });
 
 type FailedTurn = typeof failedTurn.type;
@@ -156,6 +156,8 @@ export function defineLoop(manager: WorkflowManager, child: boolean, inline = tr
 
         if (!next) return null;
 
+        if ("failure" in next) return next.failure;
+
         if ("executionId" in next) {
           try {
             await step.runWorkflow(
@@ -177,7 +179,7 @@ export function defineLoop(manager: WorkflowManager, child: boolean, inline = tr
 /** Completion is the single failure handoff. Finalization uses only bounded
  * exact-id native cleanup and existing settlement paths, without a repair job.
  * A thrown callback is recorded by Workflow as onCompleteFailures; it is never
- * retried by agevex. Cancelled old loops only clean their own journal/events.
+ * retried by agevex. Stale old loops only clean their own journal/events.
  */
 function defineDone(manager: WorkflowManager, child: boolean) {
   return internalMutation({
@@ -190,7 +192,18 @@ function defineDone(manager: WorkflowManager, child: boolean) {
     handler: async (ctx, { workflowId, result, context }): Promise<null> => {
       const row = await ctx.db.get("assignments", context.assignmentId);
       // The workflow's returns validator has already checked this payload.
-      const failure = result.kind === "success" ? (result.returnValue as FailedTurn | null) : null;
+      const returned = result.kind === "success" ? (result.returnValue as FailedTurn | null) : null;
+
+      // The loop driver can fail/cancel before it consumes a nested completion.
+      // A normal rotation can also end just after a successful nested workflow
+      // left its turn running. Both must settle the captured turn, while a
+      // queued successor belongs to a fresh loop and must retain its token.
+      const captured =
+        row?.workflowTurnToken && (result.kind !== "success" || row.turnStatus === "running")
+          ? { executionId: row.workflowTurnToken, epoch: context.epoch }
+          : null;
+
+      const failure = returned ?? captured;
 
       if (row?.workflowId === workflowId && row.cancellationEpoch === context.epoch) {
         if (failure)
@@ -202,6 +215,7 @@ function defineDone(manager: WorkflowManager, child: boolean) {
 
         await ctx.db.patch("assignments", row._id, {
           workflowId: undefined,
+          workflowTurnToken: undefined,
           wakeEventId: undefined,
         });
 

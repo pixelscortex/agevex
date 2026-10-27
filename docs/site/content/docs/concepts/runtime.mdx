@@ -202,7 +202,11 @@ consume its event before stopping, so rotation and cleanup leave no orphan event
 
 The fenced failure mutation uses the workflow id, turn token and cancellation
 epoch captured for the failed turn, closes the recorded native placeholder and stream by exact ids, marks
-usage ambiguous and escalates child failures. If this finalizer throws, Workflow
+usage ambiguous and escalates child failures. Admission persists the turn token
+before dispatch, so a failed or cancelled loop driver can finalize its turn
+without a returned failure payload. Successful loop completion also finalizes
+any captured turn still running. Rotation preserves a queued successor's token
+and starts a fresh loop for it. If this finalizer throws, Workflow
 records `onCompleteFailures`; agevex adds no automatic repair. Hosts should
 inspect that upstream table when diagnosing an incomplete failure handoff.
 `bun run probe:crash` measures scheduler-cancel detection on a private local

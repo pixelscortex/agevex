@@ -118,7 +118,8 @@ export async function firstClaimable(ctx: MutationCtx, row: Doc<"assignments">) 
   return next;
 }
 
-export type NextTurn = { executionId: string; epoch: number } | { wakeEventId: string } | null;
+type CapturedTurn = { executionId: string; epoch: number };
+export type NextTurn = CapturedTurn | { failure: CapturedTurn } | { wakeEventId: string } | null;
 
 /** Atomically reserve work or create the exact event this loop must await.
  * Old loops stop cooperatively after cancel, including when cancellation
@@ -134,12 +135,23 @@ export async function nextQueuedTurn(
 
   if (!row || row.workflowId !== workflowId || row.cancelled) return null;
 
+  // next runs only after the nested turn workflow has completed. A successful
+  // return that left its captured turn running has no remaining owner either;
+  // hand it to the same finalizer instead of parking the loop on a wake event.
+  if (row.turnStatus === "running" && row.turnToken === row.workflowTurnToken)
+    return { failure: { executionId: row.workflowTurnToken!, epoch: row.cancellationEpoch } };
+
   if (!approvalBlocked(row) && row.turnStatus !== "recovery_required") {
     await wake(ctx, row);
     row = (await ctx.db.get("assignments", assignmentId))!;
 
-    if (row.turnStatus === "queued" && !(await isAsking(ctx, row)))
+    if (row.turnStatus === "queued" && !(await isAsking(ctx, row))) {
+      // Capture before dispatch, in the admission transaction. The current token
+      // may already name B when A's action ends and the loop driver later fails.
+      await ctx.db.patch("assignments", row._id, { workflowTurnToken: row.turnToken });
+
       return { executionId: row.turnToken!, epoch: row.cancellationEpoch };
+    }
   }
 
   const wakeEventId = await laneManager(!!row.childRunId, row.limits).createEvent(ctx, {
@@ -147,7 +159,7 @@ export async function nextQueuedTurn(
     name: "wake",
   });
 
-  await ctx.db.patch("assignments", row._id, { wakeEventId });
+  await ctx.db.patch("assignments", row._id, { wakeEventId, workflowTurnToken: undefined });
 
   return { wakeEventId };
 }

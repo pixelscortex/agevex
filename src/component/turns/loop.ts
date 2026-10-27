@@ -8,6 +8,7 @@ export const next = internalMutation({
   args: { assignmentId: v.id("assignments"), workflowId: v.string() },
   returns: v.union(
     v.object({ executionId: v.string(), epoch: v.number() }),
+    v.object({ failure: v.object({ executionId: v.string(), epoch: v.number() }) }),
     v.object({ wakeEventId: v.string() }),
     v.null(),
   ),

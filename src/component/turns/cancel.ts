@@ -155,6 +155,7 @@ function cancelledState(row: Doc<"assignments">, approvalCleanup: boolean) {
     promptMessageId: undefined,
     inboxId: undefined,
     workflowId: undefined,
+    workflowTurnToken: undefined,
     wakeEventId: undefined,
     lastSlice: row.lastSlice ? { ...row.lastSlice, active: false } : undefined,
     queuedMessages: 0,

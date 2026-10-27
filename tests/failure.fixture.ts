@@ -4,7 +4,11 @@ import { setup, rawAssignment } from "./setup.js";
 import { workflowCall } from "../src/testing/expect-journal.js";
 
 /** The loop callback uses exactly the same fences as a failed paid step. */
-export async function failLoop(t: ReturnType<typeof setup>, assignmentId: string) {
+export async function failLoop(
+  t: ReturnType<typeof setup>,
+  assignmentId: string,
+  kind: "success" | "failed" | "canceled" = "success",
+) {
   const row = (await t.query(rawAssignment, { assignmentId }))!;
 
   const args = {
@@ -23,10 +27,12 @@ export async function failLoop(t: ReturnType<typeof setup>, assignmentId: string
     {
       workflowId: row.workflowId,
       generationNumber: 0,
-      runResult: {
-        kind: "success",
-        returnValue: { executionId: args.executionId, epoch: args.epoch },
-      },
+      runResult:
+        kind === "success"
+          ? { kind, returnValue: { executionId: args.executionId, epoch: args.epoch } }
+          : kind === "failed"
+            ? { kind, error: "loop driver failed before consuming nested result" }
+            : { kind },
     },
   );
 

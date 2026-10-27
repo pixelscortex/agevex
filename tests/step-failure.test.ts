@@ -6,7 +6,7 @@ import agevex from "../src/test.js";
 import { setup, api, rawAssignment, state, components } from "./setup.js";
 import { workflowCall } from "../src/testing/expect-journal.js";
 import { requireReceipt } from "./receipt.js";
-import { finalizeFailure } from "./failure.fixture.js";
+import { failLoop, finalizeFailure } from "./failure.fixture.js";
 import { advanceUntil } from "./clock.js";
 
 beforeEach(() => vi.useFakeTimers());
@@ -407,89 +407,94 @@ it("an action that finishes then throws cannot fail or discard its queued succes
   });
 });
 
-it("a failed child Workpool step closes its native generation and reaches the parent once", async () => {
-  const t = setup(undefined, undefined, true);
-  const alice = t.withIdentity({ subject: "alice" });
+it.each(["step", "failed", "canceled"] as const)(
+  "%s child completion closes its native generation and reaches the parent once",
+  async (kind) => {
+    const t = setup(undefined, undefined, true);
+    const alice = t.withIdentity({ subject: "alice" });
 
-  state.delegate = true;
+    state.delegate = true;
 
-  state.childGate = new Promise((resolve) => {
-    state.childRelease = resolve;
-  });
+    state.childGate = new Promise((resolve) => {
+      state.childRelease = resolve;
+    });
 
-  const receipt = await alice
-    .mutation(api.agents.open, {
-      agent: "Main",
-      prompt: "delegate then fail",
-      requestKey: "child-crash",
-    })
-    .then(requireReceipt);
+    const receipt = await alice
+      .mutation(api.agents.open, {
+        agent: "Main",
+        prompt: "delegate then fail",
+        requestKey: "child-crash",
+      })
+      .then(requireReceipt);
 
-  const children = () => childAssignments(t, receipt.threadId);
+    const children = () => childAssignments(t, receipt.threadId);
 
-  await advanceUntil(t, async () => {
+    await advanceUntil(t, async () => {
+      const [child] = await children();
+
+      return !!child && !!(await assignment(t, child.childAssignmentId))?.pendingGeneration?.stream;
+    });
+
     const [child] = await children();
+    const before = (await assignment(t, child.childAssignmentId))!;
 
-    return !!child && !!(await assignment(t, child.childAssignmentId))?.pendingGeneration?.stream;
-  });
+    try {
+      if (kind === "step")
+        expect(
+          await workflowCall(t, "agevex/childWorkflow", "mutation", "agevexJournal", "interrupt", {
+            mode: "failed",
+          }),
+        ).toBe(1);
+      else await failLoop(t, before._id, kind);
 
-  const [child] = await children();
-  const before = (await assignment(t, child.childAssignmentId))!;
+      await advanceUntil(
+        t,
+        async () =>
+          (await alice.query(api.agents.activity, { threadId: receipt.threadId })).subagents
+            .active === 0,
+      );
 
-  try {
-    expect(
-      await workflowCall(t, "agevex/childWorkflow", "mutation", "agevexJournal", "interrupt", {
-        mode: "failed",
-      }),
-    ).toBe(1);
+      const history = await alice.query(api.agents.delegations, {
+        threadId: receipt.threadId,
+        paginationOpts: { cursor: null, numItems: 20 },
+      });
 
-    await advanceUntil(
-      t,
-      async () =>
-        (await alice.query(api.agents.activity, { threadId: receipt.threadId })).subagents
-          .active === 0,
-    );
+      expect(history.page[0]).toMatchObject({
+        status: "failed",
+        errorCode: "EXECUTION_AMBIGUOUS",
+        deliveryStatus: "accepted",
+      });
 
-    const history = await alice.query(api.agents.delegations, {
-      threadId: receipt.threadId,
-      paginationOpts: { cursor: null, numItems: 20 },
-    });
+      expect(history.page[0].events.filter((event) => event.phase === "failed")).toHaveLength(1);
+      await expectNativeClosed(t, before.pendingGeneration!);
 
-    expect(history.page[0]).toMatchObject({
-      status: "failed",
-      errorCode: "EXECUTION_AMBIGUOUS",
-      deliveryStatus: "accepted",
-    });
+      await t.mutation(finalizeFailure, {
+        assignmentId: before._id,
+        workflowId: before.workflowId!,
+        executionId: before.turnToken!,
+        epoch: before.cancellationEpoch,
+      });
 
-    expect(history.page[0].events.filter((event) => event.phase === "failed")).toHaveLength(1);
-    await expectNativeClosed(t, before.pendingGeneration!);
+      state.delegate = false;
 
-    await t.mutation(finalizeFailure, {
-      assignmentId: before._id,
-      workflowId: before.workflowId!,
-      executionId: before.turnToken!,
-      epoch: before.cancellationEpoch,
-    });
+      await alice.mutation(api.agents.send, {
+        threadId: receipt.threadId,
+        text: "later independent work",
+        requestKey: "after-child-crash",
+      });
 
-    state.delegate = false;
+      await advanceUntil(
+        t,
+        async () =>
+          state.calls.length === 3 &&
+          (await assignment(t, receipt.assignmentId))?.turnStatus === "idle",
+      );
 
-    await alice.mutation(api.agents.send, {
-      threadId: receipt.threadId,
-      text: "later independent work",
-      requestKey: "after-child-crash",
-    });
-
-    await advanceUntil(
-      t,
-      async () =>
-        state.calls.length === 3 &&
-        (await assignment(t, receipt.assignmentId))?.turnStatus === "idle",
-    );
-
-    expect(state.offers.filter((offer) => offer.agent === "Researcher")).toHaveLength(1);
-  } finally {
-    state.childRelease!();
-    state.childGate = undefined;
-    await drain(t);
-  }
-});
+      expect(state.offers.filter((offer) => offer.agent === "Researcher")).toHaveLength(1);
+    } finally {
+      state.childRelease!();
+      state.childGate = undefined;
+      await drain(t);
+    }
+  },
+);

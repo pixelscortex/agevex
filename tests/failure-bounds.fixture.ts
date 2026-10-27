@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import { internalMutation } from "../src/component/_generated/server.js";
 import { readyRowLimit } from "../src/component/limits.js";
 import { RUN_LIMITS } from "../src/component/run_settings.js";
-import { maximumRun, padded } from "./assignment-envelope.fixture.js";
+import { fillAssignment, maximumRun, padded } from "./assignment-envelope.fixture.js";
 
 /** Bodies remain native; a failure retires only its own run's ready controls. */
 export const seedBacklog = internalMutation({
@@ -47,6 +47,8 @@ export const seedBacklog = internalMutation({
       queuedMessages: count,
       nextSequence: row.nextSequence + count,
     });
+
+    await fillAssignment(ctx, assignmentId);
 
     return count;
   },

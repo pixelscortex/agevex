@@ -57,7 +57,7 @@ The complete document/query/byte arithmetic lives in `limits.ts`, with enforced
 transaction-limit fixtures for cancellation, claim, decisions, tree and saves.
 
 Assignments fit 13 KiB including system fields. The all-fields fixture uses
-at most 12,704 bytes, including the exact wake event, active slice fence and native failure handle. Native saves clear active tool markers before growing the
+at most 12,791 bytes, including the exact wake event, captured Workflow turn token, active slice fence and native failure handle. Native saves clear active tool markers before growing the
 row; the progress writer also checks the envelope. Runs fit 16 KiB, delegations 4 KiB.
 
 ## Thread metadata
@@ -135,6 +135,12 @@ older than about five minutes are scanned about once per minute. Thrown step
 errors complete normally. Hanging provider calls still use the unchanged
 in-action deadline. agevex schedules no turn alarm or recovery check. The
 on-demand receipt-retention job and finite native/cancellation cleanup remain.
+
+Loop admission captures `workflowTurnToken` before dispatch. A failed or
+cancelled loop driver finalizes that captured turn through the same fenced
+mutation before rotating, even without a returned failure payload. A successful
+nested workflow that leaves its turn running also takes this failure handoff.
+Queued successors retain their own tokens and can start in the replacement loop.
 
 Cancellation fences the epoch and releases the old loop through its exact
 event. The loop stops when it next checks ownership; it first awaits any event

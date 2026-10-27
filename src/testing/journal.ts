@@ -15,6 +15,7 @@ import {
   type FunctionHandle,
 } from "convex/server";
 import { v } from "convex/values";
+import { LIMITS } from "../component/limits.js";
 
 export const REPLAY_BOUNDARY = "AGEVEX_JOURNAL_REPLAY_BOUNDARY";
 
@@ -150,4 +151,61 @@ export const completionFailures = internalQueryGeneric({
   args: {},
   returns: v.array(v.any()),
   handler: (ctx) => ctx.db.query("onCompleteFailures").take(10),
+});
+
+/** Fill the bounded loop journal before measuring the entire completion call.
+ * Historical turns are already complete; only the original last pair is live.
+ * Distinct nested ids exercise Workflow's real batch cleanup bookkeeping.
+ */
+export const fillCompletionHistory = internalMutationGeneric({
+  args: { workflowId: v.id("workflows") },
+  returns: v.number(),
+  handler: async (ctx, { workflowId }) => {
+    const entries = await ctx.db
+      .query("steps")
+      .withIndex("workflow", (q) => q.eq("workflowId", workflowId))
+      .take(2);
+
+    const next = entries[0];
+    const turn = entries[1];
+
+    if (entries.length !== 2 || turn.step.kind !== "workflow")
+      throw new Error("FIXTURE_EXPECTED_FIRST_TURN");
+
+    const nested = await ctx.db.get(turn.step.workflowId);
+
+    if (!nested) throw new Error("FIXTURE_EXPECTED_NESTED_WORKFLOW");
+
+    for (let i = 0; i < LIMITS.turnsPerLoop - 1; i++) {
+      const nestedId = await ctx.db.insert("workflows", {
+        workflowHandle: nested.workflowHandle,
+        args: nested.args,
+        generationNumber: 0,
+        runResult: { kind: "success", returnValue: null },
+      });
+
+      await ctx.db.insert("steps", {
+        workflowId,
+        stepNumber: i * 2,
+        step: { ...next.step, inProgress: false, completedAt: Date.now() },
+      });
+
+      await ctx.db.insert("steps", {
+        workflowId,
+        stepNumber: i * 2 + 1,
+        step: {
+          ...turn.step,
+          workflowId: nestedId,
+          inProgress: false,
+          completedAt: Date.now(),
+          runResult: { kind: "success", returnValue: null },
+        },
+      });
+    }
+
+    await ctx.db.patch(next._id, { stepNumber: (LIMITS.turnsPerLoop - 1) * 2 });
+    await ctx.db.patch(turn._id, { stepNumber: LIMITS.turnsPerLoop * 2 - 1 });
+
+    return LIMITS.turnsPerLoop * 2;
+  },
 });

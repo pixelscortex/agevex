@@ -203,6 +203,10 @@ export default defineSchema({
     models: v.optional(modelOverrides),
     runTurn: v.string(),
     workflowId: v.optional(v.string()),
+    // Exact turn last handed to workflowId by loop.next. Completion combines
+    // this captured token with its start epoch; never borrow a queued successor's
+    // current token after the loop driver itself fails before returning a value.
+    workflowTurnToken: v.optional(v.string()),
     // The registration's fully resolved host limits, copied from the root at
     // creation. Read by every bounded query/take on this row.
     limits: limitsValidator,

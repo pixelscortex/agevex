@@ -77,7 +77,8 @@ export const HOST_LIMITS = {
  * approvals <=4,802 B; report <=2,635 B; metadata handles <=806 B;
  * pending generation <=1,280 B; runTurn <=258 B; names <=1,204 B;
  * model map <=510 B; limits <=309 B; remaining fields/names/overhead <=900 B.
- * Total <=12,704 B; 13,312-12,704=608 B headroom at every writer cap.
+ * Captured Workflow turn identity <=87 B (field name plus execution token).
+ * Total <=12,791 B; 13,312-12,791=521 B headroom at every writer cap.
  * Native child ids need <=37 bytes (one more than UUIDs); their reference is
  * included above. Child rows use their system id, freeing the old UUID field.
  * No summary body, context ring, review history, cadence or text job is stored.
@@ -107,9 +108,10 @@ export const HOST_LIMITS = {
  * adds <=222 KiB instead, remaining below that root ceiling. Loop cleanup
  * reads only <=100 small id-only journal steps (50 next +50 turn/event),
  * with nested turn journals handed to upstream cleanup jobs, never read here.
- * tests/failure-bounds.test.ts exercises both recoverable and >16 MiB persisted
- * delta backlogs alongside six near-1 MiB native merge heads and all 152 distinct
- * maximum-size failed-run rows, with transaction limits enabled. Neither
+ * tests/failure-bounds.test.ts measures the whole completion callback with a
+ * maximum native placeholder, the full 100-step loop journal, recoverable and
+ * >16 MiB persisted delta backlogs, six near-1 MiB native merge heads and all
+ * 152 distinct maximum-size failed-run rows, with transaction limits enabled. Neither
  * delta count nor body size enters failure's read budget. It writes metadata
  * and one native placeholder (<1 MiB fixture), never replaying paid effects.
  */
