@@ -75,7 +75,6 @@ export const seed = mutation({
       });
 
       await ctx.db.patch("assignments", assignmentId, {
-        approvalBlocked: true,
         queuedMessages: 1,
         approvals: {
           inboxId,

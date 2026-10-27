@@ -7,6 +7,7 @@
  * No per-node transcript or settlement scans: reuse the already bounded
  * child set to project transitive delivery fences in memory.
  */
+import { approvalBlocked } from "../approvals.js";
 import type { Doc } from "../_generated/dataModel.js";
 import type { QueryCtx } from "../_generated/server.js";
 import { TREE_LIMITS, type RunNode, type RunTree } from "../run_tree_values.js";
@@ -132,7 +133,7 @@ function assignmentState(row?: Doc<"assignments">): State | null {
 
   if (row.cancelled) return { status: "failed", reason: "cancelled" };
 
-  if (row.approvalBlocked)
+  if (approvalBlocked(row))
     return {
       status: "asleep",
       reason: row.approvals?.requests.some((request) => !request.deferred && !request.resolved)

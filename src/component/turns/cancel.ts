@@ -162,7 +162,6 @@ function cancelledState(row: Doc<"assignments">, approvalCleanup: boolean) {
     pinged: false,
     queuedMessages: 0,
     notesPending: 0,
-    approvalBlocked: !!approvalCleanup,
     approvals: approvalCleanup ? { ...row.approvals!, cleanupPending: true } : undefined,
   };
 }

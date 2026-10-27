@@ -1,5 +1,6 @@
 // @vitest-environment edge-runtime
 /** End-to-end proof: ids cross agent boundaries; bodies stay in the app store. */
+import { approvalBlocked } from "../../src/component/approvals.js";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { call, delegate, text, v2, v2api as api } from "../delegation-v2.host.js";
 import { gate } from "../message-parent.fixture.js";
@@ -276,7 +277,7 @@ it("the default root-only policy denies a child ask_user without creating a huma
 
     return (
       calls("Reviewer").length >= 4 ||
-      (await t.query(node, { threadId: review.childThreadId }))?.approvalBlocked === true
+      approvalBlocked(await t.query(node, { threadId: review.childThreadId })) === true
     );
   });
 
@@ -284,7 +285,7 @@ it("the default root-only policy denies a child ask_user without creating a huma
   const review = runs.find((run) => run.agent === "Reviewer")!;
   const row = (await t.query(node, { threadId: review.childThreadId! }))!;
 
-  expect(row.approvalBlocked).not.toBe(true);
+  expect(approvalBlocked(row)).not.toBe(true);
   expect(JSON.stringify(calls("Reviewer")[3].args.prompt)).toContain("ROOT_ONLY");
 
   expect(await owner(t).query(api.agents.pendingApprovals, { threadId: receipt.threadId })).toEqual(

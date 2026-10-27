@@ -10,6 +10,7 @@
  * action generates under. Touches `assignments`, `inbox`, `runs` and
  * `subagentRuns`; notes go through hooks/notes.ts.
  */
+import { approvalBlocked } from "../approvals.js";
 import type { MessageDoc } from "@convex-dev/agent";
 import type { FunctionHandle } from "convex/server";
 import { v, type Infer } from "convex/values";
@@ -84,7 +85,7 @@ export async function claimSlice(ctx: MutationCtx, args: ClaimArgs): Promise<Cla
   const { assignmentId, turnToken, sliceId } = args;
   const row = await ctx.db.get("assignments", assignmentId);
 
-  if (!row || row.cancelled || row.approvalBlocked || row.turnToken !== turnToken) return null;
+  if (!row || row.cancelled || approvalBlocked(row) || row.turnToken !== turnToken) return null;
 
   // An open question is a valid pause, never corrupt execution state. This
   // guard also protects repeated/stale dispatches before any inbox deletion.

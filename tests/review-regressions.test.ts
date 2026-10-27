@@ -1,4 +1,6 @@
 // @vitest-environment edge-runtime
+import { approvalState } from "./approval-state.js";
+import { approvalBlocked } from "../src/component/approvals.js";
 import { sliceWatchdogMs, resolveRunSettings } from "../src/component/run_settings.js";
 import { opaqueKey } from "../src/client/keys.js";
 import { advanceUntil } from "./clock.js";
@@ -144,7 +146,7 @@ it("40 large tool results allow a turn to start, block on recorded approval, and
 
   const paused = await execution();
 
-  expect(paused).toMatchObject({ approvalBlocked: true, queuedMessages: 1 });
+  expect(approvalState(paused)).toMatchObject({ approvalBlocked: true, queuedMessages: 1 });
   expect(paused?.approvals?.requests[0].messageId).toBeTypeOf("string");
 
   const [request] = await t.query(components.agent.messages.getMessagesByIds, {
@@ -169,7 +171,11 @@ it("40 large tool results allow a turn to start, block on recorded approval, and
 
   await drain(t);
   expect(state.calls).toHaveLength(1);
-  expect(await execution()).toMatchObject({ approvalBlocked: true, queuedMessages: 2 });
+
+  expect(approvalState(await execution())).toMatchObject({
+    approvalBlocked: true,
+    queuedMessages: 2,
+  });
 
   await alice.mutation(api.agents.respond, {
     threadId: receipt.threadId,
@@ -853,7 +859,7 @@ it.each(["running", "approval"])(
       });
 
       expect(getConvexSize(row)).toBeLessThan(LIMITS.assignmentBytes);
-      expect(!!row?.approvalBlocked).toBe(mode === "approval");
+      expect(!!approvalBlocked(row)).toBe(mode === "approval");
     }
 
     // Inspect the actual public cancel transaction, including ownership reads.

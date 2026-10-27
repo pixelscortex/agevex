@@ -9,6 +9,7 @@
  * the receipt (`replayed: true`); a different payload for the same call is a
  * KEY_CONFLICT. Touches `assignments.approvals`, `inbox` and `receipts`.
  */
+import { approvalBlocked } from "../approvals.js";
 import type { MessageDoc } from "@convex-dev/agent";
 import type { FunctionHandle } from "convex/server";
 import { ConvexError, getConvexSize, v } from "convex/values";
@@ -114,7 +115,14 @@ export async function respondToApproval(
 
   const decision = approvals?.requests[index];
 
-  if (!row.approvalBlocked || row.cancelled || !approvals || approvals.cleanupPending || !decision)
+  if (
+    !approvalBlocked(row) ||
+    row.cancelled ||
+    !approvals ||
+    approvals.cleanupPending ||
+    approvals.epoch !== row.cancellationEpoch ||
+    !decision
+  )
     throw new ConvexError({ code: "APPROVAL_NOT_FOUND" });
 
   if (decision.resolved) throw new ConvexError({ code: "APPROVAL_ALREADY_RESOLVED" });
@@ -149,12 +157,13 @@ export async function respondToApproval(
       : request,
   );
 
-  await ctx.db.patch("assignments", row._id, { approvals: { ...approvals, requests } });
+  const updated = { ...approvals, requests };
+
+  await ctx.db.patch("assignments", row._id, { approvals: updated });
 
   if (requests.every((request) => request.resolved)) {
     await ctx.db.patch("inbox", approvals.inboxId, { messageId });
-    await ctx.db.patch("assignments", row._id, { approvalBlocked: false });
-    await wake(ctx, { ...row, approvalBlocked: false });
+    await wake(ctx, { ...row, approvals: updated });
   }
 
   return { messageId, replayed: false };
@@ -202,7 +211,7 @@ export async function answerDeferredCall(
   if (
     !pause ||
     !request ||
-    !row.approvalBlocked ||
+    !approvalBlocked(row) ||
     row.cancelled ||
     pause.cleanupPending ||
     pause.epoch !== row.cancellationEpoch
@@ -229,14 +238,13 @@ export async function answerDeferredCall(
 
   const remaining = pause.requests.filter((_, offset) => offset !== index);
   const approvals = remaining.length ? { ...pause, requests: remaining } : undefined;
-  const blocked = remaining.some((entry) => !entry.resolved);
 
-  await ctx.db.patch("assignments", row._id, { approvals, approvalBlocked: blocked });
+  await ctx.db.patch("assignments", row._id, { approvals });
   // Always retain the last saved result as the future prompt, including a
   // partial answer. A concurrent answer/respond serializes on this same row.
   await ctx.db.patch("inbox", pause.inboxId, { messageId });
 
-  if (!blocked) await wake(ctx, { ...row, approvals, approvalBlocked: false });
+  if (!approvalBlocked({ approvals })) await wake(ctx, { ...row, approvals });
 
   return { messageId, replayed: false };
 }

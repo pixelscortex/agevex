@@ -1,5 +1,6 @@
 // @vitest-environment edge-runtime
 /** Fake-model regressions for shared result/answer hop and control-queue capacity. */
+import { approvalBlocked } from "../src/component/approvals.js";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { HOST_LIMITS, LIMITS } from "../src/component/limits.js";
 import { v2, call, delegate, text } from "./delegation-v2.host.js";
@@ -260,11 +261,11 @@ it("a final result delivers beyond a full message queue beside an approval conti
   await waitFor(
     t,
     async () =>
-      !!(
+      !!approvalBlocked(
         await t.query(rawAssignment, {
           assignmentId: receipt.assignmentId,
-        })
-      )?.approvalBlocked,
+        }),
+      ),
   );
 
   expect(

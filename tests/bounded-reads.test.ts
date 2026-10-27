@@ -1,4 +1,6 @@
 // @vitest-environment edge-runtime
+import { approvalState } from "./approval-state.js";
+import { approvalBlocked } from "../src/component/approvals.js";
 import { requireReceipt } from "./receipt.js";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { createFunctionHandle, type PaginationResult } from "convex/server";
@@ -289,7 +291,7 @@ it("a post-save throw leaves the native approval atomically blocked", async () =
   await drain(t);
   const row = await execution(t, receipt.assignmentId);
 
-  expect(row).toMatchObject({
+  expect(approvalState(row)).toMatchObject({
     approvalBlocked: true,
     turnStatus: "idle",
     errorCode: null,
@@ -313,7 +315,7 @@ it("a post-save throw leaves the native approval atomically blocked", async () =
   await drain(t);
   expect(state.calls).toHaveLength(1);
 
-  expect(await execution(t, receipt.assignmentId)).toMatchObject({
+  expect(approvalState(await execution(t, receipt.assignmentId))).toMatchObject({
     approvalBlocked: true,
     queuedMessages: 2,
   });
@@ -338,7 +340,10 @@ it("an unresolved approval does zero native transcript reads", async () => {
   await drain(t);
   expect(state.transcriptReads).toBe(0);
   expect(state.calls).toHaveLength(1);
-  expect(await execution(t, receipt.assignmentId)).toMatchObject({ approvalBlocked: true });
+
+  expect(approvalState(await execution(t, receipt.assignmentId))).toMatchObject({
+    approvalBlocked: true,
+  });
 });
 
 it("respond resolves two approvals separately and resumes from the final native response", async () => {
@@ -362,7 +367,10 @@ it("respond resolves two approvals separately and resumes from the final native 
 
   await drain(t);
   expect(state.calls).toHaveLength(0);
-  expect(await execution(t, turn.assignmentId)).toMatchObject({ approvalBlocked: true });
+
+  expect(approvalState(await execution(t, turn.assignmentId))).toMatchObject({
+    approvalBlocked: true,
+  });
 
   await expect(
     alice.mutation(api.agents.respond, {
@@ -380,7 +388,10 @@ it("respond resolves two approvals separately and resumes from the final native 
 
   const queued = await execution(t, turn.assignmentId);
 
-  expect(queued).toMatchObject({ approvalBlocked: false, promptMessageId: last.messageId });
+  expect(approvalState(queued)).toMatchObject({
+    approvalBlocked: false,
+    promptMessageId: last.messageId,
+  });
 
   const messages = await t.query(components.agent.messages.getMessagesByIds, {
     messageIds: [queued!.approvals!.requests[0].messageId, first.messageId, last.messageId],
@@ -447,7 +458,7 @@ it("an approval-pause note is delivered exactly once at the first safe queued tu
   await drain(t);
   const pause = (await execution(t, turn.assignmentId))!;
 
-  expect(pause).toMatchObject({ approvalBlocked: true });
+  expect(approvalState(pause)).toMatchObject({ approvalBlocked: true });
 
   const [requestMessage] = await t.query(components.agent.messages.getMessagesByIds, {
     messageIds: [pause.approvals!.requests[0].messageId],
@@ -612,7 +623,7 @@ it("respond authorizes an owned child and continues its managed settlement", asy
   expect(assignment).toMatchObject({ root: false, subject: "alice" });
   const child = (await execution(t, assignment!.assignmentId))!;
 
-  expect(child.approvalBlocked).toBe(true);
+  expect(approvalBlocked(child)).toBe(true);
 
   const [message] = await t.query(components.agent.messages.getMessagesByIds, {
     messageIds: [child.approvals!.requests[0].messageId],
@@ -650,7 +661,7 @@ it("respond authorizes an owned child and continues its managed settlement", asy
     errorCode: null,
   });
 
-  expect(await execution(t, child._id)).toMatchObject({
+  expect(approvalState(await execution(t, child._id))).toMatchObject({
     turnStatus: "idle",
     approvalBlocked: false,
     queuedMessages: 0,
@@ -675,7 +686,7 @@ it("sixteen approvals stay bounded and resolve atomically at the pause limit", a
     const row = (await execution(t, turn.assignmentId))!;
 
     expect(row.approvals?.requests.filter((request) => request.resolved)).toHaveLength(i + 1);
-    expect(row.approvalBlocked).toBe(i < LIMITS.approvalsPerPause - 1);
+    expect(approvalBlocked(row)).toBe(i < LIMITS.approvalsPerPause - 1);
 
     if (i === LIMITS.approvalsPerPause - 1) expect(row.promptMessageId).toBe(response.messageId);
   }
@@ -735,7 +746,7 @@ it.each([1, LIMITS.approvalsPerPause])(
     await drain(t);
     const paused = (await execution(t, receipt.assignmentId))!;
 
-    expect(paused).toMatchObject({ approvalBlocked: true, turnStatus: "idle" });
+    expect(approvalState(paused)).toMatchObject({ approvalBlocked: true, turnStatus: "idle" });
     const approvals = paused.approvals!;
 
     const [request] = await t.query(components.agent.messages.getMessagesByIds, {
@@ -758,7 +769,7 @@ it.each([1, LIMITS.approvalsPerPause])(
       requestKey: "fresh-after-cancel",
     });
 
-    expect(await execution(t, receipt.assignmentId)).toMatchObject({
+    expect(approvalState(await execution(t, receipt.assignmentId))).toMatchObject({
       approvalBlocked: true,
       turnStatus: "idle",
       queuedMessages: 1,
@@ -779,7 +790,7 @@ it.each([1, LIMITS.approvalsPerPause])(
     expect(JSON.stringify(state.calls[1].prompt)).toContain("execution-denied");
     expect(JSON.stringify(state.calls[1].prompt)).toContain("cancelled");
 
-    expect(await execution(t, receipt.assignmentId)).toMatchObject({
+    expect(approvalState(await execution(t, receipt.assignmentId))).toMatchObject({
       approvalBlocked: false,
       turnStatus: "idle",
       queuedMessages: 0,
@@ -949,7 +960,7 @@ it("pause approve running tool cancel fresh send completes without missing or du
   release();
   await drain(t);
 
-  expect(await execution(t, turn.assignmentId)).toMatchObject({
+  expect(approvalState(await execution(t, turn.assignmentId))).toMatchObject({
     turnStatus: "idle",
     errorCode: null,
     queuedMessages: 0,
@@ -1058,7 +1069,7 @@ it("near 1 MiB approval request cancels as bounded native pairs and completes a 
 
   await drain(t);
 
-  expect(await execution(t, turn.assignmentId)).toMatchObject({
+  expect(approvalState(await execution(t, turn.assignmentId))).toMatchObject({
     turnStatus: "idle",
     errorCode: null,
     approvalBlocked: false,
@@ -1128,7 +1139,7 @@ it("cleanup failure publishes CLEANUP_FAILED and a later cancel retries without 
 
   await drain(t);
 
-  expect(await execution(t, turn.assignmentId)).toMatchObject({
+  expect(approvalState(await execution(t, turn.assignmentId))).toMatchObject({
     turnStatus: "idle",
     errorCode: null,
     queuedMessages: 0,
@@ -1158,7 +1169,10 @@ it("huge native approval ids leave fixed-size assignment metadata and still reso
     decision: { kind: "reject" as const },
   });
 
-  expect(await execution(t, turn.assignmentId)).toMatchObject({ approvalBlocked: false });
+  expect(approvalState(await execution(t, turn.assignmentId))).toMatchObject({
+    approvalBlocked: false,
+  });
+
   await owner(t).mutation(api.agents.cancel, { threadId: turn.threadId });
   await drain(t);
 });
@@ -1804,7 +1818,7 @@ it("provider-executed calls refuse edits and keep the original approval pending"
     }),
   ).rejects.toThrow("APPROVAL_NOT_EDITABLE");
 
-  expect((await execution(t, turn.assignmentId))?.approvalBlocked).toBe(true);
+  expect(approvalBlocked(await execution(t, turn.assignmentId))).toBe(true);
 
   await owner(t).mutation(api.agents.respond, {
     threadId: turn.threadId,
@@ -1844,7 +1858,9 @@ it("provider-executed approval edits are refused before deciding even when the h
       }),
     ).rejects.toMatchObject({ data: { code: "APPROVAL_NOT_EDITABLE" } });
 
-    expect(await execution(t, turn.assignmentId)).toMatchObject({ approvalBlocked: true });
+    expect(approvalState(await execution(t, turn.assignmentId))).toMatchObject({
+      approvalBlocked: true,
+    });
 
     expect(
       (await execution(t, turn.assignmentId))?.approvals?.requests[0].resolved,
@@ -1856,8 +1872,84 @@ it("provider-executed approval edits are refused before deciding even when the h
       decision: { kind: "reject" },
     });
 
-    expect(await execution(t, turn.assignmentId)).toMatchObject({ approvalBlocked: false });
+    expect(approvalState(await execution(t, turn.assignmentId))).toMatchObject({
+      approvalBlocked: false,
+    });
   } finally {
     managed.declaredTools.echo = original;
   }
+});
+
+it("a call waits for every approval decision and every preceding tool result to commit", async () => {
+  const t = setup(undefined, undefined, true);
+  const turn = await request(t, 2);
+
+  await owner(t).mutation(api.agents.respond, {
+    threadId: turn.threadId,
+    approvalId: "approval-0",
+    decision: { kind: "reject" },
+  });
+
+  expect(
+    await t.mutation(components.agevex.turns.slices.claim, {
+      assignmentId: turn.assignmentId,
+      turnToken: turn.executionId,
+    }),
+  ).toBeNull();
+
+  await owner(t).mutation(api.agents.respond, {
+    threadId: turn.threadId,
+    approvalId: "approval-1",
+    decision: { kind: "reject" },
+  });
+
+  const resumed = (await execution(t, turn.assignmentId))!;
+  const capability = { assignmentId: turn.assignmentId, turnToken: resumed.turnToken! };
+
+  expect(await t.mutation(components.agevex.turns.slices.claim, capability)).not.toBeNull();
+
+  const write = async (content: { type: string }[]) =>
+    t.mutation(components.agevex.turns.slices.write, {
+      assignmentId: turn.assignmentId,
+      executionId: resumed.turnToken!,
+      cancellationEpoch: resumed.cancellationEpoch,
+      ...(await nativeHandles(t)),
+      args: {
+        threadId: turn.threadId,
+        promptMessageId: resumed.promptMessageId,
+        failPendingSteps: false,
+        messages: (["tool", "assistant"] as const).flatMap((role) => {
+          const parts = content.filter(
+            (part) => (part.type === "tool-result") === (role === "tool"),
+          );
+          return parts.length ? [{ message: { role, content: parts } }] : [];
+        }),
+      },
+    });
+
+  const next = [
+    { type: "tool-call", toolCallId: "next-call", toolName: "echo", input: { text: "next" } },
+    { type: "tool-approval-request", approvalId: "next-approval", toolCallId: "next-call" },
+  ];
+
+  await expect(write(next)).rejects.toThrow("APPROVAL_RESULTS_MISSING");
+
+  const result = (toolCallId: string) => ({
+    type: "tool-result",
+    toolCallId,
+    toolName: "echo",
+    output: { type: "execution-denied" },
+  });
+
+  // The first result alone cannot retire the second decided request.
+  await expect(write([result("call-0"), ...next])).rejects.toThrow("APPROVAL_RESULTS_MISSING");
+  expect((await execution(t, turn.assignmentId))?.approvals?.requests).toHaveLength(2);
+
+  await write([result("call-0"), result("call-1"), ...next]);
+  const paused = (await execution(t, turn.assignmentId))!;
+
+  expect(approvalBlocked(paused)).toBe(true);
+  expect(paused.approvals?.requests).toHaveLength(1);
+  await owner(t).mutation(api.agents.cancel, { threadId: turn.threadId });
+  await drain(t);
 });

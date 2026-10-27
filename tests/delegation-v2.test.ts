@@ -1,3 +1,4 @@
+import { approvalState } from "./approval-state.js";
 import { delegationState } from "./delegation-state.js";
 // @vitest-environment edge-runtime
 import { requireReceipt } from "./receipt.js";
@@ -2483,7 +2484,9 @@ it.each(
 
     expect((await tree(t, root.threadId))[0].status).toBe("running");
 
-    expect(await t.query(rawAssignment, { assignmentId: child.assignmentId })).toMatchObject({
+    expect(
+      approvalState(await t.query(rawAssignment, { assignmentId: child.assignmentId })),
+    ).toMatchObject({
       turnStatus: "queued",
       approvalBlocked: false,
       queuedMessages: 0,
@@ -2588,7 +2591,9 @@ it.each([1, HOST_LIMITS.messagesPerChild.max])(
       }),
     );
 
-    expect(await t.query(rawAssignment, { assignmentId: child.assignmentId })).toMatchObject({
+    expect(
+      approvalState(await t.query(rawAssignment, { assignmentId: child.assignmentId })),
+    ).toMatchObject({
       approvalBlocked: true,
       queuedMessages: queueLength + 1,
     });

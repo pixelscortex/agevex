@@ -247,7 +247,6 @@ export default defineSchema({
     // Set by wake with the reserved head; read by claim and write.
     turnOrigin: v.optional(turnOrigin),
     inboxId: v.optional(v.id("inbox")),
-    approvalBlocked: v.optional(v.boolean()),
     // At most LIMITS.approvalsPerPause fixed-size approval keys, never payloads.
     approvals: v.optional(
       v.object({

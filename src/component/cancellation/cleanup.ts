@@ -184,10 +184,9 @@ export async function continueOrRelease(
   } else {
     await ctx.db.patch("assignments", assignmentId, {
       approvals: undefined,
-      approvalBlocked: false,
     });
 
-    await wake(ctx, { ...row, approvals: undefined, approvalBlocked: false });
+    await wake(ctx, { ...row, approvals: undefined });
   }
 }
 

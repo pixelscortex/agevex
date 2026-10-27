@@ -1,6 +1,7 @@
 /** Root lifecycle snapshots survive later sends on the same assignment.
  * Closure uses exact request-scoped existence probes, never delegation history.
  */
+import { approvalBlocked } from "../approvals.js";
 import type { MutationCtx, QueryCtx } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
 
@@ -56,7 +57,7 @@ export async function closeRootRun(ctx: MutationCtx, root: Doc<"assignments">, r
   )
     return;
 
-  if (root.runId === runId && (root.turnStatus !== "idle" || root.approvalBlocked)) return;
+  if (root.runId === runId && (root.turnStatus !== "idle" || approvalBlocked(root))) return;
 
   if (await rootRunBlocked(ctx, root, runId)) return;
 

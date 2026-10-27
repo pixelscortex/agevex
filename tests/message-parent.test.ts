@@ -1,5 +1,7 @@
 // @vitest-environment edge-runtime
 /** Promised progress delivery, bounded wakeups, ordering and execution fences. */
+import { approvalState } from "./approval-state.js";
+import { approvalBlocked } from "../src/component/approvals.js";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { HOST_LIMITS, LIMITS } from "../src/component/limits.js";
 import { v2, call, delegate, text } from "./delegation-v2.host.js";
@@ -479,7 +481,7 @@ it.each(["approval", "deferred"] as const)(
     await waitFor(
       t,
       async () =>
-        !!(await t.query(rawAssignment, { assignmentId: receipt.assignmentId }))?.approvalBlocked,
+        !!approvalBlocked(await t.query(rawAssignment, { assignmentId: receipt.assignmentId })),
     );
 
     await t.action(async () => {
@@ -499,7 +501,9 @@ it.each(["approval", "deferred"] as const)(
 
     expect(calls("Main")).toHaveLength(2);
 
-    expect(await t.query(rawAssignment, { assignmentId: receipt.assignmentId })).toMatchObject({
+    expect(
+      approvalState(await t.query(rawAssignment, { assignmentId: receipt.assignmentId })),
+    ).toMatchObject({
       approvalBlocked: true,
     });
 
