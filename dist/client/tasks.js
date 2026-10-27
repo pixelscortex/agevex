@@ -19,6 +19,9 @@ import { deliverUsage } from "./turn/usage.js";
 // paid outcomes, even when their message happens to match an admission error.
 class TaskDispatchRefused extends Error {
 }
+/** A paid attempt whose failed usage `generateOnce` already reported. */
+class TaskUsageReported extends Error {
+}
 // Action-local capabilities are never serialized into Workflow arguments. Hook
 // calls use the same receipts and cancellation fence as managed tool effects.
 const bindings = new WeakMap();
@@ -198,10 +201,11 @@ async function generateWithRepair(call, receipt, admission) {
                 if (error instanceof TaskDispatchRefused)
                     return { status: "failed", code: "TASK_FAILED" };
                 if (!NoObjectGeneratedError.isInstance(error)) {
-                    await recordTaskUsage(call, receipt, attempt, undefined, undefined, undefined, "failed");
+                    if (!(error instanceof TaskUsageReported))
+                        await recordTaskUsage(call, receipt, attempt, undefined, undefined, undefined, "failed");
                     throw error;
                 }
-                await recordTaskUsage(call, receipt, attempt, error.usage, undefined, undefined, "failed");
+                await recordTaskUsage(call, receipt, attempt, error.usage, undefined, error.response?.id, "failed");
                 result = { status: "failed", code: "INVALID_OUTPUT" };
                 // Only invalid structured output permits one intentional re-ask. A
                 // transport error/unknown paid outcome is never repaired or retried.
@@ -261,7 +265,18 @@ async function generateOnce(call, receipt, attempt, repairText) {
     }), call.signal);
     // Output validation can throw. Read it before recording so an invalid
     // answer is charged only by the repair/error path below.
-    const value = generated.output;
+    let value;
+    try {
+        value = generated.output;
+    }
+    catch (error) {
+        if (NoObjectGeneratedError.isInstance(error))
+            throw error;
+        // A paid response with no output (e.g. length/content-filter): its
+        // metadata is known here, so report it before the receipt becomes unknown.
+        await recordTaskUsage(call, receipt, attempt, generated.usage, generated.providerMetadata, generated.response.id, "failed");
+        throw new TaskUsageReported("TASK_NO_OUTPUT");
+    }
     await recordTaskUsage(call, receipt, attempt, generated.usage, generated.providerMetadata, generated.response.id);
     // Convex validates the serializable result and its byte bound before
     // persistence. A huge response never becomes a >1 MiB receipt document.

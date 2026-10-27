@@ -191,6 +191,7 @@ async function generate(
       dispatch.known = true;
       dispatch.occurredAt = Date.now();
       dispatch.usage = error.usage;
+      dispatch.requestId = error.response?.id;
     }
 
     throw error;
