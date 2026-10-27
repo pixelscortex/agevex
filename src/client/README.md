@@ -32,9 +32,23 @@ agent index, and `open` looks roots up in `config.agents`.
    the `afterTurn` notification.
 8. **Finish.** `turn/finish.ts` calls `turns.slices.finish`; a child turn first settles its
    run (`coordinate/settle.ts`) and delivers the result (`coordinate/delivery.ts`).
-9. **Reconcile.** Every slice exit calls the optional usage adapter's bounded
-   sweep. It reads saved provider ids and corrects existing charges; generation
-   is never repeated. Observation failures leave a sticky partial run marker.
+9. **Record usage.** Provider middleware captures usage and finish time before
+   native saves. Delivery uses one `UsageEvent` per step, including failure,
+   timeout, abort or cancellation; `status` is success/failed/aborted and
+   `occurredAt` is epoch ms. Saves settle before identity is chosen; a delayed
+   reply is recovered by exact placeholder id. `messageId` is null for a dropped
+   save. An unverifiable pending save marks reporting partial without an event.
+   Delivery precedes continuation/budget admission. The existing native step key
+   (slice identity for dropped saves) deduplicates multiple native rows. Hosts
+   must dedupe the key transactionally: three in-action attempts reuse the same
+   event, with 25 ms backoff and a 1 second per-attempt timeout (`LIMITS`).
+   Waiting/retries race the live turn fence and deadline; retries recheck
+   ownership, allowing this slice's approval pause. After abort, exact-id recovery
+   and one raw-context delivery each get a separate bound of 1 second; this
+   evidence cleanup can finish after the turn deadline. No retry starts then.
+   Uncooperative hooks may commit after waiting stops. Exhausted/interrupted
+   delivery or missing provider usage sets reporting partial. No model replay,
+   persisted redelivery or scheduler is involved.
 
 Collaboration tools call the `coordinate` mutation
 (`coordinate/coordinator.ts`), which runs each op in one transaction.
@@ -121,7 +135,8 @@ and provider response id; failures mark reporting partial without repeating work
 | `turn/context.ts`             | `Turn`, `Generation`, `TurnOutcome` and the fence predicates.                   |
 | `turn/claim.ts`               | Load the execution and claim the turn.                                          |
 | `turn/admission.ts`           | `authorizeExecution` and the budget check.                                      |
-| `turn/usage.ts`               | Fail-open usage observation marker.                                             |
+| `turn/usage.ts`               | Bounded in-action delivery and fail-open usage observation marker.              |
+| `turn/step-usage.ts`          | Capture provider completion and link exact native save ids.                     |
 | `turn/provider-evidence.ts`   | Preserve exact provider response ids in native saved metadata.                  |
 | `turn/fence.ts`               | Cancellation deadline, poll and the fenced action context.                      |
 | `turn/generation.ts`          | One generation: phases, native model step, failure mapping.                     |

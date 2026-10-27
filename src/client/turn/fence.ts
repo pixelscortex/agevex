@@ -18,8 +18,8 @@ import { LIMITS } from "../../component/limits.js";
 import { askUserTools, type AskUserSave } from "../../shared/tool-markers.js";
 import { deferredToolNames } from "../registration/graph.js";
 import type { RunnerCtx, RuntimeContext } from "../registration/context.js";
-import { stillRunning, type Turn } from "./context.js";
-import { recordStepUsage } from "./slots.js";
+import { stillRunning, stillReporting, type Turn } from "./context.js";
+import { trackUsageSave } from "./step-usage.js";
 
 /** The live fence of one generation. */
 export type TurnFence = {
@@ -27,8 +27,8 @@ export type TurnFence = {
   controller: AbortController;
   /** The fenced action context every managed write of this turn goes through. */
   ctx: RunnerCtx;
-  /** Throws `CANCELLED` (and aborts) once the turn no longer owns a running execution. */
-  assertActive: () => Promise<void>;
+  /** Strict admission by default; usage alone may accept this slice's approval pause. */
+  assertActive: (allowApprovalPause?: boolean) => Promise<void>;
   /** Arm a phase deadline; aborting fences the whole slice and late writes. */
   deadline: (ms: number) => () => void;
   /** Race even uncooperative providers/tools against revocation. */
@@ -81,7 +81,7 @@ export function startTurnFence(rt: RuntimeContext, turn: Turn): TurnFence {
     void turn.rawCtx
       .runQuery(rt.component.turns.slices.execution, { assignmentId: turn.args.assignmentId })
       .then((row) => {
-        if (!stillRunning(row, turn)) fenceOut();
+        if (!stillReporting(row, turn)) fenceOut();
       })
       .catch(fenceOut);
   }, LIMITS.cancelPollMs);
@@ -91,12 +91,14 @@ export function startTurnFence(rt: RuntimeContext, turn: Turn): TurnFence {
   // uncooperative provider that returns after cancellation.
   const nativeCtx = nativeWriteContext(rt, turn, state);
 
-  const assertActive = async () => {
+  const assertActive = async (allowApprovalPause = false) => {
     const row = await turn.rawCtx.runQuery(rt.component.turns.slices.execution, {
       assignmentId: turn.args.assignmentId,
     });
 
-    if (controller.signal.aborted || !stillRunning(row, turn)) {
+    const valid = allowApprovalPause ? stillReporting(row, turn) : stillRunning(row, turn);
+
+    if (controller.signal.aborted || !valid) {
       fenceOut();
       throw new ConvexError({ code: "CANCELLED" });
     }
@@ -189,24 +191,15 @@ function fencedContext(
       await assertActive();
 
       try {
-        const saved = await rawCtx.runMutation(
-          rt.component.turns.slices.write,
-          await fencedWriteArgs(turn, ref, payload),
-        );
+        const save = async () =>
+          rawCtx.runMutation(
+            rt.component.turns.slices.write,
+            await fencedWriteArgs(turn, ref, payload),
+          );
 
-        if (functionKey(ref) === addMessagesKey) {
-          // The native transaction committed this evidence even if cancellation
-          // follows before the model result reaches the host action.
-          const messages = (saved as { messages?: { usage?: unknown; status: string }[] } | null)
-            ?.messages;
-
-          if (messages?.some((message) => message.usage && message.status === "success"))
-            turn.usageSaved = true;
-
-          if (rt.config.usage) await recordStepUsage(rt, turn, rt.config.usage, saved);
-        }
-
-        return saved;
+        return await (functionKey(ref) === addMessagesKey
+          ? trackUsageSave(turn, payload, save)
+          : save());
       } catch (error) {
         if (error instanceof ConvexError && error.data?.code === "CANCELLED") controller.abort();
 

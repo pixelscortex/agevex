@@ -20,6 +20,7 @@ import type {
   TurnArgs,
 } from "../types.js";
 import type { TurnFence } from "./fence.js";
+import type { StepUsage } from "./step-usage.js";
 
 /** The `turns.slices.execution` row a turn is fenced against. */
 export type Execution = FunctionReturnType<ComponentApi["turns"]["slices"]["execution"]>;
@@ -36,8 +37,10 @@ export type Turn = {
    * work must use the fenced `Generation.fence.ctx` instead.
    */
   rawCtx: RunnerCtx;
-  /** Native model usage committed before any later timeout/cancel. */
-  usageSaved?: boolean;
+  /** Provider evidence survives failed or fenced-out native saves. One step per slice. */
+  stepUsage?: StepUsage;
+  /** The native completion save; its exact placeholder id survives a delayed RPC reply. */
+  usageSave?: { messageId?: string; pending: Promise<unknown>; settled: boolean };
   /** In-flight progress edges and idempotent cleanup owned by this action slice. */
   toolProgress: { pending: Set<Promise<void>>; clear: Set<() => void>; closed: boolean };
   args: TurnArgs;
@@ -114,4 +117,23 @@ export function stillOwns(row: Execution, turn: Turn): row is NonNullable<Execut
 /** `stillOwns` and the turn is still `running` (the generation-time fence). */
 export function stillRunning(row: Execution, turn: Turn): boolean {
   return stillOwns(row, turn) && row.turnStatus === "running";
+}
+
+/** A native approval save intentionally clears the token. Only this slice's
+ * last committed assistant id can justify that exception for usage delivery;
+ * a resumed/replaced execution or a cancellation must still revoke retries. */
+export function stillReporting(row: Execution, turn: Turn): boolean {
+  const messageId = turn.stepUsage?.native?._id ?? turn.usageSave?.messageId;
+
+  return (
+    stillRunning(row, turn) ||
+    (!!row &&
+      !row.cancelled &&
+      row.cancellationEpoch === turn.claimed.cancellationEpoch &&
+      row.turnStatus === "idle" &&
+      !row.turnToken &&
+      row.approvalBlocked &&
+      !!messageId &&
+      row.messageIds[row.messageIds.length - 1] === messageId)
+  );
 }

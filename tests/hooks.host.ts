@@ -22,12 +22,24 @@ import { v } from "convex/values";
 import { tool } from "ai";
 import { z } from "zod";
 import { scriptedModel } from "../src/test.js";
-import type { LanguageModelV4Content } from "@ai-sdk/provider";
+import type {
+  LanguageModelV4Content,
+  LanguageModelV4GenerateResult,
+  LanguageModelV4StreamPart,
+} from "@ai-sdk/provider";
 import { components } from "./fixture/api.js";
 
 type Args = Parameters<ReturnType<typeof mockModel>["doStream"]>[0];
 export const fixture = {
   generationIds: false,
+  providerGenerate: undefined as
+    | undefined
+    | ((result: LanguageModelV4GenerateResult) => LanguageModelV4GenerateResult),
+  providerStream: undefined as
+    | undefined
+    | ((
+        stream: ReadableStream<LanguageModelV4StreamPart>,
+      ) => ReadableStream<LanguageModelV4StreamPart>),
   run: {} as Record<string, RunSettings>,
   modes: [] as string[],
   slots: {} as Pick<Registration, "usage" | "budget" | "telemetry" | "sandbox">,
@@ -80,6 +92,8 @@ function model(name: string) {
     const id = `generation:${name}:${fixture.calls.filter((call) => call.agent === name).length}`;
     const result = await source.doStream(args);
 
+    if (fixture.providerStream) result.stream = fixture.providerStream(result.stream);
+
     if (!fixture.generationIds) return result;
 
     return {
@@ -96,7 +110,9 @@ function model(name: string) {
 
   model.doGenerate = async (args) => {
     const source = await respond(args, "generate");
-    const result = await source.doGenerate(args);
+    let result = await source.doGenerate(args);
+
+    if (fixture.providerGenerate) result = fixture.providerGenerate(result);
 
     return fixture.generationIds
       ? {
@@ -181,6 +197,8 @@ Object.defineProperty(main, "sandbox", { get: () => fixture.sandbox });
 Object.defineProperty(main, "hooks", { get: () => fixture.hooks });
 export function reset() {
   fixture.generationIds = false;
+  fixture.providerGenerate = undefined;
+  fixture.providerStream = undefined;
   fixture.run = {};
   fixture.modes = [];
   fixture.slots = {};

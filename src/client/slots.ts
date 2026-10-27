@@ -40,9 +40,12 @@ export type UsageProjection = {
 export type SlotReadCtx = Pick<SlotActionCtx, "runQuery" | "auth">;
 export type SlotActionCtx = GenericActionCtx<GenericDataModel>;
 /** One native step or standalone task; apps dedupe by key in their own ledger.
- * Standalone tasks/titles create no native message, so messageId is null there. */
+ * Standalone tasks/titles and steps whose native save was dropped have null messageId. */
 export type UsageEvent = SlotFacts & {
   key: string;
+  status: "success" | "failed" | "aborted";
+  /** Provider step completion time, epoch milliseconds (not delivery time). */
+  occurredAt: number;
   model?: string;
   provider?: string;
   usage: unknown;
@@ -51,6 +54,8 @@ export type UsageEvent = SlotFacts & {
   messageId: string | null;
 };
 export type UsageSlot = {
+  /** Managed turns retry throwing hooks with the same event/key. Deduplicate
+   * transactionally: a hook may have committed before its caller stopped waiting. */
   record(ctx: SlotActionCtx, event: UsageEvent): Promise<void>;
   /** Optional app-owned projection; absent adapters leave run-tree usage null. */
   view?(ctx: SlotReadCtx, args: UsageViewArgs): Promise<UsageProjection>;

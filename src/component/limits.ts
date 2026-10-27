@@ -200,6 +200,10 @@ export const LIMITS = {
   purgeIntervalMs: 60 * 60_000,
   streamThrottleMs: 0,
   modelRetries: 0,
+  // Only host evidence delivery is retried; never the paid provider call.
+  usageRecordAttempts: 3,
+  usageRecordBackoffMs: 25,
+  usageRecordTimeoutMs: 1_000,
   modelOverrides: 8,
   modelOverridesBytes: 512,
   modelIdLength: 200,

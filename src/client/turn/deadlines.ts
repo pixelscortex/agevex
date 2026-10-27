@@ -7,14 +7,16 @@ import type { LanguageModelV4 } from "@ai-sdk/provider";
 import { RUN_LIMITS } from "../../component/run_settings.js";
 import type { Generation } from "./context.js";
 import { providerEvidence } from "./provider-evidence.js";
+import { captureStepUsage } from "./step-usage.js";
 
 /** Provider-only deadline, covering the entire stream, and a tool-call cap. */
 export function boundedModel(gen: Generation, model: LanguageModel): LanguageModelV4 {
   const { fence, turn } = gen;
   const timeoutMs = turn.claimed.settings.modelTimeoutMs;
+  const resolved = typeof model === "string" ? gateway(model) : model;
 
   return wrapLanguageModel({
-    model: typeof model === "string" ? gateway(model) : model,
+    model: resolved,
     middleware: {
       wrapGenerate: async ({ doGenerate }) => {
         gen.state.modelStarted = true;
@@ -24,6 +26,10 @@ export function boundedModel(gen: Generation, model: LanguageModel): LanguageMod
         try {
           const result = await fence.wait(doGenerate());
 
+          const metadata = providerEvidence(result.providerMetadata, result.response?.id);
+
+          captureStepUsage(turn, resolved, result.usage, result.finishReason.unified, metadata);
+
           if (
             result.content.filter((part) => part.type === "tool-call").length >
             RUN_LIMITS.toolsPerSlice
@@ -32,7 +38,7 @@ export function boundedModel(gen: Generation, model: LanguageModel): LanguageMod
 
           return {
             ...result,
-            providerMetadata: providerEvidence(result.providerMetadata, result.response?.id),
+            providerMetadata: metadata,
           };
         } finally {
           stop();
@@ -53,11 +59,20 @@ export function boundedModel(gen: Generation, model: LanguageModel): LanguageMod
               transform(part, controller) {
                 if (part.type === "response-metadata" && part.id) requestId = part.id;
 
-                if (part.type === "finish")
+                if (part.type === "finish") {
                   part = {
                     ...part,
                     providerMetadata: providerEvidence(part.providerMetadata, requestId),
                   };
+
+                  captureStepUsage(
+                    turn,
+                    resolved,
+                    part.usage,
+                    part.finishReason.unified,
+                    part.providerMetadata,
+                  );
+                }
 
                 if (part.type === "tool-call" && ++calls > RUN_LIMITS.toolsPerSlice) {
                   fence.controller.abort(new Error("TOOL_CALL_LIMIT"));
