@@ -1,0 +1,75 @@
+src/client/turn/deadlines.ts
+  s_ca8ffa4f0909b7::t_578dc7dbd62320 10,60-63
+tests/usage-completeness.test.ts
+  s_ca8ffa4f0909b7::t_140902a7af1915 502,512,535-539,541-551,563-564,566-574
+  s_ca8ffa4f0909b7::t_8fb746efa397e4 12,458-459,469
+  s_ca8ffa4f0909b7::t_92a3a796115585 430-432,434-440,442-447,449-450,452,454,470-473,503,505,510-511,513,523-525,596-597
+  s_ca8ffa4f0909b7::t_7c554ee2205bba 517
+  s_ca8ffa4f0909b7::t_2249d2176507df 420-426,460-468,484-490
+  s_ca8ffa4f0909b7::t_269a0f13b6b28d 418-419,427-428,433,474-477,479-481,492-497,499-500,507,509,514,516,518-521,527-528,530-534,575-579,581-589,591-593,595,598-599,601,610-611
+  s_ca8ffa4f0909b7::t_d793b33656aa49 483
+  s_ca8ffa4f0909b7::t_adcb464bc7d921 429,448,451,453,455,457,491,498,501,506,508,515,522,526,529,540,552,556,558,562,565,580,590,594,600,602,606
+  s_ca8ffa4f0909b7::t_40ae98f8fffeec 441,456,553-555,557,559-561
+  s_ca8ffa4f0909b7::t_8a2495a682dc54 603-605
+  s_ca8ffa4f0909b7::t_9ac4508a8248db 478,482,504
+  s_ca8ffa4f0909b7::t_630862447fe8a2 607-609
+src/client/turn/usage.ts
+  s_ca8ffa4f0909b7::t_92a3a796115585 62,64
+  s_ca8ffa4f0909b7::t_c46b1e130d9c83 7,10-16,31-48,50,53,55,58
+tests/text.test.ts
+  s_ca8ffa4f0909b7::t_92a3a796115585 292-303,305-318
+  s_ca8ffa4f0909b7::t_adcb464bc7d921 304,328
+  s_ca8ffa4f0909b7::t_f2d98ececb464d 11,319-321,324,327,329-333,335,338
+src/client/slots.ts
+  s_ca8ffa4f0909b7::t_e325a507c6d451 52-53
+  s_ca8ffa4f0909b7::t_578dc7dbd62320 47,51,54,60
+tests/text.host.ts
+  s_ca8ffa4f0909b7::t_adcb464bc7d921 116,119,122
+  s_ca8ffa4f0909b7::t_f2d98ececb464d 14,36-38,115,117-118,120-121,152-154
+src/client/turn/generation.ts
+  s_ca8ffa4f0909b7::t_c46b1e130d9c83 93-100
+tests/tasks.test.ts
+  s_ca8ffa4f0909b7::t_40ae98f8fffeec 155-157,159,161-163,165-167,169-171,173-174,182-186
+  s_ca8ffa4f0909b7::t_92a3a796115585 104-106,108,110,112,114-116,122-123,138-142,144-146
+  s_ca8ffa4f0909b7::t_d4eff89bf55765 150-153,175-176,178-180,188-190
+  s_ca8ffa4f0909b7::t_adcb464bc7d921 107,109,111,113,117,121,126,128,137,143,154,158,160,164,168,172,177,181,187
+  s_ca8ffa4f0909b7::t_f2d98ececb464d 35,95-103,118-120,124-125,127,129-136,147-148
+  s_ca8ffa4f0909b7::t_bca51f43de1124 149
+src/client/README.md
+  s_ca8ffa4f0909b7::t_8a2495a682dc54 35-36,39-40,42-43,49-51,57
+  s_ca8ffa4f0909b7::t_140902a7af1915 41
+src/client/turn/context.ts
+  s_ca8ffa4f0909b7::t_7c554ee2205bba 60
+src/client/text/task.ts
+  s_ca8ffa4f0909b7::t_c46b1e130d9c83 20,212-213,215
+docs/site/content/docs/concepts/recording-usage.mdx
+  s_ca8ffa4f0909b7::t_140902a7af1915 19
+  s_ca8ffa4f0909b7::t_8a2495a682dc54 8,13-18,20-21,27-28,36,53-57
+src/client/tasks.ts
+  s_ca8ffa4f0909b7::t_40ae98f8fffeec 481-484
+  s_ca8ffa4f0909b7::t_c46b1e130d9c83 29,73,452-454
+  s_ca8ffa4f0909b7::t_92a3a796115585 459-478
+src/client/turn/step-usage.ts
+  s_ca8ffa4f0909b7::t_578dc7dbd62320 14,20,25-45,56,62,65
+src/client/turn/slots.ts
+  s_ca8ffa4f0909b7::t_7c554ee2205bba 3,20,55
+  s_ca8ffa4f0909b7::t_578dc7dbd62320 54
+src/component/README.md
+  s_ca8ffa4f0909b7::t_8a2495a682dc54 59-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bcbe751e1b729b18513e77bd6b77b2c92c4e8583",
+  "prompts": {},
+  "sessions": {
+    "s_ca8ffa4f0909b7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17be4-4400-7160-93b3-7d6f035faa01",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
