@@ -29,7 +29,7 @@ export declare function respondToApproval(ctx: MutationCtx, args: {
 /** Save a deferred native result and release its continuation atomically.
  * One exact <=1 MiB call + native prompt <=1 MiB + six <=1 MiB merge
  * heads (Agent messages.ts:436-477) + <=64 KiB saved result + <4.75 MiB
- * bounded indexed readiness/group-release/wake metadata (releaseGroups):
+ * bounded indexed readiness, settlement and wake metadata:
  * <13 MiB <16 MiB. Approval/deferred counts never multiply native reads.
  * At most 16 fixed-size references are reindexed per answer.
  * No tool payload is copied into coordination state, even for large inputs.

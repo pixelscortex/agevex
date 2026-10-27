@@ -16,10 +16,6 @@ export type RuntimeContext = {
     limits: Limits;
     graph: Graph;
     settings: SettingsSnapshot;
-    /** Stable index per agent name (sorted), used by per-agent model routing. */
-    agentIndexes: Map<string, number>;
-    /** Whether native saves must be captured for side-review deltas or root summaries. */
-    watching: boolean;
 };
 /**
  * Validate one registration and resolve its runtime context.

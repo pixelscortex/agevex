@@ -9,11 +9,11 @@ export type EndpointContext = {
     config: Registration;
     limits: Limits;
     settings: SettingsSnapshot;
-    /** Every agent in the registered graph, by name: roots, children and side agents. */
+    /** Every agent in the registered graph, by name: roots and children. */
     managedAgents: Map<string, ManagedAgent>;
 };
 /** The operations `ownedThread` authorizes; each is the host policy's `operation`. */
-export type ThreadOperation = "pendingApprovals" | "title" | "rename" | "summary" | "summarize" | "send" | "respond" | "answer" | "cancel" | "messages" | "streams" | "activity";
+export type ThreadOperation = "pendingApprovals" | "title" | "rename" | "send" | "respond" | "answer" | "cancel" | "messages" | "streams" | "activity";
 /**
  * Resolve the endpoint context.
  *

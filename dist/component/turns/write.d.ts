@@ -8,7 +8,6 @@ export declare const writeArgs: {
     args: import("convex/values").VAny<any, "required", string>;
     rejectStale: import("convex/values").VBoolean<boolean | undefined, "optional">;
     nativeStream: import("convex/values").VString<string | undefined, "optional">;
-    trackUsage: import("convex/values").VBoolean<boolean | undefined, "optional">;
     deferredTools: import("convex/values").VArray<string[] | undefined, import("convex/values").VString<string, "required">, "optional">;
     askUserTools: import("convex/values").VRecord<Record<string, {
         calls: {

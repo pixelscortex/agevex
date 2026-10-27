@@ -4,12 +4,9 @@
 // invokes the coordinator's `notify` op; that op loads the trusted delivery
 // context (`subagents.deliver.deliveryContext`) and makes the single bounded
 // `attemptDelivery`. Delivery verifies the child result, re-authorizes with the
-// host `deliver` policy, then either saves the parent notification (normal child)
-// or posts a note (side agent), and always records the outcome through
+// host `deliver` policy, then saves the parent notification and records its outcome through
 // `subagents.deliver.deliver`. Settlement itself lives in `settle.ts`.
-import { LIMITS } from "../../component/limits.js";
-import { postNote } from "../host/notes.js";
-import { saveTrackedMessage } from "../native-saves.js";
+import { saveMessage } from "@convex-dev/agent";
 import { observe, } from "../registration/context.js";
 import { verifyChildMessage } from "./verify.js";
 /**
@@ -49,10 +46,6 @@ async function attemptDelivery(rt, ctx, context, deliveryToken) {
     });
     if (!context.rootAvailable)
         return blockDelivery(rt, ctx, context, record, "ROOT_UNAVAILABLE");
-    if (context.side && context.status === "failed" && context.errorCode === "EMPTY_RESULT") {
-        await record("failed", context.errorCode);
-        return null;
-    }
     const text = await deliveryText(rt, ctx, context, record);
     if (text === null)
         return null;
@@ -61,8 +54,6 @@ async function attemptDelivery(rt, ctx, context, deliveryToken) {
         return blockDelivery(rt, ctx, context, record, "ROOT_UNAVAILABLE");
     if (!(await deliveryAuthorized(rt, ctx, context)))
         return blockDelivery(rt, ctx, context, record, "AUTHORIZATION_DENIED");
-    if (context.side)
-        return deliverSideNote(rt, ctx, context, record, text);
     return deliverParentMessage(rt, ctx, context, record, root, text);
 }
 /** Record a `blocked` delivery (no native write happened) and report it. */
@@ -76,7 +67,7 @@ async function blockDelivery(rt, ctx, context, record, code) {
  *
  * A completed run's result must verify against the child transcript; an
  * unverified result records `RESULT_UNVERIFIED` and is never delivered. A failed
- * run delivers a fixed sanitized failure line (side agents deliver nothing).
+ * run delivers a fixed sanitized failure line.
  */
 async function deliveryText(rt, ctx, context, record) {
     if (context.status === "completed") {
@@ -93,13 +84,7 @@ async function deliveryText(rt, ctx, context, record) {
             await observeDelivered(rt, ctx, context, "failed");
             return null;
         }
-        return context.side
-            ? verified
-            : `${context.agent} completed the delegated task.\n\n${verified}`;
-    }
-    if (context.side) {
-        await record("failed", context.errorCode);
-        return null;
+        return `${context.agent} completed the delegated task.\n\n${verified}`;
     }
     return `${context.agent} failed the delegated task (${context.errorCode ?? "GENERATION_FAILED"}). No result was accepted.`;
 }
@@ -127,33 +112,9 @@ async function deliveryAuthorized(rt, ctx, context) {
     }
     return !!subject && subject === context.subject;
 }
-/**
- * A side agent's result becomes a bounded note on the watched thread, posted
- * only when it says something (`NONE` means nothing to add). A refused note
- * (for example a full pending-note cap) records `DELIVERY_FAILED`.
- */
-async function deliverSideNote(rt, ctx, context, record, text) {
-    if (text.trim() && text.trim() !== "NONE") {
-        const row = await ctx.runQuery(rt.component.turns.send.assignment, {
-            threadId: context.parentThreadId,
-        });
-        const accepted = row &&
-            (await postNote(ctx, rt.component, row.assignmentId, {
-                threadId: context.parentThreadId,
-                text: text.slice(0, LIMITS.noteLength),
-                from: context.agent,
-            }));
-        if (!accepted) {
-            await record("failed", "DELIVERY_FAILED");
-            return null;
-        }
-    }
-    await record("accepted", null);
-    return null;
-}
 /** Save the parent notification and record its exact id with the acceptance. */
 async function deliverParentMessage(rt, ctx, context, record, root, text) {
-    const { messageId } = await saveTrackedMessage(rt, ctx, root.component, {
+    const { messageId } = await saveMessage(ctx, root.component, {
         threadId: context.parentThreadId,
         prompt: text,
         userId: context.subject,

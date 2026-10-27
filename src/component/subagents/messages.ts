@@ -45,7 +45,6 @@ const denied = (
     | "ASK_WITH_CHILDREN"
     | "RUN_BUDGET"
     | "QUEUE_LIMIT"
-    | "SIDE_RUN"
     | "NO_PARENT"
     | "MESSAGE_RATE_LIMIT",
 ) => ({ kind: "denied" as const, code });
@@ -67,8 +66,6 @@ export async function interaction(
   if (scope.kind === "denied") return scope;
 
   const { actor, root, run } = scope;
-
-  if (args.op === "message_parent" && run.side) return denied("SIDE_RUN");
 
   const child = await ctx.db.get("assignments", run.childAssignmentId!);
   const parent = await ctx.db.get("assignments", run.actorAssignmentId);
@@ -168,7 +165,7 @@ async function interactionRun(ctx: QueryCtx | MutationCtx, args: InteractionArgs
 
   if (args.op === "ask" && run.status === "asking") return denied("ASK_PENDING");
 
-  if (args.op === "ask" && (await hasPendingChildren(ctx, actor, true)))
+  if (args.op === "ask" && (await hasPendingChildren(ctx, actor)))
     return denied("ASK_WITH_CHILDREN");
 
   if (run.status !== "running" && !(args.op === "message" && run.status === "asking"))
@@ -289,9 +286,7 @@ export async function sendToChild(
   return { status: "accepted" as const, runId: run.runId };
 }
 
-/** `subagents.messages.askParent`: asking holds the active slot. The question bypasses
- * result joins (otherwise a child waiting for its parent would deadlock its
- * own group). Its native assistant id and the parent's inbox id commit with
+/** `subagents.messages.askParent`: asking holds the active slot. Its native assistant id and the parent's inbox id commit with
  * BOTH native saves; spends one hop. */
 export async function askParentRun(
   ctx: MutationCtx,

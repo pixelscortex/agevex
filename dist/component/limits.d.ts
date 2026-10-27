@@ -15,14 +15,6 @@ export declare const HOST_LIMITS: {
         readonly default: number;
         readonly max: number;
     };
-    readonly continuesPerRun: {
-        readonly default: 3;
-        readonly max: 8;
-    };
-    readonly sideRunsPerRun: {
-        readonly default: 2;
-        readonly max: 8;
-    };
     readonly notesPending: {
         readonly default: 8;
         readonly max: 24;
@@ -78,101 +70,49 @@ export declare const HOST_LIMITS: {
 };
 /**
  * Cancel budget at ALL host maxima:
- * C = 15 descendants; A = 1 root + C = 16 assignments (depth never multiplies A).
- * Every assignment has <=100 message rows +50 direct-child result rows,
- * one answer and its reserved head (or approval continuation):
- * I=A*(100+50+2)=2,432 ready rows. Launch admission bounds outstanding
- * result work across user budgets: pending deliveries +unreleased join members
- * +ready result rows <=50. Joined rows replace members; delivery never needs
- * queue capacity. Only launch increases that total, and claim decreases it.
- * Independently, <=24 passive notes per assignment add N=A*24=384 rows.
- * This deliberately overcounts: simultaneous child queues can belong to
- * DIFFERENT user-run budgets, so one run's 100 hops cannot bound the backlog.
- * Children only receive work from their fixed parentRunId; only the root
- * accepts new user requests. Across all queues there are therefore at most
- * U=100 root messages +50 result budgets +head/answer/current +15 child budgets=168
- * distinct runs. Cancel deduplicates those ids before reading and conditionally
- * patching 16 KiB rows; a terminal run is never rewritten.
- * Retain the old per-ready-row run-patch count as conservative write headroom.
- * Passive note bodies and retained control rows are NEVER read by cancel.
- * One finite cleanup job per assignment handles <=24 raw notes separately.
- * Keep the old 2N metadata/delete document allowance below as conservative
- * headroom; byte accounting instead reserves <=A cleanup jobs (<=4 KiB each).
- * Each assignment costs one combined state patch, one current-run patch,
- * two scheduler cancels and one exact-id cleanup job: 5A=80. Add C child-run patches and
- * one final root patch. Reserve 64A=1,024 reads AND writes for Workflow's
- * current loop/turn, Workpool, scheduler and callback bookkeeping.
- * Managed SDK records carry only ids/handles and small control outcomes (no
- * messages): <=3 KiB each. Workflow 0.4.10 workflow.ts:350-455 reads only each
- * loop/turn's in-progress step; Workpool 0.4.14 lib.ts:137-150,238-259 reads
- * globals/work/pending-cancel and pings the worker. The 64A doc allowance is
- * retained; current-run reads/patches are already included in the unique U.
- * Collect routing ownership masks during the assignment loop, then clear
- * their union in the existing unique-run guard/patch. No separate routing
- * reads/writes remain, including when several owners share one run.
- * Cancel clears watchdog/recovery/routing ownership in one assignment patch.
- * Writes <=2I+N+5A+C+1+64A=6,368 <8,000 <16,000.
- * Reads <=3I+2N+4A+A+2C+2+64A+U=9,368 <32,000.
- * Indexed queries <=3 child-status ranges +A inbox ranges +64A SDK allowance
- * =1,043 <4,096; point reads above do not execute indexed range queries.
- * Bytes (KiB): inbox reads 2I=4,864; unique run guard+patch 2U*16=5,376;
- * assignment read/patch 2A*34=1,088; scheduler 2A*4=128; child runs 2C*4=120;
- * ownership/final root 2*34=68; SDK allowance 64A*3=3,072;
- * cleanup jobs A*4=64. Base <=14,780 KiB; staged continuations add
- * <=1,040 KiB (turns/cancel.ts): <=15,820 KiB <16,384 KiB,
- * leaving 564 KiB read headroom. This saves 512 KiB of separate routing reads.
- * Written bytes: run patches/inbox deletes <=U*16+I KiB, note deletes
- * <=N KiB, coordination <=2A*34+A*16+2A*4 KiB,
- * children <=C*4 KiB, final root <=34 KiB, SDK <=64A*4 KiB:
- * <=11,166 KiB, plus <=1,040 KiB staged-continuation deletion allowance
- * =12,206 KiB <16 MiB. Routing writes are folded into the run patches.
- * Native messages (including each nearly
- * 1 MiB placeholder) are NEVER read by cancel; cleanup runs separately.
- * Subagent rows stay <=4 KiB: names/subjects/groups <=200 UTF-16 units,
- * hashed tool-call dedup keys, ids, counters and <=4 small events. Assignments
- * allow <=34 KiB (34,816 bytes). The largest row the writer bounds admit, with
- * EVERY field at its cap (tests/save-bounds.test.ts, Convex bytes including
- * system fields and field names), is 29,810 bytes:
- *   textSummary <=8 KiB text + boundary                         8,303
- *   reviewed: 8 side agents, 200-unit (<=600-byte) names        5,234
- *   approvals: 16 SHA-256 keys/ids/proposals + 2 handles        4,802
- *   contextMessages: 24 exact refs                              2,666
- *   turnReport: 64*37-byte ids + prompt/cap/resume (3 KiB cap)  2,635
- *   handles <=256 B: pendingGeneration (3) 988, textConfig (3) 842,
- *     runTurn 258; approvals' two are counted above            2,088
- *   subject + agent: <=200 UTF-16 units each                    1,204
- *   title/summary jobs 592, models <=512 B 510, limits 358      1,460
- *   remaining ids, scalars, literals and object overhead        1,418
- * leaving 5,006 bytes (~4.9 KiB) of headroom. Names and handles are bounded
- * where they enter (facts.ts: send, reserve, markReviewed and every native
- * write), so this sum never depends on host string lengths. activeTools is
- * excluded: write clears it before a save grows the row, and its own writer
- * (turns/tools.ts) refuses a marker that would cross the envelope.
- * Notes have their own bounded queue N; each raw row stays <=17 KiB and is
- * read only by separate per-assignment cleanup transactions (<=850 KiB
- * including ownership).
- * Saved control rows retain <=1 KiB of exact-id origin metadata and are excluded
- * from every ready/cancel index range. Runs carry a <=15 KiB settings map,
- * <=512-byte model map, scalar counters and two 64-bit start/routing masks.
- * newRun bounds the complete metadata at <=16 KiB, including native envelope.
+ * C=15 live descendants; A=1+C=16 assignments. Depth never multiplies A.
+ * I=A*(100 queued prompts +50 outstanding direct-child results +2 head/answer)
+ * =2,432 ready rows. Launch admission counts pending deliveries and ready
+ * results across request budgets; delivery cannot be blocked by user backlog.
+ * N=A*24=384 passive notes are cleaned by finite separate jobs, never read here.
+ * U=100 root messages +50 result budgets +3 head/answer/current +15 child
+ * budgets=168 distinct runs. Cancel deduplicates these before guard/patch.
+ * SDK bookkeeping reserves 64A=1,024 reads/writes at <=3 KiB read/4 KiB write
+ * per row (Workflow 0.4.10 workflow.ts:350-455; Workpool 0.4.14 lib.ts:137-259).
+ * Every assignment has one state patch, current-run patch, two scheduler
+ * cancels and one exact-id cleanup job; retain conservative old row allowances.
+ * Writes <=2I+N+5A+C+1+64A=6,368 <16,000.
+ * Reads <=3I+2N+5A+2C+2+64A+U=9,368 <32,000.
+ * Indexed queries <=3 child-status ranges +A inbox ranges +64A=1,043 <4,096.
+ * Bytes read (KiB): ready scan/delete 2I=4,864; run guard/patch 2U*16=5,376;
+ * assignments 2A*14=448; scheduler 2A*4=128; children 2C*4=120;
+ * final root 2*14=28; SDK 64A*3=3,072; cleanup jobs A*4=64.
+ * Total <=14,100 KiB <16,384 KiB, leaving 2,284 KiB headroom.
+ * Bytes written (KiB): U*16+I+N+2A*14+A*16+2A*4+C*4+16+64A*4
+ * =10,508 KiB <16 MiB. No staged hook continuation or routing locks remain.
+ * Native messages/placeholders are NEVER read by cancel; cleanup is separate.
  *
- * Other proportional paths: claim drains <=152 consecutive ready rows,
- * including <=50 owed result rows/joins from its run. Notes additionally read one exact
- * anchor and one native merge-head batch (hooks/notes.ts); no history is scanned. Each
- * join uses an indexed ready representative and <=15 cohort metadata rows;
- * admission/send/attach handle one item. Membership sealing reads/patches
- * <=50 launch rows. Descendant/settlement fences use indexed existence probes,
- * never historical prefixes. The tree reads <=50 model launches +8 side launches (232 KiB). Local comments
- * include combined claim/seal/release metadata allowances.
- * Native verification/delivery reads one exact <=1 MiB message, never the
- * launch history. Tasks are <=16,000 UTF-16 units (<=64 KiB UTF-8), with at
- * most one native task save per delegation. Hops/leases are scalar counters;
- * slices are separate Workflow steps. Launch/hop/slice maxima never multiply
- * native transcript sizes.
+ * Assignment envelope is 14 KiB, including native/system fields. The all-fields
+ * fixture tests/save-bounds.fixture.ts fills every remaining writer bound:
+ * approvals <=4,802 B; report <=2,635 B; metadata handles <=806 B;
+ * pending generation <=988 B; runTurn <=258 B; names <=1,204 B;
+ * model map <=510 B; limits <=309 B; remaining fields/names/overhead <=1,064 B.
+ * Total <=12,576 B; 14,336-12,576=1,760 B headroom at every writer cap.
+ * No summary body, context ring, review history, cadence or text job is stored.
+ * activeTools is excluded from save growth: write clears it first, and the
+ * progress writer separately refuses a marker crossing assignmentBytes.
+ * Raw note rows <=17 KiB, read only by bounded per-assignment jobs.
+ * Saved controls <=1 KiB carry exact origins and are excluded from ready ranges.
+ * Run metadata stays <=16 KiB including <=15 KiB settings and <=512 B models.
+ *
+ * Claim consumes <=152 ready rows and <=24 notes. It reads only exact native
+ * anchors plus Agent's bounded merge heads, never history for control decisions.
+ * Combined note/native/coordination reads stay <13 MiB at host maxima (fixture
+ * tests/claim-bounds.test.ts). Native result verification reads one <=1 MiB
+ * message; task <=16,000 UTF-16 units, at most one native save per delegation.
+ * The run tree reads <=50 launch rows <=4 KiB each (200 KiB).
  */
 export declare const LIMITS: {
-    readonly continuesPerRun: 3;
-    readonly sideRunsPerRun: 2;
     readonly notesPending: 8;
     readonly noteLength: 4000;
     readonly firstPromptOrder: 1;
@@ -188,21 +128,14 @@ export declare const LIMITS: {
     readonly taskRepairs: 1;
     readonly taskPromptLength: 16000;
     readonly agents: 64;
-    readonly sideAgents: 8;
-    readonly cadence: 1000000;
-    readonly minuteMs: 60000;
-    readonly contextMessages: 24;
     readonly assignmentBytes: number;
     readonly turnReportBytes: number;
     readonly messageIdBytes: 37;
-    readonly contextBytes: number;
-    readonly contextReadBytes: number;
     readonly maxDepth: 2;
     readonly messagesPerChild: 4;
     readonly parentNotesPerChild: 4;
     readonly parentNoteBytes: number;
     readonly parentNoteIntervalMs: 5000;
-    readonly groupLength: 200;
     readonly rootLane: 2;
     readonly childLane: 4;
     readonly slicesPerTurn: 16;
@@ -243,8 +176,6 @@ export declare const LIMITS: {
 /** Only these policy bounds are tunable; internal safety/platform facts are not. */
 export declare const limitsValidator: import("convex/values").VObject<{
     attachmentBytes: number;
-    continuesPerRun: number;
-    sideRunsPerRun: number;
     notesPending: number;
     maxDepth: number;
     messagesPerChild: number;
@@ -260,8 +191,6 @@ export declare const limitsValidator: import("convex/values").VObject<{
     leaseMs: number;
 }, {
     attachmentBytes: import("convex/values").VFloat64<number, "required">;
-    continuesPerRun: import("convex/values").VFloat64<number, "required">;
-    sideRunsPerRun: import("convex/values").VFloat64<number, "required">;
     notesPending: import("convex/values").VFloat64<number, "required">;
     maxDepth: import("convex/values").VFloat64<number, "required">;
     messagesPerChild: import("convex/values").VFloat64<number, "required">;
@@ -275,13 +204,13 @@ export declare const limitsValidator: import("convex/values").VObject<{
     queueLength: import("convex/values").VFloat64<number, "required">;
     slicesPerTurn: import("convex/values").VFloat64<number, "required">;
     leaseMs: import("convex/values").VFloat64<number, "required">;
-}, "required", "attachmentBytes" | "continuesPerRun" | "sideRunsPerRun" | "notesPending" | "maxDepth" | "messagesPerChild" | "parentNotesPerChild" | "rootLane" | "childLane" | "runLaunches" | "runHops" | "activeChildrenPerRoot" | "taskLength" | "queueLength" | "slicesPerTurn" | "leaseMs">;
+}, "required", "attachmentBytes" | "notesPending" | "maxDepth" | "messagesPerChild" | "parentNotesPerChild" | "rootLane" | "childLane" | "runLaunches" | "runHops" | "activeChildrenPerRoot" | "taskLength" | "queueLength" | "slicesPerTurn" | "leaseMs">;
 export type Limits = {
     [K in keyof typeof limitsValidator.fields]: number;
 };
 /** Message backlog + outstanding direct-child results + answer + reserved head
  * (or approval continuation). Launch bounds result work across request budgets;
- * joined rows replace members. The head is ready but excluded from queuedMessages.
+ * Each result occupies its own row. The head is ready but excluded from queuedMessages.
  */
 export declare function readyRowLimit(limits: Pick<Limits, "queueLength" | "runLaunches">): number;
 /** Fail at registration, before any accepted prompt can launch background work. */

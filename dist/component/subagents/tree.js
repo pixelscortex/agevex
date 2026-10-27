@@ -26,7 +26,7 @@ export async function requestTree(ctx, root, rootRunId) {
         return null;
     const children = await ctx.db
         .query("subagentRuns")
-        .withIndex("by_group", (q) => q.eq("parentRunId", run._id))
+        .withIndex("by_parent_run", (q) => q.eq("parentRunId", run._id))
         .take(TREE_LIMITS.descendants);
     children.sort((a, b) => a.sequence - b.sequence);
     const assignments = new Map([[root._id, root]]);
@@ -39,8 +39,7 @@ export async function requestTree(ctx, root, rootRunId) {
             if (assignment)
                 assignments.set(assignment._id, assignment);
         }
-        if (!child.side &&
-            (child.deliveryStatus === "pending" || (child.join && child.join !== "joined")))
+        if (child.deliveryStatus === "pending")
             blocked.add(child.actorAssignmentId);
     }
     const ready = await readyForRun(ctx, root._id, run._id);
@@ -50,7 +49,6 @@ export async function requestTree(ctx, root, rootRunId) {
             id: run._id,
             parentId: null,
             agent: root.agent,
-            task: run.taskPreview ?? "",
             ...state,
             createdAt: run._creationTime,
             startedAt: run.startedAt ?? null,
@@ -137,9 +135,8 @@ function childNode(run, assignments, parents, blocked) {
         id: run.runId,
         parentId: parents.get(run.actorAssignmentId),
         agent: run.agent,
-        task: run.taskPreview ?? "",
         ...state,
-        createdAt: run.createdAt,
+        createdAt: run._creationTime,
         startedAt: run.startedAt ?? null,
         finishedAt: runTimes(run).finishedAt,
         currentTool: currentTool(row, state),

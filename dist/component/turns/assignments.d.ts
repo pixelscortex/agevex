@@ -14,92 +14,20 @@ import type { Doc } from "../_generated/dataModel.js";
 import type { Limits } from "../limits.js";
 type AssignmentRow = WithoutSystemFields<Doc<"assignments">>;
 /** The assignment owning a native thread, via the unique `by_thread` index.
- * One indexed point read (<=34 KiB); used by every thread-addressed endpoint. */
+ * One indexed point read (<=16 KiB); used by every thread-addressed endpoint. */
 export declare function assignmentByThread(ctx: Pick<QueryCtx, "db">, threadId: string): Promise<{
     _id: import("convex/values").GenericId<"assignments">;
     _creationTime: number;
     workflowId?: string | undefined;
-    runId?: import("convex/values").GenericId<"runs"> | undefined;
     activeTools?: {
         name: string;
         key: string;
     }[] | undefined;
     textConfig?: {
-        everyTurns?: number | undefined;
         worker: string;
-        title: boolean;
-        summary: boolean;
         updateThread: string;
         getThread: string;
     } | undefined;
-    titleVersion?: number | undefined;
-    titleSource?: "auto" | "user" | undefined;
-    titleTask?: {
-        dispatched?: boolean | undefined;
-        again?: import("convex/values").GenericId<"runs"> | undefined;
-        deferred?: boolean | undefined;
-        titleRef?: {
-            order: number;
-            bytes: number;
-            id: string;
-            stepOrder: number;
-        } | undefined;
-        status: "failed" | "running" | "queued" | "done" | "unknown";
-        key: string;
-        runId: import("convex/values").GenericId<"runs">;
-        epoch: number;
-        version: number;
-    } | undefined;
-    summaryTask?: {
-        dispatched?: boolean | undefined;
-        again?: import("convex/values").GenericId<"runs"> | undefined;
-        deferred?: boolean | undefined;
-        titleRef?: {
-            order: number;
-            bytes: number;
-            id: string;
-            stepOrder: number;
-        } | undefined;
-        status: "failed" | "running" | "queued" | "done" | "unknown";
-        key: string;
-        runId: import("convex/values").GenericId<"runs">;
-        epoch: number;
-        version: number;
-    } | undefined;
-    textCompleted?: {
-        order: number;
-        id: string;
-        stepOrder: number;
-        sequence: number;
-    } | undefined;
-    textSummary?: {
-        text: string;
-        through: {
-            order: number;
-            id: string;
-            stepOrder: number;
-            sequence: number;
-        };
-    } | undefined;
-    modelStep?: {
-        stepOrder: number;
-        messageId: string;
-    } | undefined;
-    contextMessages?: {
-        order: number;
-        bytes: number;
-        id: string;
-        stepOrder: number;
-        sequence: number;
-    }[] | undefined;
-    reviewed?: {
-        agent: string;
-        turn: number;
-        at: number;
-        boundary: number;
-    }[] | undefined;
-    routingAgentIndex?: number | undefined;
-    hookContinue?: boolean | undefined;
     models?: Record<string, string> | undefined;
     loopWaiting?: boolean | undefined;
     pinged?: boolean | undefined;
@@ -113,12 +41,13 @@ export declare function assignmentByThread(ctx: Pick<QueryCtx, "db">, threadId: 
             id: string;
             abort: string;
         } | undefined;
-        epoch: number;
         messageId: string;
         executionId: string;
+        epoch: number;
         getMessages: string;
         finalizeMessage: string;
     } | undefined;
+    runId?: import("convex/values").GenericId<"runs"> | undefined;
     childRunId?: string | undefined;
     rootAssignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
     turnToken?: string | undefined;
@@ -154,8 +83,6 @@ export declare function assignmentByThread(ctx: Pick<QueryCtx, "db">, threadId: 
     agent: string;
     limits: {
         attachmentBytes: number;
-        continuesPerRun: number;
-        sideRunsPerRun: number;
         notesPending: number;
         maxDepth: number;
         messagesPerChild: number;
@@ -172,7 +99,6 @@ export declare function assignmentByThread(ctx: Pick<QueryCtx, "db">, threadId: 
     };
     turnStatus: "idle" | "running" | "queued" | "recovery_required";
     errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
-    completedTurns: number;
     subject: string;
     threadId: string;
     runTurn: string;
@@ -203,6 +129,5 @@ export declare function newChildAssignment(fields: {
     root: Doc<"assignments">;
     run: Doc<"subagentRuns">;
     childThreadId: string;
-    trackContext?: boolean;
 }): AssignmentRow;
 export {};

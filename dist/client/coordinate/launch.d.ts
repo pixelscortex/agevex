@@ -13,7 +13,10 @@ type LaunchArgs = Extract<CoordinateArgs, {
  */
 export declare function launchChild(rt: RuntimeContext, ctx: CoordinatorCtx, args: LaunchArgs): Promise<{
     status: "denied";
-    code: "ACTIVE_LIMIT" | "TASK_LIMIT" | "FORBIDDEN" | "STALE_TURN" | "DELEGATION_CONFLICT" | "RUN_BUDGET" | "RESULTS_PENDING" | "DEPTH_LIMIT" | "GROUP_LIMIT" | "GROUP_CLOSED" | "GROUP_CONFLICT";
+    code: "TASK_LIMIT";
+} | {
+    status: "denied";
+    code: "ACTIVE_LIMIT" | "FORBIDDEN" | "STALE_TURN" | "DELEGATION_CONFLICT" | "RUN_BUDGET" | "RESULTS_PENDING" | "DEPTH_LIMIT";
     runId?: undefined;
     agent?: undefined;
 } | {

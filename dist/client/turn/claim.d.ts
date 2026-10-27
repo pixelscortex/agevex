@@ -15,10 +15,7 @@ export declare function loadExecution(rt: RuntimeContext, ctx: RunnerCtx, args: 
         cancellationEpoch: number;
         cancelled: boolean;
         approvalBlocked: boolean;
-        modelStep: {
-            stepOrder: number;
-            messageId: string;
-        } | undefined;
+        messageIds: string[];
         attachmentBytes: number;
     };
     managed: ManagedAgent;
@@ -27,8 +24,7 @@ export declare function loadExecution(rt: RuntimeContext, ctx: RunnerCtx, args: 
  * Claim the turn and build its `Turn`, or `null` when the claim is refused
  * (another action owns it, or it was cancelled in between).
  *
- * `routeModel` asks the claim to open a per-agent routing decision when the
- * agent has a `beforeTurn` hook; `notes` are the native handles the claim uses
+ * `notes` are the native handles the claim uses
  * to move pending notes into the transcript at this safe point.
  */
 export declare function claimTurn(rt: RuntimeContext, ctx: RunnerCtx, args: TurnArgs, queued: Turn["queued"], managed: ManagedAgent): Promise<Turn | null>;

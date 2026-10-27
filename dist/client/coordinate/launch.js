@@ -1,18 +1,9 @@
-// The coordinator's `launch` op: start one delegated child run (or side review).
-//
-// Called from the managed `agevex_delegate` tool and from the turn runner's side
-// reviews (`turn/completion.ts`), always through the coordinator mutation, so
-// every step below shares one transaction: capability check
-// (`subagents.launch.delegateContext`), graph permission, host `delegate` policy, side
-// review admission (`hooks.reviews.reviewContext`), idempotent reservation
-// (`subagents.launch.reserve`), then, for a fresh reservation only, the native child
-// thread, its first prompt and `subagents.launch.attach`. A replayed tool call returns
-// the original run and never creates a second child thread.
+// Launch one delegated child atomically with its reservation, native thread and
+// prompt. Replays return the original run without creating a second child.
 import { createThread } from "@convex-dev/agent";
 import { createFunctionHandle } from "convex/server";
 import { LIMITS } from "../../component/limits.js";
-import { taskPreview } from "../../component/run_tree_values.js";
-import { savedMessageRef, saveTrackedMessage } from "../native-saves.js";
+import { saveMessage } from "@convex-dev/agent";
 import { fingerprint } from "../once.js";
 import { observe } from "../registration/context.js";
 /**
@@ -33,24 +24,13 @@ export async function launchChild(rt, ctx, args) {
     });
     if (!owned)
         return denied("STALE_TURN");
-    if (!mayLaunch(rt, owned, args))
+    if (!rt.graph.edges.get(owned.actorAgent)?.has(args.agent))
         return denied("FORBIDDEN");
     if (!(await launchAuthorized(rt, ctx, owned, args.agent, task)))
         return denied("FORBIDDEN");
     const child = rt.graph.children.get(args.agent);
     if (!child)
         return denied("FORBIDDEN");
-    const side = args.side ? sideAgentFor(rt, owned, args.agent) : undefined;
-    const review = side
-        ? await ctx.runQuery(rt.component.hooks.reviews.reviewContext, {
-            assignmentId: args.assignmentId,
-            executionId: args.turnToken,
-            agent: args.agent,
-            ...side.every,
-        })
-        : null;
-    if (args.side && !review)
-        return denied("RUN_BUDGET");
     const reservation = await reserveRun(rt, ctx, args, owned, task);
     if (reservation.kind === "denied") {
         return { status: "denied", code: reservation.code };
@@ -60,8 +40,7 @@ export async function launchChild(rt, ctx, args) {
     // Only a fresh reservation reaches the native writes, so a replay
     // can never create a second child thread. Everything below runs in
     // this same transaction as `reserve`.
-    const childTask = review ? await withReviewDelta(rt, ctx, args, owned, review, task) : task;
-    await startChildThread(rt, ctx, child, owned, reservation.runId, childTask);
+    await startChildThread(rt, ctx, child, owned, reservation.runId, task);
     await observe(rt, ctx, {
         type: "delegation.queued",
         runId: reservation.runId,
@@ -72,19 +51,6 @@ export async function launchChild(rt, ctx, args) {
 }
 function denied(code) {
     return { status: "denied", code };
-}
-/** Graph permission: a declared side agent for side launches, else a declared child edge. */
-function mayLaunch(rt, owned, args) {
-    return args.side
-        ? !!rt.graph.byName
-            .get(owned.actorAgent)
-            ?.sideAgents?.some((side) => side.agent.name === args.agent)
-        : !!rt.graph.edges.get(owned.actorAgent)?.has(args.agent);
-}
-function sideAgentFor(rt, owned, agent) {
-    return rt.graph.byName
-        .get(owned.actorAgent)
-        ?.sideAgents?.find((side) => side.agent.name === agent);
 }
 /**
  * Background `delegate` policy with persisted identities only. A throw or a
@@ -121,60 +87,9 @@ async function reserveRun(rt, ctx, args, owned, task) {
         turnToken: args.turnToken,
         toolCallId: args.toolCallId,
         agent: args.agent,
-        payloadFingerprint: await fingerprint([
-            owned.actorAgent,
-            args.agent,
-            task,
-            args.group ?? null,
-            args.wait ?? "each",
-        ]),
-        group: args.group,
-        wait: args.wait,
-        side: args.side,
+        payloadFingerprint: await fingerprint([owned.actorAgent, args.agent, task]),
         coordinateHandle: await createFunctionHandle(rt.config.refs.coordinate()),
     });
-}
-/**
- * Append the watched conversation delta to a side review's task and advance the
- * review boundary (`hooks.reviews.reviewed`) in the same transaction.
- */
-async function withReviewDelta(rt, ctx, args, owned, review, task) {
-    // Exact identities captured with native writes; no listMessages.
-    // Metadata admits <=2 MiB of source docs; text-only output is
-    // UTF-8 clipped to 48 KiB. Tools/reasoning never enter the fork.
-    const parent = rt.graph.byName.get(owned.actorAgent);
-    const docs = await ctx.runQuery(parent.component.messages.getMessagesByIds, {
-        messageIds: review.refs.map((ref) => ref.id),
-    });
-    const childTask = task + "\n\n" + clipReviewDelta(docs).join("\n");
-    await ctx.runMutation(rt.component.hooks.reviews.reviewed, {
-        assignmentId: args.assignmentId,
-        executionId: args.turnToken,
-        agent: args.agent,
-        boundary: review.boundary,
-    });
-    return childTask;
-}
-/**
- * Newest-first text-only projection of the delta, clipped to
- * `LIMITS.contextBytes` UTF-8 bytes in total, returned oldest first.
- */
-function clipReviewDelta(docs) {
-    let remaining = LIMITS.contextBytes;
-    const chunks = [];
-    for (const doc of docs.reverse()) {
-        if (!doc || !["user", "assistant"].includes(doc.message?.role ?? "") || remaining <= 0)
-            continue;
-        const bytes = new TextEncoder().encode(`${doc.message.role}: ${doc.text ?? ""}`);
-        // stream:true drops an incomplete trailing UTF-8 code point;
-        // replacement characters must not push output over the cap.
-        const chunk = new TextDecoder().decode(bytes.slice(0, remaining), {
-            stream: true,
-        });
-        chunks.unshift(chunk);
-        remaining -= new TextEncoder().encode(chunk).byteLength + 1;
-    }
-    return chunks;
 }
 /**
  * Create the child's native thread, save its first prompt at the reserved
@@ -182,7 +97,7 @@ function clipReviewDelta(docs) {
  */
 async function startChildThread(rt, ctx, child, owned, runId, childTask) {
     const threadId = await createThread(ctx, child.component, { userId: owned.subject });
-    const { messageId, message } = await saveTrackedMessage(rt, ctx, child.component, {
+    const { messageId } = await saveMessage(ctx, child.component, {
         threadId,
         prompt: childTask,
         order: LIMITS.firstPromptOrder,
@@ -192,8 +107,5 @@ async function startChildThread(rt, ctx, child, owned, runId, childTask) {
         runId,
         childThreadId: threadId,
         promptMessageId: messageId,
-        task: taskPreview(childTask),
-        trackContext: !!child.sideAgents?.length,
-        savedMessage: savedMessageRef(messageId, message),
     });
 }

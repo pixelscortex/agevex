@@ -14,7 +14,7 @@ import { v } from "convex/values";
 import { settingsSnapshot } from "./run_settings.js";
 import { modelOverrides } from "./models.js";
 import { limitsValidator } from "./limits.js";
-import { textConfig, textJob, textBoundary, storedSummary } from "./text/values.js";
+import { textConfig } from "./text/values.js";
 import { storedProposal } from "./turns/decision_proposals.js";
 export const turnOrigin = v.union(v.literal("user"), v.literal("subagent_result"));
 export const turnStatus = v.union(v.literal("queued"), v.literal("running"), v.literal("idle"), v.literal("recovery_required"));
@@ -27,7 +27,7 @@ export const runErrorCode = v.union(v.null(), ...turnFailureCodes, v.literal("EM
 // The delivery attempt AND its `DELIVERY_FAILED` record both threw, so the
 // result's fate is not known; see `deliverTerminalRun`.
 v.literal("DELIVERY_UNKNOWN"));
-export const denialCode = v.union(v.literal("HOOK_BLOCKED"), v.literal("ACTIVE_LIMIT"), v.literal("TASK_LIMIT"), v.literal("FORBIDDEN"), v.literal("STALE_TURN"), v.literal("DELEGATION_CONFLICT"), v.literal("RUN_BUDGET"), v.literal("RESULTS_PENDING"), v.literal("DEPTH_LIMIT"), v.literal("GROUP_LIMIT"), v.literal("GROUP_CLOSED"), v.literal("GROUP_CONFLICT"), v.literal("CHILD_FINISHED"), v.literal("MESSAGE_LIMIT"), v.literal("MESSAGE_TOO_LARGE"), v.literal("MESSAGE_EMPTY"), v.literal("SIDE_RUN"), v.literal("MESSAGE_RATE_LIMIT"), v.literal("KEY_CONFLICT"), v.literal("NO_PARENT"), v.literal("ASK_PENDING"), v.literal("ASK_WITH_CHILDREN"), v.literal("QUEUE_LIMIT"));
+export const denialCode = v.union(v.literal("HOOK_BLOCKED"), v.literal("ACTIVE_LIMIT"), v.literal("TASK_LIMIT"), v.literal("FORBIDDEN"), v.literal("STALE_TURN"), v.literal("DELEGATION_CONFLICT"), v.literal("RUN_BUDGET"), v.literal("RESULTS_PENDING"), v.literal("DEPTH_LIMIT"), v.literal("CHILD_FINISHED"), v.literal("MESSAGE_LIMIT"), v.literal("MESSAGE_TOO_LARGE"), v.literal("MESSAGE_EMPTY"), v.literal("MESSAGE_RATE_LIMIT"), v.literal("KEY_CONFLICT"), v.literal("NO_PARENT"), v.literal("ASK_PENDING"), v.literal("ASK_WITH_CHILDREN"), v.literal("QUEUE_LIMIT"));
 export const runStatus = v.union(v.literal("queued"), v.literal("running"), v.literal("asking"), v.literal("completed"), v.literal("failed"));
 export const deliveryStatus = v.union(v.literal("pending"), v.literal("accepted"), v.literal("failed"), v.literal("blocked"));
 export const runPhase = v.union(v.literal("queued"), v.literal("started"), v.literal("completed"), v.literal("failed"), v.literal("result_accepted"), v.literal("delivery_failed"), v.literal("delivery_blocked"));
@@ -72,7 +72,6 @@ export const scope = v.object({
 });
 export const subagentRun = v.object({
     runId: v.string(),
-    side: v.boolean(),
     childThreadId: v.union(v.string(), v.null()),
     agent: v.string(),
     status: runStatus,
@@ -105,43 +104,10 @@ export default defineSchema({
         // Last-started active local calls, in start order. Tool wrappers remove only
         // their own marker; disarm/cancel clear the whole bounded slice inventory.
         activeTools: v.optional(v.array(v.object({ key: v.string(), name: v.string() }))),
-        // Background worker dispatch and cadence; root-only, read by text/jobs.
+        // Native thread metadata dispatch handles; bodies remain in Agent.
         textConfig: v.optional(textConfig),
-        // Native thread owns the title body. Version/source fence generated commits.
-        titleVersion: v.optional(v.number()),
-        titleSource: v.optional(v.union(v.literal("auto"), v.literal("user"))),
-        titleTask: v.optional(textJob),
-        summaryTask: v.optional(textJob),
-        // Only a successfully completed root turn advances the safe input boundary.
-        textCompleted: v.optional(textBoundary),
-        // Read by summary endpoint and the next incremental display summary.
-        textSummary: v.optional(storedSummary),
-        // Fixed-size references only: the native component continues to own bodies.
-        // Exact step identity captured with the native save, consumed by usage
-        // recording. Scalar reference only, never a copy of model output.
-        modelStep: v.optional(v.object({ messageId: v.string(), stepOrder: v.number() })),
-        contextMessages: v.optional(v.array(v.object({
-            id: v.string(),
-            order: v.number(),
-            stepOrder: v.number(),
-            bytes: v.number(),
-            sequence: v.number(),
-        }))),
-        reviewed: v.optional(v.array(v.object({
-            agent: v.string(),
-            turn: v.number(),
-            at: v.number(),
-            boundary: v.number(),
-        }))),
-        // Read by claim (hook `turn`), hookState and reviewContext; 0 until a turn completes.
-        completedTurns: v.number(),
         // Read by note admission/claim/cancel; never charged to ready work.
         notesPending: v.number(),
-        // Only the first slice owns the shared routing bit; terminal fences settle it.
-        routingAgentIndex: v.optional(v.number()),
-        // Read by claim, cancel and deferChildFailure: an afterTurn continuation is
-        // staged at inboxId and must be removed if the turn ends without claiming it.
-        hookContinue: v.optional(v.boolean()),
         subject: v.string(),
         agent: v.string(),
         threadId: v.string(),
@@ -178,12 +144,12 @@ export default defineSchema({
         nextTurn: v.number(),
         turnToken: v.optional(v.string()),
         // The turn's prompt: set by wake to the reserved head, moved by claim to
-        // the newest merged result and by a hook continuation to its saved prompt.
+        // the newest merged result.
         // Claim returns it; the host reads it for beforeTurn and anchors native
         // generation context on it.
         promptMessageId: v.optional(v.string()),
         // Reporting identity survives approval anchors; claim resets it for new
-        // work/afterTurn prompts, write appends saves, completion reads exact ids.
+        // user, queued or child work, write appends saves, completion reads exact ids.
         turnReport: v.optional(v.object({
             promptMessageId: v.string(),
             messageIds: v.array(v.string()),
@@ -243,30 +209,20 @@ export default defineSchema({
         assignmentId: v.id("assignments"),
         messageId: v.string(),
         sequence: v.number(),
-        // Deferred joins append later than their native save. Claim compares this
-        // recorded save order, never queue insertion order, to retain newer answers.
+        // True holds unsaved notes; false retains saved origin metadata.
         passive: v.optional(v.boolean()),
-        // Unsaved body of a posted note (addNote) or a staged hook continuation
-        // (continueAdmission); a row is one kind, so never both. Held until claim,
+        // Unsaved body of an app or child progress note. Held until claim,
         // whose claimNotes is its only reader and clears it once saved natively.
         text: v.optional(v.string()),
         // Separates cancelled payloads from fresh admission before cleanup runs.
         noteEpoch: v.optional(v.number()),
         from: v.optional(v.string()),
-        // A joined group generates from its newest result (messageId, at
-        // newestSequence), but notes precede its earliest native member. Set only
-        // by releaseGroup, all three together; read only by claim.
-        join: v.optional(v.object({
-            newestSequence: v.number(),
-            earliestId: v.string(),
-            earliestSequence: v.number(),
-        })),
         runId: v.id("runs"),
         // Read by wake (result/note make a subagent_result turn; user/parent make a
         // user turn), claim (non-user kinds merge consecutively; a user row ends
-        // it) and hooks.origins.origins (note and continue label their message,
+        // it) and hooks.origins.origins (notes label their message,
         // result falls through to its run).
-        kind: v.union(v.literal("user"), v.literal("result"), v.literal("parent"), v.literal("note"), v.literal("continue")),
+        kind: v.union(v.literal("user"), v.literal("result"), v.literal("parent"), v.literal("note")),
     })
         .index("by_message", ["messageId"])
         .index("by_run_ready", ["assignmentId", "runId", "passive"])
@@ -274,14 +230,13 @@ export default defineSchema({
     // A run outlives an individual turn: results and subsequent delegations spend
     // the same launch/hop budget. Results are ready independently of siblings.
     runs: defineTable({
-        // Accepted requests record exact native task links and a UTF-8 preview.
+        // Accepted requests record exact native task links.
         // Synthetic budgets (validation/tests) need no root. Tree reads only owned roots.
         rootAssignmentId: v.optional(v.id("assignments")),
         // History can observe cancellation even for a terminal-but-undelivered
         // old request no longer present in the root's current run/ready inbox.
         rootCancellationEpoch: v.optional(v.number()),
         taskMessageId: v.optional(v.string()),
-        taskPreview: v.optional(v.string()),
         startedAt: v.optional(v.number()),
         turnEndedAt: v.optional(v.number()),
         finishedAt: v.optional(v.number()),
@@ -291,19 +246,10 @@ export default defineSchema({
         usagePartial: v.optional(v.boolean()),
         // Read by claim/watchdog and betweenSlices. Children inherit this same run id.
         settings: v.optional(settingsSnapshot),
-        // Run snapshot shared by every root/descendant/result turn. A beforeTurn
-        // hook may choose its agent model at run start; later turns only read it.
+        // Accepted model policy shared by every root/descendant/result turn.
+        // Stateless beforeTurn overrides are never written here.
         // Read at claim, never replaced by a subsequent send's thread policy.
         models: v.optional(modelOverrides),
-        // Bit sets over agent indexes: startedAgents marks agents that began in this
-        // run (claim isRunStart); routingAgents marks the owner of a pending
-        // beforeTurn model decision (hooks.routing.routing/settleRouting).
-        startedAgents: v.int64(),
-        routingAgents: v.int64(),
-        // Read by continueAdmission against limits.continuesPerRun.
-        continues: v.number(),
-        // Read by reserve against limits.sideRunsPerRun.
-        sideRuns: v.number(),
         launches: v.number(),
         hops: v.number(),
         cancelled: v.boolean(),
@@ -335,7 +281,7 @@ export default defineSchema({
         fileId: v.string(),
         subject: v.string(),
         // Absent: trusted upload grant. Present: exact native attachment saved
-        // atomically with that message, read by extraction admission and policy.
+        // atomically with that message, read by attachment policy.
         threadId: v.optional(v.string()),
         messageId: v.optional(v.string()),
     })))
@@ -346,8 +292,6 @@ export default defineSchema({
     subagentRuns: defineTable({
         // Captured atomically with the initial native task; tree never reads bodies.
         taskMessageId: v.optional(v.string()),
-        taskPreview: v.optional(v.string()),
-        side: v.optional(v.boolean()),
         runId: v.string(),
         rootCancellationEpoch: v.number(),
         parentRunId: v.id("runs"),
@@ -357,15 +301,6 @@ export default defineSchema({
         actorAssignmentId: v.id("assignments"),
         // Read by reserve (depth bound, child depth) and the tree projection.
         depth: v.number(),
-        // Read by reserve (cohort lookup), delivery and release (whole cohort).
-        group: v.optional(v.string()),
-        // A wait "all" member's join state; absent means wait "each". One-way:
-        // reserve writes "open"; the launching slice's sealGroups moves its run's
-        // open members to "sealed"; markGroupReady moves ONE representative of a
-        // sealed, fully delivered cohort to "ready"; releaseGroup moves every
-        // member to "joined". Read by reserve (wait/closed checks), settlement
-        // (any unjoined member fences R3), delivery, readiness and release.
-        join: v.optional(v.union(v.literal("open"), v.literal("sealed"), v.literal("ready"), v.literal("joined"))),
         // The exact native question id is recorded with its native save and read
         // for verification before delivery. `asking` itself is the open-question fence.
         questionMessageId: v.optional(v.string()),
@@ -395,16 +330,11 @@ export default defineSchema({
         errorCode: runErrorCode,
         deliveryToken: v.string(),
         coordinateHandle: v.string(),
-        createdAt: v.number(),
         sequence: v.number(),
         // Set by the first claim of the child's first turn; never derived, because
         // the "started" event of that turn leaves the event ring after 3 turns.
         startedAt: v.optional(v.number()),
         resultMessageId: v.optional(v.string()),
-        // Native notifications can share a millisecond; this parent-local order
-        // selects the latest exact anchor when the closed group is released.
-        // Written on accepted join members only; read only by releaseGroup.
-        resultSequence: v.optional(v.number()),
         // The newest LIMITS.runEvents transitions (subagents/runs.ts appendEvent).
         // The public finishedAt/deliveryAt are derived from it (`runTimes`): the
         // terminal and delivery events are always the newest two.
@@ -419,15 +349,10 @@ export default defineSchema({
         // across request budgets without reading cancelled delivery history.
         .index("by_parent_delivery", [
         "actorAssignmentId",
-        "side",
         "deliveryStatus",
         "rootCancellationEpoch",
         "parentRunId",
     ])
-        // Every reader pins actor, epoch and one join state: settlementBlocked
-        // (open/sealed/ready), releaseGroups (ready [+ run]), sealGroups (open + run).
-        .index("by_join", ["actorAssignmentId", "rootCancellationEpoch", "join", "parentRunId"])
-        // Cohort readers (reserve, delivery, release) pin all three fields; runTree
-        // reads the parentRunId prefix, i.e. one root request's whole tree.
-        .index("by_group", ["parentRunId", "actorAssignmentId", "group"]),
+        // Run trees read the request prefix; parent fences pin the actor too.
+        .index("by_parent_run", ["parentRunId", "actorAssignmentId"]),
 });

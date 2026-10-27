@@ -329,7 +329,7 @@ async function generateWithRepair<Input, Output>(
         break;
       } catch (error) {
         // Middleware has not entered doGenerate when admission refuses. There
-        // is no paid attempt to meter or classify as an unknown receipt.
+        // is no paid attempt to report or classify as an unknown receipt.
         if (error instanceof TaskDispatchRefused) return { status: "failed", code: "TASK_FAILED" };
 
         if (!NoObjectGeneratedError.isInstance(error)) {
@@ -435,7 +435,7 @@ async function generateOnce<Input, Output>(
   return result;
 }
 
-/** Meter one attempt under an opaque per-attempt key. Never triggers another call. */
+/** Report one attempt under an opaque per-attempt key. Never triggers another call. */
 async function recordTaskUsage<Input, Output>(
   call: TaskCall<Input, Output>,
   receipt: Receipt,
@@ -449,16 +449,22 @@ async function recordTaskUsage<Input, Output>(
   try {
     const provider = typeof model === "string" ? model.split("/")[0] : model.provider;
 
-    await (binding?.usage ?? options.usage)
-      ?.scope(ctx, { ...attribution, model: typeof model === "string" ? model : model.modelId })
-      .record(provider, {
-        key: await opaqueKey("task-usage", receipt.scope, receipt.key, attempt),
-        usage,
-        providerMetadata,
-        requestId,
-      });
+    await (binding?.usage ?? options.usage)?.record(ctx, {
+      ...attribution,
+      model: typeof model === "string" ? model : model.modelId,
+      provider,
+      key: await opaqueKey("task-usage", receipt.scope, receipt.key, attempt),
+      messageId: null,
+      usage,
+      providerMetadata,
+      requestId,
+    });
   } catch {
-    /* Recording evidence must never trigger another paid call. */
+    try {
+      await ctx.runMutation(call.component.turns.slices.usageFailed, { runId: attribution.runId });
+    } catch {
+      /* Recording evidence must never trigger another paid call. */
+    }
   }
 }
 

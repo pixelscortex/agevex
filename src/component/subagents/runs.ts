@@ -2,15 +2,15 @@
  * Lookups and the row builder for the `subagentRuns` table.
  *
  * One row per delegation: the child linkage, the root epoch it was admitted
- * under, its wait-"all" join state, its verified result reference, delivery
+ * under, its verified result reference, delivery
  * capability and a bounded event history. `subagents.launch.reserve` inserts it;
- * settlement, delivery and group release (subagents/*) move it forward;
+ * settlement and delivery (subagents/*) move it forward;
  * `turns.cancel.cancel` fails every live one. All reads here are exact indexed
  * lookups; no history prefix is ever read.
  */
 import type { WithoutSystemFields } from "convex/server";
 import type { MutationCtx, QueryCtx } from "../_generated/server.js";
-import type { Doc, Id } from "../_generated/dataModel.js";
+import type { Doc } from "../_generated/dataModel.js";
 import { LIMITS } from "../limits.js";
 import { getConvexSize } from "convex/values";
 import { TREE_LIMITS } from "../run_tree_values.js";
@@ -74,39 +74,15 @@ export function runTimes(run: Pick<SubagentRun, "events" | "deliveryStatus">) {
   };
 }
 
-/** One wait cohort: the members a parent launched under one run budget and
- * group name, in creation order (`by_group` pins all three fields). Callers
- * pass the cohort cap, so the read never exceeds <=15 rows (<=60 KiB). */
-export function groupMembers(
-  ctx: QueryCtx | MutationCtx,
-  cohort: { parentRunId: Id<"runs">; actorAssignmentId: Id<"assignments">; group: string },
-  limit: number,
-) {
-  return ctx.db
-    .query("subagentRuns")
-    .withIndex("by_group", (q) =>
-      q
-        .eq("parentRunId", cohort.parentRunId)
-        .eq("actorAssignmentId", cohort.actorAssignmentId)
-        .eq("group", cohort.group),
-    )
-    .take(limit);
-}
-
-/** The queued row `subagents.launch.reserve` inserts once admission passed. The
- * native child thread does not exist yet; `attach` adds the child linkage.
- * `wait: "all"` members start in the "open" join state, which the launching
- * slice's sealGroups later closes. */
+/** The queued row reservation inserts before attaching the native child thread. */
 export function newSubagentRun(fields: {
   /** The caller's reserve arguments: target agent, payload hash, coordinator. */
-  request: { side?: boolean; agent: string; payloadFingerprint: string; coordinateHandle: string };
+  request: { agent: string; payloadFingerprint: string; coordinateHandle: string };
   runId: string;
   actor: Doc<"assignments">;
   root: Doc<"assignments">;
   budget: Doc<"runs">;
   depth: number;
-  group: string | undefined;
-  wait: "each" | "all";
   dedupKey: string;
   sequence: number;
   now: number;
@@ -115,15 +91,11 @@ export function newSubagentRun(fields: {
 
   const row: WithoutSystemFields<SubagentRun> = {
     runId: fields.runId,
-    side: request.side || undefined,
     // The root epoch this delegation belongs to; cancel bumps it to fence.
     rootCancellationEpoch: root.cancellationEpoch,
     depth: fields.depth,
     messagesReceived: 0,
     parentNotesSent: 0,
-    // Cohort membership (wait "all" rows carry a join state).
-    group: fields.group,
-    ...(fields.wait === "all" ? { join: "open" as const } : {}),
     // Budget, idempotency key and the root-wide reservation order.
     parentRunId: fields.budget._id,
     dedupKey: fields.dedupKey,
@@ -141,7 +113,6 @@ export function newSubagentRun(fields: {
     // Delivery capability: the host coordinator proves it with this token.
     deliveryToken: crypto.randomUUID(),
     coordinateHandle: request.coordinateHandle,
-    createdAt: now,
     events: [{ phase: "queued", at: now, errorCode: null }],
   };
 
@@ -152,7 +123,7 @@ export function newSubagentRun(fields: {
 
 /** Leave 1 KiB for native id/time, future result/question refs, four events,
  * timestamps, note counters and the deferred last-turn outcome. Check again
- * at task attachment so preview growth cannot break the 4 KiB read budget.
+ * at task attachment so native reference growth cannot break the 4 KiB read budget.
  */
 export function assertRunMetadata(row: WithoutSystemFields<SubagentRun>) {
   if (

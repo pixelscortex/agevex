@@ -60,9 +60,9 @@ export const detail = query({
         return readPending(ctx, row, request);
     },
 });
-/** Root plus bounded live children: <=59*34 KiB assignment metadata +
- * 256*32 KiB compact proposals + <=58*4 KiB child refs +16 KiB run
- * =10,446 KiB <10.3 MiB <16 MiB. Only <=16 assignments may be paused.
+/** Root plus bounded live children: <=51*16 KiB assignment metadata +
+ * 256*32 KiB compact proposals + <=50*4 KiB child refs +16 KiB run
+ * =9,224 KiB <9.1 MiB <16 MiB. Only <=16 assignments may be paused.
  * Native messages (up to 1 MiB of reasoning each) are never read here.
  * The host projects each item to <=16 KiB, giving <=4 MiB final output.
  */
@@ -87,8 +87,8 @@ export const pending = query({
             throw new ConvexError({ code: "RUN_NOT_FOUND" });
         const children = await ctx.db
             .query("subagentRuns")
-            .withIndex("by_group", (q) => q.eq("parentRunId", root.runId))
-            .take(root.limits.runLaunches + root.limits.sideRunsPerRun);
+            .withIndex("by_parent_run", (q) => q.eq("parentRunId", root.runId))
+            .take(root.limits.runLaunches);
         const rows = [root];
         for (const child of children) {
             if (!child.childAssignmentId || child.status === "completed" || child.status === "failed")

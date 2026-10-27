@@ -21,94 +21,22 @@ type InteractionArgs = {
  */
 export declare function interaction(ctx: QueryCtx | MutationCtx, args: InteractionArgs, replay?: boolean): Promise<{
     kind: "denied";
-    code: "FORBIDDEN" | "STALE_TURN" | "RUN_BUDGET" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "SIDE_RUN" | "MESSAGE_RATE_LIMIT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
+    code: "FORBIDDEN" | "STALE_TURN" | "RUN_BUDGET" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "MESSAGE_RATE_LIMIT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
 } | {
     kind: "ready";
     actor: {
         _id: import("convex/values").GenericId<"assignments">;
         _creationTime: number;
         workflowId?: string | undefined;
-        runId?: import("convex/values").GenericId<"runs"> | undefined;
         activeTools?: {
             name: string;
             key: string;
         }[] | undefined;
         textConfig?: {
-            everyTurns?: number | undefined;
             worker: string;
-            title: boolean;
-            summary: boolean;
             updateThread: string;
             getThread: string;
         } | undefined;
-        titleVersion?: number | undefined;
-        titleSource?: "auto" | "user" | undefined;
-        titleTask?: {
-            dispatched?: boolean | undefined;
-            again?: import("convex/values").GenericId<"runs"> | undefined;
-            deferred?: boolean | undefined;
-            titleRef?: {
-                order: number;
-                bytes: number;
-                id: string;
-                stepOrder: number;
-            } | undefined;
-            status: "failed" | "running" | "queued" | "done" | "unknown";
-            key: string;
-            runId: import("convex/values").GenericId<"runs">;
-            epoch: number;
-            version: number;
-        } | undefined;
-        summaryTask?: {
-            dispatched?: boolean | undefined;
-            again?: import("convex/values").GenericId<"runs"> | undefined;
-            deferred?: boolean | undefined;
-            titleRef?: {
-                order: number;
-                bytes: number;
-                id: string;
-                stepOrder: number;
-            } | undefined;
-            status: "failed" | "running" | "queued" | "done" | "unknown";
-            key: string;
-            runId: import("convex/values").GenericId<"runs">;
-            epoch: number;
-            version: number;
-        } | undefined;
-        textCompleted?: {
-            order: number;
-            id: string;
-            stepOrder: number;
-            sequence: number;
-        } | undefined;
-        textSummary?: {
-            text: string;
-            through: {
-                order: number;
-                id: string;
-                stepOrder: number;
-                sequence: number;
-            };
-        } | undefined;
-        modelStep?: {
-            stepOrder: number;
-            messageId: string;
-        } | undefined;
-        contextMessages?: {
-            order: number;
-            bytes: number;
-            id: string;
-            stepOrder: number;
-            sequence: number;
-        }[] | undefined;
-        reviewed?: {
-            agent: string;
-            turn: number;
-            at: number;
-            boundary: number;
-        }[] | undefined;
-        routingAgentIndex?: number | undefined;
-        hookContinue?: boolean | undefined;
         models?: Record<string, string> | undefined;
         loopWaiting?: boolean | undefined;
         pinged?: boolean | undefined;
@@ -122,12 +50,13 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
                 id: string;
                 abort: string;
             } | undefined;
-            epoch: number;
             messageId: string;
             executionId: string;
+            epoch: number;
             getMessages: string;
             finalizeMessage: string;
         } | undefined;
+        runId?: import("convex/values").GenericId<"runs"> | undefined;
         childRunId?: string | undefined;
         rootAssignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
         turnToken?: string | undefined;
@@ -163,8 +92,6 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         agent: string;
         limits: {
             attachmentBytes: number;
-            continuesPerRun: number;
-            sideRunsPerRun: number;
             notesPending: number;
             maxDepth: number;
             messagesPerChild: number;
@@ -181,7 +108,6 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         };
         turnStatus: "idle" | "running" | "queued" | "recovery_required";
         errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
-        completedTurns: number;
         subject: string;
         threadId: string;
         runTurn: string;
@@ -197,87 +123,15 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         _id: import("convex/values").GenericId<"assignments">;
         _creationTime: number;
         workflowId?: string | undefined;
-        runId?: import("convex/values").GenericId<"runs"> | undefined;
         activeTools?: {
             name: string;
             key: string;
         }[] | undefined;
         textConfig?: {
-            everyTurns?: number | undefined;
             worker: string;
-            title: boolean;
-            summary: boolean;
             updateThread: string;
             getThread: string;
         } | undefined;
-        titleVersion?: number | undefined;
-        titleSource?: "auto" | "user" | undefined;
-        titleTask?: {
-            dispatched?: boolean | undefined;
-            again?: import("convex/values").GenericId<"runs"> | undefined;
-            deferred?: boolean | undefined;
-            titleRef?: {
-                order: number;
-                bytes: number;
-                id: string;
-                stepOrder: number;
-            } | undefined;
-            status: "failed" | "running" | "queued" | "done" | "unknown";
-            key: string;
-            runId: import("convex/values").GenericId<"runs">;
-            epoch: number;
-            version: number;
-        } | undefined;
-        summaryTask?: {
-            dispatched?: boolean | undefined;
-            again?: import("convex/values").GenericId<"runs"> | undefined;
-            deferred?: boolean | undefined;
-            titleRef?: {
-                order: number;
-                bytes: number;
-                id: string;
-                stepOrder: number;
-            } | undefined;
-            status: "failed" | "running" | "queued" | "done" | "unknown";
-            key: string;
-            runId: import("convex/values").GenericId<"runs">;
-            epoch: number;
-            version: number;
-        } | undefined;
-        textCompleted?: {
-            order: number;
-            id: string;
-            stepOrder: number;
-            sequence: number;
-        } | undefined;
-        textSummary?: {
-            text: string;
-            through: {
-                order: number;
-                id: string;
-                stepOrder: number;
-                sequence: number;
-            };
-        } | undefined;
-        modelStep?: {
-            stepOrder: number;
-            messageId: string;
-        } | undefined;
-        contextMessages?: {
-            order: number;
-            bytes: number;
-            id: string;
-            stepOrder: number;
-            sequence: number;
-        }[] | undefined;
-        reviewed?: {
-            agent: string;
-            turn: number;
-            at: number;
-            boundary: number;
-        }[] | undefined;
-        routingAgentIndex?: number | undefined;
-        hookContinue?: boolean | undefined;
         models?: Record<string, string> | undefined;
         loopWaiting?: boolean | undefined;
         pinged?: boolean | undefined;
@@ -291,12 +145,13 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
                 id: string;
                 abort: string;
             } | undefined;
-            epoch: number;
             messageId: string;
             executionId: string;
+            epoch: number;
             getMessages: string;
             finalizeMessage: string;
         } | undefined;
+        runId?: import("convex/values").GenericId<"runs"> | undefined;
         childRunId?: string | undefined;
         rootAssignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
         turnToken?: string | undefined;
@@ -332,8 +187,6 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         agent: string;
         limits: {
             attachmentBytes: number;
-            continuesPerRun: number;
-            sideRunsPerRun: number;
             notesPending: number;
             maxDepth: number;
             messagesPerChild: number;
@@ -350,7 +203,6 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         };
         turnStatus: "idle" | "running" | "queued" | "recovery_required";
         errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
-        completedTurns: number;
         subject: string;
         threadId: string;
         runTurn: string;
@@ -365,13 +217,9 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
     run: {
         _id: import("convex/values").GenericId<"subagentRuns">;
         _creationTime: number;
-        join?: "open" | "sealed" | "ready" | "joined" | undefined;
         startedAt?: number | undefined;
         taskMessageId?: string | undefined;
-        taskPreview?: string | undefined;
         resultMessageId?: string | undefined;
-        side?: boolean | undefined;
-        group?: string | undefined;
         questionMessageId?: string | undefined;
         lastParentNoteAt?: number | undefined;
         childAssignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
@@ -381,18 +229,17 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
             messageId?: string | undefined;
             errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | "DELIVERY_UNKNOWN" | null;
         } | undefined;
-        resultSequence?: number | undefined;
         events: {
             errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | "DELIVERY_UNKNOWN" | null;
-            at: number;
             phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
+            at: number;
         }[];
         status: "failed" | "running" | "completed" | "queued" | "asking";
         agent: string;
-        sequence: number;
-        runId: string;
         errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | "DELIVERY_UNKNOWN" | null;
+        runId: string;
         rootAssignmentId: import("convex/values").GenericId<"assignments">;
+        sequence: number;
         rootCancellationEpoch: number;
         deliveryStatus: "failed" | "pending" | "accepted" | "blocked";
         parentRunId: import("convex/values").GenericId<"runs">;
@@ -405,93 +252,20 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         actorAgent: string;
         deliveryToken: string;
         coordinateHandle: string;
-        createdAt: number;
     };
     child: {
         _id: import("convex/values").GenericId<"assignments">;
         _creationTime: number;
         workflowId?: string | undefined;
-        runId?: import("convex/values").GenericId<"runs"> | undefined;
         activeTools?: {
             name: string;
             key: string;
         }[] | undefined;
         textConfig?: {
-            everyTurns?: number | undefined;
             worker: string;
-            title: boolean;
-            summary: boolean;
             updateThread: string;
             getThread: string;
         } | undefined;
-        titleVersion?: number | undefined;
-        titleSource?: "auto" | "user" | undefined;
-        titleTask?: {
-            dispatched?: boolean | undefined;
-            again?: import("convex/values").GenericId<"runs"> | undefined;
-            deferred?: boolean | undefined;
-            titleRef?: {
-                order: number;
-                bytes: number;
-                id: string;
-                stepOrder: number;
-            } | undefined;
-            status: "failed" | "running" | "queued" | "done" | "unknown";
-            key: string;
-            runId: import("convex/values").GenericId<"runs">;
-            epoch: number;
-            version: number;
-        } | undefined;
-        summaryTask?: {
-            dispatched?: boolean | undefined;
-            again?: import("convex/values").GenericId<"runs"> | undefined;
-            deferred?: boolean | undefined;
-            titleRef?: {
-                order: number;
-                bytes: number;
-                id: string;
-                stepOrder: number;
-            } | undefined;
-            status: "failed" | "running" | "queued" | "done" | "unknown";
-            key: string;
-            runId: import("convex/values").GenericId<"runs">;
-            epoch: number;
-            version: number;
-        } | undefined;
-        textCompleted?: {
-            order: number;
-            id: string;
-            stepOrder: number;
-            sequence: number;
-        } | undefined;
-        textSummary?: {
-            text: string;
-            through: {
-                order: number;
-                id: string;
-                stepOrder: number;
-                sequence: number;
-            };
-        } | undefined;
-        modelStep?: {
-            stepOrder: number;
-            messageId: string;
-        } | undefined;
-        contextMessages?: {
-            order: number;
-            bytes: number;
-            id: string;
-            stepOrder: number;
-            sequence: number;
-        }[] | undefined;
-        reviewed?: {
-            agent: string;
-            turn: number;
-            at: number;
-            boundary: number;
-        }[] | undefined;
-        routingAgentIndex?: number | undefined;
-        hookContinue?: boolean | undefined;
         models?: Record<string, string> | undefined;
         loopWaiting?: boolean | undefined;
         pinged?: boolean | undefined;
@@ -505,12 +279,13 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
                 id: string;
                 abort: string;
             } | undefined;
-            epoch: number;
             messageId: string;
             executionId: string;
+            epoch: number;
             getMessages: string;
             finalizeMessage: string;
         } | undefined;
+        runId?: import("convex/values").GenericId<"runs"> | undefined;
         childRunId?: string | undefined;
         rootAssignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
         turnToken?: string | undefined;
@@ -546,8 +321,6 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         agent: string;
         limits: {
             attachmentBytes: number;
-            continuesPerRun: number;
-            sideRunsPerRun: number;
             notesPending: number;
             maxDepth: number;
             messagesPerChild: number;
@@ -564,7 +337,6 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         };
         turnStatus: "idle" | "running" | "queued" | "recovery_required";
         errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
-        completedTurns: number;
         subject: string;
         threadId: string;
         runTurn: string;
@@ -580,87 +352,15 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         _id: import("convex/values").GenericId<"assignments">;
         _creationTime: number;
         workflowId?: string | undefined;
-        runId?: import("convex/values").GenericId<"runs"> | undefined;
         activeTools?: {
             name: string;
             key: string;
         }[] | undefined;
         textConfig?: {
-            everyTurns?: number | undefined;
             worker: string;
-            title: boolean;
-            summary: boolean;
             updateThread: string;
             getThread: string;
         } | undefined;
-        titleVersion?: number | undefined;
-        titleSource?: "auto" | "user" | undefined;
-        titleTask?: {
-            dispatched?: boolean | undefined;
-            again?: import("convex/values").GenericId<"runs"> | undefined;
-            deferred?: boolean | undefined;
-            titleRef?: {
-                order: number;
-                bytes: number;
-                id: string;
-                stepOrder: number;
-            } | undefined;
-            status: "failed" | "running" | "queued" | "done" | "unknown";
-            key: string;
-            runId: import("convex/values").GenericId<"runs">;
-            epoch: number;
-            version: number;
-        } | undefined;
-        summaryTask?: {
-            dispatched?: boolean | undefined;
-            again?: import("convex/values").GenericId<"runs"> | undefined;
-            deferred?: boolean | undefined;
-            titleRef?: {
-                order: number;
-                bytes: number;
-                id: string;
-                stepOrder: number;
-            } | undefined;
-            status: "failed" | "running" | "queued" | "done" | "unknown";
-            key: string;
-            runId: import("convex/values").GenericId<"runs">;
-            epoch: number;
-            version: number;
-        } | undefined;
-        textCompleted?: {
-            order: number;
-            id: string;
-            stepOrder: number;
-            sequence: number;
-        } | undefined;
-        textSummary?: {
-            text: string;
-            through: {
-                order: number;
-                id: string;
-                stepOrder: number;
-                sequence: number;
-            };
-        } | undefined;
-        modelStep?: {
-            stepOrder: number;
-            messageId: string;
-        } | undefined;
-        contextMessages?: {
-            order: number;
-            bytes: number;
-            id: string;
-            stepOrder: number;
-            sequence: number;
-        }[] | undefined;
-        reviewed?: {
-            agent: string;
-            turn: number;
-            at: number;
-            boundary: number;
-        }[] | undefined;
-        routingAgentIndex?: number | undefined;
-        hookContinue?: boolean | undefined;
         models?: Record<string, string> | undefined;
         loopWaiting?: boolean | undefined;
         pinged?: boolean | undefined;
@@ -674,12 +374,13 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
                 id: string;
                 abort: string;
             } | undefined;
-            epoch: number;
             messageId: string;
             executionId: string;
+            epoch: number;
             getMessages: string;
             finalizeMessage: string;
         } | undefined;
+        runId?: import("convex/values").GenericId<"runs"> | undefined;
         childRunId?: string | undefined;
         rootAssignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
         turnToken?: string | undefined;
@@ -715,8 +416,6 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         agent: string;
         limits: {
             attachmentBytes: number;
-            continuesPerRun: number;
-            sideRunsPerRun: number;
             notesPending: number;
             maxDepth: number;
             messagesPerChild: number;
@@ -733,7 +432,6 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         };
         turnStatus: "idle" | "running" | "queued" | "recovery_required";
         errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | null;
-        completedTurns: number;
         subject: string;
         threadId: string;
         runTurn: string;
@@ -765,16 +463,11 @@ export declare function interaction(ctx: QueryCtx | MutationCtx, args: Interacti
         rootAssignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
         rootCancellationEpoch?: number | undefined;
         taskMessageId?: string | undefined;
-        taskPreview?: string | undefined;
         turnEndedAt?: number | undefined;
         finishedAt?: number | undefined;
         resultMessageId?: string | undefined;
         usagePartial?: boolean | undefined;
         cancelled: boolean;
-        startedAgents: bigint;
-        routingAgents: bigint;
-        continues: number;
-        sideRuns: number;
         launches: number;
         hops: number;
     };
@@ -787,7 +480,7 @@ export declare function post(ctx: MutationCtx, target: Doc<"assignments">, runId
  * the threads and agents on both ends, or the admission denial. */
 export declare function interactionTarget(ctx: QueryCtx, args: InteractionArgs): Promise<{
     kind: "denied";
-    code: "FORBIDDEN" | "STALE_TURN" | "RUN_BUDGET" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "SIDE_RUN" | "MESSAGE_RATE_LIMIT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
+    code: "FORBIDDEN" | "STALE_TURN" | "RUN_BUDGET" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "MESSAGE_RATE_LIMIT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
 } | {
     kind: "ready";
     runId: string;
@@ -804,12 +497,12 @@ export declare function interactionTarget(ctx: QueryCtx, args: InteractionArgs):
 /** Shared trusted projection validator, including admission denials before native saves. */
 export declare const interactionResult: import("convex/values").VUnion<{
     kind: "denied";
-    code: "HOOK_BLOCKED" | "ACTIVE_LIMIT" | "TASK_LIMIT" | "FORBIDDEN" | "STALE_TURN" | "DELEGATION_CONFLICT" | "RUN_BUDGET" | "RESULTS_PENDING" | "DEPTH_LIMIT" | "GROUP_LIMIT" | "GROUP_CLOSED" | "GROUP_CONFLICT" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "MESSAGE_TOO_LARGE" | "MESSAGE_EMPTY" | "SIDE_RUN" | "MESSAGE_RATE_LIMIT" | "KEY_CONFLICT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
+    code: "HOOK_BLOCKED" | "ACTIVE_LIMIT" | "TASK_LIMIT" | "FORBIDDEN" | "STALE_TURN" | "DELEGATION_CONFLICT" | "RUN_BUDGET" | "RESULTS_PENDING" | "DEPTH_LIMIT" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "MESSAGE_TOO_LARGE" | "MESSAGE_EMPTY" | "MESSAGE_RATE_LIMIT" | "KEY_CONFLICT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
 } | {
     kind: "ready";
     agent: string;
-    runId: string;
     subject: string;
+    runId: string;
     rootAssignmentId: import("convex/values").GenericId<"assignments">;
     childThreadId: string;
     actorAgent: string;
@@ -819,15 +512,15 @@ export declare const interactionResult: import("convex/values").VUnion<{
     parentAgent: string;
 }, [import("convex/values").VObject<{
     kind: "denied";
-    code: "HOOK_BLOCKED" | "ACTIVE_LIMIT" | "TASK_LIMIT" | "FORBIDDEN" | "STALE_TURN" | "DELEGATION_CONFLICT" | "RUN_BUDGET" | "RESULTS_PENDING" | "DEPTH_LIMIT" | "GROUP_LIMIT" | "GROUP_CLOSED" | "GROUP_CONFLICT" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "MESSAGE_TOO_LARGE" | "MESSAGE_EMPTY" | "SIDE_RUN" | "MESSAGE_RATE_LIMIT" | "KEY_CONFLICT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
+    code: "HOOK_BLOCKED" | "ACTIVE_LIMIT" | "TASK_LIMIT" | "FORBIDDEN" | "STALE_TURN" | "DELEGATION_CONFLICT" | "RUN_BUDGET" | "RESULTS_PENDING" | "DEPTH_LIMIT" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "MESSAGE_TOO_LARGE" | "MESSAGE_EMPTY" | "MESSAGE_RATE_LIMIT" | "KEY_CONFLICT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
 }, {
     kind: import("convex/values").VLiteral<"denied", "required">;
-    code: import("convex/values").VUnion<"HOOK_BLOCKED" | "ACTIVE_LIMIT" | "TASK_LIMIT" | "FORBIDDEN" | "STALE_TURN" | "DELEGATION_CONFLICT" | "RUN_BUDGET" | "RESULTS_PENDING" | "DEPTH_LIMIT" | "GROUP_LIMIT" | "GROUP_CLOSED" | "GROUP_CONFLICT" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "MESSAGE_TOO_LARGE" | "MESSAGE_EMPTY" | "SIDE_RUN" | "MESSAGE_RATE_LIMIT" | "KEY_CONFLICT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT", [import("convex/values").VLiteral<"HOOK_BLOCKED", "required">, import("convex/values").VLiteral<"ACTIVE_LIMIT", "required">, import("convex/values").VLiteral<"TASK_LIMIT", "required">, import("convex/values").VLiteral<"FORBIDDEN", "required">, import("convex/values").VLiteral<"STALE_TURN", "required">, import("convex/values").VLiteral<"DELEGATION_CONFLICT", "required">, import("convex/values").VLiteral<"RUN_BUDGET", "required">, import("convex/values").VLiteral<"RESULTS_PENDING", "required">, import("convex/values").VLiteral<"DEPTH_LIMIT", "required">, import("convex/values").VLiteral<"GROUP_LIMIT", "required">, import("convex/values").VLiteral<"GROUP_CLOSED", "required">, import("convex/values").VLiteral<"GROUP_CONFLICT", "required">, import("convex/values").VLiteral<"CHILD_FINISHED", "required">, import("convex/values").VLiteral<"MESSAGE_LIMIT", "required">, import("convex/values").VLiteral<"MESSAGE_TOO_LARGE", "required">, import("convex/values").VLiteral<"MESSAGE_EMPTY", "required">, import("convex/values").VLiteral<"SIDE_RUN", "required">, import("convex/values").VLiteral<"MESSAGE_RATE_LIMIT", "required">, import("convex/values").VLiteral<"KEY_CONFLICT", "required">, import("convex/values").VLiteral<"NO_PARENT", "required">, import("convex/values").VLiteral<"ASK_PENDING", "required">, import("convex/values").VLiteral<"ASK_WITH_CHILDREN", "required">, import("convex/values").VLiteral<"QUEUE_LIMIT", "required">], "required", never>;
+    code: import("convex/values").VUnion<"HOOK_BLOCKED" | "ACTIVE_LIMIT" | "TASK_LIMIT" | "FORBIDDEN" | "STALE_TURN" | "DELEGATION_CONFLICT" | "RUN_BUDGET" | "RESULTS_PENDING" | "DEPTH_LIMIT" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "MESSAGE_TOO_LARGE" | "MESSAGE_EMPTY" | "MESSAGE_RATE_LIMIT" | "KEY_CONFLICT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT", [import("convex/values").VLiteral<"HOOK_BLOCKED", "required">, import("convex/values").VLiteral<"ACTIVE_LIMIT", "required">, import("convex/values").VLiteral<"TASK_LIMIT", "required">, import("convex/values").VLiteral<"FORBIDDEN", "required">, import("convex/values").VLiteral<"STALE_TURN", "required">, import("convex/values").VLiteral<"DELEGATION_CONFLICT", "required">, import("convex/values").VLiteral<"RUN_BUDGET", "required">, import("convex/values").VLiteral<"RESULTS_PENDING", "required">, import("convex/values").VLiteral<"DEPTH_LIMIT", "required">, import("convex/values").VLiteral<"CHILD_FINISHED", "required">, import("convex/values").VLiteral<"MESSAGE_LIMIT", "required">, import("convex/values").VLiteral<"MESSAGE_TOO_LARGE", "required">, import("convex/values").VLiteral<"MESSAGE_EMPTY", "required">, import("convex/values").VLiteral<"MESSAGE_RATE_LIMIT", "required">, import("convex/values").VLiteral<"KEY_CONFLICT", "required">, import("convex/values").VLiteral<"NO_PARENT", "required">, import("convex/values").VLiteral<"ASK_PENDING", "required">, import("convex/values").VLiteral<"ASK_WITH_CHILDREN", "required">, import("convex/values").VLiteral<"QUEUE_LIMIT", "required">], "required", never>;
 }, "required", "kind" | "code">, import("convex/values").VObject<{
     kind: "ready";
     agent: string;
-    runId: string;
     subject: string;
+    runId: string;
     rootAssignmentId: import("convex/values").GenericId<"assignments">;
     childThreadId: string;
     actorAgent: string;
@@ -847,7 +540,7 @@ export declare const interactionResult: import("convex/values").VUnion<{
     rootAgent: import("convex/values").VString<string, "required">;
     actorAgent: import("convex/values").VString<string, "required">;
     parentAgent: import("convex/values").VString<string, "required">;
-}, "required", "kind" | "agent" | "runId" | "subject" | "rootAssignmentId" | "childThreadId" | "actorAgent" | "parentThreadId" | "rootThreadId" | "rootAgent" | "parentAgent">], "required", "kind" | "agent" | "runId" | "subject" | "rootAssignmentId" | "childThreadId" | "actorAgent" | "code" | "parentThreadId" | "rootThreadId" | "rootAgent" | "parentAgent">;
+}, "required", "kind" | "agent" | "subject" | "runId" | "rootAssignmentId" | "childThreadId" | "actorAgent" | "parentThreadId" | "rootThreadId" | "rootAgent" | "parentAgent">], "required", "kind" | "agent" | "subject" | "runId" | "rootAssignmentId" | "childThreadId" | "actorAgent" | "code" | "parentThreadId" | "rootThreadId" | "rootAgent" | "parentAgent">;
 /** `subagents.messages.messageChild`: the exact native follow-up id is saved in the
  * child's inbox in the same transaction. Answers an open question (resuming
  * the child) when the child is asking; spends one hop either way. */
@@ -860,9 +553,7 @@ export declare function sendToChild(ctx: MutationCtx, args: {
     status: "accepted";
     runId: string;
 }>;
-/** `subagents.messages.askParent`: asking holds the active slot. The question bypasses
- * result joins (otherwise a child waiting for its parent would deadlock its
- * own group). Its native assistant id and the parent's inbox id commit with
+/** `subagents.messages.askParent`: asking holds the active slot. Its native assistant id and the parent's inbox id commit with
  * BOTH native saves; spends one hop. */
 export declare function askParentRun(ctx: MutationCtx, args: {
     assignmentId: Doc<"assignments">["_id"];
@@ -881,7 +572,7 @@ export declare const interactionContext: import("convex/server").RegisteredQuery
     op: "message" | "ask" | "message_parent";
 }, Promise<{
     kind: "denied";
-    code: "FORBIDDEN" | "STALE_TURN" | "RUN_BUDGET" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "SIDE_RUN" | "MESSAGE_RATE_LIMIT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
+    code: "FORBIDDEN" | "STALE_TURN" | "RUN_BUDGET" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "MESSAGE_RATE_LIMIT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
 } | {
     kind: "ready";
     runId: string;
@@ -897,8 +588,8 @@ export declare const interactionContext: import("convex/server").RegisteredQuery
 }>>;
 /** The exact native follow-up id is saved in the inbox in the same transaction. */
 export declare const messageChild: import("convex/server").RegisteredMutation<"public", {
-    runId: string;
     messageId: string;
+    runId: string;
     turnToken: string;
     assignmentId: import("convex/values").GenericId<"assignments">;
 }, Promise<{

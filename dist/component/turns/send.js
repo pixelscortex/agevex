@@ -1,22 +1,7 @@
-/**
- * Registered send endpoints of one assignment (one managed thread): `accept`
- * admits a host send, `lookupReceipt` replays its request receipt,
- * `admission` is the preflight refusal check, and `assignment` / `activity`
- * are the thread's scope and public status.
- *
- * Acceptance runs in the same transaction as the host's native prompt save:
- * it creates the root assignment on the thread's first send, opens a new run
- * budget, queues the prompt as a ready inbox row, records a `done` request
- * receipt under `request:<subject>` and wakes the thread (turns/wake.ts). A
- * repeated request key returns its original receipt as `duplicate`; a
- * different payload under the same key is a KEY_CONFLICT. Touches
- * `assignments`, `runs`, `inbox` and `receipts`.
- */
 import { v } from "convex/values";
 import { mutation, query } from "../_generated/server.js";
 import { limitsValidator } from "../limits.js";
 import { modelOverrides, validModelOverrides } from "../models.js";
-import { messageRef, recordRefs } from "../hooks/refs.js";
 import { armPurge, findReceipt, newDoneReceipt } from "../receipts/records.js";
 import { assignmentByThread, newRootAssignment } from "./assignments.js";
 import { settingsSnapshot, resolveRunSettings } from "../run_settings.js";
@@ -24,7 +9,6 @@ import { newRun } from "./runs.js";
 import { textConfig } from "../text/values.js";
 import { queueText } from "../text/jobs.js";
 import { wake } from "./wake.js";
-import { taskPreview } from "../run_tree_values.js";
 import { activity as vActivity, receipt as vReceipt, scope } from "../schema.js";
 import { activityView, assignmentScope } from "./views.js";
 import { assertFunctionHandle, assertName } from "../facts.js";
@@ -35,9 +19,6 @@ export const acceptArgs = {
     requestKey: v.string(),
     fingerprint: v.string(),
     promptMessageId: v.string(),
-    task: v.optional(v.string()),
-    savedMessage: v.optional(messageRef),
-    trackContext: v.optional(v.boolean()),
     runTurn: v.string(),
     limits: limitsValidator,
     models: v.optional(modelOverrides),
@@ -85,13 +66,7 @@ export async function acceptSend(ctx, args) {
     // its inbox row. Position counts that still-present row too; otherwise two
     // successive accepted messages would both report position zero.
     const position = row.queuedMessages + (row.inboxId ? 1 : 0);
-    const models = args.models ?? row.models;
-    const runId = await ctx.db.insert("runs", newRun(models, args.settings ?? [{ agent: args.agent, settings: resolveRunSettings() }], {
-        rootAssignmentId: row._id,
-        rootCancellationEpoch: row.cancellationEpoch,
-        taskMessageId: args.promptMessageId,
-        taskPreview: taskPreview(args.task ?? ""),
-    }));
+    const { models, runId } = await createRun(ctx, row, args);
     await ctx.db.insert("inbox", {
         assignmentId: row._id,
         messageId: args.promptMessageId,
@@ -104,8 +79,6 @@ export async function acceptSend(ctx, args) {
         queuedMessages: row.queuedMessages + 1,
         nextSequence: row.nextSequence + 1,
     });
-    if (args.savedMessage)
-        await recordRefs(ctx, row, [args.savedMessage]);
     await armPurge(ctx);
     // Acceptance and the host's native prompt save share one transaction: no
     // external effect can outlive an abandoned claim, so request receipts enter
@@ -116,8 +89,8 @@ export async function acceptSend(ctx, args) {
         fingerprint: args.fingerprint,
         result: { assignmentId: row._id, threadId: args.threadId, position },
     }));
-    if (first && args.textConfig?.title)
-        await queueText(ctx, (await ctx.db.get("assignments", row._id)), "title", runId);
+    if (first && args.textConfig)
+        await queueText(ctx, (await ctx.db.get("assignments", row._id)), "title", runId, args.promptMessageId);
     await wake(ctx, { ...row, queuedMessages: row.queuedMessages + 1 });
     return {
         assignmentId: row._id,
@@ -126,6 +99,16 @@ export async function acceptSend(ctx, args) {
         status: "accepted",
         position,
     };
+}
+/** Snapshot accepted model/settings policy once for the request and descendants. */
+async function createRun(ctx, row, args) {
+    const models = args.models ?? row.models;
+    const runId = await ctx.db.insert("runs", newRun(models, args.settings ?? [{ agent: args.agent, settings: resolveRunSettings() }], {
+        rootAssignmentId: row._id,
+        rootCancellationEpoch: row.cancellationEpoch,
+        taskMessageId: args.promptMessageId,
+    }));
+    return { models, runId };
 }
 /**
  * Replay lookup after host authorization, before admission or native saves.
@@ -201,16 +184,12 @@ function assertAdmissible(args) {
         for (const field of ["worker", "updateThread", "getThread"])
             assertFunctionHandle(args.textConfig[field], `textConfig.${field}`);
 }
-/** Configure the bounded exact-message ring before recording the accepted prompt. */
+/** Configure native thread text generation before accepting the prompt. */
 async function configureText(ctx, initial, args) {
     let row = initial;
     if (args.textConfig) {
         await ctx.db.patch("assignments", row._id, { textConfig: args.textConfig });
         row = { ...row, textConfig: args.textConfig };
-    }
-    if (args.trackContext && !row.contextMessages) {
-        await ctx.db.patch("assignments", row._id, { contextMessages: [] });
-        row = { ...row, contextMessages: [] };
     }
     return row;
 }

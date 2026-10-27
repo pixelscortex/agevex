@@ -8,18 +8,13 @@ export function newRun(models, settings = [], metadata = {}) {
         ...metadata,
         settings,
         models,
-        // 64-bit agent-index masks: who started in this run / who owns routing.
-        startedAgents: 0n,
-        routingAgents: 0n,
         // Spend counters, each checked against its limits.ts bound.
-        continues: 0,
-        sideRuns: 0,
         launches: 0,
         hops: 0,
         cancelled: false,
         usagePartial: false,
     };
-    // Reserve 1 KiB for native id/time, lifecycle fields and bounded counter/mask
+    // Reserve 1 KiB for native id/time, lifecycle fields and bounded counter
     // growth. Both JSON UTF-8 and Convex bytes must stay <=16 KiB after updates.
     if (Math.max(getConvexSize(row), new TextEncoder().encode(JSON.stringify(row, (_key, value) => typeof value === "bigint" ? value.toString() : value)).byteLength) +
         RUN_LIMITS.nativeEnvelopeBytes >

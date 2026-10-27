@@ -67,7 +67,7 @@ export async function bindFiles(ctx, args) {
         const grant = await uploadGrant(ctx, args.native, fileId, args.subject);
         if (!grant || grant.kind !== "attachment")
             throw new Error("FILE_FORBIDDEN");
-        // A separate row per message retains exact ids for durable extraction
+        // A separate row per message retains exact ids for host attachment checks
         // admission even when the same file is attached in a later request.
         if (!bound(fileId))
             await ctx.db.insert("receipts", {

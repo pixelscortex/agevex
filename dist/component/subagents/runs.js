@@ -47,35 +47,16 @@ export function runTimes(run) {
         deliveryAt: deliveryAt ?? (run.deliveryStatus === "pending" ? null : finishedAt),
     };
 }
-/** One wait cohort: the members a parent launched under one run budget and
- * group name, in creation order (`by_group` pins all three fields). Callers
- * pass the cohort cap, so the read never exceeds <=15 rows (<=60 KiB). */
-export function groupMembers(ctx, cohort, limit) {
-    return ctx.db
-        .query("subagentRuns")
-        .withIndex("by_group", (q) => q
-        .eq("parentRunId", cohort.parentRunId)
-        .eq("actorAssignmentId", cohort.actorAssignmentId)
-        .eq("group", cohort.group))
-        .take(limit);
-}
-/** The queued row `subagents.launch.reserve` inserts once admission passed. The
- * native child thread does not exist yet; `attach` adds the child linkage.
- * `wait: "all"` members start in the "open" join state, which the launching
- * slice's sealGroups later closes. */
+/** The queued row reservation inserts before attaching the native child thread. */
 export function newSubagentRun(fields) {
     const { request, actor, root, now } = fields;
     const row = {
         runId: fields.runId,
-        side: request.side || undefined,
         // The root epoch this delegation belongs to; cancel bumps it to fence.
         rootCancellationEpoch: root.cancellationEpoch,
         depth: fields.depth,
         messagesReceived: 0,
         parentNotesSent: 0,
-        // Cohort membership (wait "all" rows carry a join state).
-        group: fields.group,
-        ...(fields.wait === "all" ? { join: "open" } : {}),
         // Budget, idempotency key and the root-wide reservation order.
         parentRunId: fields.budget._id,
         dedupKey: fields.dedupKey,
@@ -93,7 +74,6 @@ export function newSubagentRun(fields) {
         // Delivery capability: the host coordinator proves it with this token.
         deliveryToken: crypto.randomUUID(),
         coordinateHandle: request.coordinateHandle,
-        createdAt: now,
         events: [{ phase: "queued", at: now, errorCode: null }],
     };
     assertRunMetadata(row);
@@ -101,7 +81,7 @@ export function newSubagentRun(fields) {
 }
 /** Leave 1 KiB for native id/time, future result/question refs, four events,
  * timestamps, note counters and the deferred last-turn outcome. Check again
- * at task attachment so preview growth cannot break the 4 KiB read budget.
+ * at task attachment so native reference growth cannot break the 4 KiB read budget.
  */
 export function assertRunMetadata(row) {
     if (Math.max(getConvexSize(row), new TextEncoder().encode(JSON.stringify(row)).byteLength) +

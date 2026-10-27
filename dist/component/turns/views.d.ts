@@ -25,10 +25,6 @@ export declare function assignmentScope(row: Doc<"assignments">, threadId: strin
 };
 /** Validator of `executionView`; each field names its reader. */
 export declare const vExecution: import("convex/values").VObject<{
-    modelStep?: {
-        stepOrder: number;
-        messageId: string;
-    } | undefined;
     turnToken?: string | undefined;
     attachmentBytes: number;
     agent: string;
@@ -36,6 +32,7 @@ export declare const vExecution: import("convex/values").VObject<{
     runTurn: string;
     cancellationEpoch: number;
     cancelled: boolean;
+    messageIds: string[];
     approvalBlocked: boolean;
 }, {
     agent: import("convex/values").VString<string, "required">;
@@ -45,15 +42,9 @@ export declare const vExecution: import("convex/values").VObject<{
     cancellationEpoch: import("convex/values").VFloat64<number, "required">;
     cancelled: import("convex/values").VBoolean<boolean, "required">;
     approvalBlocked: import("convex/values").VBoolean<boolean, "required">;
-    modelStep: import("convex/values").VObject<{
-        stepOrder: number;
-        messageId: string;
-    } | undefined, {
-        messageId: import("convex/values").VString<string, "required">;
-        stepOrder: import("convex/values").VFloat64<number, "required">;
-    }, "optional", "stepOrder" | "messageId">;
+    messageIds: import("convex/values").VArray<string[], import("convex/values").VString<string, "required">, "required">;
     attachmentBytes: import("convex/values").VFloat64<number, "required">;
-}, "required", "attachmentBytes" | "agent" | "turnStatus" | "modelStep" | "runTurn" | "cancellationEpoch" | "cancelled" | "turnToken" | "approvalBlocked" | "modelStep.stepOrder" | "modelStep.messageId">;
+}, "required", "attachmentBytes" | "agent" | "turnStatus" | "runTurn" | "cancellationEpoch" | "cancelled" | "turnToken" | "messageIds" | "approvalBlocked">;
 /** Read execution metadata outside the Workflow journal; only ids cross steps.
  * The host polls this during generation, so it returns only the fields its
  * readers use (workflows/worker.ts dispatch; in src/client/turn/, runTurn's
@@ -67,9 +58,6 @@ export declare function executionView(row: Doc<"assignments">): {
     cancellationEpoch: number;
     cancelled: boolean;
     approvalBlocked: boolean;
-    modelStep: {
-        stepOrder: number;
-        messageId: string;
-    } | undefined;
+    messageIds: string[];
     attachmentBytes: number;
 };

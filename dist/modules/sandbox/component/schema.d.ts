@@ -1,10 +1,10 @@
-export declare const sandboxState: import("convex/values").VUnion<"stopped" | "unknown" | "ready" | "deleted" | "creating" | "deleting", [import("convex/values").VLiteral<"creating", "required">, import("convex/values").VLiteral<"ready", "required">, import("convex/values").VLiteral<"stopped", "required">, import("convex/values").VLiteral<"unknown", "required">, import("convex/values").VLiteral<"deleting", "required">, import("convex/values").VLiteral<"deleted", "required">], "required", never>;
+export declare const sandboxState: import("convex/values").VUnion<"stopped" | "unknown" | "ready" | "creating" | "deleting" | "deleted", [import("convex/values").VLiteral<"creating", "required">, import("convex/values").VLiteral<"ready", "required">, import("convex/values").VLiteral<"stopped", "required">, import("convex/values").VLiteral<"unknown", "required">, import("convex/values").VLiteral<"deleting", "required">, import("convex/values").VLiteral<"deleted", "required">], "required", never>;
 export declare const jobState: import("convex/values").VUnion<"failed" | "running" | "done" | "unknown" | "starting", [import("convex/values").VLiteral<"starting", "required">, import("convex/values").VLiteral<"running", "required">, import("convex/values").VLiteral<"done", "required">, import("convex/values").VLiteral<"failed", "required">, import("convex/values").VLiteral<"unknown", "required">], "required", never>;
 declare const _default: import("convex/server").SchemaDefinition<{
     sandboxes: import("convex/server").TableDefinition<import("convex/values").VObject<{
         sandboxId?: string | undefined;
         cleanupAt?: number | undefined;
-        state: "stopped" | "unknown" | "ready" | "deleted" | "creating" | "deleting";
+        state: "stopped" | "unknown" | "ready" | "creating" | "deleting" | "deleted";
         claim: string;
         leaseUntil: number;
         provider: string;
@@ -15,7 +15,7 @@ declare const _default: import("convex/server").SchemaDefinition<{
         scopeKey: import("convex/values").VString<string, "required">;
         provider: import("convex/values").VString<string, "required">;
         sandboxId: import("convex/values").VString<string | undefined, "optional">;
-        state: import("convex/values").VUnion<"stopped" | "unknown" | "ready" | "deleted" | "creating" | "deleting", [import("convex/values").VLiteral<"creating", "required">, import("convex/values").VLiteral<"ready", "required">, import("convex/values").VLiteral<"stopped", "required">, import("convex/values").VLiteral<"unknown", "required">, import("convex/values").VLiteral<"deleting", "required">, import("convex/values").VLiteral<"deleted", "required">], "required", never>;
+        state: import("convex/values").VUnion<"stopped" | "unknown" | "ready" | "creating" | "deleting" | "deleted", [import("convex/values").VLiteral<"creating", "required">, import("convex/values").VLiteral<"ready", "required">, import("convex/values").VLiteral<"stopped", "required">, import("convex/values").VLiteral<"unknown", "required">, import("convex/values").VLiteral<"deleting", "required">, import("convex/values").VLiteral<"deleted", "required">], "required", never>;
         lastUsedAt: import("convex/values").VFloat64<number, "required">;
         ttl: import("convex/values").VFloat64<number, "required">;
         claim: import("convex/values").VString<string, "required">;
@@ -33,9 +33,9 @@ declare const _default: import("convex/server").SchemaDefinition<{
         exitCode?: number | undefined;
         logTail?: string | undefined;
         state: "failed" | "running" | "done" | "unknown" | "starting";
-        runId: string;
         subject: string;
         threadId: string;
+        runId: string;
         claim: string;
         leaseUntil: number;
         scopeKey: string;
@@ -67,7 +67,7 @@ declare const _default: import("convex/server").SchemaDefinition<{
         exitCode: import("convex/values").VFloat64<number | undefined, "optional">;
         logTail: import("convex/values").VString<string | undefined, "optional">;
         code: import("convex/values").VLiteral<"SANDBOX_JOB_DEADLINE" | undefined, "optional">;
-    }, "required", "state" | "runId" | "subject" | "threadId" | "claim" | "leaseUntil" | "code" | "scopeKey" | "sandboxId" | "providerJobId" | "directory" | "deadline" | "pollMinMs" | "pollMaxMs" | "delayMs" | "pollHandle" | "lateAttempts" | "wakeId" | "exitCode" | "logTail">, {
+    }, "required", "state" | "subject" | "threadId" | "runId" | "claim" | "leaseUntil" | "code" | "scopeKey" | "sandboxId" | "providerJobId" | "directory" | "deadline" | "pollMinMs" | "pollMaxMs" | "delayMs" | "pollHandle" | "lateAttempts" | "wakeId" | "exitCode" | "logTail">, {
         by_scope_state: ["scopeKey", "state", "_creationTime"];
     }, {}, {}>;
 }, true>;

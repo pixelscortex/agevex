@@ -8,25 +8,20 @@ export declare function readyForRun(ctx: QueryCtx, assignmentId: Id<"assignments
     _id: import("convex/values").GenericId<"inbox">;
     _creationTime: number;
     from?: string | undefined;
-    join?: {
-        newestSequence: number;
-        earliestId: string;
-        earliestSequence: number;
-    } | undefined;
-    text?: string | undefined;
     passive?: boolean | undefined;
+    text?: string | undefined;
     noteEpoch?: number | undefined;
-    kind: "result" | "user" | "parent" | "note" | "continue";
-    sequence: number;
-    runId: import("convex/values").GenericId<"runs">;
+    kind: "result" | "user" | "parent" | "note";
     messageId: string;
+    runId: import("convex/values").GenericId<"runs">;
     assignmentId: import("convex/values").GenericId<"assignments">;
+    sequence: number;
 } | null>;
-/** Transitive ordinary-delivery and unjoined-group fences, scoped to one request.
- * Four probes <=4*4 KiB, plus <=1 KiB ready work. Side reviews never fence closure.
+/** Transitive delivery fences, scoped to one request.
+ * One probe <=4 KiB, plus <=1 KiB ready work.
  */
 export declare function rootRunBlocked(ctx: QueryCtx, root: Doc<"assignments">, runId: Id<"runs">): Promise<boolean>;
-/** Called after a root turn or blocker-clearing delivery/group release. Recording
+/** Called after a root turn or blocker-clearing delivery. Recording
  * closure once makes history independent of later assignment status and clocks.
  * <=16 KiB run +17 KiB probes +16 KiB patch read, <64 KiB per invocation.
  */

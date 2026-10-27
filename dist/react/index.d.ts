@@ -115,20 +115,6 @@ export declare function createAgevexHooks<Tree extends TreeRef = NonNullable<Age
         status: "skipped" | "loading" | "ready";
         data?: {
             text: string | null;
-            source: "auto" | "user" | null;
-            version: number;
         } | undefined;
-    };
-    useSummary(threadId?: string): {
-        summarize: () => Promise<{
-            status: "replayed";
-        } | {
-            status: "queued";
-        }>;
-        status: "skipped" | "loading" | "ready";
-        data?: {
-            text: string;
-            throughMessageId: string;
-        } | null | undefined;
     };
 };

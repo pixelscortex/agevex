@@ -9,7 +9,6 @@
 
 import { tool, type ToolSet } from "ai";
 import { z } from "zod";
-import { LIMITS } from "../../component/limits.js";
 import { coordinateRef, type RuntimeContext } from "../registration/context.js";
 import {
   ASK_PARENT_TOOL_NAME,
@@ -23,8 +22,7 @@ import type { Generation } from "./context.js";
 const delegateInput = z.object({
   agent: z.string(),
   task: z.string(),
-  group: z.string().max(LIMITS.groupLength).optional(),
-  wait: z.enum(["each", "all"]).optional(),
+  wait: z.literal("each").optional(),
 });
 
 /** Install the collaboration tools this turn is eligible for into `tools`. */
@@ -40,8 +38,7 @@ export function installCollaborationTools(
 
   if (gen.turn.child) tools[ASK_PARENT_TOOL_NAME] = askParentTool(rt, gen);
 
-  if (gen.turn.child && !gen.turn.child.side)
-    tools[MESSAGE_PARENT_TOOL_NAME] = messageParentTool(rt, gen);
+  if (gen.turn.child) tools[MESSAGE_PARENT_TOOL_NAME] = messageParentTool(rt, gen);
 }
 
 /** Report progress without changing the child's continuation or completion state. */
@@ -97,7 +94,6 @@ function delegateTool(rt: RuntimeContext, gen: Generation) {
         toolCallId: options.toolCallId,
         agent: rewritten.agent,
         task: rewritten.task,
-        group: rewritten.group,
         wait: rewritten.wait,
       });
 

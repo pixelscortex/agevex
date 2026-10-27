@@ -47,7 +47,7 @@ export const mark = mutation({
     const next = { ...row, activeTools: activeTools.length ? activeTools : undefined };
 
     // Include UTF-8 JSON expansion as well as Convex value bytes. A marker must
-    // never erode the <=34 KiB envelope relied on by every tree/cancel read.
+    // never erode the <=16 KiB envelope relied on by every tree/cancel read.
     if (
       Math.max(getConvexSize(next), new TextEncoder().encode(JSON.stringify(next)).byteLength) >
       LIMITS.assignmentBytes

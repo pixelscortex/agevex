@@ -6,7 +6,7 @@ export declare function sandbox(ctx: Pick<QueryCtx, "db">, scopeKey: string): Pr
     _creationTime: number;
     sandboxId?: string | undefined;
     cleanupAt?: number | undefined;
-    state: "stopped" | "unknown" | "ready" | "deleted" | "creating" | "deleting";
+    state: "stopped" | "unknown" | "ready" | "creating" | "deleting" | "deleted";
     claim: string;
     leaseUntil: number;
     provider: string;

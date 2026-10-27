@@ -52,8 +52,8 @@ export declare function uploadGrant(ctx: Pick<QueryCtx, "db">, native: string, f
 } | {
     _id: import("convex/values").GenericId<"receipts">;
     _creationTime: number;
-    messageId?: string | undefined;
     threadId?: string | undefined;
+    messageId?: string | undefined;
     kind: "attachment";
     subject: string;
     native: string;
@@ -95,8 +95,8 @@ export declare function messageBindings(ctx: Pick<QueryCtx, "db">, native: strin
 } | {
     _id: import("convex/values").GenericId<"receipts">;
     _creationTime: number;
-    messageId?: string | undefined;
     threadId?: string | undefined;
+    messageId?: string | undefined;
     kind: "attachment";
     subject: string;
     native: string;
@@ -131,16 +131,16 @@ export declare const owns: import("convex/server").RegisteredQuery<"public", {
 }, Promise<boolean>>;
 /** Bind granted files to one native message; see `bindFiles`. */
 export declare const attach: import("convex/server").RegisteredMutation<"public", {
-    messageId: string;
     subject: string;
     threadId: string;
+    messageId: string;
     native: string;
     files: string[];
 }, Promise<null>>;
 /** The file ids bound to one message of this subject's thread. */
 export declare const forMessage: import("convex/server").RegisteredQuery<"public", {
-    messageId: string;
     subject: string;
     threadId: string;
+    messageId: string;
     native: string;
 }, Promise<string[]>>;

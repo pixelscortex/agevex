@@ -1,34 +1,16 @@
 import { type EndpointContext } from "./access.js";
-/** Subscribe to the native title and its optimistic rename version. */
+/** Subscribe to the native thread title. */
 export declare function titleEndpoint(ep: EndpointContext): import("convex/server").RegisteredQuery<"public", {
     threadId: string;
 }, Promise<{
     text: string | null;
-    source: "auto" | "user" | null;
-    version: number;
 }>>;
-/** Repeated identical renames replay once; conflicting versions never overwrite. */
+/** The native title itself is the rename state. Repeated identical writes are
+ * harmless, and an automatic title's atomic native check always respects it. */
 export declare function renameEndpoint(ep: EndpointContext): import("convex/server").RegisteredMutation<"public", {
-    text: string;
     threadId: string;
-    expectedVersion: number;
+    text: string;
 }, Promise<{
     messageId: string;
     replayed: boolean;
-}>>;
-/** Summary text is display-only; native context remains unchanged. */
-export declare function summaryEndpoint(ep: EndpointContext): import("convex/server").RegisteredQuery<"public", {
-    threadId: string;
-}, Promise<{
-    text: string;
-    throughMessageId: string;
-} | null>>;
-/** Explicit request keys dedupe queued work; no action waits for the model. */
-export declare function summarizeEndpoint(ep: EndpointContext): import("convex/server").RegisteredMutation<"public", {
-    threadId: string;
-    requestKey: string;
-}, Promise<{
-    status: "replayed";
-} | {
-    status: "queued";
 }>>;

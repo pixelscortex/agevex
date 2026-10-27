@@ -1,26 +1,20 @@
-/**
- * Host entry point for action-scoped telemetry and reusable registration slots.
- * Public exports stay here; turn construction, SDK callbacks and bounded export
- * live in concept modules. This optional library owns no component or tables.
+/** Host-owned AI SDK 7 telemetry, with trusted attribution and isolated failures.
+ * AI SDK's telemetry.ts defines callbacks and execution wrappers; agevex owns
+ * neither spans nor exporters. Core turn/slots.ts owns the final flush deadline.
  */
-import type { TelemetrySlot } from "../../../client/slots.js";
-import type { TelemetryOptions, TurnTelemetry } from "./types.js";
-export { braintrust, langfuse, type Exporter } from "./exporters.js";
-export type { Credential, Setting } from "./credential.js";
-export type { Enabled } from "./enabled.js";
-export { LIMITS } from "./limits.js";
-export type { Attribute, AttributeValue, OtlpPayload, Sanitize, Span } from "./otlp.js";
-export type { Facts, TelemetryOptions, TurnTelemetry } from "./types.js";
-/**
- * Action-scoped, one-shot buffer. Create a fresh instance for each turn, attach its
- * integration to streamText, consume the stream, then await flush in finally.
- *
- * AI SDK 7's callback seam is ai/src/telemetry/telemetry.ts:136-360;
- * telemetry-options.ts:24-76 contains integrations and has no tracer option.
- * The observer-only failure guard follows the verified prior art in
- * agents/src/runtime/tracing.ts:133-215, without its durable outbox/SDK layer.
+import type { Telemetry } from "ai";
+import type { SlotFacts, TelemetrySlot } from "../../../client/slots.js";
+export type TelemetryFacts = Readonly<SlotFacts & {
+    turnKey: string;
+}>;
+export type TelemetryOptions = {
+    /** A factory can bind facts to an exporter's own metadata/span context. */
+    integration: Telemetry | ((facts: TelemetryFacts) => Telemetry);
+    flush?: (facts: TelemetryFacts, signal?: AbortSignal) => void | PromiseLike<void>;
+};
+/** Adapt a host integration without keeping buffers or credentials in agevex.
+ * Fact snapshots are frozen and overwrite event.agevex, so model/tool content
+ * cannot impersonate the run owner. Exporters must explicitly consume these
+ * facts (or the factory argument); the SDK has no generic metadata option.
  */
-export declare function telemetry(options: TelemetryOptions): TurnTelemetry;
-export declare namespace telemetry {
-    var slot: (options: TelemetryOptions) => TelemetrySlot;
-}
+export declare function telemetry({ integration, flush }: TelemetryOptions): TelemetrySlot;

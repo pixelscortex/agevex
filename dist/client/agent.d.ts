@@ -2,7 +2,7 @@ import { Agent as NativeAgent, type AgentComponent, type Config } from "@convex-
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import type { Instructions, LanguageModel, StopCondition, ToolSet } from "ai";
 import type { RunSettings } from "../component/run_settings.js";
-import type { AgentHooks, SideAgent, ManagedAgent } from "./types.js";
+import type { AgentHooks, ManagedAgent } from "./types.js";
 type AgentOptions<Tools extends ToolSet> = Omit<Config, "languageModel"> & {
     name: string;
     languageModel: Extract<LanguageModel, string | LanguageModelV4>;
@@ -31,7 +31,6 @@ type AgentOptions<Tools extends ToolSet> = Omit<Config, "languageModel"> & {
     run?: RunSettings;
     sandbox?: boolean;
     hooks?: AgentHooks;
-    sideAgents?: readonly SideAgent[];
 };
 declare const NativeBase: {
     new <CustomCtx extends object, Tools extends ToolSet>(component: AgentComponent, options: AgentOptions<Tools>): NativeAgent<CustomCtx, Tools>;
@@ -49,7 +48,6 @@ export declare class Agent<CustomCtx extends object = object, AgentTools extends
     readonly sandbox: boolean;
     readonly subagents: readonly ManagedAgent[];
     readonly hooks?: AgentHooks;
-    readonly sideAgents: readonly SideAgent[];
     /**
      * Native tools declared on this agent, kept so the managed runtime can merge
      * its reserved delegation tool with them. Inherited native behavior is

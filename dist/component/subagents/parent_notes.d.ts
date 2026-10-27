@@ -3,13 +3,13 @@ export declare function parentNoteFits(text: string): boolean;
 /** Trusted native-save target or a replay/denial; fresh limits precede every save. */
 export declare const parentNoteContext: import("convex/server").RegisteredQuery<"public", {
     key: string;
-    text: string;
     turnToken: string;
     assignmentId: import("convex/values").GenericId<"assignments">;
+    text: string;
     fingerprint: string;
 }, Promise<{
     kind: "denied";
-    code: "FORBIDDEN" | "STALE_TURN" | "RUN_BUDGET" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "SIDE_RUN" | "MESSAGE_RATE_LIMIT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
+    code: "FORBIDDEN" | "STALE_TURN" | "RUN_BUDGET" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "MESSAGE_RATE_LIMIT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
 } | {
     kind: "ready";
     runId: string;
@@ -42,10 +42,10 @@ export declare const parentNoteContext: import("convex/server").RegisteredQuery<
 /** Record the exact native id and receipt with queue publication in the host transaction. */
 export declare const messageParent: import("convex/server").RegisteredMutation<"public", {
     key: string;
-    text: string;
     messageId: string;
     turnToken: string;
     assignmentId: import("convex/values").GenericId<"assignments">;
+    text: string;
     fingerprint: string;
 }, Promise<{
     status: "accepted";

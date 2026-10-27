@@ -8,8 +8,6 @@
 import { tool } from "ai";
 import { fingerprint, opaqueKey } from "./keys.js";
 export { fingerprint } from "./keys.js";
-import { scopedMeter } from "./slots.js";
-export { noopMeter } from "./slots.js";
 const ONCE = Symbol("agevex.once");
 /** Editing is a host capability explicitly granted by defineOnceTool's config. */
 export function editableApproval(declared) {
@@ -40,7 +38,7 @@ export function defineOnceTool(config) {
  * `KEY_CONFLICT`, and a throwing `run` stores a sanitized `TOOL_FAILED`. The
  * fence makes a write from a cancelled turn fail instead of landing.
  */
-export function bindOnceTool(declared, component, rawCtx, context, fence, leaseMs, backend) {
+export function bindOnceTool(declared, component, rawCtx, context, fence, leaseMs) {
     const config = declared[ONCE];
     if (!config)
         return declared;
@@ -51,7 +49,6 @@ export function bindOnceTool(declared, component, rawCtx, context, fence, leaseM
                 ...context,
                 toolCallId: options.toolCallId,
                 nativeToolCallId: options.context?.nativeToolCallId ?? options.toolCallId,
-                meter: scopedMeter(backend, options.toolCallId),
             };
             const scope = await opaqueKey("tool", tc.subject, tc.threadId, config.name);
             const key = await opaqueKey("once", config.key?.(input, tc) ?? tc.toolCallId);

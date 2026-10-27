@@ -2,12 +2,9 @@
  * Launching a delegation: the trusted `delegateContext` of a running turn,
  * admission (`reserve`) and attaching the native child thread (`attach`).
  *
- * `reserveRun` checks, in order: the turn still owns its token, root and
- * parent run are live in the current epoch, depth and group arguments are
- * valid, the tool call was not already reserved (idempotent replay), the root
- * has a free active slot, the run budget has a launch/hop (or side-run) left,
- * the assignment has outstanding-result headroom across requests, and the named
- * cohort accepts another member. Success spends the budget and
+ * `reserveRun` checks the turn token, live root and parent epoch, depth,
+ * tool-call idempotency, active-child capacity, run budget and outstanding
+ * result headroom across requests. Success spends the budget and
  * inserts the queued run in the same transaction as the host's native
  * child-thread creation. `attachChild` then creates the child assignment with
  * its task as the first inbox row and wakes it. Touches `subagentRuns`,
@@ -16,12 +13,9 @@
 import { v } from "convex/values";
 import { mutation, query } from "../_generated/server.js";
 import { denialCode } from "../schema.js";
-import { LIMITS } from "../limits.js";
 import { assertFunctionHandle, assertName } from "../facts.js";
-import { taskPreview } from "../run_tree_values.js";
 import { approvalKey } from "../approvals.js";
-import { assertRunMetadata, groupMembers, newSubagentRun, runById } from "./runs.js";
-import { messageRef, recordRefs } from "../hooks/refs.js";
+import { assertRunMetadata, newSubagentRun, runById } from "./runs.js";
 import { newChildAssignment } from "../turns/assignments.js";
 import { wake } from "../turns/wake.js";
 import { delegateScope } from "./views.js";
@@ -33,9 +27,6 @@ export const reserveArgs = {
     agent: v.string(),
     payloadFingerprint: v.string(),
     coordinateHandle: v.string(),
-    side: v.optional(v.boolean()),
-    group: v.optional(v.string()),
-    wait: v.optional(v.union(v.literal("each"), v.literal("all"))),
 };
 export const reservation = v.union(v.object({ kind: v.literal("reserved"), runId: v.string() }), v.object({ kind: v.literal("replay"), runId: v.string(), agent: v.string() }), v.object({ kind: v.literal("denied"), code: denialCode }));
 const denied = (code) => ({ kind: "denied", code });
@@ -71,25 +62,17 @@ export async function reserveRun(ctx, args) {
     // A delivered-result turn retains this run id: completing a child cannot
     // replenish launches, and a new caller prompt alone creates a new budget.
     const budget = row.runId ? await ctx.db.get("runs", row.runId) : null;
-    if (!budget || budget.cancelled || budgetSpent(budget, row, args.side))
+    if (!budget || budget.cancelled || budget.launches >= row.limits.runLaunches)
         return denied("RUN_BUDGET");
-    if (!args.side) {
-        const refusal = await reserveFor(ctx, "launch", root, budget);
-        if (refusal)
-            return refusal;
-        if (!(await canOweResult(ctx, row, root)))
-            return denied("RESULTS_PENDING");
-    }
-    const wait = args.wait ?? "each";
-    const group = args.group ?? (wait === "all" ? "" : undefined);
-    if (group !== undefined) {
-        const refusal = await cohortRefusal(ctx, budget._id, row, root, group, wait);
-        if (refusal)
-            return refusal;
-    }
-    await ctx.db.patch("runs", budget._id, args.side
-        ? { sideRuns: budget.sideRuns + 1 }
-        : { launches: budget.launches + 1, hops: budget.hops + 1 });
+    const refusal = await reserveFor(ctx, "launch", root, budget);
+    if (refusal)
+        return refusal;
+    if (!(await canOweResult(ctx, row, root)))
+        return denied("RESULTS_PENDING");
+    await ctx.db.patch("runs", budget._id, {
+        launches: budget.launches + 1,
+        hops: budget.hops + 1,
+    });
     const runId = crypto.randomUUID();
     const now = Date.now();
     const sequence = root.nextRunSequence + 1;
@@ -100,8 +83,6 @@ export async function reserveRun(ctx, args) {
         root,
         budget,
         depth,
-        group,
-        wait,
         dedupKey,
         sequence,
         now,
@@ -114,7 +95,7 @@ export async function reserveRun(ctx, args) {
 }
 /** The checks that need no dedup key: the calling turn still owns its token,
  * the root (and, for a child caller, its own running run) is live in the
- * root's epoch, the depth bound holds and side/group arguments are valid. */
+ * root's epoch and the depth bound holds. */
 async function reservationScope(ctx, args) {
     const row = await ctx.db.get("assignments", args.assignmentId);
     if (!row || row.turnToken !== args.turnToken || row.turnStatus !== "running")
@@ -132,44 +113,12 @@ async function reservationScope(ctx, args) {
     const depth = parent ? parent.depth + 1 : 1;
     if (depth > root.limits.maxDepth)
         return denied("DEPTH_LIMIT");
-    if (args.side && (args.group !== undefined || args.wait !== undefined))
-        return denied("GROUP_CONFLICT");
-    if ((args.group?.length ?? 0) > LIMITS.groupLength)
-        return denied("TASK_LIMIT");
     return { kind: "scope", row, root, depth };
-}
-/** Whether this launch would exceed the run budget: side reviews spend
- * `sideRuns`; ordinary launches spend one launch and one hop, with final-result
- * headroom checked by reserveFor before any write. */
-function budgetSpent(budget, row, side) {
-    return side
-        ? budget.sideRuns >= row.limits.sideRunsPerRun
-        : budget.launches >= row.limits.runLaunches;
-}
-/** A named group is a closed cohort, capped INCLUDING settled members. Refuse
- * mixing wait modes, joining a sealed cohort, or exceeding the cohort cap. */
-async function cohortRefusal(ctx, budgetId, row, root, group, wait) {
-    // <=15 small rows (<=4 KiB each) + two <=34 KiB assignments and fixed
-    // admission metadata <160 KiB; no native
-    // result bodies are read. Index scope excludes every other parent/run.
-    const members = await groupMembers(ctx, { parentRunId: budgetId, actorAssignmentId: row._id, group }, wait === "all" ? root.limits.activeChildrenPerRoot : 1);
-    if (members.some((member) => (member.join ? "all" : "each") !== wait))
-        return denied("GROUP_CONFLICT");
-    // Sealing is one-way (sealed -> ready -> joined), so any state past
-    // "open" means the launching slice already closed this cohort.
-    if (members.some((member) => member.join && member.join !== "open"))
-        return denied("GROUP_CLOSED");
-    if (wait === "all" && members.length >= root.limits.activeChildrenPerRoot)
-        return denied("GROUP_LIMIT");
-    return null;
 }
 export const attachArgs = {
     runId: v.string(),
     childThreadId: v.string(),
     promptMessageId: v.string(),
-    task: v.optional(v.string()),
-    savedMessage: v.optional(messageRef),
-    trackContext: v.optional(v.boolean()),
 };
 /**
  * Queue a native child in its independent lane. Keeping the task in Agent and
@@ -191,7 +140,6 @@ export async function attachChild(ctx, args) {
         root,
         run,
         childThreadId: args.childThreadId,
-        trackContext: args.trackContext,
     }));
     await ctx.db.insert("inbox", {
         assignmentId: childId,
@@ -202,14 +150,11 @@ export async function attachChild(ctx, args) {
     });
     const attached = {
         taskMessageId: args.promptMessageId,
-        taskPreview: taskPreview(args.task ?? ""),
         childAssignmentId: childId,
         childThreadId: args.childThreadId,
     };
     assertRunMetadata({ ...run, ...attached });
     await ctx.db.patch("subagentRuns", run._id, attached);
-    if (args.savedMessage)
-        await recordRefs(ctx, (await ctx.db.get("assignments", childId)), [args.savedMessage]);
     await wake(ctx, (await ctx.db.get("assignments", childId)));
     return null;
 }

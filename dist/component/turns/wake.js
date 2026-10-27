@@ -1,4 +1,3 @@
-import { api } from "../_generated/api.js";
 import { laneManager, startLoop } from "../workflows/lanes.js";
 import { firstReady } from "./inbox.js";
 import { runById } from "../subagents/runs.js";
@@ -31,10 +30,9 @@ export async function wake(ctx, row, ring = true) {
         await disarmRecovery(ctx, row);
         return;
     }
-    row = await drainEmptyCohorts(ctx, row);
     await closeRootRun(ctx, row);
     // Re-evaluate R3 after every blocker-clearing wake, including failed delivery
-    // and empty group release. Idle children cannot wait for nonexistent work.
+    // and cancelled delivery. Idle children cannot wait for nonexistent work.
     // answer/respond retain their inbox anchor until claim consumes it. That
     // anchor fences R3 even after the last approval is cleared; claim then marks
     // the turn running and clears lastTurnResult in the same transaction. Never
@@ -57,26 +55,6 @@ export async function wake(ctx, row, ring = true) {
         await armRecovery(ctx, current);
     else
         await disarmRecovery(ctx, current);
-}
-/**
- * Drain empty ready cohorts until either
- * work is published or no cohort remains, so several all-failed groups
- * sealed by the same last slice cannot strand an idle child. A child owns
- * one run budget: <=50 members TOTAL, <=50 indexed probes/releases,
- * <8 MiB metadata and <1,000 reads/writes at all host maxima. Root loops
- * keep their existing one-cohort cadence; claim drains ready FIFO work.
- * Returns the freshly read row after the last release.
- */
-async function drainEmptyCohorts(ctx, row) {
-    const releases = row.childRunId ? row.limits.runLaunches : 1;
-    for (let i = 0; i < releases; i++) {
-        if (!(await ctx.runMutation(api.subagents.deliver.releaseGroups, { assignmentId: row._id })))
-            break;
-        row = (await ctx.db.get("assignments", row._id));
-        if (await needsRecovery(ctx, row))
-            break;
-    }
-    return row;
 }
 /** Reserve the oldest ready row as the next queued turn of an idle, unpaused
  * assignment: mint its execution token and record the prompt, inbox row, run

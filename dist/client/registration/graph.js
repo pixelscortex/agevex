@@ -1,8 +1,8 @@
 // The delegation graph of one registration.
 //
-// `resolveGraph` walks every root's `subagents` and `sideAgents` once, at
+// `resolveGraph` walks every root's `subagents` once, at
 // `registerAgent` time, and rejects every shape the runtime cannot execute safely
-// (cycles, depth, duplicates, reserved tool names, invalid side cadences). The
+// (cycles, depth, duplicates, reserved tool names, invalid children). The
 // coordinator, the turn runner, delivery and the host helpers resolve agent names
 // through the resulting `Graph`. The public endpoints keep their own index
 // (`endpoints/access.ts`), built from the same registration.
@@ -57,12 +57,6 @@ export function resolveGraph(config) {
         graph.edges.set(agent.name, new Set(agent.subagents.map((child) => child.name)));
         // Walk every path, even through a shared object: its longest path must fit.
         const next = new Set(path).add(agent);
-        const sides = agent.sideAgents ?? [];
-        assertSideAgentSet(sides);
-        for (const side of sides) {
-            assertSideCadence(side);
-            visit(side.agent, depth + 1, next);
-        }
         for (const child of agent.subagents)
             visit(child, depth + 1, next);
     }
@@ -94,25 +88,4 @@ function assertAgentFits(graph, maxDepth, agent, depth, path) {
         throw new Error("DUPLICATE_AGENT_NAME");
     if (RESERVED_TOOL_NAMES.some((name) => name in agent.declaredTools))
         throw new Error("RESERVED_TOOL_NAME");
-}
-/** At most `LIMITS.sideAgents` watchers per agent, each a distinct agent. */
-function assertSideAgentSet(sides) {
-    if (sides.length > LIMITS.sideAgents ||
-        new Set(sides.map((side) => side.agent.name)).size !== sides.length)
-        throw new Error("INVALID_SIDE_AGENTS");
-}
-/**
- * A side agent sees only the conversation delta, on exactly one cadence
- * (`turns` or `minutes`), a positive safe integer at most `LIMITS.cadence`.
- * The component's review admission relies on this single bounded cadence.
- */
-function assertSideCadence(side) {
-    const values = Object.values(side.every);
-    if (side.sees !== "delta" ||
-        values.length !== 1 ||
-        !Number.isSafeInteger(values[0]) ||
-        values[0] <= 0 ||
-        values[0] > LIMITS.cadence ||
-        !("turns" in side.every || "minutes" in side.every))
-        throw new Error("INVALID_SIDE_CADENCE");
 }

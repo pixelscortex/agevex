@@ -3,7 +3,7 @@
 //
 // `buildCoordinate` returns the registered internal mutation the host exports
 // (as `refs.coordinate`). Its handler only dispatches on `op` to the op modules:
-// `launch.ts` (start a child or side review), `interaction.ts` (`message` /
+// `launch.ts` (start a child), `interaction.ts` (`message` /
 // `ask`), `parent-note.ts` (`message_parent`), `settle.ts` (record a child
 // outcome) and `delivery.ts` (`notify`).
 // Each op runs entirely inside this one mutation's transaction.
@@ -29,7 +29,6 @@ import { messageParent } from "./parent-note.js";
  */
 const coordinateArgs = v.object({
   op: v.string(),
-  side: v.optional(v.boolean()),
   assignmentId: v.optional(v.string()),
   turnToken: v.optional(v.string()),
   toolCallId: v.optional(v.string()),
@@ -39,8 +38,7 @@ const coordinateArgs = v.object({
   resultMessageId: v.optional(v.string()),
   errorCode: v.optional(runErrorCode),
   deliveryToken: v.optional(v.string()),
-  group: v.optional(v.string()),
-  wait: v.optional(v.union(v.literal("each"), v.literal("all"))),
+  wait: v.optional(v.literal("each")),
   text: v.optional(v.string()),
   question: v.optional(v.string()),
 });

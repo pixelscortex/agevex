@@ -4,6 +4,7 @@
  * All reads are bounded or exact-id lookups; claims fence stale lifecycle and poll actions.
  */
 import { v } from "convex/values";
+import { sandboxDocument, jobDocument, reservation, jobReservation, jobCompletion, } from "./returns.js";
 import {} from "convex/server";
 import { mutation, query } from "./_generated/server.js";
 import { HARD_LIMITS, LIMITS, bounded, integer } from "../shared/limits.js";
@@ -12,6 +13,7 @@ import { reserveSandbox, reserveBackgroundJob } from "./admission.js";
 /** Read the unique bounded scope binding for host lifecycle decisions. */
 export const get = query({
     args: { scopeKey: v.string() },
+    returns: v.union(v.null(), sandboxDocument),
     handler: (ctx, args) => sandbox(ctx, args.scopeKey),
 });
 /** Admission is transactional: a lost create result cannot authorize another create. */
@@ -23,6 +25,7 @@ export const reserve = mutation({
         // Export: never create, revive or wait; only an existing, live sandbox.
         existingOnly: v.optional(v.boolean()),
     },
+    returns: reservation,
     handler: reserveSandbox,
 });
 /**
@@ -77,6 +80,7 @@ export const save = mutation({
 /** Host cleanup is explicitly invoked; this query does not arm any recurring timer. */
 export const expired = query({
     args: { limit: v.number() },
+    returns: v.array(sandboxDocument),
     handler: async (ctx, args) => {
         integer(args.limit, HARD_LIMITS.cleanupBatch, "BATCH");
         // Hard maximum: 64 * 8 KiB =512 KiB, <=64 docs and one index query.
@@ -90,6 +94,7 @@ export const expired = query({
 /** Recheck expiry atomically with delete admission to close the idle/use race. */
 export const claimDelete = mutation({
     args: { scopeKey: v.string(), expiredOnly: v.boolean() },
+    returns: v.union(v.null(), v.object({ sandboxId: v.string(), claim: v.string() })),
     handler: async (ctx, args) => {
         const row = await sandbox(ctx, args.scopeKey);
         if (!row || row.state === "deleted" || row.state === "deleting")
@@ -131,11 +136,13 @@ export const reserveJob = mutation({
         jobTimeoutMs: v.number(),
         maximum: v.number(),
     },
+    returns: jobReservation,
     handler: reserveBackgroundJob,
 });
 /** Attach a launch acknowledgement only while its original claim still owns the job. */
 export const attachJob = mutation({
     args: { jobId: v.id("jobs"), claim: v.string(), providerJobId: v.string() },
+    returns: v.boolean(),
     handler: async (ctx, args) => {
         bounded(args.claim, LIMITS.claimChars, "CLAIM");
         bounded(args.providerJobId, LIMITS.identityChars, "JOB_ID");
@@ -156,11 +163,13 @@ export const attachJob = mutation({
 /** Read one job by exact id for polling and host reconciliation. */
 export const getJob = query({
     args: { jobId: v.id("jobs") },
+    returns: v.union(v.null(), jobDocument),
     handler: (ctx, args) => ctx.db.get("jobs", args.jobId),
 });
 /** Polls only read provider state, but a lease still fences overlapping watchdogs. */
 export const claimPoll = mutation({
     args: { jobId: v.id("jobs") },
+    returns: v.union(v.null(), jobDocument),
     handler: async (ctx, args) => {
         const row = await ctx.db.get("jobs", args.jobId);
         const now = Date.now();
@@ -222,6 +231,7 @@ export const finishJob = mutation({
         logTail: v.optional(v.string()),
         code: v.optional(v.literal("SANDBOX_JOB_DEADLINE")),
     },
+    returns: v.union(v.null(), jobCompletion),
     handler: async (ctx, args) => {
         bounded(args.claim, LIMITS.claimChars, "CLAIM");
         const row = await ctx.db.get("jobs", args.jobId);

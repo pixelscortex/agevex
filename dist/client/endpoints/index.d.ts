@@ -8,30 +8,13 @@ export declare function authorizedEndpoints(component: ComponentApi, config: Reg
         threadId: string;
     }, Promise<{
         text: string | null;
-        source: "auto" | "user" | null;
-        version: number;
     }>>;
     rename: import("convex/server").RegisteredMutation<"public", {
-        text: string;
         threadId: string;
-        expectedVersion: number;
+        text: string;
     }, Promise<{
         messageId: string;
         replayed: boolean;
-    }>>;
-    summary: import("convex/server").RegisteredQuery<"public", {
-        threadId: string;
-    }, Promise<{
-        text: string;
-        throughMessageId: string;
-    } | null>>;
-    summarize: import("convex/server").RegisteredMutation<"public", {
-        threadId: string;
-        requestKey: string;
-    }, Promise<{
-        status: "replayed";
-    } | {
-        status: "queued";
     }>>;
     open: import("convex/server").RegisteredMutation<"public", {
         models?: Record<string, string> | undefined;
@@ -71,8 +54,8 @@ export declare function authorizedEndpoints(component: ComponentApi, config: Reg
     send: import("convex/server").RegisteredMutation<"public", {
         models?: Record<string, string> | undefined;
         files?: string[] | undefined;
-        text: string;
         threadId: string;
+        text: string;
         requestKey: string;
     }, Promise<{
         status: "rejected";
@@ -216,7 +199,6 @@ export declare function authorizedEndpoints(component: ComponentApi, config: Reg
             status: "failed" | "running" | "queued" | "done" | "asleep";
             agent: string;
             finishedAt: number | null;
-            createdAt: number;
             messages: {
                 taskId?: string | undefined;
                 resultId?: string | undefined;
@@ -232,8 +214,8 @@ export declare function authorizedEndpoints(component: ComponentApi, config: Reg
                 settledUsd: number;
                 reporting: "partial" | "available";
             } | null;
+            createdAt: number;
             parentId: string | null;
-            task: string;
             currentTool: string | null;
         }[];
     } | null>>;
@@ -253,15 +235,14 @@ export declare function authorizedEndpoints(component: ComponentApi, config: Reg
             errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | "DELIVERY_UNKNOWN" | null;
             events: {
                 errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | "DELIVERY_UNKNOWN" | null;
-                at: number;
                 phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
+                at: number;
                 runId: string;
                 agent: string;
             }[];
             finishedAt: number | null;
             deliveryAt: number | null;
             runId: string;
-            side: boolean;
             childThreadId: string | null;
             agent: string;
             status: "failed" | "running" | "completed" | "queued" | "asking";

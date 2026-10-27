@@ -1,21 +1,19 @@
 /**
  * Delivering a terminal child's result to its parent thread: `notify`,
- * `deliveryContext`, `deliver`, `failDelivery` and `releaseGroups`.
+ * `deliveryContext`, `deliver` and `failDelivery`.
  *
  * `notify` asks the host coordinator to deliver; the coordinator reads
  * `deliveryContext`, saves the result natively in the parent thread and then
  * calls `deliver` (or `notify` records `failDelivery`). One delivery per run:
  * it records the outcome on the run, spends one hop of the shared budget for
- * accepted ordinary results, and either enqueues the result as ready parent
- * work, marks its wait-"all" cohort ready (subagents/groups.ts, released by
- * `releaseGroups`), or just wakes the parent so R3 can re-check. Touches
- * `subagentRuns`, `runs`, `inbox` and the parent's counters.
+ * accepted results, and enqueues the result as ready parent work or wakes
+ * the parent to re-check settlement. Touches `subagentRuns`, `runs`, `inbox`
+ * and the parent's counters.
  */
 import { mutation, query, internalAction, internalMutation, } from "../_generated/server.js";
-import { groupMembers, isSettled, runById, appendEvent } from "./runs.js";
+import { isSettled, runById, appendEvent } from "./runs.js";
 import { wake } from "../turns/wake.js";
 import { closeRootRun } from "../turns/run_lifecycle.js";
-import { markGroupReady, releaseReadyCohort } from "./groups.js";
 import { v } from "convex/values";
 import { internal } from "../_generated/api.js";
 import { runErrorCode } from "../schema.js";
@@ -45,12 +43,8 @@ export async function applyDelivery(ctx, args) {
         deliveryStatus: args.deliveryStatus,
         errorCode: args.errorCode ?? run.errorCode,
         ...(args.parentMessageId ? { resultMessageId: args.parentMessageId } : {}),
-        // Only releaseGroup orders a joined cohort by it; "each" rows never need it.
-        ...(args.parentMessageId && run.join ? { resultSequence: parent?.nextSequence } : {}),
         events: appendEvent(run.events, deliveryPhase[args.deliveryStatus], at, args.errorCode),
     });
-    if (run.side)
-        return null;
     const budget = await spendDeliveryHop(ctx, run, args);
     if (!parent ||
         !root ||
@@ -61,9 +55,7 @@ export async function applyDelivery(ctx, args) {
     if (args.deliveryStatus === "accepted" &&
         (!budget || budget.cancelled || budget.hops >= root.limits.runHops))
         throw new Error("RUN_BUDGET");
-    if (run.join)
-        await deliverJoinMember(ctx, run, parent, root, args);
-    else if (args.deliveryStatus === "accepted" && args.parentMessageId)
+    if (args.deliveryStatus === "accepted" && args.parentMessageId)
         await enqueueResult(ctx, run, parent, args.parentMessageId);
     else
         await wake(ctx, parent);
@@ -71,10 +63,10 @@ export async function applyDelivery(ctx, args) {
     return null;
 }
 /** An accepted delivery needs a live root/parent in the run's epoch and, for
- * ordinary runs, the saved parent message id. Throwing rolls back the
+ * accepted deliveries, the saved parent message id. Throwing rolls back the
  * coordinator's native save in the same transaction. */
 function assertDeliverable(run, root, parent, args) {
-    if ((!args.parentMessageId && !run.side) || !root || !parent)
+    if (!args.parentMessageId || !root || !parent)
         throw new Error("INVALID_DELIVERY");
     if (root.cancelled ||
         parent.cancelled ||
@@ -94,22 +86,7 @@ async function spendDeliveryHop(ctx, run, args) {
         });
     return budget;
 }
-/** A wait-"all" member: allocate its result order on the parent, mark the
- * cohort ready if this was its last pending member, and wake the parent. */
-async function deliverJoinMember(ctx, run, parent, root, args) {
-    // <=15 members *4 KiB =60 KiB. Mark readiness and enqueue ONE id-only
-    // anchor; <=15 release markers. No historical candidate prefix is read.
-    // Native child bodies are verified ONE per delivery transaction (<=1 MiB);
-    // this join reads ids only, never 15 potentially 1 MiB native results.
-    const members = await groupMembers(ctx, { parentRunId: run.parentRunId, actorAssignmentId: parent._id, group: run.group ?? "" }, root.limits.activeChildrenPerRoot);
-    if (args.deliveryStatus === "accepted") {
-        await ctx.db.patch("assignments", parent._id, { nextSequence: parent.nextSequence + 1 });
-        parent.nextSequence++;
-    }
-    await markGroupReady(ctx, members, root);
-    await wake(ctx, (await ctx.db.get("assignments", parent._id)));
-}
-/** An ordinary accepted result becomes one ready "result" row on the parent,
+/** An accepted result becomes one ready "result" row on the parent,
  * regardless of the message queue limit: a launch already owes its result. */
 async function enqueueResult(ctx, run, parent, parentMessageId) {
     await ctx.db.insert("inbox", {
@@ -222,11 +199,4 @@ export const failDelivery = internalMutation({
         parentMessageId: null,
         errorCode: unknown ? "DELIVERY_UNKNOWN" : "DELIVERY_FAILED",
     }),
-});
-/** Release at most one ready wait-"all" cohort of this assignment; see
- * `releaseReadyCohort` in subagents/groups.ts. */
-export const releaseGroups = mutation({
-    args: { assignmentId: v.id("assignments"), parentRunId: v.optional(v.id("runs")) },
-    returns: v.boolean(),
-    handler: (ctx, args) => releaseReadyCohort(ctx, args),
 });

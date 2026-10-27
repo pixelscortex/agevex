@@ -5,7 +5,7 @@ export declare function messageParent(rt: RuntimeContext, ctx: CoordinatorCtx, a
     op: "message_parent";
 }>): Promise<{
     status: "denied";
-    code: "FORBIDDEN" | "STALE_TURN" | "RUN_BUDGET" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "MESSAGE_TOO_LARGE" | "MESSAGE_EMPTY" | "SIDE_RUN" | "MESSAGE_RATE_LIMIT" | "KEY_CONFLICT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
+    code: "FORBIDDEN" | "STALE_TURN" | "RUN_BUDGET" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "MESSAGE_TOO_LARGE" | "MESSAGE_EMPTY" | "MESSAGE_RATE_LIMIT" | "KEY_CONFLICT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
     messageId?: undefined;
 } | {
     status: "accepted";

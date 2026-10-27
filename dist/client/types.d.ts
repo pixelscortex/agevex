@@ -1,5 +1,5 @@
 import type { ThreadTextOptions, TextTaskArgs } from "./text/options.js";
-import type { UsageSlot, BudgetSlot, TelemetrySlot, SandboxSlot, ExtractSlot } from "./slots.js";
+import type { UsageSlot, BudgetSlot, TelemetrySlot, SandboxSlot } from "./slots.js";
 import type { GenericActionCtx, GenericDataModel, GenericMutationCtx, GenericQueryCtx, FunctionReference } from "convex/server";
 import type { Infer } from "convex/values";
 import type { AgentComponent, MessageDoc } from "@convex-dev/agent";
@@ -14,21 +14,21 @@ export type HookResult = void | {
     block?: string;
     input?: unknown;
     output?: unknown;
-    continue?: string;
     model?: string;
 };
 export type AgentHooks = {
+    /** Runs before every generation step, including tool and approval resumes. Model choices are local. */
     beforeTurn?: (hc: HookContext, event: {
         prompt: string;
-        isRunStart: boolean;
     }) => HookResult | Promise<HookResult>;
+    /** Notification after a logical turn finishes; return values never alter execution. */
     afterTurn?: (hc: HookContext, event: {
         turn: number;
         /** Successful assistant text from the completing slice, joined with newlines. */
         text: string;
         /** All successful assistant saves in turn save order, across tool/approval slices. */
         messageIds: string[];
-    }) => HookResult | Promise<HookResult>;
+    }) => void | Promise<void>;
     beforeTool?: (hc: HookContext, event: {
         tool: string;
         input: unknown;
@@ -42,17 +42,6 @@ export type AgentHooks = {
         agent: string;
         task: string;
     }) => HookResult | Promise<HookResult>;
-};
-export type SideAgent = {
-    agent: ManagedAgent;
-    every: {
-        turns: number;
-        minutes?: never;
-    } | {
-        minutes: number;
-        turns?: never;
-    };
-    sees: "delta";
 };
 export type Receipt = Infer<typeof receipt>;
 export type Activity = Infer<typeof activity>;
@@ -101,7 +90,7 @@ export type AuthorizationScope = {
     subject: string;
     runId: string;
 } | {
-    operation: "pendingApprovals" | "title" | "rename" | "summary" | "summarize" | "note" | "respond" | "answer" | "cancel" | "messages" | "streams" | "activity";
+    operation: "pendingApprovals" | "title" | "rename" | "note" | "respond" | "answer" | "cancel" | "messages" | "streams" | "activity";
     agent: string;
     threadId: string;
 } | {
@@ -134,7 +123,7 @@ export type AuthorizationScope = {
  */
 export type ExecutionScope = {
     /** Background text uses the same persisted-principal policy without a user connection. */
-    purpose?: "title" | "summary";
+    purpose?: "title";
     subject: string;
     agent: string;
     assignmentId: string;
@@ -208,7 +197,7 @@ export type DelegationResult = {
     status: "denied";
     code: DelegationDenialCode;
 };
-export type DelegationDenialCode = "HOOK_BLOCKED" | "ACTIVE_LIMIT" | "TASK_LIMIT" | "FORBIDDEN" | "STALE_TURN" | "DELEGATION_CONFLICT" | "RUN_BUDGET" | "RESULTS_PENDING" | "DEPTH_LIMIT" | "GROUP_LIMIT" | "GROUP_CLOSED" | "GROUP_CONFLICT" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "MESSAGE_TOO_LARGE" | "MESSAGE_RATE_LIMIT" | "KEY_CONFLICT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
+export type DelegationDenialCode = "HOOK_BLOCKED" | "ACTIVE_LIMIT" | "TASK_LIMIT" | "FORBIDDEN" | "STALE_TURN" | "DELEGATION_CONFLICT" | "RUN_BUDGET" | "RESULTS_PENDING" | "DEPTH_LIMIT" | "CHILD_FINISHED" | "MESSAGE_LIMIT" | "MESSAGE_TOO_LARGE" | "MESSAGE_RATE_LIMIT" | "KEY_CONFLICT" | "NO_PARENT" | "ASK_PENDING" | "ASK_WITH_CHILDREN" | "QUEUE_LIMIT";
 /**
  * The single host-internal coordinator mutation.
  *
@@ -223,14 +212,12 @@ export type DelegationDenialCode = "HOOK_BLOCKED" | "ACTIVE_LIMIT" | "TASK_LIMIT
  */
 export type CoordinateArgs = {
     op: "launch";
-    side?: boolean;
     assignmentId: string;
     turnToken: string;
     toolCallId: string;
     agent: string;
     task: string;
-    group?: string;
-    wait?: "each" | "all";
+    wait?: "each";
 } | {
     op: "message";
     assignmentId: string;
@@ -280,7 +267,6 @@ export type ManagedAgent = {
     run?: RunSettings;
     sandbox?: boolean;
     hooks?: AgentHooks;
-    sideAgents?: readonly SideAgent[];
     subagents: readonly ManagedAgent[];
     component: AgentComponent;
     /**
@@ -348,7 +334,6 @@ export type Registration = ThreadTextOptions & {
     budget?: BudgetSlot;
     telemetry?: TelemetrySlot;
     sandbox?: SandboxSlot;
-    extract?: ExtractSlot;
     /** Host-owned model ids accepted in open/send. Both options must be supplied together. */
     modelAllowlist?: readonly string[];
     /** Resolver is called only in actions, after validating the stored id against the allowlist. */

@@ -1,5 +1,5 @@
 /**
- * Notes and staged hook continuations, from admission to native history.
+ * Notes, from admission to native history.
  *
  * Notes are short `<note from="...">` user messages posted by hooks or the
  * host. `addNote` (`queueNote`) keeps one as a passive `inbox` row (body in
@@ -32,10 +32,10 @@ export declare const noteHandles: import("convex/values").VObject<{
  * updateMessage (:553-597), preserving both arrival order and native positions.
  * <=24 raw rows *17 KiB read twice + six native merge heads <=6 MiB + one
  * anchor <=1 MiB +24 escaped notes *50 KiB +metadata <128 KiB: <10 MiB read,
- * <3 MiB written. A hook continuation adds <=64 KiB read/write. The bounded
- * ready-group claim uses metadata only; native heads are read just once.
+ * <3 MiB written. The bounded ready claim uses metadata only; native heads
+ * are read just once.
  */
-export declare function claimNotes(ctx: MutationCtx, row: Doc<"assignments">, handles: Infer<typeof noteHandles>, order: number, continuation?: Doc<"inbox">): Promise<void>;
+export declare function claimNotes(ctx: MutationCtx, row: Doc<"assignments">, handles: Infer<typeof noteHandles>, order: number): Promise<void>;
 /** Agent 0.7.7 client/messages.ts:132-138 forwards promptMessageId/order.
  * component/messages.ts:306-318 selects the anchor group, but :392-406 moves
  * USER messages to a fresh order even with promptMessageId. Its supported
@@ -507,8 +507,8 @@ export declare function saveBeforeTurnNote(ctx: MutationCtx, args: {
     getMessages: string;
 }): Promise<void>;
 /** Cancellation never loads the raw note bodies across all sixteen assignments.
- * One finite job per assignment reads/deletes <=24*17 KiB twice +34 KiB
- * assignment metadata =850 KiB (<864 KiB).
+ * One finite job per assignment reads/deletes <=24*17 KiB twice +16 KiB
+ * assignment metadata =832 KiB (<848 KiB).
  * Pending notes have never entered Agent; delivered origin rows are excluded.
  * The epoch index fences a fresh send even when it precedes this job. Each
  * cancelled epoch has <=24 notes, so no chain or history prefix is needed.
@@ -517,17 +517,17 @@ export declare function dropCancelledNotes(ctx: MutationCtx, assignmentId: Id<"a
 /** Queue a note for the next safe claim; see `queueNote`. */
 export declare const addNote: import("convex/server").RegisteredMutation<"public", {
     from: string;
-    text: string;
     assignmentId: import("convex/values").GenericId<"assignments">;
+    text: string;
 }, Promise<boolean>>;
 /** Save a beforeTurn note now, or queue it behind outstanding approval
  * results; see `saveBeforeTurnNote`. */
 export declare const beforeTurnNote: import("convex/server").RegisteredMutation<"public", {
     from: string;
-    text: string;
     getMessages: string;
     addMessages: string;
     assignmentId: import("convex/values").GenericId<"assignments">;
+    text: string;
 }, Promise<void>>;
 /** Delete a cancelled epoch's unsaved note bodies; one finite job per
  * assignment, scheduled by turns.cancel.cancel. */

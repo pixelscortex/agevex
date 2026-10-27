@@ -2,8 +2,7 @@
 //
 // `validateFiles` bounds the requested file list; `attachment` checks each file's
 // grant (`files.attachments.owns`), native metadata and Convex storage size, and builds the
-// native user message (file parts, or a text pointer when the extract slot reads
-// files instead); `recordAttachments` binds the files to the saved message
+// native user message with file parts; `recordAttachments` binds the files to the saved message
 // (`files.attachments.attach`). All of it runs in the request's transaction, before and after
 // the native save, so ownership and byte checks precede any native refcount write.
 import { createFunctionHandle, } from "convex/server";
@@ -47,14 +46,8 @@ export async function attachment(ep, ctx, managed, subject, text, files = []) {
         bytes += metadata.size;
         if (bytes > ep.limits.attachmentBytes)
             return { rejected: true };
-        if (!ep.config.extract)
-            parts.push(await filePart(ctx, file));
+        parts.push(await filePart(ctx, file));
     }
-    if (ep.config.extract && files.length)
-        parts.push({
-            type: "text",
-            text: `Attached files: ${files.join(", ")}. Use read_file or search_files to inspect them.`,
-        });
     return {
         native,
         message: { role: "user", content: files.length ? parts : text },

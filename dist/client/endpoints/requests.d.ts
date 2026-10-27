@@ -39,8 +39,8 @@ export declare function openEndpoint(ep: EndpointContext): import("convex/server
 export declare function sendEndpoint(ep: EndpointContext): import("convex/server").RegisteredMutation<"public", {
     models?: Record<string, string> | undefined;
     files?: string[] | undefined;
-    text: string;
     threadId: string;
+    text: string;
     requestKey: string;
 }, Promise<{
     status: "rejected";

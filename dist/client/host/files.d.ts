@@ -18,7 +18,7 @@ export type FileAttachedArgs = {
  */
 export declare function registerFile(rt: RuntimeContext, ctx: CoordinatorCtx, args: RegisterFileArgs): Promise<void>;
 /**
- * Exact attachment policy for an extract adapter's authorize callback: true only
+ * Exact attachment policy for a host tool's authorize callback: true only
  * when the thread belongs to `subject` and that file is attached to it.
  */
 export declare function fileAttached(rt: RuntimeContext, ctx: Pick<RunnerCtx, "runQuery">, args: FileAttachedArgs): Promise<boolean>;

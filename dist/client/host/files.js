@@ -2,7 +2,7 @@
 //
 // `registerFile` binds a native Agent file the host has just stored for an
 // authorized subject (`files.attachments.register`); `fileAttached` is the exact attachment
-// policy an extract adapter's `authorize` callback uses (`files.attachments.owns`). Neither is
+// policy a host tool's `authorize` callback uses (`files.attachments.owns`). Neither is
 // a public endpoint: they trust their caller's subject, so the host must call them
 // only from its own server code after authorizing that subject.
 import { createFunctionHandle } from "convex/server";
@@ -32,7 +32,7 @@ export async function registerFile(rt, ctx, args) {
     });
 }
 /**
- * Exact attachment policy for an extract adapter's authorize callback: true only
+ * Exact attachment policy for a host tool's authorize callback: true only
  * when the thread belongs to `subject` and that file is attached to it.
  */
 export async function fileAttached(rt, ctx, args) {

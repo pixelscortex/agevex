@@ -29,11 +29,11 @@ export { ASK_PARENT_TOOL_NAME, DELEGATE_TOOL_NAME, MESSAGE_CHILD_TOOL_NAME, MESS
 export function registerAgent(component, config) {
     const rt = createRuntimeContext(component, config);
     return {
-        /** Run a structured task outside a turn, metered by the registration's usage slot. */
+        /** Run a structured task outside a turn, reported through the registration's usage slot. */
         runTask: (ctx, task, input, options = {}) => runTask(ctx, task, input, { ...options, component, usage: config.usage ?? options.usage }),
         /** Trusted upload-path helper: bind a stored native file to an authorized subject. */
         registerFile: (ctx, args) => registerFile(rt, ctx, args),
-        /** Exact attachment policy for an extract adapter's authorize callback. */
+        /** Exact attachment policy for a host tool's authorize callback. */
         fileAttached: (ctx, args) => fileAttached(rt, ctx, args),
         sandboxComplete: (ctx, event) => sandboxComplete(rt, ctx, event),
         note: (ctx, args) => note(rt, ctx, args),

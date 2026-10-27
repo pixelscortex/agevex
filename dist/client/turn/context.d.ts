@@ -1,7 +1,7 @@
 import type { FunctionReturnType } from "convex/server";
 import type { ComponentApi } from "../../component/_generated/component.js";
 import type { RunnerCtx } from "../registration/context.js";
-import type { MeterBackend, SlotFacts } from "../slots.js";
+import type { SlotFacts } from "../slots.js";
 import type { Activity, HookContext, HookResult, ManagedAgent, RunErrorCode, TurnArgs } from "../types.js";
 import type { TurnFence } from "./fence.js";
 /** The `turns.slices.execution` row a turn is fenced against. */
@@ -12,7 +12,7 @@ export type Claimed = NonNullable<FunctionReturnType<ComponentApi["turns"]["slic
 export type Turn = {
     /**
      * The raw, unfenced action context. Right for the runner's own control reads
-     * and writes (claim checks, routing, finish, settle, fence polls) and for
+     * and writes (claim checks, finish, settle, fence polls) and for
      * `bindOnceTool`, which fences by explicit args; model, tool, hook and slot
      * work must use the fenced `Generation.fence.ctx` instead.
      */
@@ -58,7 +58,6 @@ export type Generation = {
     fence: TurnFence;
     hc: HookContext;
     hook: HookRunner;
-    backend: MeterBackend | undefined;
     state: GenerationState;
 };
 /** What a finished generation (or a refused admission) hands to finalization. */

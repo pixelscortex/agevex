@@ -2,27 +2,23 @@
  * Lookups and the row builder for the `subagentRuns` table.
  *
  * One row per delegation: the child linkage, the root epoch it was admitted
- * under, its wait-"all" join state, its verified result reference, delivery
+ * under, its verified result reference, delivery
  * capability and a bounded event history. `subagents.launch.reserve` inserts it;
- * settlement, delivery and group release (subagents/*) move it forward;
+ * settlement and delivery (subagents/*) move it forward;
  * `turns.cancel.cancel` fails every live one. All reads here are exact indexed
  * lookups; no history prefix is ever read.
  */
 import type { WithoutSystemFields } from "convex/server";
 import type { MutationCtx, QueryCtx } from "../_generated/server.js";
-import type { Doc, Id } from "../_generated/dataModel.js";
+import type { Doc } from "../_generated/dataModel.js";
 type SubagentRun = Doc<"subagentRuns">;
 /** The run with this public run id (unique `by_run` index), or null. */
 export declare function runById(ctx: QueryCtx | MutationCtx, runId: string): Promise<{
     _id: import("convex/values").GenericId<"subagentRuns">;
     _creationTime: number;
-    join?: "open" | "sealed" | "ready" | "joined" | undefined;
     startedAt?: number | undefined;
     taskMessageId?: string | undefined;
-    taskPreview?: string | undefined;
     resultMessageId?: string | undefined;
-    side?: boolean | undefined;
-    group?: string | undefined;
     questionMessageId?: string | undefined;
     lastParentNoteAt?: number | undefined;
     childAssignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
@@ -32,18 +28,17 @@ export declare function runById(ctx: QueryCtx | MutationCtx, runId: string): Pro
         messageId?: string | undefined;
         errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | "DELIVERY_UNKNOWN" | null;
     } | undefined;
-    resultSequence?: number | undefined;
     events: {
         errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | "DELIVERY_UNKNOWN" | null;
-        at: number;
         phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
+        at: number;
     }[];
     status: "failed" | "running" | "completed" | "queued" | "asking";
     agent: string;
-    sequence: number;
-    runId: string;
     errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | "DELIVERY_UNKNOWN" | null;
+    runId: string;
     rootAssignmentId: import("convex/values").GenericId<"assignments">;
+    sequence: number;
     rootCancellationEpoch: number;
     deliveryStatus: "failed" | "pending" | "accepted" | "blocked";
     parentRunId: import("convex/values").GenericId<"runs">;
@@ -56,7 +51,6 @@ export declare function runById(ctx: QueryCtx | MutationCtx, runId: string): Pro
     actorAgent: string;
     deliveryToken: string;
     coordinateHandle: string;
-    createdAt: number;
 } | null>;
 /** True once a run reached a terminal status. Delivery may still be pending. */
 export declare function isSettled(status: SubagentRun["status"]): status is "failed" | "completed";
@@ -65,8 +59,8 @@ export declare function isSettled(status: SubagentRun["status"]): status is "fai
  * writer of `events` goes through here (reserve's first "queued" aside). */
 export declare function appendEvent(events: SubagentRun["events"], phase: SubagentRun["events"][number]["phase"], at: number, errorCode: SubagentRun["errorCode"]): {
     errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | "DELIVERY_UNKNOWN" | null;
-    at: number;
     phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
+    at: number;
 }[];
 /** The public `finishedAt` / `deliveryAt` of a run, derived from its event
  * ring rather than stored a second time.
@@ -85,66 +79,10 @@ export declare function runTimes(run: Pick<SubagentRun, "events" | "deliveryStat
     finishedAt: number | null;
     deliveryAt: number | null;
 };
-/** One wait cohort: the members a parent launched under one run budget and
- * group name, in creation order (`by_group` pins all three fields). Callers
- * pass the cohort cap, so the read never exceeds <=15 rows (<=60 KiB). */
-export declare function groupMembers(ctx: QueryCtx | MutationCtx, cohort: {
-    parentRunId: Id<"runs">;
-    actorAssignmentId: Id<"assignments">;
-    group: string;
-}, limit: number): Promise<{
-    _id: import("convex/values").GenericId<"subagentRuns">;
-    _creationTime: number;
-    join?: "open" | "sealed" | "ready" | "joined" | undefined;
-    startedAt?: number | undefined;
-    taskMessageId?: string | undefined;
-    taskPreview?: string | undefined;
-    resultMessageId?: string | undefined;
-    side?: boolean | undefined;
-    group?: string | undefined;
-    questionMessageId?: string | undefined;
-    lastParentNoteAt?: number | undefined;
-    childAssignmentId?: import("convex/values").GenericId<"assignments"> | undefined;
-    childThreadId?: string | undefined;
-    childResultMessageId?: string | undefined;
-    lastTurnResult?: {
-        messageId?: string | undefined;
-        errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | "DELIVERY_UNKNOWN" | null;
-    } | undefined;
-    resultSequence?: number | undefined;
-    events: {
-        errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | "DELIVERY_UNKNOWN" | null;
-        at: number;
-        phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
-    }[];
-    status: "failed" | "running" | "completed" | "queued" | "asking";
-    agent: string;
-    sequence: number;
-    runId: string;
-    errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | "DELIVERY_UNKNOWN" | null;
-    rootAssignmentId: import("convex/values").GenericId<"assignments">;
-    rootCancellationEpoch: number;
-    deliveryStatus: "failed" | "pending" | "accepted" | "blocked";
-    parentRunId: import("convex/values").GenericId<"runs">;
-    dedupKey: string;
-    payloadFingerprint: string;
-    actorAssignmentId: import("convex/values").GenericId<"assignments">;
-    depth: number;
-    messagesReceived: number;
-    parentNotesSent: number;
-    actorAgent: string;
-    deliveryToken: string;
-    coordinateHandle: string;
-    createdAt: number;
-}[]>;
-/** The queued row `subagents.launch.reserve` inserts once admission passed. The
- * native child thread does not exist yet; `attach` adds the child linkage.
- * `wait: "all"` members start in the "open" join state, which the launching
- * slice's sealGroups later closes. */
+/** The queued row reservation inserts before attaching the native child thread. */
 export declare function newSubagentRun(fields: {
     /** The caller's reserve arguments: target agent, payload hash, coordinator. */
     request: {
-        side?: boolean;
         agent: string;
         payloadFingerprint: string;
         coordinateHandle: string;
@@ -154,15 +92,13 @@ export declare function newSubagentRun(fields: {
     root: Doc<"assignments">;
     budget: Doc<"runs">;
     depth: number;
-    group: string | undefined;
-    wait: "each" | "all";
     dedupKey: string;
     sequence: number;
     now: number;
 }): WithoutSystemFields<SubagentRun>;
 /** Leave 1 KiB for native id/time, future result/question refs, four events,
  * timestamps, note counters and the deferred last-turn outcome. Check again
- * at task attachment so preview growth cannot break the 4 KiB read budget.
+ * at task attachment so native reference growth cannot break the 4 KiB read budget.
  */
 export declare function assertRunMetadata(row: WithoutSystemFields<SubagentRun>): void;
 export {};

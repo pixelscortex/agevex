@@ -1,16 +1,11 @@
 import { resolveRunSettings } from "../run_settings.js";
 import { finishTurn } from "./finish.js";
-import { settleRouting } from "../hooks/routing.js";
-import { sealGroups } from "../subagents/groups.js";
 import { cancelIfPending } from "./recovery.js";
 import { wake } from "./wake.js";
-/** Close the in-flight slice: release routing ownership and retire its
+/** Close the in-flight slice: retire its
  * watchdog. Leaves `turnStatus` alone, so a running turn without a watchdog
  * reads as "between slices". */
 export async function disarmSlice(ctx, row) {
-    // Every terminal fence, including watchdog/cancel and native approval exits,
-    // releases routing even if the action never reaches its finally block.
-    await settleRouting(ctx, row);
     // A watchdog firing now already owns its scheduled job. Clear the slice
     // fence without attempting to cancel that in-progress detector itself.
     if (row.watchdogId)
@@ -18,7 +13,7 @@ export async function disarmSlice(ctx, row) {
     await ctx.db.patch("assignments", row._id, { watchdogId: undefined, activeTools: undefined });
 }
 /** The host action finished one slice and will run another: close the slice
- * (the turn stays running), seal its cohorts and publish released results. */
+ * (the turn stays running). */
 export async function closeSlice(ctx, args) {
     const row = await ctx.db.get("assignments", args.assignmentId);
     if (!row ||
@@ -31,12 +26,9 @@ export async function closeSlice(ctx, args) {
     // marks it between slices (claim and betweenSlices read that pair).
     // Keep the claimed ready-work prompt as the generation boundary across
     // slices. Native Agent includes the whole response order, including
-    // tool results, notes and continuation prompts in stepOrder chronology.
+    // tool results and notes in stepOrder chronology.
     await disarmSlice(ctx, row);
-    await sealGroups(ctx, row);
-    // Release sealed results inside this existing step; v1's positional
-    // Workflow sequence remains untouched. A running slice cannot be claimed
-    // again by wake, so its normal between-slice continuation still owns it.
+    // A running slice cannot be claimed by wake; its next slice still owns it.
     await wake(ctx, { ...row, watchdogId: undefined });
     return null;
 }

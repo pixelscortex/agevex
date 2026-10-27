@@ -67,7 +67,7 @@ async function prepareAsk(tool, input) {
         return { error: "INVALID_FORM_SCHEMA" };
     }
 }
-/** Old installed registry markers lack a parsed schema. Prefer the tool's own
+/** Deferred tool markers may lack a parsed schema. Prefer the tool's own
  * validator above; if absent, enforce the original strict question contract.
  */
 function checkDefaultQuestion(input) {

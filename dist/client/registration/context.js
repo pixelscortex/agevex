@@ -38,23 +38,19 @@ export function createRuntimeContext(component, config) {
     assertModelRegistration(config);
     assertDeferredTools(graph);
     assertTextOptions(config);
-    const collaboration = [...graph.edges.values()].some((allowed) => allowed.size > 0) ||
-        [...graph.byName.values()].some((agent) => agent.sideAgents?.length);
-    const agentIndexes = new Map([...graph.byName.keys()].sort().map((name, index) => [name, index]));
+    const collaboration = [...graph.edges.values()].some((allowed) => allowed.size > 0);
     if (collaboration && !config.refs.coordinate)
         throw new Error("COORDINATE_REF_REQUIRED");
-    const watching = !!config.summary || [...graph.byName.values()].some((agent) => agent.sideAgents?.length);
-    const rt = { component, config, limits, graph, agentIndexes, watching, settings };
+    const rt = { component, config, limits, graph, settings };
     return rt;
 }
 /** Every configured optional slot must expose the methods the runtime calls. */
 function assertSlots(config) {
     for (const [slot, methods] of [
-        [config.usage, ["scope"]],
+        [config.usage, ["record"]],
         [config.budget, ["check"]],
         [config.telemetry, ["integration", "flush"]],
         [config.sandbox, ["tools"]],
-        [config.extract, ["run", "tools"]],
     ]) {
         if (slot !== undefined &&
             (!slot ||

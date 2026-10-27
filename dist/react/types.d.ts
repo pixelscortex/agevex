@@ -14,30 +14,13 @@ export declare function required<K extends keyof AgevexApi>(api: AgevexApi, key:
         threadId: string;
     }, {
         text: string | null;
-        source: "auto" | "user" | null;
-        version: number;
     }, string | undefined>;
     rename: import("convex/server").FunctionReference<"mutation", "public", {
-        text: string;
         threadId: string;
-        expectedVersion: number;
+        text: string;
     }, {
         messageId: string;
         replayed: boolean;
-    }, string | undefined>;
-    summary: import("convex/server").FunctionReference<"query", "public", {
-        threadId: string;
-    }, {
-        text: string;
-        throughMessageId: string;
-    } | null, string | undefined>;
-    summarize: import("convex/server").FunctionReference<"mutation", "public", {
-        threadId: string;
-        requestKey: string;
-    }, {
-        status: "replayed";
-    } | {
-        status: "queued";
     }, string | undefined>;
     open: import("convex/server").FunctionReference<"mutation", "public", {
         models?: Record<string, string> | undefined;
@@ -77,8 +60,8 @@ export declare function required<K extends keyof AgevexApi>(api: AgevexApi, key:
     send: import("convex/server").FunctionReference<"mutation", "public", {
         models?: Record<string, string> | undefined;
         files?: string[] | undefined;
-        text: string;
         threadId: string;
+        text: string;
         requestKey: string;
     }, {
         status: "rejected";
@@ -222,7 +205,6 @@ export declare function required<K extends keyof AgevexApi>(api: AgevexApi, key:
             status: "failed" | "running" | "queued" | "done" | "asleep";
             agent: string;
             finishedAt: number | null;
-            createdAt: number;
             messages: {
                 taskId?: string | undefined;
                 resultId?: string | undefined;
@@ -238,8 +220,8 @@ export declare function required<K extends keyof AgevexApi>(api: AgevexApi, key:
                 settledUsd: number;
                 reporting: "partial" | "available";
             } | null;
+            createdAt: number;
             parentId: string | null;
-            task: string;
             currentTool: string | null;
         }[];
     } | null, string | undefined>;
@@ -259,15 +241,14 @@ export declare function required<K extends keyof AgevexApi>(api: AgevexApi, key:
             errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | "DELIVERY_UNKNOWN" | null;
             events: {
                 errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | "DELIVERY_UNKNOWN" | null;
-                at: number;
                 phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
+                at: number;
                 runId: string;
                 agent: string;
             }[];
             finishedAt: number | null;
             deliveryAt: number | null;
             runId: string;
-            side: boolean;
             childThreadId: string | null;
             agent: string;
             status: "failed" | "running" | "completed" | "queued" | "asking";

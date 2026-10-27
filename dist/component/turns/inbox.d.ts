@@ -18,19 +18,14 @@ export declare function firstReady(ctx: Pick<QueryCtx, "db">, assignmentId: Id<"
     _id: import("convex/values").GenericId<"inbox">;
     _creationTime: number;
     from?: string | undefined;
-    join?: {
-        newestSequence: number;
-        earliestId: string;
-        earliestSequence: number;
-    } | undefined;
-    text?: string | undefined;
     passive?: boolean | undefined;
+    text?: string | undefined;
     noteEpoch?: number | undefined;
-    kind: "result" | "user" | "parent" | "note" | "continue";
-    sequence: number;
-    runId: import("convex/values").GenericId<"runs">;
+    kind: "result" | "user" | "parent" | "note";
     messageId: string;
+    runId: import("convex/values").GenericId<"runs">;
     assignmentId: import("convex/values").GenericId<"assignments">;
+    sequence: number;
 } | null>;
 /** Up to `limit` ready rows in FIFO order. Cancel and launch admission pass
  * the per-assignment readyRowLimit from limits.ts; native bodies stay elsewhere. */
@@ -38,17 +33,12 @@ export declare function readyRows(ctx: Pick<QueryCtx, "db">, assignmentId: Id<"a
     _id: import("convex/values").GenericId<"inbox">;
     _creationTime: number;
     from?: string | undefined;
-    join?: {
-        newestSequence: number;
-        earliestId: string;
-        earliestSequence: number;
-    } | undefined;
-    text?: string | undefined;
     passive?: boolean | undefined;
+    text?: string | undefined;
     noteEpoch?: number | undefined;
-    kind: "result" | "user" | "parent" | "note" | "continue";
-    sequence: number;
-    runId: import("convex/values").GenericId<"runs">;
+    kind: "result" | "user" | "parent" | "note";
     messageId: string;
+    runId: import("convex/values").GenericId<"runs">;
     assignmentId: import("convex/values").GenericId<"assignments">;
+    sequence: number;
 }[]>;

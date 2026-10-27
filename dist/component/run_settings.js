@@ -14,7 +14,7 @@ export const RUN_LIMITS = {
     watchdogMarginMs: 30_000,
     metadataBytes: 16 << 10,
     // 256 bytes native id/time + <=256 lifecycle (ids, times, error) + <=512
-    // counter/mask growth and JSON escaping. Reserve before accepting a run.
+    // counter growth and JSON escaping. Reserve before accepting a run.
     nativeEnvelopeBytes: 1 << 10,
     // Root messages/results + reserved head/answer/current + one budget per child.
     cancelBudgets: HOST_LIMITS.queueLength.max +

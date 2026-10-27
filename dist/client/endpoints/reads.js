@@ -15,7 +15,7 @@ import { activity, subagentRun, vPaginationResult } from "../../component/schema
 import { runTree, TREE_LIMITS } from "../../component/run_tree_values.js";
 import { ownedThread } from "./access.js";
 const uiMessage = v.object({
-    origin: v.union(v.literal("user"), v.literal("result"), v.literal("note"), v.literal("continue")),
+    origin: v.union(v.literal("user"), v.literal("result"), v.literal("note")),
     from: v.optional(v.string()),
     runId: v.optional(v.string()),
     id: v.string(),
@@ -170,7 +170,8 @@ export function runTreeEndpoint(ep) {
                     nodeIds: tree.nodes.map((node) => (node.parentId === null ? null : node.id)),
                 });
                 const nodes = new Map(usage.nodes.map((node) => [node.nodeId, node.usage]));
-                tree.usage = usage.total;
+                // A host view cannot erase evidence already lost by the core.
+                tree.usage = { ...usage.total, reporting: partial ? "partial" : usage.total.reporting };
                 for (const node of tree.nodes)
                     node.usage = nodes.get(node.parentId === null ? null : node.id) ?? null;
             }

@@ -5,13 +5,11 @@ export declare const delegationState: import("convex/server").RegisteredQuery<"i
     threadId: string;
 }, Promise<{
     runId: string;
-    side: boolean;
     parentAssignmentId: import("convex/values").GenericId<"assignments">;
     childAssignmentId: import("convex/values").GenericId<"assignments"> | null;
     agent: string;
     status: "failed" | "running" | "completed" | "queued" | "asking";
     depth: number;
-    group: string | null;
     childThreadId: string | null;
     createdAt: number;
     startedAt: number | null;

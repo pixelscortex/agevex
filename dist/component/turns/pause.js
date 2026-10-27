@@ -148,7 +148,7 @@ export async function suspendForApprovals(ctx, row, pause, handles) {
     // answer/respond update this exact row instead of admitting more work;
     // 100 message rows +50 owed results +one parent-answer slot +this continuation
     // remain within the 152-row per-assignment cancel bound in limits.ts.
-    // Results and joined releases enter the queue regardless of this continuation.
+    // Results enter the queue regardless of this continuation.
     // The response continuation must precede unrelated queued sends.
     const head = await firstReady(ctx, row._id);
     const inboxId = await ctx.db.insert("inbox", {

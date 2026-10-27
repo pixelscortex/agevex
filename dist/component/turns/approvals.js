@@ -19,7 +19,7 @@ export const vResponseResult = v.object({ messageId: v.string(), replayed: v.boo
  * adds one expiry-head read and one receipt write of the same bound: <256 KiB
  * total additional I/O, independent of the <=16 calls in a pause. Together with
  * answer's <13 MiB native/readiness budget below, this remains <13.25 MiB.
- * Edited host responses additionally read <=2*34 KiB assignments, <=2*32 KiB
+ * Edited host responses additionally read <=2*16 KiB assignments, <=2*32 KiB
  * exact proposals and <=2*64 KiB receipts, and rewrite one proposal with its
  * <=33 KiB approved-input annotation (one bounded call id, input and hashes).
  * Even overcounting these reads and writes together keeps the response path
@@ -91,7 +91,7 @@ export async function respondToApproval(ctx, args) {
 /** Save a deferred native result and release its continuation atomically.
  * One exact <=1 MiB call + native prompt <=1 MiB + six <=1 MiB merge
  * heads (Agent messages.ts:436-477) + <=64 KiB saved result + <4.75 MiB
- * bounded indexed readiness/group-release/wake metadata (releaseGroups):
+ * bounded indexed readiness, settlement and wake metadata:
  * <13 MiB <16 MiB. Approval/deferred counts never multiply native reads.
  * At most 16 fixed-size references are reindexed per answer.
  * No tool payload is copied into coordination state, even for large inputs.

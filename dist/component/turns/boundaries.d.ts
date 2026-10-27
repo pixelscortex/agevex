@@ -7,16 +7,16 @@
  * (`turns.slices.continueTurn`) puts it there and publishes results released by the
  * slice, and `admitNextSlice` (`turns.slices.betweenSlices`) lets the turn workflow
  * run another slice while the run budget allows. Touches `assignments`,
- * `runs` (routing bit, budget read) and sealed `subagentRuns` cohorts.
+ * `runs` (budget read).
  */
 import type { MutationCtx } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
-/** Close the in-flight slice: release routing ownership and retire its
+/** Close the in-flight slice: retire its
  * watchdog. Leaves `turnStatus` alone, so a running turn without a watchdog
  * reads as "between slices". */
 export declare function disarmSlice(ctx: MutationCtx, row: Doc<"assignments">): Promise<void>;
 /** The host action finished one slice and will run another: close the slice
- * (the turn stays running), seal its cohorts and publish released results. */
+ * (the turn stays running). */
 export declare function closeSlice(ctx: MutationCtx, args: {
     assignmentId: Id<"assignments">;
     executionId: string;

@@ -4,9 +4,6 @@ import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import type { Value } from "convex/values";
 import type { ComponentApi } from "../component/_generated/component.js";
 export { fingerprint } from "./keys.js";
-import { type MeterBackend, type ScopedMeter } from "./slots.js";
-export { noopMeter } from "./slots.js";
-export type { ScopedMeter, MeterCharge } from "./slots.js";
 export type ToolContext = {
     ctx: GenericActionCtx<GenericDataModel>;
     subject: string;
@@ -15,13 +12,12 @@ export type ToolContext = {
     threadId: string;
     runId: string;
     /** Request that started this reporting turn, stable across tools/approval resumes.
-     * An afterTurn continuation uses its staged prompt; absent outside managed prompts. */
+     * Absent outside managed prompts. */
     promptMessageId?: string;
     /** Bounded opaque id; the provider id remains available for attribution. */
     toolCallId: string;
     nativeToolCallId?: string;
     signal: AbortSignal;
-    meter: ScopedMeter;
 };
 /** Editing is a host capability explicitly granted by defineOnceTool's config. */
 export declare function editableApproval(declared: Tool): boolean;
@@ -58,4 +54,4 @@ export declare function bindOnceTool(declared: Tool, component: ComponentApi, ra
     assignmentId: string;
     executionId: string;
     cancellationEpoch: number;
-}, leaseMs: number, backend?: MeterBackend): Tool;
+}, leaseMs: number): Tool;

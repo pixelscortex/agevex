@@ -674,9 +674,9 @@ export declare function sandboxNodeExport(options: SandboxOptions): import("conv
 /** Export from a host "use node" file; large writes delegate using a storage id only. */
 export declare function sandboxNodeWrite(options: SandboxOptions): import("convex/server").RegisteredAction<"internal", {
     maxBytes?: number | undefined;
-    runId: string;
     subject: string;
     threadId: string;
+    runId: string;
     source: {
         storageId: import("convex/values").GenericId<"_storage">;
     };

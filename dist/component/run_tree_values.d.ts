@@ -1,8 +1,7 @@
 /** Public request-tree validators; optional modules supply usage through a slot. */
 import { type Infer } from "convex/values";
 export declare const TREE_LIMITS: {
-    readonly descendants: number;
-    readonly taskBytes: 256;
+    readonly descendants: 50;
     readonly toolNameBytes: 128;
     readonly childBytes: number;
     readonly childGrowthBytes: number;
@@ -31,7 +30,6 @@ export declare const runNode: import("convex/values").VObject<{
     status: "failed" | "running" | "queued" | "done" | "asleep";
     agent: string;
     finishedAt: number | null;
-    createdAt: number;
     messages: {
         taskId?: string | undefined;
         resultId?: string | undefined;
@@ -47,14 +45,13 @@ export declare const runNode: import("convex/values").VObject<{
         settledUsd: number;
         reporting: "partial" | "available";
     } | null;
+    createdAt: number;
     parentId: string | null;
-    task: string;
     currentTool: string | null;
 }, {
     id: import("convex/values").VString<string, "required">;
     parentId: import("convex/values").VUnion<string | null, [import("convex/values").VString<string, "required">, import("convex/values").VNull<null, "required">], "required", never>;
     agent: import("convex/values").VString<string, "required">;
-    task: import("convex/values").VString<string, "required">;
     status: import("convex/values").VUnion<"failed" | "running" | "queued" | "done" | "asleep", [import("convex/values").VLiteral<"queued", "required">, import("convex/values").VLiteral<"running", "required">, import("convex/values").VLiteral<"asleep", "required">, import("convex/values").VLiteral<"done", "required">, import("convex/values").VLiteral<"failed", "required">], "required", never>;
     reason: import("convex/values").VUnion<"cancelled" | "ask" | "children" | "approval" | "budget" | "recovery" | undefined, [import("convex/values").VLiteral<"children", "required">, import("convex/values").VLiteral<"approval", "required">, import("convex/values").VLiteral<"ask", "required">, import("convex/values").VLiteral<"budget", "required">, import("convex/values").VLiteral<"cancelled", "required">, import("convex/values").VLiteral<"recovery", "required">], "optional", never>;
     error: import("convex/values").VString<string | undefined, "optional">;
@@ -97,7 +94,7 @@ export declare const runNode: import("convex/values").VObject<{
         parentResultId: import("convex/values").VString<string | undefined, "optional">;
         questionId: import("convex/values").VString<string | undefined, "optional">;
     }, "required", "threadId" | "taskId" | "resultId" | "parentResultId" | "questionId">;
-}, "required", "id" | "error" | "startedAt" | "status" | "agent" | "finishedAt" | "createdAt" | "reason" | "messages" | "usage" | "parentId" | "task" | "currentTool" | "messages.threadId" | "messages.taskId" | "messages.resultId" | "messages.parentResultId" | "messages.questionId" | "usage.unknown" | "usage.inputTokens" | "usage.outputTokens" | "usage.estimatedUsd" | "usage.settledUsd" | "usage.reporting">;
+}, "required", "id" | "error" | "startedAt" | "status" | "agent" | "finishedAt" | "reason" | "messages" | "usage" | "createdAt" | "parentId" | "currentTool" | "messages.threadId" | "messages.taskId" | "messages.resultId" | "messages.parentResultId" | "messages.questionId" | "usage.unknown" | "usage.inputTokens" | "usage.outputTokens" | "usage.estimatedUsd" | "usage.settledUsd" | "usage.reporting">;
 export declare const runTree: import("convex/values").VUnion<{
     usage: {
         unknown: number;
@@ -116,7 +113,6 @@ export declare const runTree: import("convex/values").VUnion<{
         status: "failed" | "running" | "queued" | "done" | "asleep";
         agent: string;
         finishedAt: number | null;
-        createdAt: number;
         messages: {
             taskId?: string | undefined;
             resultId?: string | undefined;
@@ -132,8 +128,8 @@ export declare const runTree: import("convex/values").VUnion<{
             settledUsd: number;
             reporting: "partial" | "available";
         } | null;
+        createdAt: number;
         parentId: string | null;
-        task: string;
         currentTool: string | null;
     }[];
 } | null, [import("convex/values").VNull<null, "required">, import("convex/values").VObject<{
@@ -154,7 +150,6 @@ export declare const runTree: import("convex/values").VUnion<{
         status: "failed" | "running" | "queued" | "done" | "asleep";
         agent: string;
         finishedAt: number | null;
-        createdAt: number;
         messages: {
             taskId?: string | undefined;
             resultId?: string | undefined;
@@ -170,8 +165,8 @@ export declare const runTree: import("convex/values").VUnion<{
             settledUsd: number;
             reporting: "partial" | "available";
         } | null;
+        createdAt: number;
         parentId: string | null;
-        task: string;
         currentTool: string | null;
     }[];
 }, {
@@ -206,7 +201,6 @@ export declare const runTree: import("convex/values").VUnion<{
         status: "failed" | "running" | "queued" | "done" | "asleep";
         agent: string;
         finishedAt: number | null;
-        createdAt: number;
         messages: {
             taskId?: string | undefined;
             resultId?: string | undefined;
@@ -222,8 +216,8 @@ export declare const runTree: import("convex/values").VUnion<{
             settledUsd: number;
             reporting: "partial" | "available";
         } | null;
+        createdAt: number;
         parentId: string | null;
-        task: string;
         currentTool: string | null;
     }[], import("convex/values").VObject<{
         error?: string | undefined;
@@ -233,7 +227,6 @@ export declare const runTree: import("convex/values").VUnion<{
         status: "failed" | "running" | "queued" | "done" | "asleep";
         agent: string;
         finishedAt: number | null;
-        createdAt: number;
         messages: {
             taskId?: string | undefined;
             resultId?: string | undefined;
@@ -249,14 +242,13 @@ export declare const runTree: import("convex/values").VUnion<{
             settledUsd: number;
             reporting: "partial" | "available";
         } | null;
+        createdAt: number;
         parentId: string | null;
-        task: string;
         currentTool: string | null;
     }, {
         id: import("convex/values").VString<string, "required">;
         parentId: import("convex/values").VUnion<string | null, [import("convex/values").VString<string, "required">, import("convex/values").VNull<null, "required">], "required", never>;
         agent: import("convex/values").VString<string, "required">;
-        task: import("convex/values").VString<string, "required">;
         status: import("convex/values").VUnion<"failed" | "running" | "queued" | "done" | "asleep", [import("convex/values").VLiteral<"queued", "required">, import("convex/values").VLiteral<"running", "required">, import("convex/values").VLiteral<"asleep", "required">, import("convex/values").VLiteral<"done", "required">, import("convex/values").VLiteral<"failed", "required">], "required", never>;
         reason: import("convex/values").VUnion<"cancelled" | "ask" | "children" | "approval" | "budget" | "recovery" | undefined, [import("convex/values").VLiteral<"children", "required">, import("convex/values").VLiteral<"approval", "required">, import("convex/values").VLiteral<"ask", "required">, import("convex/values").VLiteral<"budget", "required">, import("convex/values").VLiteral<"cancelled", "required">, import("convex/values").VLiteral<"recovery", "required">], "optional", never>;
         error: import("convex/values").VString<string | undefined, "optional">;
@@ -299,9 +291,7 @@ export declare const runTree: import("convex/values").VUnion<{
             parentResultId: import("convex/values").VString<string | undefined, "optional">;
             questionId: import("convex/values").VString<string | undefined, "optional">;
         }, "required", "threadId" | "taskId" | "resultId" | "parentResultId" | "questionId">;
-    }, "required", "id" | "error" | "startedAt" | "status" | "agent" | "finishedAt" | "createdAt" | "reason" | "messages" | "usage" | "parentId" | "task" | "currentTool" | "messages.threadId" | "messages.taskId" | "messages.resultId" | "messages.parentResultId" | "messages.questionId" | "usage.unknown" | "usage.inputTokens" | "usage.outputTokens" | "usage.estimatedUsd" | "usage.settledUsd" | "usage.reporting">, "required">;
+    }, "required", "id" | "error" | "startedAt" | "status" | "agent" | "finishedAt" | "reason" | "messages" | "usage" | "createdAt" | "parentId" | "currentTool" | "messages.threadId" | "messages.taskId" | "messages.resultId" | "messages.parentResultId" | "messages.questionId" | "usage.unknown" | "usage.inputTokens" | "usage.outputTokens" | "usage.estimatedUsd" | "usage.settledUsd" | "usage.reporting">, "required">;
 }, "required", "usage" | "rootRunId" | "nodes" | "usage.unknown" | "usage.inputTokens" | "usage.outputTokens" | "usage.estimatedUsd" | "usage.settledUsd" | "usage.reporting">], "required", "usage" | "rootRunId" | "nodes" | "usage.unknown" | "usage.inputTokens" | "usage.outputTokens" | "usage.estimatedUsd" | "usage.settledUsd" | "usage.reporting">;
 export type RunNode = Infer<typeof runNode>;
 export type RunTree = Infer<typeof runTree>;
-/** Stream decoding omits an incomplete final code point, keeping the UTF-8 cap. */
-export declare function taskPreview(text: string): string;

@@ -4,7 +4,7 @@ type ErrorCode = Doc<"assignments">["errorCode"];
 /** End the running turn `turnToken`: success idles the thread and wakes
  * queued work; a failure code is deferred behind the settlement fence
  * (children) or parks the thread in recovery_required. Either way the slice
- * is disarmed and the turn's open wait cohorts are sealed first. */
+ * is disarmed first. */
 export declare function finishTurn(ctx: MutationCtx, args: {
     assignmentId: Id<"assignments">;
     turnToken: string;

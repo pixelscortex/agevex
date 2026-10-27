@@ -5,8 +5,8 @@ export function readyForRun(ctx, assignmentId, runId) {
         .withIndex("by_run_ready", (q) => q.eq("assignmentId", assignmentId).eq("runId", runId).eq("passive", undefined))
         .first();
 }
-/** Transitive ordinary-delivery and unjoined-group fences, scoped to one request.
- * Four probes <=4*4 KiB, plus <=1 KiB ready work. Side reviews never fence closure.
+/** Transitive delivery fences, scoped to one request.
+ * One probe <=4 KiB, plus <=1 KiB ready work.
  */
 export async function rootRunBlocked(ctx, root, runId) {
     if (await readyForRun(ctx, root._id, runId))
@@ -15,25 +15,14 @@ export async function rootRunBlocked(ctx, root, runId) {
         .query("subagentRuns")
         .withIndex("by_parent_delivery", (q) => q
         .eq("actorAssignmentId", root._id)
-        .eq("side", undefined)
         .eq("deliveryStatus", "pending")
         .eq("rootCancellationEpoch", root.cancellationEpoch)
         .eq("parentRunId", runId))
         .first())
         return true;
-    for (const join of ["open", "sealed", "ready"])
-        if (await ctx.db
-            .query("subagentRuns")
-            .withIndex("by_join", (q) => q
-            .eq("actorAssignmentId", root._id)
-            .eq("rootCancellationEpoch", root.cancellationEpoch)
-            .eq("join", join)
-            .eq("parentRunId", runId))
-            .first())
-            return true;
     return false;
 }
-/** Called after a root turn or blocker-clearing delivery/group release. Recording
+/** Called after a root turn or blocker-clearing delivery. Recording
  * closure once makes history independent of later assignment status and clocks.
  * <=16 KiB run +17 KiB probes +16 KiB patch read, <64 KiB per invocation.
  */

@@ -193,7 +193,7 @@ async function generateWithRepair(call, receipt, admission) {
             }
             catch (error) {
                 // Middleware has not entered doGenerate when admission refuses. There
-                // is no paid attempt to meter or classify as an unknown receipt.
+                // is no paid attempt to report or classify as an unknown receipt.
                 if (error instanceof TaskDispatchRefused)
                     return { status: "failed", code: "TASK_FAILED" };
                 if (!NoObjectGeneratedError.isInstance(error)) {
@@ -270,22 +270,29 @@ async function generateOnce(call, receipt, attempt, repairText) {
         return { status: "failed", code: "INVALID_OUTPUT" };
     return result;
 }
-/** Meter one attempt under an opaque per-attempt key. Never triggers another call. */
+/** Report one attempt under an opaque per-attempt key. Never triggers another call. */
 async function recordTaskUsage(call, receipt, attempt, usage, providerMetadata, requestId) {
     const { model, attribution, binding, options, ctx } = call;
     try {
         const provider = typeof model === "string" ? model.split("/")[0] : model.provider;
-        await (binding?.usage ?? options.usage)
-            ?.scope(ctx, { ...attribution, model: typeof model === "string" ? model : model.modelId })
-            .record(provider, {
+        await (binding?.usage ?? options.usage)?.record(ctx, {
+            ...attribution,
+            model: typeof model === "string" ? model : model.modelId,
+            provider,
             key: await opaqueKey("task-usage", receipt.scope, receipt.key, attempt),
+            messageId: null,
             usage,
             providerMetadata,
             requestId,
         });
     }
     catch {
-        /* Recording evidence must never trigger another paid call. */
+        try {
+            await ctx.runMutation(call.component.turns.slices.usageFailed, { runId: attribution.runId });
+        }
+        catch {
+            /* Recording evidence must never trigger another paid call. */
+        }
     }
 }
 /** Bound waiting even when a provider ignores AbortSignal. The receipt records

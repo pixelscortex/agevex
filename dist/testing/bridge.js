@@ -24,21 +24,19 @@ export const delegationState = internalQuery({
             return [];
         const rows = await ctx.db
             .query("subagentRuns")
-            .withIndex("by_group", (q) => q.eq("parentRunId", root.runId))
-            .take(root.limits.runLaunches + root.limits.sideRunsPerRun);
+            .withIndex("by_parent_run", (q) => q.eq("parentRunId", root.runId))
+            .take(root.limits.runLaunches);
         return rows
             .sort((a, b) => a.sequence - b.sequence)
             .map((run) => ({
             runId: run.runId,
-            side: run.side ?? false,
             parentAssignmentId: run.actorAssignmentId,
             childAssignmentId: run.childAssignmentId ?? null,
             agent: run.agent,
             status: run.status,
             depth: run.depth,
-            group: run.group ?? null,
             childThreadId: run.childThreadId ?? null,
-            createdAt: run.createdAt,
+            createdAt: run._creationTime,
             startedAt: run.startedAt ?? null,
             finishedAt: runTimes(run).finishedAt,
         }));
@@ -111,20 +109,6 @@ export const fillHookMetadata = internalMutationGeneric({
                 maxMessages: RUN_LIMITS.stepsPerTurn.max,
                 resumeInboxId: row?.inboxId,
             },
-            contextMessages: Array.from({ length: LIMITS.contextMessages }, (_, order) => ({
-                id: crypto.randomUUID(),
-                order,
-                stepOrder: 0,
-                bytes: 1 << 20,
-                sequence: order,
-            })),
-            reviewed: Array.from({ length: LIMITS.sideAgents }, (_, turn) => ({
-                agent: "\uFFFF".repeat(LIMITS.requestKeyLength - 1) + turn,
-                turn,
-                at: Date.now(),
-                boundary: turn,
-            })),
-            completedTurns: LIMITS.turnsPerLoop,
         });
         return null;
     },

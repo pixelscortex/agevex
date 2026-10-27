@@ -40,8 +40,7 @@ export async function loadExecution(rt: RuntimeContext, ctx: RunnerCtx, args: Tu
  * Claim the turn and build its `Turn`, or `null` when the claim is refused
  * (another action owns it, or it was cancelled in between).
  *
- * `routeModel` asks the claim to open a per-agent routing decision when the
- * agent has a `beforeTurn` hook; `notes` are the native handles the claim uses
+ * `notes` are the native handles the claim uses
  * to move pending notes into the transcript at this safe point.
  */
 export async function claimTurn(
@@ -53,8 +52,6 @@ export async function claimTurn(
 ): Promise<Turn | null> {
   const claimed = await ctx.runMutation(rt.component.turns.slices.claim, {
     ...args,
-    agentIndex: rt.agentIndexes.get(queued.agent),
-    routeModel: !!managed.hooks?.beforeTurn,
     notes: {
       getMessages: await createFunctionHandle(managed.component.messages.getMessagesByIds),
       addMessages: await createFunctionHandle(managed.component.messages.addMessages),

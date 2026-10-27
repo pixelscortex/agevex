@@ -50,7 +50,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
   const rt = createRuntimeContext(component, config);
 
   return {
-    /** Run a structured task outside a turn, metered by the registration's usage slot. */
+    /** Run a structured task outside a turn, reported through the registration's usage slot. */
     runTask: <Input, Output>(
       ctx: RunnerCtx,
       task: Task<Input, Output>,
@@ -59,7 +59,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
     ) => runTask(ctx, task, input, { ...options, component, usage: config.usage ?? options.usage }),
     /** Trusted upload-path helper: bind a stored native file to an authorized subject. */
     registerFile: (ctx: CoordinatorCtx, args: RegisterFileArgs) => registerFile(rt, ctx, args),
-    /** Exact attachment policy for an extract adapter's authorize callback. */
+    /** Exact attachment policy for a host tool's authorize callback. */
     fileAttached: (ctx: Pick<RunnerCtx, "runQuery">, args: FileAttachedArgs) =>
       fileAttached(rt, ctx, args),
     sandboxComplete: (ctx: CoordinatorCtx, event: SandboxCompletion) =>

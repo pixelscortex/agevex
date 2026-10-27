@@ -1,17 +1,3 @@
-/**
- * Registered send endpoints of one assignment (one managed thread): `accept`
- * admits a host send, `lookupReceipt` replays its request receipt,
- * `admission` is the preflight refusal check, and `assignment` / `activity`
- * are the thread's scope and public status.
- *
- * Acceptance runs in the same transaction as the host's native prompt save:
- * it creates the root assignment on the thread's first send, opens a new run
- * budget, queues the prompt as a ready inbox row, records a `done` request
- * receipt under `request:<subject>` and wakes the thread (turns/wake.ts). A
- * repeated request key returns its original receipt as `duplicate`; a
- * different payload under the same key is a KEY_CONFLICT. Touches
- * `assignments`, `runs`, `inbox` and `receipts`.
- */
 import { type ObjectType } from "convex/values";
 import { type MutationCtx, type QueryCtx } from "../_generated/server.js";
 export declare const acceptArgs: {
@@ -21,24 +7,9 @@ export declare const acceptArgs: {
     requestKey: import("convex/values").VString<string, "required">;
     fingerprint: import("convex/values").VString<string, "required">;
     promptMessageId: import("convex/values").VString<string, "required">;
-    task: import("convex/values").VString<string | undefined, "optional">;
-    savedMessage: import("convex/values").VObject<{
-        order: number;
-        bytes: number;
-        id: string;
-        stepOrder: number;
-    } | undefined, {
-        id: import("convex/values").VString<string, "required">;
-        order: import("convex/values").VFloat64<number, "required">;
-        stepOrder: import("convex/values").VFloat64<number, "required">;
-        bytes: import("convex/values").VFloat64<number, "required">;
-    }, "optional", "order" | "bytes" | "id" | "stepOrder">;
-    trackContext: import("convex/values").VBoolean<boolean | undefined, "optional">;
     runTurn: import("convex/values").VString<string, "required">;
     limits: import("convex/values").VObject<{
         attachmentBytes: number;
-        continuesPerRun: number;
-        sideRunsPerRun: number;
         notesPending: number;
         maxDepth: number;
         messagesPerChild: number;
@@ -54,8 +25,6 @@ export declare const acceptArgs: {
         leaseMs: number;
     }, {
         attachmentBytes: import("convex/values").VFloat64<number, "required">;
-        continuesPerRun: import("convex/values").VFloat64<number, "required">;
-        sideRunsPerRun: import("convex/values").VFloat64<number, "required">;
         notesPending: import("convex/values").VFloat64<number, "required">;
         maxDepth: import("convex/values").VFloat64<number, "required">;
         messagesPerChild: import("convex/values").VFloat64<number, "required">;
@@ -69,7 +38,7 @@ export declare const acceptArgs: {
         queueLength: import("convex/values").VFloat64<number, "required">;
         slicesPerTurn: import("convex/values").VFloat64<number, "required">;
         leaseMs: import("convex/values").VFloat64<number, "required">;
-    }, "required", "attachmentBytes" | "continuesPerRun" | "sideRunsPerRun" | "notesPending" | "maxDepth" | "messagesPerChild" | "parentNotesPerChild" | "rootLane" | "childLane" | "runLaunches" | "runHops" | "activeChildrenPerRoot" | "taskLength" | "queueLength" | "slicesPerTurn" | "leaseMs">;
+    }, "required", "attachmentBytes" | "notesPending" | "maxDepth" | "messagesPerChild" | "parentNotesPerChild" | "rootLane" | "childLane" | "runLaunches" | "runHops" | "activeChildrenPerRoot" | "taskLength" | "queueLength" | "slicesPerTurn" | "leaseMs">;
     models: import("convex/values").VRecord<Record<string, string> | undefined, import("convex/values").VString<string, "required">, import("convex/values").VString<string, "required">, "optional", string>;
     settings: import("convex/values").VArray<{
         agent: string;
@@ -110,20 +79,14 @@ export declare const acceptArgs: {
         }, "required", "askUser" | "mode" | "maxOutputTokens" | "modelTimeoutMs" | "toolTimeoutMs" | "stepsPerTurn">;
     }, "required", "agent" | "settings" | "settings.askUser" | "settings.mode" | "settings.maxOutputTokens" | "settings.modelTimeoutMs" | "settings.toolTimeoutMs" | "settings.stepsPerTurn">, "optional">;
     textConfig: import("convex/values").VObject<{
-        everyTurns?: number | undefined;
         worker: string;
-        title: boolean;
-        summary: boolean;
         updateThread: string;
         getThread: string;
     } | undefined, {
         worker: import("convex/values").VString<string, "required">;
         updateThread: import("convex/values").VString<string, "required">;
         getThread: import("convex/values").VString<string, "required">;
-        title: import("convex/values").VBoolean<boolean, "required">;
-        summary: import("convex/values").VBoolean<boolean, "required">;
-        everyTurns: import("convex/values").VFloat64<number | undefined, "optional">;
-    }, "optional", "worker" | "title" | "summary" | "updateThread" | "getThread" | "everyTurns">;
+    }, "optional", "worker" | "updateThread" | "getThread">;
 };
 /** The typed duplicate/conflict receipt for an already accepted request, or
  * null for a new one. Shares the `request:<subject>` ledger scope. */
@@ -217,27 +180,14 @@ export declare const accept: import("convex/server").RegisteredMutation<"public"
         };
     }[] | undefined;
     textConfig?: {
-        everyTurns?: number | undefined;
         worker: string;
-        title: boolean;
-        summary: boolean;
         updateThread: string;
         getThread: string;
     } | undefined;
     models?: Record<string, string> | undefined;
-    task?: string | undefined;
-    savedMessage?: {
-        order: number;
-        bytes: number;
-        id: string;
-        stepOrder: number;
-    } | undefined;
-    trackContext?: boolean | undefined;
     agent: string;
     limits: {
         attachmentBytes: number;
-        continuesPerRun: number;
-        sideRunsPerRun: number;
         notesPending: number;
         maxDepth: number;
         messagesPerChild: number;

@@ -1,15 +1,14 @@
 /**
  * Delivering a terminal child's result to its parent thread: `notify`,
- * `deliveryContext`, `deliver`, `failDelivery` and `releaseGroups`.
+ * `deliveryContext`, `deliver` and `failDelivery`.
  *
  * `notify` asks the host coordinator to deliver; the coordinator reads
  * `deliveryContext`, saves the result natively in the parent thread and then
  * calls `deliver` (or `notify` records `failDelivery`). One delivery per run:
  * it records the outcome on the run, spends one hop of the shared budget for
- * accepted ordinary results, and either enqueues the result as ready parent
- * work, marks its wait-"all" cohort ready (subagents/groups.ts, released by
- * `releaseGroups`), or just wakes the parent so R3 can re-check. Touches
- * `subagentRuns`, `runs`, `inbox` and the parent's counters.
+ * accepted results, and enqueues the result as ready parent work or wakes
+ * the parent to re-check settlement. Touches `subagentRuns`, `runs`, `inbox`
+ * and the parent's counters.
  */
 import { type MutationCtx } from "../_generated/server.js";
 import type { Doc } from "../_generated/dataModel.js";
@@ -30,7 +29,6 @@ export declare const deliveryContext: import("convex/server").RegisteredQuery<"p
     deliveryToken: string;
 }, Promise<{
     runId: string;
-    side: boolean | undefined;
     agent: string;
     rootAgent: string;
     parentAgent: string;
@@ -55,8 +53,8 @@ export declare const notify: import("convex/server").RegisteredAction<"internal"
 }, Promise<null>>;
 /** The coordinator's delivery outcome; see `applyDelivery`. */
 export declare const deliver: import("convex/server").RegisteredMutation<"public", {
-    runId: string;
     errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | "DELIVERY_UNKNOWN" | null;
+    runId: string;
     deliveryStatus: "failed" | "accepted" | "blocked";
     deliveryToken: string;
     parentMessageId: string | null;
@@ -68,10 +66,4 @@ export declare const failDelivery: import("convex/server").RegisteredMutation<"i
     runId: string;
     deliveryToken: string;
 }, Promise<null>>;
-/** Release at most one ready wait-"all" cohort of this assignment; see
- * `releaseReadyCohort` in subagents/groups.ts. */
-export declare const releaseGroups: import("convex/server").RegisteredMutation<"public", {
-    parentRunId?: import("convex/values").GenericId<"runs"> | undefined;
-    assignmentId: import("convex/values").GenericId<"assignments">;
-}, Promise<boolean>>;
 export {};

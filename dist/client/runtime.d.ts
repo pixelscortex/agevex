@@ -17,11 +17,11 @@ export type { SandboxCompletion };
  * graph, slot or model configuration the runtime cannot execute safely.
  */
 export declare function registerAgent(component: ComponentApi, config: Registration): {
-    /** Run a structured task outside a turn, metered by the registration's usage slot. */
+    /** Run a structured task outside a turn, reported through the registration's usage slot. */
     runTask: <Input, Output>(ctx: RunnerCtx, task: Task<Input, Output>, input: Input, options?: TaskOptions) => Promise<import("./tasks.js").TaskOutcome<Output>>;
     /** Trusted upload-path helper: bind a stored native file to an authorized subject. */
     registerFile: (ctx: CoordinatorCtx, args: RegisterFileArgs) => Promise<void>;
-    /** Exact attachment policy for an extract adapter's authorize callback. */
+    /** Exact attachment policy for a host tool's authorize callback. */
     fileAttached: (ctx: Pick<RunnerCtx, "runQuery">, args: FileAttachedArgs) => Promise<boolean>;
     sandboxComplete: (ctx: CoordinatorCtx, event: SandboxCompletion) => Promise<boolean>;
     note: (ctx: CoordinatorCtx, args: NoteArgs) => Promise<boolean>;
@@ -31,30 +31,13 @@ export declare function registerAgent(component: ComponentApi, config: Registrat
             threadId: string;
         }, Promise<{
             text: string | null;
-            source: "auto" | "user" | null;
-            version: number;
         }>>;
         rename: import("convex/server").RegisteredMutation<"public", {
-            text: string;
             threadId: string;
-            expectedVersion: number;
+            text: string;
         }, Promise<{
             messageId: string;
             replayed: boolean;
-        }>>;
-        summary: import("convex/server").RegisteredQuery<"public", {
-            threadId: string;
-        }, Promise<{
-            text: string;
-            throughMessageId: string;
-        } | null>>;
-        summarize: import("convex/server").RegisteredMutation<"public", {
-            threadId: string;
-            requestKey: string;
-        }, Promise<{
-            status: "replayed";
-        } | {
-            status: "queued";
         }>>;
         open: import("convex/server").RegisteredMutation<"public", {
             models?: Record<string, string> | undefined;
@@ -94,8 +77,8 @@ export declare function registerAgent(component: ComponentApi, config: Registrat
         send: import("convex/server").RegisteredMutation<"public", {
             models?: Record<string, string> | undefined;
             files?: string[] | undefined;
-            text: string;
             threadId: string;
+            text: string;
             requestKey: string;
         }, Promise<{
             status: "rejected";
@@ -239,7 +222,6 @@ export declare function registerAgent(component: ComponentApi, config: Registrat
                 status: "failed" | "running" | "queued" | "done" | "asleep";
                 agent: string;
                 finishedAt: number | null;
-                createdAt: number;
                 messages: {
                     taskId?: string | undefined;
                     resultId?: string | undefined;
@@ -255,8 +237,8 @@ export declare function registerAgent(component: ComponentApi, config: Registrat
                     settledUsd: number;
                     reporting: "partial" | "available";
                 } | null;
+                createdAt: number;
                 parentId: string | null;
-                task: string;
                 currentTool: string | null;
             }[];
         } | null>>;
@@ -276,15 +258,14 @@ export declare function registerAgent(component: ComponentApi, config: Registrat
                 errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | "DELIVERY_UNKNOWN" | null;
                 events: {
                     errorCode: "BUDGET_EXCEEDED" | "HOOK_FAILED" | "GENERATION_FAILED" | "RUN_TIMEOUT" | "SLICE_LIMIT" | "APPROVAL_LIMIT" | "CLEANUP_FAILED" | "AUTHORIZATION_DENIED" | "EXECUTION_AMBIGUOUS" | "EMPTY_RESULT" | "RESULT_UNVERIFIED" | "ROOT_UNAVAILABLE" | "DELIVERY_FAILED" | "DELIVERY_UNKNOWN" | null;
-                    at: number;
                     phase: "failed" | "completed" | "started" | "queued" | "result_accepted" | "delivery_failed" | "delivery_blocked";
+                    at: number;
                     runId: string;
                     agent: string;
                 }[];
                 finishedAt: number | null;
                 deliveryAt: number | null;
                 runId: string;
-                side: boolean;
                 childThreadId: string | null;
                 agent: string;
                 status: "failed" | "running" | "completed" | "queued" | "asking";
@@ -301,7 +282,7 @@ export declare function registerAgent(component: ComponentApi, config: Registrat
         runTurn: import("convex/server").RegisteredAction<"internal", import("./types.js").TurnArgs, null>;
         coordinate: import("convex/server").RegisteredMutation<"internal", import("./types.js").CoordinateArgs, import("./types.js").CoordinateResult>;
         textTask: import("convex/server").RegisteredAction<"internal", {
-            kind: "title" | "summary";
+            kind: "title";
             key: string;
             assignmentId: string;
         }, Promise<null>>;

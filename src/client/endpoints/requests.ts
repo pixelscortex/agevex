@@ -18,10 +18,8 @@ import {
 import { v } from "convex/values";
 import { assertFact } from "../../component/facts.js";
 import { LIMITS } from "../../component/limits.js";
-import { taskPreview } from "../../component/run_tree_values.js";
 import { modelOverrides, validModelOverrides } from "../../component/models.js";
 import { receipt } from "../../component/schema.js";
-import { savedMessageRef } from "../native-saves.js";
 import { fingerprint } from "../once.js";
 import { persistedTextConfig } from "../text/options.js";
 import type { AuthorizationScope, ManagedAgent } from "../types.js";
@@ -168,7 +166,7 @@ async function acceptRequest(
   ctx: GenericMutationCtx<GenericDataModel>,
   request: AcceptedRequest,
 ) {
-  const { messageId, message } = request.saved;
+  const { messageId } = request.saved;
 
   const accepted = await ctx.runMutation(ep.component.turns.send.accept, {
     subject: request.subject,
@@ -177,11 +175,7 @@ async function acceptRequest(
     requestKey: request.requestKey,
     fingerprint: request.fingerprint,
     promptMessageId: messageId,
-    task: taskPreview(message.text ?? ""),
-    trackContext:
-      !!request.native.sideAgents?.length || ep.config.title !== false || !!ep.config.summary,
     textConfig: await persistedTextConfig(ep.config, request.native),
-    savedMessage: savedMessageRef(messageId, message),
     runTurn: request.runTurn,
     limits: ep.limits,
     models: request.models,

@@ -33,9 +33,6 @@ export function createAgevexHooks(api) {
         useTitle(threadId) {
             return useTitle(api, threadId);
         },
-        useSummary(threadId) {
-            return useSummary(api, threadId);
-        },
     };
 }
 function useThread(api, threadId) {
@@ -100,17 +97,7 @@ function useTitle(api, threadId) {
         ...queryState(threadId, data),
         rename: async (text) => {
             const id = threadRequired(threadId);
-            if (data === undefined)
-                throw new Error("agevex/react: wait for the title before renaming");
-            return rename({ threadId: id, text, expectedVersion: data.version });
+            return rename({ threadId: id, text });
         },
-    };
-}
-function useSummary(api, threadId) {
-    const data = useQuery(required(api, "summary"), threadId === undefined ? "skip" : { threadId });
-    const summarize = useMutation(required(api, "summarize"));
-    return {
-        ...queryState(threadId, data),
-        summarize: async () => summarize({ threadId: threadRequired(threadId), requestKey: requestKey() }),
     };
 }

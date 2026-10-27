@@ -11,7 +11,7 @@ export declare const get: import("convex/server").RegisteredQuery<"public", {
     _creationTime: number;
     sandboxId?: string | undefined;
     cleanupAt?: number | undefined;
-    state: "stopped" | "unknown" | "ready" | "deleted" | "creating" | "deleting";
+    state: "stopped" | "unknown" | "ready" | "creating" | "deleting" | "deleted";
     claim: string;
     leaseUntil: number;
     provider: string;
@@ -50,7 +50,7 @@ export declare const forget: import("convex/server").RegisteredMutation<"public"
 /** Save identity before readiness; stale lifecycle actions cannot revive a deleted row. */
 export declare const save: import("convex/server").RegisteredMutation<"public", {
     sandboxId?: string | undefined;
-    state: "stopped" | "unknown" | "ready" | "deleted" | "creating";
+    state: "stopped" | "unknown" | "ready" | "creating" | "deleted";
     claim: string;
     scopeKey: string;
 }, Promise<boolean>>;
@@ -62,7 +62,7 @@ export declare const expired: import("convex/server").RegisteredQuery<"public", 
     _creationTime: number;
     sandboxId?: string | undefined;
     cleanupAt?: number | undefined;
-    state: "stopped" | "unknown" | "ready" | "deleted" | "creating" | "deleting";
+    state: "stopped" | "unknown" | "ready" | "creating" | "deleting" | "deleted";
     claim: string;
     leaseUntil: number;
     provider: string;
@@ -115,9 +115,9 @@ export declare const getJob: import("convex/server").RegisteredQuery<"public", {
     exitCode?: number | undefined;
     logTail?: string | undefined;
     state: "failed" | "running" | "done" | "unknown" | "starting";
-    runId: string;
     subject: string;
     threadId: string;
+    runId: string;
     claim: string;
     leaseUntil: number;
     scopeKey: string;
@@ -143,9 +143,9 @@ export declare const claimPoll: import("convex/server").RegisteredMutation<"publ
     exitCode?: number | undefined;
     logTail?: string | undefined;
     state: "failed" | "running" | "done" | "unknown" | "starting";
-    runId: string;
     subject: string;
     threadId: string;
+    runId: string;
     leaseUntil: number;
     scopeKey: string;
     sandboxId: string;

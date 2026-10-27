@@ -16,7 +16,7 @@ import type { Limits } from "../limits.js";
 type AssignmentRow = WithoutSystemFields<Doc<"assignments">>;
 
 /** The assignment owning a native thread, via the unique `by_thread` index.
- * One indexed point read (<=34 KiB); used by every thread-addressed endpoint. */
+ * One indexed point read (<=16 KiB); used by every thread-addressed endpoint. */
 export function assignmentByThread(ctx: Pick<QueryCtx, "db">, threadId: string) {
   return ctx.db
     .query("assignments")
@@ -49,7 +49,6 @@ export function newRootAssignment(fields: {
     notesPending: 0,
     nextSequence: 0,
     nextTurn: 0,
-    completedTurns: 0,
     // Root-only delegation counters (activeRuns / ever-reserved runs).
     activeRuns: 0,
     nextRunSequence: 0,
@@ -68,13 +67,10 @@ export function newChildAssignment(fields: {
   root: Doc<"assignments">;
   run: Doc<"subagentRuns">;
   childThreadId: string;
-  trackContext?: boolean;
 }): AssignmentRow {
   const { root, run } = fields;
 
   return {
-    // Side reviews read this ring; unwatched children never allocate it.
-    contextMessages: fields.trackContext ? [] : undefined,
     // Identity inherited from the root request.
     subject: root.subject,
     agent: run.agent,
@@ -91,7 +87,6 @@ export function newChildAssignment(fields: {
     // A child has its own epoch; the root's epoch is pinned on the run row.
     cancellationEpoch: 0,
     cancelled: false,
-    completedTurns: 0,
     activeRuns: 0,
     nextRunSequence: 0,
     // Linkage: root, shared run budget and the delegation that created it.

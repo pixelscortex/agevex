@@ -14,8 +14,6 @@ export declare const claim: import("convex/server").RegisteredMutation<"public",
         updateMessage: string;
     } | undefined;
     sliceId?: string | undefined;
-    agentIndex?: number | undefined;
-    routeModel?: boolean | undefined;
     turnToken: string;
     assignmentId: import("convex/values").GenericId<"assignments">;
 }, Promise<{
@@ -29,23 +27,21 @@ export declare const claim: import("convex/server").RegisteredMutation<"public",
         toolTimeoutMs: number;
         stepsPerTurn: number;
     };
-    runId: string;
-    turn: number;
     subject: string;
     threadId: string;
     cancellationEpoch: number;
+    runId: string;
     promptMessageId: string;
     turnOrigin: "user" | "subagent_result";
     assignmentId: string;
     requestMessageId: string;
     isTurnStart: boolean;
-    isRunStart: boolean;
+    turn: number;
     subagent: {
         agent: string;
-        runId: string;
         subject: string;
+        runId: string;
         rootAssignmentId: string;
-        side: boolean;
         childThreadId: string;
         actorAgent: string;
         deliveryToken: string;
@@ -71,10 +67,7 @@ export declare const execution: import("convex/server").RegisteredQuery<"public"
     cancellationEpoch: number;
     cancelled: boolean;
     approvalBlocked: boolean;
-    modelStep: {
-        stepOrder: number;
-        messageId: string;
-    } | undefined;
+    messageIds: string[];
     attachmentBytes: number;
 } | null>>;
 /** A single transactional fence around the native mutation, including its save.
@@ -86,7 +79,6 @@ export declare const execution: import("convex/server").RegisteredQuery<"public"
 export declare const write: import("convex/server").RegisteredMutation<"public", {
     rejectStale?: boolean | undefined;
     nativeStream?: string | undefined;
-    trackUsage?: boolean | undefined;
     deferredTools?: string[] | undefined;
     askUserTools?: Record<string, {
         calls: {

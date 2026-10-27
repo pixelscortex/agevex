@@ -8,7 +8,7 @@
 import { ConvexError } from "convex/values";
 import { LIMITS } from "./limits.js";
 
-/** The tightest slot consumer accepts 128 UTF-8 bytes (meter/limits.ts:12).
+/** Semantic slot facts accept 128 UTF-8 bytes (LIMITS.factBytes).
  * Validate facts before admission, including when no optional slot is installed,
  * so adding a slot later cannot invalidate a previously accepted identity. */
 export function assertFact(
@@ -24,10 +24,8 @@ export function assertFact(
     throw new ConvexError({ code, field });
 }
 
-/** A subject or agent name the component is about to store. Agent names are
- * repeated up to 1 + `LIMITS.sideAgents` times on one assignment (`agent` plus
- * every `reviewed` entry), so an unbounded name would grow the envelope nine
- * times over. Bounded in UTF-16 units: <=200 units is <=600 UTF-8 bytes. */
+/** Bound names stored on assignments and run snapshots: <=200 UTF-16 units
+ * is <=600 UTF-8 bytes. This keeps every metadata envelope finite. */
 export function assertName(value: string, field: "subject" | "agent") {
   if (!value || value.length > LIMITS.nameLength)
     throw new ConvexError({ code: `INVALID_${field.toUpperCase()}`, field });

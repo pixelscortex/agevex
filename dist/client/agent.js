@@ -2,7 +2,7 @@
 //
 // It is the native `@convex-dev/agent` Agent plus the metadata the managed
 // runtime reads at registration: a name, declared tools, `subagents`,
-// `sideAgents`, `hooks` and the sandbox opt-in. Generation, tools, threads and
+// `hooks` and the sandbox opt-in. Generation, tools, threads and
 // streams stay entirely native. `registerAgent` (`registration/graph.ts`)
 // validates the graph these fields describe. Touches no tables.
 import { Agent as NativeAgent } from "@convex-dev/agent";
@@ -23,7 +23,6 @@ export class Agent extends NativeBase {
     sandbox;
     subagents;
     hooks;
-    sideAgents;
     /**
      * Native tools declared on this agent, kept so the managed runtime can merge
      * its reserved delegation tool with them. Inherited native behavior is
@@ -40,7 +39,6 @@ export class Agent extends NativeBase {
         this.sandbox = options.sandbox ?? false;
         this.subagents = options.subagents ?? [];
         this.hooks = options.hooks;
-        this.sideAgents = options.sideAgents ?? [];
         this.declaredTools = options.tools ?? EMPTY_TOOLS;
     }
 }

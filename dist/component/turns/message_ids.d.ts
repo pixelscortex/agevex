@@ -7,7 +7,7 @@ import type { Doc } from "../_generated/dataModel.js";
  * <=64 ids * (37 ASCII bytes +2 Convex string bytes) =2,496 bytes.
  * Convex id_v6.rs:33-49 encodes 23 binary bytes as <=37 base32 characters.
  * The full report, including prompt/cap/resume metadata, is <=2,653 bytes;
- * the 34 KiB assignment envelope reserves 3 KiB for this state. Never retain
+ * the 16 KiB assignment envelope reserves 3 KiB for this state. Never retain
  * content or discover ids by reading history. Throwing rolls back native saves
  * too, so overflow cannot commit an assistant row without its identity.
  */

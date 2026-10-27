@@ -27,8 +27,6 @@ export function createEndpointContext(component, config, settings) {
         managedAgents.set(managed.name, managed);
         for (const child of managed.subagents)
             include(child);
-        for (const side of managed.sideAgents ?? [])
-            include(side.agent);
     }
     for (const root of config.agents)
         include(root);

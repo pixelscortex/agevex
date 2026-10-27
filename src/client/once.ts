@@ -14,9 +14,6 @@ import type { ComponentApi } from "../component/_generated/component.js";
 
 import { fingerprint, opaqueKey } from "./keys.js";
 export { fingerprint } from "./keys.js";
-import { scopedMeter, type MeterBackend, type ScopedMeter } from "./slots.js";
-export { noopMeter } from "./slots.js";
-export type { ScopedMeter, MeterCharge } from "./slots.js";
 
 export type ToolContext = {
   ctx: GenericActionCtx<GenericDataModel>;
@@ -26,13 +23,12 @@ export type ToolContext = {
   threadId: string;
   runId: string;
   /** Request that started this reporting turn, stable across tools/approval resumes.
-   * An afterTurn continuation uses its staged prompt; absent outside managed prompts. */
+   * Absent outside managed prompts. */
   promptMessageId?: string;
   /** Bounded opaque id; the provider id remains available for attribution. */
   toolCallId: string;
   nativeToolCallId?: string;
   signal: AbortSignal;
-  meter: ScopedMeter;
 };
 const ONCE = Symbol("agevex.once");
 
@@ -91,7 +87,6 @@ export function bindOnceTool(
   context: Omit<ToolContext, "toolCallId">,
   fence: { assignmentId: string; executionId: string; cancellationEpoch: number },
   leaseMs: number,
-  backend?: MeterBackend,
 ): Tool {
   const config = (declared as Tool & { [ONCE]?: OnceConfig<unknown, Value> })[ONCE];
 
@@ -105,7 +100,6 @@ export function bindOnceTool(
         toolCallId: options.toolCallId,
         nativeToolCallId:
           (options.context as ToolContext | undefined)?.nativeToolCallId ?? options.toolCallId,
-        meter: scopedMeter(backend, options.toolCallId),
       };
 
       const scope = await opaqueKey("tool", tc.subject, tc.threadId, config.name);

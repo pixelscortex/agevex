@@ -1,35 +1,26 @@
 // One admitted turn's generation: exactly one native model step.
 //
 // `generateTurn` starts the cancellation fence, binds hook tasks to it, then runs
-// the phases in order: extract admission, model selection (`routing.ts`), tool
+// the phases in order: model selection (`routing.ts`), tool
 // set (`tools.ts`), the native stream/generate call (`nativeGeneration`), and the
 // post-step decisions (`completion.ts`). A throw from those phases becomes an
 // outcome: a hook failure is HOOK_FAILED; a `beforeTurn` block finishes a root
 // turn without an error code and settles a child run as EMPTY_RESULT; anything
 // else is GENERATION_FAILED. Once the phases start, the fence is always stopped
-// and, on a run-start slice of an agent with `beforeTurn`, the routing attempt
-// is completed. A throw while assembling the generation (`startGeneration`)
-// reaches neither and propagates. Called by `turn/run-turn.ts`.
+// A throw while assembling the generation (`startGeneration`) propagates. Called by `turn/run-turn.ts`.
 
 import { boundedModel } from "./deadlines.js";
 import { LIMITS } from "../../component/limits.js";
 import { boundedDownload } from "./download.js";
 import type { RuntimeContext } from "../registration/context.js";
-import { scopedMeter } from "../slots.js";
 import { bindTaskContext } from "../tasks.js";
 import type { HookContext, Registration } from "../types.js";
 import { completeGeneration } from "./completion.js";
-import {
-  sliceKey,
-  type Generation,
-  type GenerationState,
-  type Turn,
-  type TurnOutcome,
-} from "./context.js";
+import { type Generation, type GenerationState, type Turn, type TurnOutcome } from "./context.js";
 import { startTurnFence } from "./fence.js";
 import { hookRunner } from "./hook-runner.js";
-import { completeRouting, selectTurnModel } from "./routing.js";
-import { extractAttachedFiles, meterBackend, telemetryIntegrations } from "./slots.js";
+import { selectTurnModel } from "./routing.js";
+import { telemetryIntegrations } from "./slots.js";
 import { buildTurnTools } from "./tools.js";
 import { markUsagePartial } from "./usage.js";
 import { assertBudget } from "./admission.js";
@@ -46,7 +37,6 @@ export async function generateTurn(rt: RuntimeContext, turn: Turn): Promise<Turn
   const { state } = gen;
 
   try {
-    await extractAttachedFiles(rt, turn, gen.fence);
     const model = await selectTurnModel(rt, gen);
     const tools = await buildTurnTools(rt, gen);
     const { result, reason } = await nativeGeneration(rt, gen, tools, model);
@@ -84,15 +74,13 @@ export async function generateTurn(rt: RuntimeContext, turn: Turn): Promise<Turn
       await markUsagePartial(rt, turn);
 
     gen.fence.stop();
-
-    if (turn.claimed.isRunStart && turn.managed.hooks?.beforeTurn) await completeRouting(rt, turn);
   }
 }
 
 /**
  * Start the fence and assemble the `Generation`: hook tasks (`runTask` inside a
  * hook) are bound to the fenced context, so they share the turn's receipts and
- * cancellation fence; hooks get the hook-scoped meter.
+ * cancellation fence.
  */
 function startGeneration(rt: RuntimeContext, turn: Turn): Generation {
   const { args, claimed, facts, turnKey } = turn;
@@ -110,10 +98,6 @@ function startGeneration(rt: RuntimeContext, turn: Turn): Generation {
     },
   });
 
-  const backend = meterBackend(rt.config, turn.rawCtx, { ...facts, purpose: "tool" }, () =>
-    markUsagePartial(rt, turn),
-  );
-
   const state: GenerationState = {
     modelStarted: false,
     hookFailed: false,
@@ -127,17 +111,11 @@ function startGeneration(rt: RuntimeContext, turn: Turn): Generation {
     ...facts,
     promptMessageId: claimed.requestMessageId,
     signal: fence.controller.signal,
-    meter: scopedMeter(
-      meterBackend(rt.config, turn.rawCtx, { ...facts, purpose: "hook" }, () =>
-        markUsagePartial(rt, turn),
-      ),
-      `${sliceKey(turn)}:hook`,
-    ),
   };
 
   const hook = hookRunner(rt, turn, fence, state);
 
-  return { turn, fence, hc, hook, backend, state };
+  return { turn, fence, hc, hook, state };
 }
 
 /**
@@ -157,7 +135,7 @@ async function nativeGeneration(
 
   // Admission already checked this boundary. Only pre-model host work can
   // change observed spend before the call; do not read a policy twice otherwise.
-  if (turn.managed.hooks?.beforeTurn || config.extract) await assertBudget(rt, gen);
+  if (turn.managed.hooks?.beforeTurn) await assertBudget(rt, gen);
 
   const args = {
     promptMessageId: turn.claimed.promptMessageId,
