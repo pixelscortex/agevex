@@ -35,9 +35,8 @@ export async function reserveSandbox(
       provider: args.provider,
       sandboxId: undefined,
       state: "creating",
-      ttl: args.ttl,
       claim,
-      lastUsedAt: now,
+      idleExpiresAt: now + args.ttl,
       leaseUntil,
       cleanupAt: Math.max(now + args.ttl, leaseUntil),
     });
@@ -66,9 +65,8 @@ export async function reserveSandbox(
     const leaseUntil = now + LIMITS.actionBudgetMs;
 
     await ctx.db.patch("sandboxes", row._id, {
-      lastUsedAt: now,
+      idleExpiresAt: now + args.ttl,
       leaseUntil,
-      ttl: args.ttl,
       cleanupAt: Math.max(now + args.ttl, leaseUntil),
     });
 
@@ -167,12 +165,13 @@ function newSandboxRow(
   now: number,
 ) {
   return {
-    // Binding facts retain the caller’s validated scope, provider and TTL.
-    ...args,
+    // Store only the trusted binding and the absolute idle deadline.
+    scopeKey: args.scopeKey,
+    provider: args.provider,
     // The claim and lease prevent a lost create from admitting a second VM.
     state: "creating" as const,
     claim,
-    lastUsedAt: now,
+    idleExpiresAt: now + args.ttl,
     leaseUntil,
     cleanupAt: Math.max(now + args.ttl, leaseUntil),
   };

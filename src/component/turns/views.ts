@@ -7,6 +7,7 @@
  * whether a thread is a public root (`turns.send.assignment`). None of them
  * exposes context refs, approvals or recovery state.
  */
+import { approvalBlocked } from "../approvals.js";
 import { v } from "convex/values";
 import type { Doc } from "../_generated/dataModel.js";
 import { turnStatus as vTurnStatus } from "../schema.js";
@@ -82,7 +83,7 @@ export function executionView(row: Doc<"assignments">) {
     turnToken: row.turnToken,
     cancellationEpoch: row.cancellationEpoch,
     cancelled: row.cancelled,
-    approvalBlocked: !!row.approvalBlocked,
+    approvalBlocked: approvalBlocked(row),
     messageIds: row.turnReport?.messageIds ?? [],
     attachmentBytes: row.limits.attachmentBytes,
   };

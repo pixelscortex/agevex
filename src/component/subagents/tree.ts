@@ -7,6 +7,7 @@
  * No per-node transcript or settlement scans: reuse the already bounded
  * child set to project transitive delivery fences in memory.
  */
+import { approvalBlocked } from "../approvals.js";
 import type { Doc } from "../_generated/dataModel.js";
 import type { QueryCtx } from "../_generated/server.js";
 import { TREE_LIMITS, type RunNode, type RunTree } from "../run_tree_values.js";
@@ -58,7 +59,7 @@ export async function requestTree(
 
   for (const child of children) {
     if (child.childAssignmentId) {
-      parents.set(child.childAssignmentId, child.runId);
+      parents.set(child.childAssignmentId, child._id);
       const assignment = await ctx.db.get("assignments", child.childAssignmentId);
 
       if (assignment) assignments.set(assignment._id, assignment);
@@ -132,7 +133,7 @@ function assignmentState(row?: Doc<"assignments">): State | null {
 
   if (row.cancelled) return { status: "failed", reason: "cancelled" };
 
-  if (row.approvalBlocked)
+  if (approvalBlocked(row))
     return {
       status: "asleep",
       reason: row.approvals?.requests.some((request) => !request.deferred && !request.resolved)
@@ -182,7 +183,7 @@ function childNode(
               : { status: run.status === "queued" ? "queued" : "asleep" }));
 
   return {
-    id: run.runId,
+    id: run._id,
     parentId: parents.get(run.actorAssignmentId)!,
     agent: run.agent,
     ...state,

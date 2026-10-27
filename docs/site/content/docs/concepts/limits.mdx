@@ -5,8 +5,9 @@ description: Registration limits and per-agent run settings, with defaults and h
 status: Available
 ---
 
-`LIMITS` contains registration and fixed runtime bounds. Registration policy
-rows come first; tune them through `registerAgent({ limits })`.
+`HOST_LIMITS`, exported from `agevex`, pairs each tunable policy’s default and
+hard maximum. Use the `Limits` type for `registerAgent({ limits })` overrides.
+Policy rows come first below; the remaining bounds are internal runtime facts.
 [Per-agent run settings](/docs/concepts/runtime#per-agent-run-settings) have their
 own validated defaults, hard ceilings and combined action budget.
 
@@ -82,8 +83,8 @@ turn's step count; see
 [approvals and the step allowance](/docs/concepts/runtime#approvals-and-the-step-allowance).
 
 Policy rows can be lowered even when their default equals their maximum;
-non-policy rows are fixed. `PLATFORM` adds
-an 8 MiB journal, an 800 KiB step, 10 and 30 minute actions, 8 scheduled slots.
+non-policy rows are fixed. Convex permits eight scheduled slots and 30-minute
+default-runtime actions; Workflow bounds its own journal and step payloads.
 
 Lane overrides configure one shared pool pair per mount. Defaults: roots 2,
 children 4; maxima 4 each, combined at most 8 slots. All registrations on a

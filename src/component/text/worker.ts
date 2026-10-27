@@ -30,7 +30,7 @@ export const done = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const receipt = await findReceipt(ctx, textScope(args.context.assignmentId), args.context.key);
+    const receipt = await findReceipt(ctx, textScope(args.context.assignmentId), "title");
 
     if (receipt?.status === "running") {
       const job = receipt.result as TextJob | undefined;

@@ -8,7 +8,7 @@ import { state, runtime } from "./fixture/host.js";
 import { config } from "./fixture/host.js";
 import { sandboxNodeExport } from "../../src/modules/sandbox/client/index.js";
 import type * as host from "./fixture/host.js";
-import { fakeSandboxProvider } from "../../src/testing/sandbox.js";
+import { fakeSandboxProvider } from "../../src/modules/sandbox/test.js";
 import type { SandboxLimits } from "../../src/modules/sandbox/shared/limits.js";
 
 const modules = import.meta.glob(["./fixture/**/*.ts"]);

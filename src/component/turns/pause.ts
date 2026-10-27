@@ -8,8 +8,9 @@
  * `LIMITS.approvalsPerPause` before the save, retire requests whose results
  * the save carries, collect the new requests as fixed-size hashes, and
  * suspend the turn with one continuation inbox row. Touches
- * `assignments.approvals`/`approvalBlocked` and `inbox`.
+ * `assignments.approvals` and `inbox`.
  */
+import { approvalBlocked } from "../approvals.js";
 import type { MessageDoc } from "@convex-dev/agent";
 import { ConvexError, getConvexSize } from "convex/values";
 import type { MutationCtx } from "../_generated/server.js";
@@ -237,7 +238,7 @@ async function addDeferredCalls(
 
 /** Suspend the running turn on the requests just recorded: close the slice,
  * insert the continuation row at the head of the ready FIFO, and commit
- * `approvalBlocked` with the request hashes and native handles. */
+ * the request hashes and native handles. */
 export async function suspendForApprovals(
   ctx: MutationCtx,
   row: Doc<"assignments">,
@@ -247,7 +248,7 @@ export async function suspendForApprovals(
   await disarmSlice(ctx, row);
   await disarmRecovery(ctx, row);
 
-  if (row.approvalBlocked) throw new ConvexError({ code: "APPROVAL_ALREADY_PENDING" });
+  if (approvalBlocked(row)) throw new ConvexError({ code: "APPROVAL_ALREADY_PENDING" });
 
   if (row.approvals?.requests.length) throw new ConvexError({ code: "APPROVAL_RESULTS_MISSING" });
 
@@ -272,7 +273,6 @@ export async function suspendForApprovals(
   // immediately after this mutation. No later action owns this fact.
   await ctx.db.patch("assignments", row._id, {
     turnReport: row.turnReport ? { ...row.turnReport, resumeInboxId: inboxId } : undefined,
-    approvalBlocked: true,
     approvals: {
       inboxId,
       requests: pause.requests,

@@ -129,9 +129,7 @@ export const claimDelete = mutation({
 
     if (
       args.expiredOnly &&
-      (row.cleanupAt === undefined ||
-        row.cleanupAt > Date.now() ||
-        row.lastUsedAt + row.ttl > Date.now())
+      (row.cleanupAt === undefined || row.cleanupAt > Date.now() || row.idleExpiresAt > Date.now())
     )
       return null;
 

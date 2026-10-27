@@ -5,7 +5,7 @@ import { createFunctionHandle } from "convex/server";
 import { listMessages } from "@convex-dev/agent";
 import { setup, api, components, rawAssignment, state } from "./setup.js";
 import { requireReceipt } from "./receipt.js";
-import { LIMITS } from "../src/client/index.js";
+import { LIMITS } from "../src/component/limits.js";
 
 type Test = ReturnType<typeof setup>;
 const owner = (t: Test) => t.withIdentity({ subject: "alice" });

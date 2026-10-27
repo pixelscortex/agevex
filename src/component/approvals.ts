@@ -10,6 +10,7 @@
  */
 import type { FunctionHandle } from "convex/server";
 import type { MessageDoc } from "@convex-dev/agent";
+import type { Doc } from "./_generated/dataModel.js";
 import type { MutationCtx } from "./_generated/server.js";
 import { getConvexSize } from "convex/values";
 import { LIMITS } from "./limits.js";
@@ -70,4 +71,14 @@ export async function saveResponses(
     throw new Error("CLEANUP_MESSAGE_TOO_LARGE");
 
   return saved.messages[0]._id;
+}
+
+/** Cleanup always blocks; decided requests remain recorded until their native
+ * tool results commit, but only unresolved decisions prevent their resume. */
+export function approvalBlocked(
+  row: Pick<Doc<"assignments">, "approvals"> | null | undefined,
+): boolean {
+  return !!(
+    row?.approvals?.cleanupPending || row?.approvals?.requests.some((request) => !request.resolved)
+  );
 }

@@ -1,4 +1,5 @@
 // Exact-id pending-call reads and receipt lookup; never discover calls in history.
+import { approvalBlocked } from "../approvals.js";
 import { ConvexError, v } from "convex/values";
 import { query, type QueryCtx } from "../_generated/server.js";
 import type { Doc } from "../_generated/dataModel.js";
@@ -141,7 +142,7 @@ export const pending = query({
     }
 
     const paused = rows.filter(
-      (r) => r.approvalBlocked && !r.cancelled && !r.approvals?.cleanupPending,
+      (r) => approvalBlocked(r) && !r.cancelled && !r.approvals?.cleanupPending,
     );
 
     if (paused.length > DECISION_LIMITS.assignments)

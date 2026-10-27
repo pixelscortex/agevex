@@ -1,3 +1,4 @@
+import { approvalState } from "./approval-state.js";
 import { delegationState } from "./delegation-state.js";
 // @vitest-environment edge-runtime
 import { requireReceipt } from "./receipt.js";
@@ -54,6 +55,11 @@ function setup(limits?: Registration["limits"], preclaimFailure = false) {
 
   agent.register(t);
   agevex.register(t);
+
+  t.registerComponent("agevex", agevex.schema, {
+    ...agevex.modules,
+    "./component/cancel_history.ts": () => import("./cancel-history.fixture.js"),
+  });
 
   return t;
 }
@@ -1495,7 +1501,9 @@ it("cancel bounds every descendant inbox across fourteen independent maximum-lau
     // accumulate 49 native failure results; the last parent fills slot fifteen.
     if (p === HOST_LIMITS.activeChildrenPerRoot.max - 1) break;
 
-    for (let i = 1; i < HOST_LIMITS.runLaunches.max; i++) {
+    // One real native delivery proves integration; seed the remaining terminal
+    // history without replaying hundreds of irrelevant launches and workflows.
+    if (p === 0) {
       const child = await launch(t, parent, "Reviewer", { task: "short fixture task" });
 
       await t.mutation(components.agevex.subagents.settle.settle, {
@@ -1518,6 +1526,11 @@ it("cancel bounds every descendant inbox across fourteen independent maximum-lau
         errorCode: null,
       });
     }
+
+    await t.mutation(
+      componentsGeneric().agevex.cancel_history.seed as unknown as FunctionReference<"mutation">,
+      { assignmentId: parent.assignmentId, count: HOST_LIMITS.runLaunches.max - (p === 0 ? 2 : 1) },
+    );
   }
 
   // Each old budget has 50 launches +49 results +one reserved parent result.
@@ -1586,8 +1599,7 @@ it("cancel bounds every descendant inbox across fourteen independent maximum-lau
     ).toMatchObject({ status: "failed", error: "CANCELLED" });
 
   expect(v2.calls).toEqual([]);
-  // This exercises fourteen independent maximum budgets (~88 s under shared
-  // review load). Keep the full cancellation arithmetic covered with headroom.
+  // Keep all fourteen maximum budgets in the single enforced cancel transaction.
 }, 180_000);
 
 it("the root epoch rejects a late native write from a child that settled immediately before cancel", async () => {
@@ -2472,7 +2484,9 @@ it.each(
 
     expect((await tree(t, root.threadId))[0].status).toBe("running");
 
-    expect(await t.query(rawAssignment, { assignmentId: child.assignmentId })).toMatchObject({
+    expect(
+      approvalState(await t.query(rawAssignment, { assignmentId: child.assignmentId })),
+    ).toMatchObject({
       turnStatus: "queued",
       approvalBlocked: false,
       queuedMessages: 0,
@@ -2577,7 +2591,9 @@ it.each([1, HOST_LIMITS.messagesPerChild.max])(
       }),
     );
 
-    expect(await t.query(rawAssignment, { assignmentId: child.assignmentId })).toMatchObject({
+    expect(
+      approvalState(await t.query(rawAssignment, { assignmentId: child.assignmentId })),
+    ).toMatchObject({
       approvalBlocked: true,
       queuedMessages: queueLength + 1,
     });
@@ -2612,3 +2628,28 @@ it.each([1, HOST_LIMITS.messagesPerChild.max])(
     expect((await tree(t, root.threadId)).every((run) => run.status === "completed")).toBe(true);
   },
 );
+
+it("public delegation ids are document ids and reject malformed or other-table ids", async () => {
+  const t = setup(maxima);
+  const root = await manualRoot(t);
+  const child = await launch(t, root, "Reviewer");
+
+  const identity = componentsGeneric().agevex.cancel_history
+    .identity as unknown as FunctionReference<"query", "public", { runId: string }, string | null>;
+
+  expect(await t.query(identity, { runId: child.runId })).toBe(child.runId);
+  expect(await t.query(identity, { runId: "not-a-document-id" })).toBeNull();
+  expect(await t.query(identity, { runId: root.assignmentId })).toBeNull();
+
+  const delegations = await owner(t).query(api.agents.delegations, {
+    threadId: root.threadId,
+    paginationOpts: { cursor: null, numItems: 20 },
+  });
+
+  expect(delegations.page[0].runId).toBe(child.runId);
+  const runTree = await owner(t).query(api.agents.runTree, { threadId: root.threadId });
+
+  expect(runTree?.nodes.find((node) => node.parentId !== null)?.id).toBe(child.runId);
+  await owner(t).mutation(api.agents.cancel, { threadId: root.threadId });
+  await drain(t);
+});

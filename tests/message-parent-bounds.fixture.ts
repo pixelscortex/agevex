@@ -1,10 +1,14 @@
 /** Fill the bounded delivery range, including a settled-but-undelivered child. */
-import { getConvexSize, v } from "convex/values";
+import { v } from "convex/values";
+import { valueBytes } from "../src/shared/json.js";
 import { mutation } from "../src/component/_generated/server.js";
 import { HOST_LIMITS, readyRowLimit } from "../src/component/limits.js";
-import { newRun } from "../src/component/turns/runs.js";
-import { resolveRunSettings } from "../src/component/run_settings.js";
-import { fillAssignment, fillNotes, fullReport } from "./assignment-envelope.fixture.js";
+import {
+  fillAssignment,
+  fillNotes,
+  fullReport,
+  maximumRun,
+} from "./assignment-envelope.fixture.js";
 
 /** The live actor and terminal gap both need final hops, even with activeRuns=1.
  * Keep all 50 rows near their 4 KiB metadata envelope; no native bodies copied.
@@ -26,7 +30,6 @@ export const seed = mutation({
     for (let index = 1; index < ordinary; index++)
       await ctx.db.insert("subagentRuns", {
         ...template,
-        runId: `headroom-${index}`,
         dedupKey: `headroom-${index}`,
         payloadFingerprint: "x".repeat(3 << 10),
         childAssignmentId: undefined,
@@ -82,7 +85,6 @@ export const fillQueue = mutation({
         await ctx.db.insert("subagentRuns", {
           ...template,
           parentRunId,
-          runId: `older-pending-${offset + child}`,
           dedupKey: `older-pending-${offset + child}`,
           payloadFingerprint: "x".repeat(3 << 10),
           childAssignmentId: undefined,
@@ -110,13 +112,7 @@ export const fillCancelQueue = mutation({
   handler: async (ctx, { assignmentId }) => {
     const row = (await ctx.db.get("assignments", assignmentId))!;
 
-    const budget = newRun(
-      undefined,
-      Array.from({ length: 64 }, (_, index) => ({
-        agent: String(index).padEnd(100, "x"),
-        settings: resolveRunSettings(),
-      })),
-    );
+    const budget = maximumRun();
 
     if (!row.childRunId) await ctx.db.patch("runs", row.runId!, { settings: budget.settings });
 
@@ -159,7 +155,7 @@ export const fillCancelQueue = mutation({
   },
 });
 
-function expectReadySize(row: Parameters<typeof getConvexSize>[0]) {
+function expectReadySize(row: unknown) {
   // Native ids/time add less than 128 bytes; cancel's envelope is 1 KiB/row.
-  if (getConvexSize(row) > (1 << 10) - 128) throw new Error("FIXTURE_READY_ROW_TOO_LARGE");
+  if (valueBytes(row) > (1 << 10) - 128) throw new Error("FIXTURE_READY_ROW_TOO_LARGE");
 }

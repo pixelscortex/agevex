@@ -53,7 +53,7 @@ export async function settlementBlocked(ctx: QueryCtx | MutationCtx, parent: Doc
  * false (writing nothing) when already terminal or still blocked;
  * `settleIdleParent` and escalate rely on that to notify exactly once
  * (`recordTurnOutcome` ignores it: its settle only records the outcome). */
-export async function settleRunState(
+async function settleRunState(
   ctx: MutationCtx,
   run: Doc<"subagentRuns">,
   status: "completed" | "failed",
@@ -98,9 +98,9 @@ export async function settleRunState(
 /** Schedule the host coordinator's delivery of a newly terminal run. The
  * notify action runs outside this transaction and records a failed delivery
  * if the coordinator throws. */
-export async function scheduleNotify(ctx: MutationCtx, run: Doc<"subagentRuns">) {
+async function scheduleNotify(ctx: MutationCtx, run: Doc<"subagentRuns">) {
   await ctx.scheduler.runAfter(0, internal.subagents.deliver.notify, {
-    runId: run.runId,
+    runId: run._id,
     deliveryToken: run.deliveryToken,
     coordinateHandle: run.coordinateHandle,
   });
@@ -152,7 +152,7 @@ export async function settleIdleParent(ctx: MutationCtx, parent: Doc<"assignment
  * settle its run if nothing fences settlement. A fenced outcome waits on the
  * run (R3 settles it later from `lastTurnResult`). Only the turn that owns
  * the token may report; anything else is FORBIDDEN. */
-export async function recordTurnOutcome(
+async function recordTurnOutcome(
   ctx: MutationCtx,
   args: {
     assignmentId: Id<"assignments">;
@@ -198,7 +198,7 @@ export async function recordTurnOutcome(
  * terminally (turns/finish.ts failChild). Records the failure as the
  * last-turn outcome first, so a fenced run still fails once its blockers
  * clear; notifies only on the first successful settlement. */
-export async function escalateRun(
+async function escalateRun(
   ctx: MutationCtx,
   runId: string,
   code: Doc<"subagentRuns">["errorCode"] | undefined,

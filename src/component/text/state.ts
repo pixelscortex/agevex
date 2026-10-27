@@ -7,17 +7,16 @@ import { mutation, internalMutation, type MutationCtx } from "../_generated/serv
 import { internal } from "../_generated/api.js";
 import { findReceipt } from "../receipts/records.js";
 import { textScope, type TextJob } from "./jobs.js";
-import { TEXT_LIMITS, textKind, validText } from "./values.js";
+import { TEXT_LIMITS, validText } from "./values.js";
 
-export const jobArgs = { assignmentId: v.id("assignments"), kind: textKind, key: v.string() };
-type JobArgs = { assignmentId: Doc<"assignments">["_id"]; kind: "title"; key: string };
+const jobArgs = { assignmentId: v.id("assignments") };
+
+type JobArgs = { assignmentId: Doc<"assignments">["_id"] };
 
 /** Title generation describes the first accepted message and survives cancellation. */
 async function liveJob(ctx: MutationCtx, args: JobArgs) {
-  if (args.key !== "title") return null;
-
   const row = await ctx.db.get("assignments", args.assignmentId);
-  const receipt = await findReceipt(ctx, textScope(args.assignmentId), args.key);
+  const receipt = await findReceipt(ctx, textScope(args.assignmentId), "title");
   const job = receipt?.result as TextJob | undefined;
 
   if (!row?.textConfig || receipt?.status !== "running" || !job) return null;
@@ -39,7 +38,7 @@ async function hasNativeTitle(ctx: MutationCtx, row: Doc<"assignments">) {
   return thread?.title !== undefined;
 }
 
-export const snapshot = v.object({
+const snapshot = v.object({
   subject: v.string(),
   agent: v.string(),
   threadId: v.string(),
@@ -116,7 +115,7 @@ export const expire = internalMutation({
   args: jobArgs,
   returns: v.null(),
   handler: async (ctx, args) => {
-    const receipt = await findReceipt(ctx, textScope(args.assignmentId), args.key);
+    const receipt = await findReceipt(ctx, textScope(args.assignmentId), "title");
 
     if (
       receipt?.status === "running" &&
@@ -145,7 +144,7 @@ export const commit = mutation({
   },
   returns: v.boolean(),
   handler: async (ctx, args) => {
-    const receipt = await findReceipt(ctx, textScope(args.assignmentId), args.key);
+    const receipt = await findReceipt(ctx, textScope(args.assignmentId), "title");
 
     if (receipt?.status !== "running") return false;
 
@@ -160,7 +159,7 @@ export const commit = mutation({
       !expired &&
       args.status === "done" &&
       args.text !== undefined &&
-      validText(args.text, args.kind)
+      validText(args.text)
     );
 
     const status =
@@ -182,7 +181,7 @@ export const commit = mutation({
         { threadId: string; patch: { title?: string } },
         unknown
       >,
-      { threadId: live.row.threadId, patch: { [args.kind]: args.text! } },
+      { threadId: live.row.threadId, patch: { title: args.text! } },
     );
 
     return true;

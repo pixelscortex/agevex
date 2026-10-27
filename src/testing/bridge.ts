@@ -38,7 +38,7 @@ export const delegationState = internalQuery({
     return rows
       .sort((a, b) => a.sequence - b.sequence)
       .map((run) => ({
-        runId: run.runId,
+        runId: run._id,
         parentAssignmentId: run.actorAssignmentId,
         childAssignmentId: run.childAssignmentId ?? null,
         agent: run.agent,
@@ -119,13 +119,11 @@ export const assignment = internalQueryGeneric({
 /** Inspect the exact child result recorded on one run, without native history. */
 export const childResultMessageId = internalQueryGeneric({
   args: { runId: v.string() },
-  handler: async (ctx, { runId }) =>
-    (
-      await ctx.db
-        .query("subagentRuns")
-        .withIndex("by_run", (q) => q.eq("runId", runId))
-        .unique()
-    )?.childResultMessageId ?? null,
+  handler: async (ctx, { runId }) => {
+    const id = ctx.db.normalizeId("subagentRuns", runId);
+
+    return (id ? (await ctx.db.get(id))?.childResultMessageId : null) ?? null;
+  },
 });
 
 /** Populate the F1 coordination envelope for the all-maxima cancellation

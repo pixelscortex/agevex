@@ -107,7 +107,7 @@ async function finalizeControl(
  * Exact anchor <=1 MiB + six native merge heads <=6 MiB + one save/result
  * <=130 KiB + assignment/ref metadata <128 KiB: <8 MiB <16 MiB per control.
  */
-export async function controlOrder(ctx: MutationCtx, row: Doc<"assignments">, getMessages: string) {
+async function controlOrder(ctx: MutationCtx, row: Doc<"assignments">, getMessages: string) {
   const anchor = row.promptMessageId;
 
   const [message] = (await ctx.runQuery(getMessages as FunctionHandle<"query">, {
@@ -132,7 +132,7 @@ function noteMessage(text: string, from: string) {
 }
 
 /** Save one note natively at `order` (from controlOrder) and return the doc. */
-export async function saveNote(
+async function saveNote(
   ctx: MutationCtx,
   row: Doc<"assignments">,
   addMessages: string,
@@ -164,7 +164,7 @@ function validNote(text: string, from: string) {
 /** turns.slices.write fences hook notes by execution/epoch; external notes serialize
  * against cancellation here. Every post retains only its bounded raw payload.
  * Refuses past the assignment's `notesPending` cap. */
-export async function queueNote(
+async function queueNote(
   ctx: MutationCtx,
   args: { assignmentId: Id<"assignments">; text: string; from: string },
 ) {
@@ -201,7 +201,7 @@ export async function queueNote(
  * have committed their results. Otherwise share the pending-note admission cap
  * and defer delivery to a safe claim. turns.slices.write supplies the epoch fence.
  */
-export async function saveBeforeTurnNote(
+async function saveBeforeTurnNote(
   ctx: MutationCtx,
   args: {
     assignmentId: Id<"assignments">;
@@ -255,7 +255,7 @@ export async function saveBeforeTurnNote(
  * The epoch index fences a fresh send even when it precedes this job. Each
  * cancelled epoch has <=24 notes, so no chain or history prefix is needed.
  */
-export async function dropCancelledNotes(
+async function dropCancelledNotes(
   ctx: MutationCtx,
   assignmentId: Id<"assignments">,
   epoch: number,

@@ -68,10 +68,10 @@ async function performTextTask(
     assignmentId: args.assignmentId,
     threadId: state.threadId,
     turnOrigin: "user",
-    purpose: args.kind,
+    purpose: "title",
   });
 
-  const options = rt.config[args.kind];
+  const options = rt.config["title"];
 
   if (options === false) throw new Error("TEXT_DISABLED");
 
@@ -128,7 +128,7 @@ async function generate(
   dispatch: Dispatch,
 ) {
   const controller = new AbortController();
-  const options = rt.config[args.kind];
+  const options = rt.config["title"];
   let timer: ReturnType<typeof setTimeout> | undefined;
   let abort!: () => void;
 
@@ -140,7 +140,7 @@ async function generate(
     const pending = generateText({
       model,
       output: Output.object({
-        schema: z.object({ text: z.string().refine((text) => validText(text, args.kind)) }),
+        schema: z.object({ text: z.string().refine((text) => validText(text)) }),
       }),
       prompt,
       maxRetries: LIMITS.modelRetries,
@@ -208,7 +208,7 @@ async function recordUsage(
       purpose: "title",
       model: typeof model === "string" ? model : model.modelId,
       provider: typeof model === "string" ? model.split("/")[0] : model.provider,
-      key: await opaqueKey("thread-text-usage", args.assignmentId, args.key),
+      key: await opaqueKey("thread-text-usage", args.assignmentId, "title"),
       messageId: null,
       usage: dispatch.usage,
       providerMetadata: dispatch.metadata,

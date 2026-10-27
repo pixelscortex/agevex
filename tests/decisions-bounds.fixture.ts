@@ -37,7 +37,6 @@ export const seed = mutation({
 
       if (offset)
         await ctx.db.insert("subagentRuns", {
-          runId: `pending-${offset}`,
           parentRunId: root.runId!,
           rootCancellationEpoch: root.cancellationEpoch,
           dedupKey: `pending-${offset}`,
@@ -75,7 +74,6 @@ export const seed = mutation({
       });
 
       await ctx.db.patch("assignments", assignmentId, {
-        approvalBlocked: true,
         queuedMessages: 1,
         approvals: {
           inboxId,
@@ -94,7 +92,6 @@ export const seed = mutation({
       offset++
     )
       await ctx.db.insert("subagentRuns", {
-        runId: `history-${offset}`,
         parentRunId: root.runId!,
         rootCancellationEpoch: root.cancellationEpoch,
         dedupKey: `history-${offset}`,

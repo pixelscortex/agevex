@@ -109,7 +109,6 @@ function textFields() {
 /** A full 16-call approval pause with every optional flag set. */
 function approvalFields(inboxId: Id<"inbox">, proposalId: Id<"receipts">) {
   return {
-    approvalBlocked: true,
     approvals: {
       inboxId,
       epoch: 2 ** 52,

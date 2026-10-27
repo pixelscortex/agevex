@@ -17,7 +17,7 @@ export type ThreadTextOptions = {
   /** On by default, once after the first user message. User renames always win. */
   title?: false | TextTaskOptions;
 };
-export type TextTaskArgs = { assignmentId: string; kind: "title"; key: string };
+export type TextTaskArgs = { assignmentId: string };
 
 /** Fail before request acceptance when the host cannot dispatch metadata work. */
 export function assertTextOptions(config: Registration) {

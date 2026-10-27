@@ -31,7 +31,7 @@ type PendingGeneration = typeof pendingGeneration.type;
 type Approvals = NonNullable<Doc<"assignments">["approvals"]>;
 
 /** Exactly one recorded placeholder per transaction, including native payload reads. */
-export async function finalize(ctx: MutationCtx, pending: PendingGeneration) {
+async function finalize(ctx: MutationCtx, pending: PendingGeneration) {
   const [message]: ({ status: string } | null)[] = await ctx.runQuery(
     pending.getMessages as FunctionHandle<"query">,
     { messageIds: [pending.messageId] },
@@ -47,7 +47,7 @@ export async function finalize(ctx: MutationCtx, pending: PendingGeneration) {
 }
 
 /** Abort the execution's tracked stream (if any), then fail its placeholder. */
-export async function failPendingGeneration(ctx: MutationCtx, pending: PendingGeneration) {
+async function failPendingGeneration(ctx: MutationCtx, pending: PendingGeneration) {
   // Stream creation is tracked atomically too: never list a thread's streams
   // after cancellation, when a fresh generation may already own another one.
   if (pending.stream) {
@@ -71,11 +71,7 @@ export async function failPendingGeneration(ctx: MutationCtx, pending: PendingGe
 
 /** Close the first recorded request natively: an "execution-denied" result
  * for its call and, for an undecided approval, a denial response. */
-export async function denyFirstRequest(
-  ctx: MutationCtx,
-  row: Doc<"assignments">,
-  approvals: Approvals,
-) {
+async function denyFirstRequest(ctx: MutationCtx, row: Doc<"assignments">, approvals: Approvals) {
   const request = approvals.requests[0];
   const messageId = request.messageId;
 
@@ -159,7 +155,7 @@ async function cancelledDecision(
 /** Drop the handled request; chain the next cleanup job, or release the
  * pause and wake the assignment when none remain: a send accepted after the
  * cancel may have queued work that the pause was holding back. */
-export async function continueOrRelease(
+async function continueOrRelease(
   ctx: MutationCtx,
   row: Doc<"assignments">,
   approvals: Approvals,
@@ -184,10 +180,9 @@ export async function continueOrRelease(
   } else {
     await ctx.db.patch("assignments", assignmentId, {
       approvals: undefined,
-      approvalBlocked: false,
     });
 
-    await wake(ctx, { ...row, approvals: undefined, approvalBlocked: false });
+    await wake(ctx, { ...row, approvals: undefined });
   }
 }
 

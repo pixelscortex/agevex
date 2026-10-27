@@ -1,6 +1,9 @@
 // @vitest-environment edge-runtime
+import { approvalState } from "./approval-state.js";
+import { approvalBlocked } from "../src/component/approvals.js";
 import { sliceWatchdogMs, resolveRunSettings } from "../src/component/run_settings.js";
 import { opaqueKey } from "../src/client/keys.js";
+import { advanceUntil } from "./clock.js";
 import { requireReceipt } from "./receipt.js";
 import { it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { setup, api, internal, components, rawAssignment, state } from "./setup.js";
@@ -10,7 +13,7 @@ import { componentsGeneric, createFunctionHandle, type FunctionReference } from 
 import { createThread, listMessages, saveMessage } from "@convex-dev/agent";
 import { main, coordinateReference, fixtureRuntime } from "./host.js";
 import { HOST_LIMITS } from "../src/component/limits.js";
-import { LIMITS } from "../src/client/index.js";
+import { LIMITS } from "../src/component/limits.js";
 
 // Avoid expanding upstream Config's full model-id union just to set context.
 const modelContext = (
@@ -143,7 +146,7 @@ it("40 large tool results allow a turn to start, block on recorded approval, and
 
   const paused = await execution();
 
-  expect(paused).toMatchObject({ approvalBlocked: true, queuedMessages: 1 });
+  expect(approvalState(paused)).toMatchObject({ approvalBlocked: true, queuedMessages: 1 });
   expect(paused?.approvals?.requests[0].messageId).toBeTypeOf("string");
 
   const [request] = await t.query(components.agent.messages.getMessagesByIds, {
@@ -168,7 +171,11 @@ it("40 large tool results allow a turn to start, block on recorded approval, and
 
   await drain(t);
   expect(state.calls).toHaveLength(1);
-  expect(await execution()).toMatchObject({ approvalBlocked: true, queuedMessages: 2 });
+
+  expect(approvalState(await execution())).toMatchObject({
+    approvalBlocked: true,
+    queuedMessages: 2,
+  });
 
   await alice.mutation(api.agents.respond, {
     threadId: receipt.threadId,
@@ -852,7 +859,7 @@ it.each(["running", "approval"])(
       });
 
       expect(getConvexSize(row)).toBeLessThan(LIMITS.assignmentBytes);
-      expect(!!row?.approvalBlocked).toBe(mode === "approval");
+      expect(!!approvalBlocked(row)).toBe(mode === "approval");
     }
 
     // Inspect the actual public cancel transaction, including ownership reads.
@@ -1344,13 +1351,7 @@ it("loop rotation leaves no orphaned pings after busy arrivals", async () => {
 
     const before = state.calls.length;
 
-    await expect
-      .poll(async () => {
-        await tick(t, 100);
-
-        return state.calls.length;
-      })
-      .toBe(before + 1);
+    await advanceUntil(t, () => state.calls.length === before + 1);
 
     await alice.mutation(api.agents.send, {
       threadId: receipt.threadId,
