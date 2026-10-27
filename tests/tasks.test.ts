@@ -312,6 +312,35 @@ it("invalid outputs report each failed paid attempt with its provider request id
   ]);
 });
 
+it("a paid empty answer reports its request id and usage once before becoming unknown", async () => {
+  const t = setup();
+  const { model, definition } = task(['{"category":"yes"}']);
+  const generate = model.doGenerate;
+
+  model.doGenerate = async (args) => {
+    const result = await generate(args);
+
+    return {
+      ...result,
+      content: [],
+      finishReason: { unified: "length", raw: "length" },
+      response: { ...result.response, id: "gen-empty" },
+    };
+  };
+
+  const events: UsageEvent[] = [];
+  const usage = { record: async (_ctx: unknown, event: UsageEvent) => void events.push(event) };
+
+  expect(
+    await t.action((ctx) => runTask(ctx, definition, { text: "hello" }, { ...options, usage })),
+  ).toEqual({ status: "unknown" });
+
+  expect(model.calls).toHaveLength(1);
+  expect(events).toHaveLength(1);
+  expect(events[0]).toMatchObject({ status: "failed", requestId: "gen-empty" });
+  expect(events[0].usage).toBeDefined();
+});
+
 it("a task replay returns its stored typed result and records each paid attempt once", async () => {
   const t = setup();
   const { model, definition } = task(['{"category":"no"}']);
