@@ -1,0 +1,112 @@
+src/client/turn/usage.ts
+  s_3a22e17820c34c::t_f82a604fbd900c 29
+  s_3a22e17820c34c::t_1217e0e3703013 15-16
+  s_3a22e17820c34c::t_d6bc087ba5520c 6-14,17-28,30-60
+src/client/slots.ts
+  s_3a22e17820c34c::t_00adc6b9375de7 57-58
+  s_3a22e17820c34c::t_96536ac0e5540c 43,46-48
+tests/usage-completeness.test.ts
+  s_3a22e17820c34c::t_1f7797a9f82e56 55-56,58-59,62,67,196,198-199,205-206,208-209,211-212,222-223,226,228-230,232-233,235-236,238,240-244,246-266,270-271,275-276,278-279,281,283-285,320,322-323,325,328,330,336-337,345-346,348-349,351,355,361,371-372,374-375,377,379-381,387-388,394-395,397-398,408,415
+  s_3a22e17820c34c::t_f17d5c295a4d75 52-54
+  s_3a22e17820c34c::t_eb5e79aab7c20d 57
+  s_3a22e17820c34c::t_3d878815cc5484 60-61
+  s_3a22e17820c34c::t_2d4daf4e62b98d 63-66
+  s_3a22e17820c34c::t_62d9e6eb81fb5d 68-70,193-195
+  s_3a22e17820c34c::t_9c2bfffdc23c0a 197
+  s_3a22e17820c34c::t_7c60466cebfaa0 200-204
+  s_3a22e17820c34c::t_81de09034723cd 207
+  s_3a22e17820c34c::t_59658fb26f62eb 210
+  s_3a22e17820c34c::t_9fd142a64e8710 213-215,219-221
+  s_3a22e17820c34c::t_006370ff8e84ee 224-225
+  s_3a22e17820c34c::t_d002e9712d0b29 227
+  s_3a22e17820c34c::t_10d55d94601773 231
+  s_3a22e17820c34c::t_79647218c2c34c 234
+  s_3a22e17820c34c::t_21d75fe24772f8 237
+  s_3a22e17820c34c::t_4a654c1eac912f 239
+  s_3a22e17820c34c::t_90caa95610cf29 245
+  s_3a22e17820c34c::t_8c61e36d9a91ae 267-269
+  s_3a22e17820c34c::t_513a0b0e643b70 272-274
+  s_3a22e17820c34c::t_06fb4c29b6b0da 277
+  s_3a22e17820c34c::t_ece9f0d21be969 280
+  s_3a22e17820c34c::t_dfc8f7fb0b62f0 282
+  s_3a22e17820c34c::t_5fffcfc14c090b 286-288,317-319
+  s_3a22e17820c34c::t_c0054e79f86f45 321
+  s_3a22e17820c34c::t_1114f0e4f6b872 324
+  s_3a22e17820c34c::t_57ef62caa6fc1a 326-327
+  s_3a22e17820c34c::t_fd7f30dd9f3999 329
+  s_3a22e17820c34c::t_bd7b506657768e 331-335
+  s_3a22e17820c34c::t_d4b06086748ce7 338-340,342-344
+  s_3a22e17820c34c::t_8f11eea795546b 347
+  s_3a22e17820c34c::t_404fcfe2da5b5b 350
+  s_3a22e17820c34c::t_8f952ba5bec1a0 352-354
+  s_3a22e17820c34c::t_9d1c527747cd41 356-360
+  s_3a22e17820c34c::t_a524f4a996c89c 362-364,368-370
+  s_3a22e17820c34c::t_35b98cd50d73f5 373
+  s_3a22e17820c34c::t_a07c35f2064894 376
+  s_3a22e17820c34c::t_b200254fc7bccb 378
+  s_3a22e17820c34c::t_778dfe8387ee32 382-386
+  s_3a22e17820c34c::t_76429c5ea8f81b 389-393
+  s_3a22e17820c34c::t_5276fd2ca6e5b9 396
+  s_3a22e17820c34c::t_c9654d80e4537f 399-401,405-407
+  s_3a22e17820c34c::t_639b939eaf4b40 409-414
+  s_3a22e17820c34c::t_417fbfce4628d7 1-51,71-192,216-218,289-316,341,365-367,402-404
+docs/site/content/docs/concepts/recording-usage.mdx
+  s_3a22e17820c34c::t_1217e0e3703013 22-23
+  s_3a22e17820c34c::t_3ea99f65d6f11e 7-21,24-33,51-52,94-95,112-113,200
+src/client/tasks.ts
+  s_a1abfc0eab0561::t_617350a2ddb3a6 336,340,446,449,459-460
+src/client/text/task.ts
+  s_a1abfc0eab0561::t_40fd00a155b5ac 28-30,163,178,183-187,191,223-224
+src/client/turn/context.ts
+  s_a1abfc0eab0561::t_9e0fd3bf4dfb97 23,40-41
+src/client/turn/deadlines.ts
+  s_a1abfc0eab0561::t_8d7f8d59cfa126 10,16,19,29-32,41,62,68-76
+src/client/turn/fence.ts
+  s_a1abfc0eab0561::t_4f51ddea60e5c8 22,197
+src/client/turn/generation.ts
+  s_a1abfc0eab0561::t_75fb3e292f46c5 23,37,44-47,73
+src/client/turn/slots.ts
+  s_3a22e17820c34c::t_afaaa3a6e44da7 3,14,16-17,19-25,27-33,38,43-51,55-57
+src/client/turn/step-usage.ts
+  s_3a22e17820c34c::t_708210f0abf0e7 1-66
+src/component/limits.ts
+  s_a1abfc0eab0561::t_dcb4dae096d0f3 184-187
+tests/hooks.host.ts
+  s_a1abfc0eab0561::t_74dabd74e09bf2 25-29,35-42,95-96,113-115,200-201
+tests/run-settings.test.ts
+  s_a1abfc0eab0561::t_8a546f77dfb276 630,678-688
+src/client/README.md
+  s_1f0dc78dae71ba::t_b1ea2492c6ac8a 35-47,134-135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "69b718e51829b34d67f3a2065969d724ece63fea",
+  "prompts": {},
+  "sessions": {
+    "s_1f0dc78dae71ba": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17ba5-ec79-7d92-bb4f-e623ad4e80ec",
+        "model": "unknown"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_3a22e17820c34c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17ba5-8cf9-7680-838e-e654193fb43b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_a1abfc0eab0561": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17b1d-7b11-7963-97e4-4dc03bb71d43",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
