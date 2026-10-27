@@ -121,7 +121,6 @@ export const LIMITS = {
   taskRepairs: 1,
   taskPromptLength: 16_000,
   agents: 64,
-  minuteMs: 60_000,
   assignmentBytes: 14 << 10,
   turnReportBytes: 3 << 10,
   messageIdBytes: 37,

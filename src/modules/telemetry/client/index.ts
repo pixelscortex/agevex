@@ -73,13 +73,33 @@ function guard(host: Telemetry, facts: TelemetryFacts): Telemetry {
   });
 }
 
-/** Keep SDK payloads intact while replacing any untrusted attribution. onError
- * carries arbitrary values, so expose its original value alongside the facts.
+/** Keep SDK payloads intact while replacing any untrusted attribution. Step
+ * results are class instances whose text/toolCalls/toolResults are prototype
+ * getters, so a spread would drop them: a read-only view delegates every other
+ * key to the original event (getters run against it) and answers `agevex` with
+ * the trusted facts. onError carries arbitrary values, so a primitive becomes
+ * `{ error, agevex }`.
  */
 function attributed(event: unknown, facts: TelemetryFacts) {
-  return event !== null && typeof event === "object"
-    ? { ...event, agevex: facts }
-    : { error: event, agevex: facts };
+  if (event === null || typeof event !== "object") return { error: event, agevex: facts };
+
+  return new Proxy(event, {
+    get(target, key) {
+      if (key === "agevex") return facts;
+
+      const value: unknown = Reflect.get(target, key, target);
+
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+    has: (target, key) => key === "agevex" || Reflect.has(target, key),
+    // Enumerating observers (serializers, matchers) see `agevex` as an own key.
+    ownKeys: (target) => [...Reflect.ownKeys(target).filter((key) => key !== "agevex"), "agevex"],
+    getOwnPropertyDescriptor: (target, key) =>
+      key === "agevex"
+        ? { value: facts, enumerable: true, configurable: true, writable: false }
+        : Reflect.getOwnPropertyDescriptor(target, key),
+    set: () => false,
+  });
 }
 
 type Execution = { execute: () => PromiseLike<unknown> };
@@ -110,7 +130,7 @@ async function executeOnce(
   };
 
   try {
-    await wrapper.call(host, { ...attributed(options, facts), execute });
+    await wrapper.call(host, { ...options, agevex: facts, execute });
   } catch {
     /* Only the model/tool's own promise may determine the execution outcome. */
   }

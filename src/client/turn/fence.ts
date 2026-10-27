@@ -191,7 +191,7 @@ function fencedContext(
       try {
         const saved = await rawCtx.runMutation(
           rt.component.turns.slices.write,
-          await fencedWriteArgs(rt, turn, ref, payload),
+          await fencedWriteArgs(turn, ref, payload),
         );
 
         if (functionKey(ref) === addMessagesKey) {
@@ -226,7 +226,6 @@ function fencedContext(
  * from that same save, without any transcript discovery.
  */
 async function fencedWriteArgs(
-  rt: RuntimeContext,
   turn: Turn,
   ref: Parameters<RunnerCtx["runMutation"]>[0],
   payload: unknown,

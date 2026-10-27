@@ -30,6 +30,34 @@ it("real model and tool callbacks carry the trusted run, thread, subject and age
   for (const event of seen) expect(event).toMatchObject({ agevex: facts });
 });
 
+it("step results keep their SDK getters (text, toolCalls, toolResults) beside the trusted facts", async () => {
+  const steps: { text: string; toolCalls: number; toolResults: number; agevex: unknown }[] = [];
+
+  const slot = telemetry({
+    integration: {
+      onStepEnd(event: {
+        text: string;
+        toolCalls: unknown[];
+        toolResults: unknown[];
+        agevex?: unknown;
+      }) {
+        steps.push({
+          text: event.text,
+          toolCalls: event.toolCalls.length,
+          toolResults: event.toolResults.length,
+          agevex: event.agevex,
+        });
+      },
+    } as Telemetry,
+  });
+
+  await scripted(slot.integration(facts));
+
+  expect(steps).toHaveLength(2);
+  expect(steps[0]).toMatchObject({ toolCalls: 1, toolResults: 1, agevex: facts });
+  expect(steps[1]).toMatchObject({ text: "private model output", toolCalls: 0, agevex: facts });
+});
+
 it("attribution is snapshotted and replaces forged event attribution across concurrent turns", async () => {
   const seen: { agevex: typeof facts }[] = [];
   const source = { ...facts };
