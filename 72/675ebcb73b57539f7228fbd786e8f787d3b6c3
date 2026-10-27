@@ -1,0 +1,32 @@
+tests/acceptance/main-builder-reviewer.test.ts
+  s_e8eff8940126ee::t_41c417122d09f2 10,146,201,330-412
+tests/sandbox/daytona.live.ts
+  s_e8eff8940126ee::t_e82fb78af7b49d 2,12-13
+  s_e8eff8940126ee::t_41c417122d09f2 14,49,51,82-180
+tests/live/runtime.live.ts
+  s_e8eff8940126ee::t_e82fb78af7b49d 4,108
+  s_e8eff8940126ee::t_de588bff132c63 30,33,36,64-104,163,167-235,247
+  s_e8eff8940126ee::t_508c2dadda15b5 20-26,105-107,109-162,164-166,236-246
+tests/live/convex/agents.ts
+  s_e8eff8940126ee::t_41c417122d09f2 51-115,165
+tests/sandbox/daytona.test.ts
+  s_e8eff8940126ee::t_eaf3dd3e9c43df 650,721,1189-1252
+tests/sandbox/fixture/daytona.ts
+  s_e8eff8940126ee::t_e1f98ca1977bf2 1-7,70,75,90-236
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "72675ebcb73b57539f7228fbd786e8f787d3b6c3",
+  "prompts": {},
+  "sessions": {
+    "s_e8eff8940126ee": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17bc4-6da9-7352-8d4f-420fa011dd32",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
