@@ -1,3 +1,4 @@
+// Deterministic native Agent host for turn hooks, routing and cache-policy tests.
 import {
   Agent,
   registerAgent,
@@ -31,6 +32,8 @@ import { components } from "./fixture/api.js";
 
 type Args = Parameters<ReturnType<typeof mockModel>["doStream"]>[0];
 export const fixture = {
+  modelIdentities: {} as Record<string, { provider: string; modelId: string }>,
+  experimental: { claude: { cache: true } },
   generationIds: false,
   providerGenerate: undefined as
     | undefined
@@ -70,6 +73,16 @@ export const call = (name: string, input: unknown): LanguageModelV4Content[] => 
 ];
 function model(name: string) {
   const model = mockModel();
+  const { provider, modelId } = model;
+
+  // Cache-policy tests route the real per-step identity without network calls.
+  Object.defineProperty(model, "provider", {
+    get: () => fixture.modelIdentities[name]?.provider ?? provider,
+  });
+
+  Object.defineProperty(model, "modelId", {
+    get: () => fixture.modelIdentities[name]?.modelId ?? modelId,
+  });
 
   // This fake provider accepts storage URLs as native file parts. The SDK
   // therefore never downloads test storage or touches the network.
@@ -135,6 +148,7 @@ export const builder = new Agent(components.agent, {
   name: "Builder",
   languageModel: model("Builder"),
   subagents: [critic],
+  experimental: fixture.experimental,
 });
 
 const echo = {
@@ -149,6 +163,7 @@ const echo = {
 export const main = new Agent(components.agent, {
   name: "Main",
   languageModel: model("Main"),
+  experimental: fixture.experimental,
   contextHandler: (ctx, context) => fixture.contextHandler?.(ctx, context) ?? context.allMessages,
   subagents: [builder],
   tools: {
@@ -196,6 +211,8 @@ Object.defineProperty(builder, "hooks", { get: () => fixture.builderHooks });
 Object.defineProperty(main, "sandbox", { get: () => fixture.sandbox });
 Object.defineProperty(main, "hooks", { get: () => fixture.hooks });
 export function reset() {
+  fixture.modelIdentities = {};
+  fixture.experimental.claude.cache = true;
   fixture.generationIds = false;
   fixture.providerGenerate = undefined;
   fixture.providerStream = undefined;

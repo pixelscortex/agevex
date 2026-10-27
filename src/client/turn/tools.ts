@@ -71,7 +71,15 @@ export async function buildTurnTools(rt: RuntimeContext, gen: Generation): Promi
   for (const [name, tool] of Object.entries(tools))
     if (tool.execute) tools[name] = withToolProgress(rt, gen, name, tool);
 
-  return boundToolDeadlines(gen, tools, () => assertBudget(rt, gen));
+  // Sort only after every slot and collaboration tool is present. Insertion
+  // order reaches the provider and must stay stable across slices and resumes.
+  const ordered = Object.fromEntries(
+    Object.keys(tools)
+      .sort()
+      .map((name) => [name, tools[name]]),
+  );
+
+  return boundToolDeadlines(gen, ordered, () => assertBudget(rt, gen));
 }
 
 /**
