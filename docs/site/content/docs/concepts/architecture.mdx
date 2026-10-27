@@ -38,8 +38,8 @@ and [tools](https://github.com/pixelscortex/agevex/blob/HEAD/src/modules/tools/R
 
 1. Send: authorize, dedupe, save the native prompt and accept it atomically.
 2. Inbox: retain a FIFO reference to ready work and its request budget.
-3. Wake: reserve the oldest row and start or ping the thread's Workflow loop.
-4. Claim: consume the head, merge eligible results, save pending notes and arm the watchdog.
+3. Wake: reserve the oldest row and start or send an exact event to the thread's Workflow loop.
+4. Claim: consume the head, merge eligible results, save pending notes and mark the paid slice active.
 5. Generate: recheck execution policy and budget, then run one native model step.
 6. Continue: admit another bounded slice after tools.
 7. Finish/settle: idle or stop the turn; settle a child after its remaining fences clear.

@@ -10,10 +10,10 @@ The host exports `runTurn`, `coordinate` and, when enabled, `textTask`.
 1. The host saves a native user prompt and calls `turns.send.accept` in the
    same transaction. Acceptance creates its run budget, ready inbox reference
    and request receipt.
-2. `turns/wake.ts` reserves the oldest ready row and starts or pings the loop.
-   A coalesced doorbell and finite recovery check protect the atomic handoff.
+2. `turns/wake.ts` reserves the oldest ready row and starts the loop or sends its exact wake event.
+   The empty-queue mutation creates that event atomically before awaiting it.
 3. The loop dispatches one non-retried host action per paid model slice.
-   `turns/claim.ts` consumes ready work, flushes app notes and arms its watchdog.
+   `turns/claim.ts` consumes ready work, flushes app notes and marks its paid slice active.
 4. Every native write passes the token/epoch fence in `turns/write.ts`. Exact
    message, stream and approval identities commit with their native saves.
    Usage reads the committed native save result directly.
@@ -30,9 +30,9 @@ including tool and approval resumes. It owns no persisted routing state or
 sibling lock. `afterTurn` only notifies the host with `{ turn, text, messageIds }`.
 The host can call public send/runtime APIs to request additional work.
 
-A watchdog, dispatch failure or unknown execution parks work for explicit
+A Workflow step failure or unknown execution parks work for explicit
 recovery; no paid generation is automatically retried. Cancellation fences the
-root and every live descendant before cancelling workflows. Exact-id cleanup
+root and every live descendant before releasing their workflows. Exact-id cleanup
 jobs close native placeholders, streams and approval requests separately.
 
 ## Queues and budgets
@@ -51,14 +51,13 @@ exhaustion returns RUN_BUDGET. Root activeRuns also bounds all live descendants.
 
 At hard maxima, each assignment has at most 100 queued messages +50 results
 +2 head/answer rows. Cancellation covers 16*152=2,432 ready rows and deduplicates
-at most 168 budgets. Its conservative ceilings are 14,100 KiB read and 10,508 KiB
+at most 168 budgets. Its conservative ceilings are 14,066 KiB read and 10,476 KiB
 written, below 16 MiB. Passive note bodies are excluded and cleaned separately.
 The complete document/query/byte arithmetic lives in `limits.ts`, with enforced
 transaction-limit fixtures for cancellation, claim, decisions, tree and saves.
 
-Assignments fit 14 KiB including system fields. The all-fields fixture uses
-at most 12,576 bytes after dropping the duplicate model-step identity and title
-enablement flags. Native saves clear active tool markers before growing the
+Assignments fit 13 KiB including system fields. The all-fields fixture uses
+at most 12,704 bytes, including the exact wake event, active slice fence and native failure handle. Native saves clear active tool markers before growing the
 row; the progress writer also checks the envelope. Runs fit 16 KiB, delegations 4 KiB.
 
 ## Thread metadata
@@ -74,13 +73,13 @@ Title receipts retain only dispatch capabilities; cleanup is finite.
 
 ## Tables and readers
 
-| Table        | Purpose and readers                                                                                                                                                                                           |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| assignments  | Thread ownership; dispatch, epoch/token fences, queue and note counters, approval refs, run linkage and bounded reporting. Read by admission, claim, write, watchdog, recovery, cancellation and projections. |
-| inbox        | Ready native message references, temporary app/parent note bodies and saved origin labels. Read by ready-range probes, claim, note cleanup and page-local origins.                                            |
-| runs         | Accepted request policy, native task/result links, lifecycle snapshots, launch/hop budgets, cancellation and usage completeness. Read by claim, effect admission, settlement and tree.                        |
-| receipts     | Request/tool idempotency, compact decision proposals, native attachment grants and temporary text capabilities. Each variant has its own lifecycle and indexed readers.                                       |
-| subagentRuns | Delegation identity, root epoch, parent/child links, exact task/result/question ids, delivery capability/status, message caps and bounded events. Read by launch, interaction, settlement, delivery and tree. |
+| Table        | Purpose and readers                                                                                                                                                                                             |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| assignments  | Thread ownership; dispatch, epoch/token fences, queue and note counters, approval refs, run linkage and bounded reporting. Read by admission, claim, write, failure finalization, cancellation and projections. |
+| inbox        | Ready native message references, temporary app/parent note bodies and saved origin labels. Read by ready-range probes, claim, note cleanup and page-local origins.                                              |
+| runs         | Accepted request policy, native task/result links, lifecycle snapshots, launch/hop budgets, cancellation and usage completeness. Read by claim, effect admission, settlement and tree.                          |
+| receipts     | Request/tool idempotency, compact decision proposals, native attachment grants and temporary text capabilities. Each variant has its own lifecycle and indexed readers.                                         |
+| subagentRuns | Delegation identity, root epoch, parent/child links, exact task/result/question ids, delivery capability/status, message caps and bounded events. Read by launch, interaction, settlement, delivery and tree.   |
 
 inbox.text remains only for app notes and message_parent notes until their safe
 native save. noteEpoch isolates cancelled payloads. passive=true holds unsaved
@@ -96,7 +95,7 @@ metadata fit a 3 KiB reservation. ToolContext.promptMessageId uses that request.
 ## Module map
 
 - turns/: acceptance, claims, native write fences, bounded decisions, cancellation,
-  watchdogs, recovery, FIFO handoff, slice boundaries and root lifecycle.
+  exact wake events, failure finalization, FIFO handoff, slice boundaries and root lifecycle.
 - subagents/: reservations, parent/child messages, verified settlement, result
   delivery, history and root-inclusive tree projections.
 - hooks/: shared note admission/saving and page-local origin lookups only.
@@ -106,7 +105,7 @@ metadata fit a 3 KiB reservation. ToolContext.promptMessageId uses that request.
 - cancellation/: finite native stream/placeholder/decision cleanup.
 - workflows/: versioned root/child loop and turn journals with retries disabled.
 
-Loops rotate after bounded turns/doorbells to protect the 8 MiB journal. The
+Loops rotate after bounded turns/event waits to protect the 8 MiB journal. The
 versioned step sequence remains stable and journal replay tests verify it.
 agevex/test mounts inspection functions only in the test harness.
 
@@ -130,3 +129,15 @@ agevex/test mounts inspection functions only in the test harness.
 Native message order/stepOrder, stream status and token usage are never copied
 onto agevex tables. Provider response ids are added to native providerMetadata
 because Agent's mapping omits response.id (`client/turn/provider-evidence.ts`).
+
+Killed or scheduler-cancelled steps are detected by Workpool recovery: jobs
+older than about five minutes are scanned about once per minute. Thrown step
+errors complete normally. Hanging provider calls still use the unchanged
+in-action deadline. agevex schedules no turn alarm or recovery check. The
+on-demand receipt-retention job and finite native/cancellation cleanup remain.
+
+Cancellation fences the epoch and releases the old loop through its exact
+event. The loop stops when it next checks ownership; it first awaits any event
+already created, even if a producer delivered it before cancellation. Workflow
+cleanup then removes its journal and referenced events. This avoids an orphan
+in Workflow 0.4.10, whose cancel API cannot delete an unawaited created event.

@@ -1,7 +1,6 @@
 /** Exact assignment boundary before a genuine nested native save, and the
  * largest assignment row production's writer bounds admit. */
 import { getConvexSize, v } from "convex/values";
-import { internal } from "../src/component/_generated/api.js";
 import type { Id } from "../src/component/_generated/dataModel.js";
 import { mutation } from "../src/component/_generated/server.js";
 import { newRootAssignment } from "../src/component/turns/assignments.js";
@@ -159,15 +158,6 @@ export const largestRow = mutation({
       newDoneReceipt({ scope: "s", key: "k", fingerprint: "f", result: null }),
     );
 
-    const jobId = await ctx.scheduler.runAfter(
-      LIMITS.receiptRetentionMs,
-      internal.turns.failures.stalled,
-      {
-        assignmentId: id,
-        turnToken: execution,
-      },
-    );
-
     await ctx.db.patch("assignments", id, {
       ...textFields(),
       ...approvalFields(inboxId, proposalId),
@@ -179,19 +169,15 @@ export const largestRow = mutation({
           Object.entries(HOST_LIMITS).map(([k, limit]) => [k, limit.max]),
         ) as never,
       ),
-      loopWaiting: true,
-      pinged: true,
-      recoveryAt: 2 ** 52,
-      recoveryJobId: jobId,
-      recoveryDelayMs: 2 ** 52,
+      wakeEventId: nativeId("e"),
       modelSteps: 2 ** 52,
-      watchdogId: jobId,
       pendingGeneration: {
         messageId: nativeId("p"),
         executionId: execution,
         epoch: 2 ** 52,
         getMessages: handle,
         finalizeMessage: handle,
+        failMessage: handle,
         stream: { id: nativeId("stream"), abort: handle },
       },
       cancellationEpoch: 2 ** 52,
@@ -208,7 +194,7 @@ export const largestRow = mutation({
       turnReport: fullReport(inboxId),
       turnOrigin: "subagent_result",
       inboxId,
-      lastSlice: `${execution}/${HOST_LIMITS.slicesPerTurn.max}`,
+      lastSlice: { id: `${execution}/${HOST_LIMITS.slicesPerTurn.max}`, active: true },
       activeRuns: 2 ** 52,
       nextRunSequence: 2 ** 52,
     });

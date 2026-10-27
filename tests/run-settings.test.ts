@@ -18,7 +18,7 @@ import schema from "./fixture/schema.js";
 import { fixture, reset, exports, api, registration, text, call } from "./hooks.host.js";
 import { components, rawAssignment, internal } from "./fixture/api.js";
 import { requireReceipt } from "./receipt.js";
-import { RUN_LIMITS, resolveRunSettings, sliceWatchdogMs } from "../src/component/run_settings.js";
+import { RUN_LIMITS, resolveRunSettings } from "../src/component/run_settings.js";
 import { advanceUntil } from "./clock.js";
 
 const SERIAL_TOOL_LIMITS = { count: 16, workMs: 600 } as const;
@@ -363,7 +363,7 @@ it.each<RunSettings>([
   expect(fixture.calls).toHaveLength(0);
 });
 
-it("the watchdog uses the accepted settings", async () => {
+it("claim returns the accepted settings without scheduling a slice alarm", async () => {
   const t = setup();
 
   fixture.run.Main = { modelTimeoutMs: 1_000, toolTimeoutMs: 1_000 };
@@ -375,11 +375,13 @@ it("the watchdog uses the accepted settings", async () => {
   });
 
   expect(claimed?.settings).toEqual(resolveRunSettings(fixture.run.Main));
-  await vi.advanceTimersByTimeAsync(sliceWatchdogMs(resolveRunSettings(fixture.run.Main)) - 1_000);
-  expect(await activity(t, receipt.threadId)).toMatchObject({ turnStatus: "running" });
-  await vi.advanceTimersByTimeAsync(2_000);
-  await t.finishInProgressScheduledFunctions();
-  expect(await activity(t, receipt.threadId)).toMatchObject({ errorCode: "EXECUTION_AMBIGUOUS" });
+
+  const jobs = await t.query(
+    componentsGeneric().agevex.agevexTest.scheduledJobs as unknown as FunctionReference<"query">,
+    {},
+  );
+
+  expect(jobs).toEqual({ total: 0, pending: 0 });
 });
 
 it.each(["stream", "generate"] as const)(

@@ -5,11 +5,15 @@
 // workflow's journal and replays it through Workflow's real engine (replaying a
 // clone avoids firing an old nested-workflow completion callback into the live
 // loop a second time); `result` reads the replay outcome. `expect-journal.ts`
-// drives these to prove the step order is unchanged. Below them, `dropPings`
-// injects a fault by deleting unconsumed `ping` events, and `events` counts
-// orphaned events, both directly on Workflow's own tables.
+// drives these to prove step order. `events` counts orphaned Workflow events.
 
-import { internalMutationGeneric, internalQueryGeneric, type FunctionHandle } from "convex/server";
+import {
+  componentsGeneric,
+  internalMutationGeneric,
+  internalQueryGeneric,
+  type FunctionReference,
+  type FunctionHandle,
+} from "convex/server";
 import { v } from "convex/values";
 
 export const REPLAY_BOUNDARY = "AGEVEX_JOURNAL_REPLAY_BOUNDARY";
@@ -84,7 +88,7 @@ export const clone = internalMutationGeneric({
               completedAt: 0,
               runResult: { kind: "failed", error: REPLAY_BOUNDARY },
             }
-          : entry.step,
+          : { ...entry.step, args: replaceWorkflow(entry.step.args, workflowId, id) },
       });
 
     await ctx.runMutation(source.workflowHandle as FunctionHandle<"mutation">, {
@@ -102,19 +106,6 @@ export const result = internalQueryGeneric({
   handler: async (ctx, { workflowId }) => (await ctx.db.get(workflowId))?.runResult ?? null,
 });
 
-/** Fault injection drops only unconsumed doorbells, never accepted inbox rows. */
-export const dropPings = internalMutationGeneric({
-  args: { workflowId: v.id("workflows") },
-  returns: v.null(),
-  handler: async (ctx, { workflowId }) => {
-    for (const row of await ctx.db.query("events").collect())
-      if (row.workflowId === workflowId && row.name === "ping" && row.state.kind === "sent")
-        await ctx.db.delete(row._id);
-
-    return null;
-  },
-});
-
 /** Count orphaned events using the real nested Workflow store. */
 export const events = internalQueryGeneric({
   args: {},
@@ -126,4 +117,37 @@ export const events = internalQueryGeneric({
 
     return { orphaned, total: events.length };
   },
+});
+
+/** Clone ownership ids as well as the journal; live workflow ids are fenced. */
+function replaceWorkflow(value: unknown, source: string, target: string): unknown {
+  if (value === source) return target;
+
+  if (Array.isArray(value)) return value.map((item) => replaceWorkflow(item, source, target));
+
+  if (value && typeof value === "object")
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, replaceWorkflow(item, source, target)]),
+    );
+
+  return value;
+}
+
+/** Reach the test-only scheduler fault in this lane's nested Workpool. */
+export const interrupt = internalMutationGeneric({
+  args: { mode: v.union(v.literal("scheduler"), v.literal("failed"), v.literal("canceled")) },
+  returns: v.number(),
+  handler: (ctx, args): Promise<number> =>
+    ctx.runMutation(
+      componentsGeneric().workpool.agevexCrash
+        .interrupt as unknown as FunctionReference<"mutation">,
+      args,
+    ),
+});
+
+/** Callback failure must remain observable, never trigger a hidden repair job. */
+export const completionFailures = internalQueryGeneric({
+  args: {},
+  returns: v.array(v.any()),
+  handler: (ctx) => ctx.db.query("onCompleteFailures").take(10),
 });

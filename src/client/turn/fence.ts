@@ -253,6 +253,7 @@ async function fencedWriteArgs(
           nativeMessages: {
             getMessages: await createFunctionHandle(managed.component.messages.getMessagesByIds),
             finalizeMessage: await createFunctionHandle(managed.component.messages.finalizeMessage),
+            failMessage: await createFunctionHandle(managed.component.messages.updateMessage),
           },
         }
       : {}),

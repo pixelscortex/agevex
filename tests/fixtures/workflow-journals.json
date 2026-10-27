@@ -9,11 +9,15 @@
           "name": "turns/loop:next",
           "functionType": "mutation",
           "args": {
-            "assignmentId": "$assignment"
+            "assignmentId": "$assignment",
+            "workflowId": "$workflow"
           },
           "runResult": {
             "kind": "success",
-            "returnValue": "$assignment:0"
+            "returnValue": {
+              "executionId": "$assignment:0",
+              "epoch": 0
+            }
           }
         },
         {
@@ -34,17 +38,22 @@
           "name": "turns/loop:next",
           "functionType": "mutation",
           "args": {
-            "assignmentId": "$assignment"
+            "assignmentId": "$assignment",
+            "workflowId": "$workflow"
           },
           "runResult": {
             "kind": "success",
-            "returnValue": null
+            "returnValue": {
+              "wakeEventId": "$event"
+            }
           }
         },
         {
           "kind": "event",
-          "name": "ping",
-          "args": {}
+          "name": "wake",
+          "args": {
+            "eventId": "$event"
+          }
         }
       ]
     },
@@ -92,11 +101,15 @@
           "name": "turns/loop:next",
           "functionType": "mutation",
           "args": {
-            "assignmentId": "$assignment"
+            "assignmentId": "$assignment",
+            "workflowId": "$workflow"
           },
           "runResult": {
             "kind": "success",
-            "returnValue": "$assignment:0"
+            "returnValue": {
+              "executionId": "$assignment:0",
+              "epoch": 0
+            }
           }
         },
         {
@@ -117,17 +130,22 @@
           "name": "turns/loop:next",
           "functionType": "mutation",
           "args": {
-            "assignmentId": "$assignment"
+            "assignmentId": "$assignment",
+            "workflowId": "$workflow"
           },
           "runResult": {
             "kind": "success",
-            "returnValue": null
+            "returnValue": {
+              "wakeEventId": "$event"
+            }
           }
         },
         {
           "kind": "event",
-          "name": "ping",
-          "args": {},
+          "name": "wake",
+          "args": {
+            "eventId": "$event"
+          },
           "runResult": {
             "kind": "success",
             "returnValue": null
@@ -138,11 +156,15 @@
           "name": "turns/loop:next",
           "functionType": "mutation",
           "args": {
-            "assignmentId": "$assignment"
+            "assignmentId": "$assignment",
+            "workflowId": "$workflow"
           },
           "runResult": {
             "kind": "success",
-            "returnValue": "$assignment:1"
+            "returnValue": {
+              "executionId": "$assignment:1",
+              "epoch": 0
+            }
           }
         },
         {
@@ -163,17 +185,22 @@
           "name": "turns/loop:next",
           "functionType": "mutation",
           "args": {
-            "assignmentId": "$assignment"
+            "assignmentId": "$assignment",
+            "workflowId": "$workflow"
           },
           "runResult": {
             "kind": "success",
-            "returnValue": null
+            "returnValue": {
+              "wakeEventId": "$event"
+            }
           }
         },
         {
           "kind": "event",
-          "name": "ping",
-          "args": {}
+          "name": "wake",
+          "args": {
+            "eventId": "$event"
+          }
         }
       ]
     },
@@ -254,11 +281,15 @@
           "name": "turns/loop:next",
           "functionType": "mutation",
           "args": {
-            "assignmentId": "$assignment"
+            "assignmentId": "$assignment",
+            "workflowId": "$workflow"
           },
           "runResult": {
             "kind": "success",
-            "returnValue": "$assignment:0"
+            "returnValue": {
+              "executionId": "$assignment:0",
+              "epoch": 0
+            }
           }
         },
         {
@@ -279,17 +310,22 @@
           "name": "turns/loop:next",
           "functionType": "mutation",
           "args": {
-            "assignmentId": "$assignment"
+            "assignmentId": "$assignment",
+            "workflowId": "$workflow"
           },
           "runResult": {
             "kind": "success",
-            "returnValue": null
+            "returnValue": {
+              "wakeEventId": "$event"
+            }
           }
         },
         {
           "kind": "event",
-          "name": "ping",
-          "args": {}
+          "name": "wake",
+          "args": {
+            "eventId": "$event"
+          }
         }
       ]
     },

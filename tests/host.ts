@@ -53,7 +53,6 @@ export const state = {
   deferredQuestion: "Which option?",
   overrideCalls: [] as string[],
   overrideTools: false,
-  dropPing: false,
   forbidTranscriptReads: false,
   transcriptReads: 0,
   nestedCalls: 0,

@@ -180,6 +180,8 @@ export const pendingGeneration = v.object({
   epoch: v.number(),
   getMessages: v.string(),
   finalizeMessage: v.string(),
+  // Crash cleanup must not materialize stream history inside its transaction.
+  failMessage: v.string(),
   stream: v.optional(v.object({ id: v.string(), abort: v.string() })),
 });
 
@@ -204,19 +206,11 @@ export default defineSchema({
     // The registration's fully resolved host limits, copied from the root at
     // creation. Read by every bounded query/take on this row.
     limits: limitsValidator,
-    // Read by wake: a ping is only sent to a loop that is awaiting one. No index.
-    loopWaiting: v.optional(v.boolean()),
-    pinged: v.optional(v.boolean()),
-    recoveryAt: v.optional(v.number()),
-    recoveryJobId: v.optional(v.id("_scheduled_functions")),
-    recoveryDelayMs: v.optional(v.number()),
-    // Set by claim with each slice, cleared only by disarmSlice. Present on a
-    // running turn = a slice is in flight; absent on a running turn = between
-    // slices (continueTurn disarmed it). Read by claim (next-slice admission),
-    // betweenSlices, stalled (with lastSlice, the active slice) and disarmSlice.
+    // Exact event owned by workflowId. Queue checks publish it atomically;
+    // producers send and clear it in their work-admission transaction.
+    wakeEventId: v.optional(v.string()),
     // Model steps claimed in the current logical turn, reset on its first slice.
     modelSteps: v.optional(v.number()),
-    watchdogId: v.optional(v.id("_scheduled_functions")),
     pendingGeneration: v.optional(pendingGeneration),
     cancellationEpoch: v.number(),
     cancelled: v.boolean(),
@@ -284,10 +278,9 @@ export default defineSchema({
         ),
       }),
     ),
-    // The slice id the last claim accepted (absent for a first slice keyed by
-    // its turn token). Read by claim (a replayed slice id is refused) and
-    // stalled (lastSlice ?? turnToken is the watchdog's slice).
-    lastSlice: v.optional(v.string()),
+    // Keep the last accepted id after closing a slice to refuse replay. The
+    // active bit fences overlapping claims and late tool-progress writes.
+    lastSlice: v.optional(v.object({ id: v.optional(v.string()), active: v.boolean() })),
     // Roots only (0 elsewhere). activeRuns is the live (queued, running or
     // asking) run count, read by reserve admission, delegateContext and activity.
     // nextRunSequence is the count of runs ever reserved, read by reserve (the
@@ -335,7 +328,7 @@ export default defineSchema({
     resultMessageId: v.optional(v.string()),
     // Sticky observation failure, read by usageReporting and later tree projections.
     usagePartial: v.optional(v.boolean()),
-    // Read by claim/watchdog and betweenSlices. Children inherit this same run id.
+    // Read by claim/failure and betweenSlices. Children inherit this same run id.
     settings: v.optional(settingsSnapshot),
     // Accepted model policy shared by every root/descendant/result turn.
     // Stateless beforeTurn overrides are never written here.

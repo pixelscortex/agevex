@@ -1,5 +1,4 @@
 // @vitest-environment edge-runtime
-import { sliceWatchdogMs, resolveRunSettings } from "../src/component/run_settings.js";
 import { requireReceipt } from "./receipt.js";
 import { it, expect, vi, afterEach, beforeEach } from "vite-plus/test";
 import { setup, api, internal, components, state } from "./setup.js";
@@ -181,25 +180,4 @@ it("finalization failure becomes ambiguous without replaying native generation",
   });
 
   expect(state.calls).toHaveLength(1);
-});
-
-it("stalled detection blocks an owner rather than stealing or replaying it", async () => {
-  vi.useFakeTimers();
-  const t = setup();
-  const alice = t.withIdentity({ subject: "alice" });
-  const receipt = await alice.mutation(api.agents.open, input).then(requireReceipt);
-  const args = { assignmentId: receipt.assignmentId, turnToken: `${receipt.assignmentId}:0` };
-
-  expect(await t.mutation(components.agevex.turns.slices.claim, args)).not.toBeNull();
-  await vi.advanceTimersByTimeAsync(sliceWatchdogMs(resolveRunSettings()));
-  await drain(t);
-  expect(state.calls).toHaveLength(0);
-
-  expect(await alice.query(api.agents.activity, { threadId: receipt.threadId })).toMatchObject({
-    turnStatus: "recovery_required",
-    errorCode: "EXECUTION_AMBIGUOUS",
-  });
-
-  await t.mutation(components.agevex.turns.slices.finish, { ...args, errorCode: null });
-  expect(await t.mutation(components.agevex.turns.slices.claim, args)).toBeNull();
 });

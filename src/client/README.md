@@ -27,7 +27,7 @@ agent index, and `open` looks roots up in `config.agents`.
    (`turn/routing.ts`), builds the tool set with hooks and collaboration tools
    (`turn/tools.ts`, `turn/collaboration-tools.ts`) and runs one native stream or
    generate step. `turn/deadlines.ts` separates provider/tool deadlines and caps
-   serial tools; claim derives its watchdog from the accepted run snapshot.
+   serial tools; the in-action deadline uses the accepted run snapshot.
 7. **Continue or complete.** `turn/completion.ts` continues after tool calls, runs
    the `afterTurn` notification.
 8. **Finish.** `turn/finish.ts` calls `turns.slices.finish`; a child turn first settles its
@@ -64,7 +64,7 @@ narration by exact id. No transcript listing or text matching is involved.
 The assignment accumulates ids in the native save transaction. One assistant
 row per step bounds the list by run `stepsPerTurn` and any non-default host
 `slicesPerTurn` cap (matching Workflow v1): at most 64 ids × (37 ASCII bytes + 2 Convex string bytes) = 2,496 bytes.
-Prompt/cap/resume metadata brings the reservation to 3 KiB within the 14 KiB
+Prompt/cap/resume metadata brings the reservation to 3 KiB within the 13 KiB
 assignment envelope. New user/queued/child work starts fresh lists; approval
 resumes retain the list and step count.
 So approving a call requested on the turn's last allowed step ends the turn with

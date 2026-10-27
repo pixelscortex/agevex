@@ -5,7 +5,7 @@
  * results, parent follow-ups, questions, approval continuations) plus passive
  * note bodies and retained control ids. Ready rows are exactly the rows with
  * `passive: undefined` in `by_assignment_ready`, in `sequence` order. Every
- * "is there work?" probe (wake, recovery, claim, settlement fence, approval
+ * "is there work?" probe (wake, claim, settlement fence, approval
  * pause, cancel) reads this one range, so they can never disagree about what
  * counts as pending work. Inserts stay at their call sites: each is a short,
  * kind-specific literal.

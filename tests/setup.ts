@@ -32,8 +32,9 @@ const modules = import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]);
 export type Fault =
   | "cleanupSave"
   | "transcriptReads"
-  | "lostPing"
   | "delayedWait"
+  | "afterTurn"
+  | "failureFinalization"
   | "save"
   | "accept"
   | "finish"
@@ -166,7 +167,6 @@ export function setup(
   state.deferredQuestion = "Which option?";
   state.overrideCalls.length = 0;
   state.overrideTools = false;
-  state.dropPing = false;
   state.forbidTranscriptReads = false;
   state.transcriptReads = 0;
   state.nestedCalls = 0;
@@ -334,11 +334,12 @@ export function setup(
     {
       accept: { module: "./component/turns/send.ts", name: "accept" },
       finish: { module: "./component/turns/slices.ts", name: "finish" },
+      failureFinalization: { module: "./component/turns/failures.ts", name: "failWorkflow" },
       attach: { module: "./component/subagents/launch.ts", name: "attach" },
       deliver: { module: "./component/subagents/deliver.ts", name: "deliver" },
       settle: { module: "./component/subagents/settle.ts", name: "settle" },
     } as const
-  )[fault as "accept" | "finish" | "attach" | "deliver" | "settle"];
+  )[fault as "accept" | "finish" | "attach" | "deliver" | "settle" | "failureFinalization"];
 
   const conditionalFault =
     fault === "childFinish"
@@ -386,7 +387,43 @@ export function setup(
     registerWorkflow(t, "agevex/childWorkflow");
   } else agevex.register(t);
 
-  if (fault === "lostPing" || fault === "delayedWait") {
+  if (fault === "delayedWait" || fault === "afterTurn") {
+    t.registerComponent("agevex", agevex.schema, {
+      ...agevex.modules,
+      ...(fault === "delayedWait"
+        ? {
+            "./component/workflows/lanes.ts": async () => {
+              const lanes = await import("../src/component/workflows/lanes.js");
+
+              return { ...lanes, rootLoop: lanes.defineLoop(lanes.rootLane, false, false) };
+            },
+          }
+        : {
+            "./component/workflows/worker.ts": async () => {
+              const { internalActionGeneric } = await import("convex/server");
+              const imported = await import("../src/component/workflows/worker.js");
+              const dispatch = imported.dispatch as unknown as NativeAddMessages;
+
+              return {
+                dispatch: internalActionGeneric({
+                  args: dispatch._args as never,
+                  returns: dispatch._returns as never,
+                  handler: async (ctx, args) => {
+                    await dispatch._handler(ctx as never, args as never);
+
+                    if ((args as { executionId: string }).executionId.endsWith(":0"))
+                      throw new Error("failed after finish");
+
+                    return null as never;
+                  },
+                }),
+              };
+            },
+          }),
+    });
+  }
+
+  if (fault === "delayedWait") {
     t.registerComponent("agevex/rootWorkflow", workflow.schema, {
       ...workflow.modules,
       "./component/agevexJournal.ts": () => import("../src/testing/journal.js"),
@@ -415,10 +452,11 @@ export function setup(
                       !completion.context.delayed &&
                       entry?.step.name === "turns/loop:next" &&
                       completion.result.kind === "success" &&
-                      completion.result.returnValue === null
+                      !!(completion.result.returnValue as { wakeEventId?: string } | null)
+                        ?.wakeEventId
                     ) {
                       // Delay the real completion callback, after next committed
-                      // loopWaiting but before Workflow can register awaitEvent.
+                      // the exact event but before Workflow registers awaitEvent.
                       await ctx.scheduler.runAfter(
                         45_000,
                         makeFunctionReference<"mutation">("pool:onComplete"),
@@ -438,41 +476,6 @@ export function setup(
             },
           }
         : {}),
-      "./component/event.ts": async () => {
-        const real = (await workflow.modules["./component/event.ts"]()) as Record<
-          string,
-          NativeAddMessages
-        >;
-
-        return {
-          ...real,
-          send: mutationGeneric({
-            args: real.send._args as never,
-            returns: real.send._returns as never,
-            handler: async (ctx, args) => {
-              if (state.dropPing && (args as { name?: string }).name === "ping") {
-                state.dropPing = false;
-
-                // Model a lost doorbell without disturbing the existing awaited event.
-                const id = await ctx.db.insert("events", {
-                  workflowId: (args as { workflowId: string }).workflowId,
-                  name: "ping",
-                  state: { kind: "created" },
-                });
-
-                await ctx.db.delete(id);
-
-                return id as never;
-              }
-
-              return (await real.send._handler(
-                ctx as unknown as MutationCtx,
-                args as AddMessagesArgs,
-              )) as never;
-            },
-          }),
-        };
-      },
     });
   }
 

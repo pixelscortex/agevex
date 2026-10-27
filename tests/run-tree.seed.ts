@@ -240,7 +240,7 @@ export const lifecycle = mutation({
     await ctx.db.patch("assignments", root._id, {
       turnStatus: "idle",
       turnToken: undefined,
-      watchdogId: undefined,
+      lastSlice: root.lastSlice ? { ...root.lastSlice, active: false } : undefined,
       inboxId: undefined,
     });
 

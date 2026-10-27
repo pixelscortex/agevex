@@ -61,6 +61,7 @@ it.each([
     nativeMessages: {
       getMessages: await createFunctionHandle(components.agent.messages.getMessagesByIds),
       finalizeMessage: await createFunctionHandle(components.agent.messages.finalizeMessage),
+      failMessage: await createFunctionHandle(components.agent.messages.updateMessage),
     },
   }));
 
@@ -209,6 +210,7 @@ it.each([
       handle: await createFunctionHandle(components.agent.messages.addMessages),
       getMessages: await createFunctionHandle(components.agent.messages.getMessagesByIds),
       finalizeMessage: await createFunctionHandle(components.agent.messages.finalizeMessage),
+      failMessage: await createFunctionHandle(components.agent.messages.updateMessage),
     };
   });
 
@@ -231,6 +233,7 @@ it.each([
           nativeMessages: {
             getMessages: native.getMessages,
             finalizeMessage: field === "nativeMessages" ? longHandle : native.finalizeMessage,
+            failMessage: native.failMessage,
           },
           ...(field === "nativeStream" ? { nativeStream: longHandle } : {}),
           args: {

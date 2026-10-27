@@ -2,7 +2,6 @@
 import { requireReceipt } from "./receipt.js";
 import { it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { listMessages } from "@convex-dev/agent";
-import { workflowCall } from "../src/testing/expect-journal.js";
 import { setup, api, components, rawAssignment, state } from "./setup.js";
 import { expectJournalUnchanged } from "../src/test.js";
 import journals from "./fixtures/workflow-journals.json";
@@ -284,7 +283,7 @@ it("no turn starts while an approval is pending and its inbox row waits", async 
   expect(JSON.stringify(messages)).not.toContain("auto-denied");
 });
 
-it("a lost or duplicate ping is harmless because the inbox owns work", async () => {
+it("concurrent sends during an active turn each run once without an extra wake", async () => {
   const t = setup();
 
   state.gate = new Promise((resolve) => {
@@ -313,23 +312,7 @@ it("a lost or duplicate ping is harmless because the inbox owns work", async () 
     assignmentId: receipt.assignmentId,
   });
 
-  // Drop all early doorbells, then send duplicates. Neither operation changes
-  // the accepted inbox, which the loop rechecks after finishing the first turn.
-  await workflowCall(t, "agevex/rootWorkflow", "mutation", "agevexJournal", "dropPings", {
-    workflowId: execution!.workflowId!,
-  });
-
-  await workflowCall(t, "agevex/rootWorkflow", "mutation", "event", "send", {
-    workflowId: execution!.workflowId!,
-    name: "ping",
-    result: { kind: "success", returnValue: null },
-  });
-
-  await workflowCall(t, "agevex/rootWorkflow", "mutation", "event", "send", {
-    workflowId: execution!.workflowId!,
-    name: "ping",
-    result: { kind: "success", returnValue: null },
-  });
+  expect(execution?.wakeEventId).toBeUndefined();
 
   state.release!();
   state.gate = undefined;

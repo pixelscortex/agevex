@@ -11,72 +11,70 @@ Policy rows come first below; the remaining bounds are internal runtime facts.
 [Per-agent run settings](/docs/concepts/runtime#per-agent-run-settings) have their
 own validated defaults, hard ceilings and combined action budget.
 
-| Limit                    | Default       | Hard max      |
-| ------------------------ | ------------- | ------------- |
-| `attachmentBytes`        | 8 MiB         | 16 MiB        |
-| `notesPending`           | 8             | 24            |
-| `maxDepth`               | 2             | 2             |
-| `messagesPerChild`       | 4             | 8             |
-| `parentNotesPerChild`    | 4             | 8             |
-| `rootLane`               | 2             | 4             |
-| `childLane`              | 4             | 4             |
-| `runLaunches`            | 12            | 50            |
-| `runHops`                | 24            | 100           |
-| `activeChildrenPerRoot`  | 5             | 15            |
-| `taskLength`             | 4,000         | 16,000        |
-| `queueLength`            | 20            | 100           |
-| `slicesPerTurn`          | 16            | 64            |
-| `leaseMs`                | 10 minutes    | 24 hours      |
-| `noteLength`             | 4,000         | 4,000         |
-| `parentNoteBytes`        | 2 KiB         | 2 KiB         |
-| `parentNoteIntervalMs`   | 5 seconds     | 5 seconds     |
-| `firstPromptOrder`       | 1             | 1             |
-| `telemetryFlushMs`       | 3 seconds     | 3 seconds     |
-| `filesPerMessage`        | 8             | 8             |
-| `factBytes`              | 128           | 128           |
-| `fileIdLength`           | 200           | 200           |
-| `functionHandleBytes`    | 256           | 256           |
-| `sandboxExitCode`        | 2,147,483,647 | 2,147,483,647 |
-| `fileMetadataBytes`      | 4 KiB         | 4 KiB         |
-| `taskRepairs`            | 1             | 1             |
-| `taskPromptLength`       | 16,000        | 16,000        |
-| `agents`                 | 64            | 64            |
-| `assignmentBytes`        | 14 KiB        | 14 KiB        |
-| `nameLength`             | 200           | 200           |
-| `turnsPerLoop`           | 50            | 50            |
-| `workflowVersion`        | 1             | 1             |
-| `cancelPollMs`           | 1 second      | 1 second      |
-| `outputTokens`           | 4,096         | 4,096         |
-| `messageLength`          | 16,000        | 16,000        |
-| `requestKeyLength`       | 200           | 200           |
-| `runEvents`              | 4             | 4             |
-| `maxDelegationPage`      | 50            | 50            |
-| `approvalsPerPause`      | 16            | 16            |
-| `nativeCallIdLength`     | 1,048,576     | 1,048,576     |
-| `nativeEnvelopeBytes`    | 4,096         | 4,096         |
-| `streamCursors`          | 2             | 2             |
-| `messagePage`            | 100           | 100           |
-| `messagePageBytes`       | 512 KiB       | 512 KiB       |
-| `cleanupMessageBytes`    | 512 KiB       | 512 KiB       |
-| `receiptRetentionMs`     | 7 days        | 7 days        |
-| `receiptResultBytes`     | 64 KiB        | 64 KiB        |
-| `reconcileIntervalMs`    | 30 seconds    | 30 seconds    |
-| `reconcileMaxIntervalMs` | 5 minutes     | 5 minutes     |
-| `purgeBatch`             | 50            | 50            |
-| `purgeIntervalMs`        | 60 minutes    | 60 minutes    |
-| `streamThrottleMs`       | 0             | 0             |
-| `modelRetries`           | 0             | 0             |
-| `modelOverrides`         | 8             | 8             |
-| `modelOverridesBytes`    | 512           | 512           |
-| `modelIdLength`          | 200           | 200           |
-| `modelAllowlist`         | 100           | 100           |
+| Limit                   | Default       | Hard max      |
+| ----------------------- | ------------- | ------------- |
+| `attachmentBytes`       | 8 MiB         | 16 MiB        |
+| `notesPending`          | 8             | 24            |
+| `maxDepth`              | 2             | 2             |
+| `messagesPerChild`      | 4             | 8             |
+| `parentNotesPerChild`   | 4             | 8             |
+| `rootLane`              | 2             | 4             |
+| `childLane`             | 4             | 4             |
+| `runLaunches`           | 12            | 50            |
+| `runHops`               | 24            | 100           |
+| `activeChildrenPerRoot` | 5             | 15            |
+| `taskLength`            | 4,000         | 16,000        |
+| `queueLength`           | 20            | 100           |
+| `slicesPerTurn`         | 16            | 64            |
+| `leaseMs`               | 10 minutes    | 24 hours      |
+| `noteLength`            | 4,000         | 4,000         |
+| `parentNoteBytes`       | 2 KiB         | 2 KiB         |
+| `parentNoteIntervalMs`  | 5 seconds     | 5 seconds     |
+| `firstPromptOrder`      | 1             | 1             |
+| `telemetryFlushMs`      | 3 seconds     | 3 seconds     |
+| `filesPerMessage`       | 8             | 8             |
+| `factBytes`             | 128           | 128           |
+| `fileIdLength`          | 200           | 200           |
+| `functionHandleBytes`   | 256           | 256           |
+| `sandboxExitCode`       | 2,147,483,647 | 2,147,483,647 |
+| `fileMetadataBytes`     | 4 KiB         | 4 KiB         |
+| `taskRepairs`           | 1             | 1             |
+| `taskPromptLength`      | 16,000        | 16,000        |
+| `agents`                | 64            | 64            |
+| `assignmentBytes`       | 13 KiB        | 13 KiB        |
+| `nameLength`            | 200           | 200           |
+| `turnsPerLoop`          | 50            | 50            |
+| `workflowVersion`       | 1             | 1             |
+| `cancelPollMs`          | 1 second      | 1 second      |
+| `outputTokens`          | 4,096         | 4,096         |
+| `messageLength`         | 16,000        | 16,000        |
+| `requestKeyLength`      | 200           | 200           |
+| `runEvents`             | 4             | 4             |
+| `maxDelegationPage`     | 50            | 50            |
+| `approvalsPerPause`     | 16            | 16            |
+| `nativeCallIdLength`    | 1,048,576     | 1,048,576     |
+| `nativeEnvelopeBytes`   | 4,096         | 4,096         |
+| `streamCursors`         | 2             | 2             |
+| `messagePage`           | 100           | 100           |
+| `messagePageBytes`      | 512 KiB       | 512 KiB       |
+| `cleanupMessageBytes`   | 512 KiB       | 512 KiB       |
+| `receiptRetentionMs`    | 7 days        | 7 days        |
+| `receiptResultBytes`    | 64 KiB        | 64 KiB        |
+| `purgeBatch`            | 50            | 50            |
+| `purgeIntervalMs`       | 60 minutes    | 60 minutes    |
+| `streamThrottleMs`      | 0             | 0             |
+| `modelRetries`          | 0             | 0             |
+| `modelOverrides`        | 8             | 8             |
+| `modelOverridesBytes`   | 512           | 512           |
+| `modelIdLength`         | 200           | 200           |
+| `modelAllowlist`        | 100           | 100           |
 
 Subjects and agent names are at most `nameLength` UTF-16 units, and every
 stored function handle at most `functionHandleBytes` UTF-8 bytes (real Convex
 handles are about 60–100). Sends, delegations and native writes beyond them
 fail with `INVALID_SUBJECT`, `INVALID_AGENT` or `INVALID_FUNCTION_HANDLE`
 before anything is saved. With every field at its cap, an assignment stays
-under its 14 KiB envelope.
+under its 13 KiB envelope.
 
 `slicesPerTurn` and `stepsPerTurn` also bound approval resumes, which keep the
 turn's step count; see

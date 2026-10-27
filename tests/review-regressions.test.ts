@@ -1,7 +1,7 @@
 // @vitest-environment edge-runtime
+import { resolveRunSettings } from "../src/component/run_settings.js";
 import { approvalState } from "./approval-state.js";
 import { approvalBlocked } from "../src/component/approvals.js";
-import { sliceWatchdogMs, resolveRunSettings } from "../src/component/run_settings.js";
 import { opaqueKey } from "../src/client/keys.js";
 import { advanceUntil } from "./clock.js";
 import { requireReceipt } from "./receipt.js";
@@ -53,9 +53,9 @@ const open = (t: ReturnType<typeof setup>) =>
 const activity = (t: ReturnType<typeof setup>, threadId: string) =>
   t.withIdentity({ subject: "alice" }).query(api.agents.activity, { threadId });
 
-const recoveryJobs = (t: ReturnType<typeof setup>) =>
+const scheduledJobs = (t: ReturnType<typeof setup>) =>
   t.query(
-    componentsGeneric().agevex.agevexTest.recoveryJobs as unknown as FunctionReference<"query">,
+    componentsGeneric().agevex.agevexTest.scheduledJobs as unknown as FunctionReference<"query">,
   );
 
 /** Each pair is valid native history, saved in its own bounded transaction. */
@@ -343,7 +343,7 @@ it("purge keeps maximum-size receipt batches below an 8 MiB read budget", async 
   expect(await t.query(count)).toBe(0);
 });
 
-it("a lost ping during a 45s completion delay keeps exactly one recovery check armed until work completes", async () => {
+it("work arriving between queue-empty and await consumes its exact durable event", async () => {
   const t = setup("delayedWait");
   const receipt = await open(t);
   const execution = () => t.query(rawAssignment, { assignmentId: receipt.assignmentId });
@@ -352,46 +352,34 @@ it("a lost ping during a 45s completion delay keeps exactly one recovery check a
     .poll(async () => {
       await tick(t, 100);
 
-      return (await execution())?.loopWaiting;
+      return (await execution())?.wakeEventId;
     })
-    .toBe(true);
+    .toBeTruthy();
 
-  expect(state.calls).toHaveLength(1);
-  state.dropPing = true;
+  const before = (await execution())!;
 
-  await t.withIdentity({ subject: "alice" }).mutation(api.agents.send, {
-    threadId: receipt.threadId,
-    text: "lost before awaitEvent registration",
-    requestKey: "delayed-wait",
-  });
+  await Promise.all(
+    [0, 1, 2].map((i) =>
+      t.withIdentity({ subject: "alice" }).mutation(api.agents.send, {
+        threadId: receipt.threadId,
+        text: "before await " + i,
+        requestKey: "early-" + i,
+      }),
+    ),
+  );
 
-  const assertArmed = async () => {
-    const row = await execution();
-
-    expect(row?.turnStatus).toBe("queued");
-    expect(row?.recoveryAt).toBeDefined();
-    // In particular, a coalescing flag must never outlive its recovery job.
-    expect(row?.pinged).toBe(true);
-    expect(await recoveryJobs(t)).toMatchObject({ pending: 1 });
-  };
-
-  await assertArmed();
-  await tick(t, 31_000);
-  expect(state.calls).toHaveLength(1);
-  await assertArmed();
-  await tick(t, 15_000);
-  await assertArmed();
-  await tick(t, 60_000);
+  expect((await execution())?.wakeEventId).toBeUndefined();
+  expect((await execution())?.nextTurn).toBe(before.nextTurn + 1);
+  await tick(t, 46_000);
   await drain(t);
-  expect(state.calls).toHaveLength(2);
+  expect(state.calls).toHaveLength(4);
 
   expect(await activity(t, receipt.threadId)).toMatchObject({
     turnStatus: "idle",
     queuedMessages: 0,
   });
 
-  expect((await execution())?.pinged).toBe(false);
-  expect(await recoveryJobs(t)).toMatchObject({ pending: 0 });
+  expect(await scheduledJobs(t)).toEqual({ total: 0, pending: 0 });
 });
 
 it("cancel closes the active pending placeholder behind a full inbox", async () => {
@@ -480,6 +468,7 @@ async function savePending(
       nativeMessages: {
         getMessages: await createFunctionHandle(components.agent.messages.getMessagesByIds),
         finalizeMessage: await createFunctionHandle(components.agent.messages.finalizeMessage),
+        failMessage: await createFunctionHandle(components.agent.messages.updateMessage),
       },
       args: {
         threadId,
@@ -735,6 +724,7 @@ it.each(["running", "approval"])(
       nativeMessages: {
         getMessages: await createFunctionHandle(components.agent.messages.getMessagesByIds),
         finalizeMessage: await createFunctionHandle(components.agent.messages.finalizeMessage),
+        failMessage: await createFunctionHandle(components.agent.messages.updateMessage),
       },
     }));
 
@@ -1076,10 +1066,10 @@ it.each(["failed", "blocked"] as const)(
       await t.query(rawAssignment, {
         assignmentId: receipt.assignmentId,
       }),
-    ).toMatchObject({ loopWaiting: true, turnStatus: "idle" });
+    ).toMatchObject({ wakeEventId: expect.any(String), turnStatus: "idle" });
 
     // Each serial send consumes one waiting iteration and one turn iteration.
-    // Stop at the final wait, so surplus doorbells cannot be consumed by another
+    // Stop at the final wait, so surplus events cannot be consumed by another
     // idle iteration before rotation cleans up this workflows journal.
     const sendsBeforeRotation = Math.floor((LIMITS.turnsPerLoop - 1) / 2);
 
@@ -1129,7 +1119,7 @@ it.each(["failed", "blocked"] as const)(
   30_000,
 );
 
-it("recovery never re-rings an active generation with queued inbox work", async () => {
+it("queued work never wakes an active generation with queued inbox work", async () => {
   const t = setup();
 
   state.gate = new Promise((resolve) => {
@@ -1152,23 +1142,13 @@ it("recovery never re-rings an active generation with queued inbox work", async 
     requestKey: "active",
   });
 
-  // Exercise even a stale detector arriving after the turn was claimed.
-  await t.mutation(
-    (components.agevex.turns as Record<string, Record<string, unknown>>).loop
-      .reconcile as FunctionReference<"mutation">,
-    { assignmentId: receipt.assignmentId },
-  );
-
-  await tick(t, LIMITS.reconcileIntervalMs * 2);
+  await tick(t, 60_000);
   expect(state.calls).toHaveLength(1);
+  const row = await t.query(rawAssignment, { assignmentId: receipt.assignmentId });
 
-  const row = await t.query(rawAssignment, {
-    assignmentId: receipt.assignmentId,
-  });
-
-  expect(row).toMatchObject({ turnStatus: "running", pinged: false });
-  expect(row?.recoveryAt).toBeUndefined();
-  expect(await recoveryJobs(t)).toMatchObject({ pending: 0 });
+  expect(row).toMatchObject({ turnStatus: "running" });
+  expect(row?.wakeEventId).toBeUndefined();
+  expect(await scheduledJobs(t)).toEqual({ total: 0, pending: 0 });
   state.release!();
   state.gate = undefined;
   await drain(t);
@@ -1179,35 +1159,9 @@ it("recovery never re-rings an active generation with queued inbox work", async 
     typeof import("./fixture/schema.js").default
   >(t, "agevex/rootWorkflow", "query", "agevexJournal", "events");
 
-  // The sole event is the loop's final awaited ping; no early doorbells were
+  // The sole event is the loop's final awaited wake; no early events were
   // sent to a loop executing a child turn.
   expect(events.total).toBe(1);
-});
-
-it("an idle loop recovers its only lost ping without a replacement send", async () => {
-  const t = setup("lostPing");
-  const receipt = await open(t);
-
-  await drain(t);
-  state.dropPing = true;
-
-  await t.withIdentity({ subject: "alice" }).mutation(api.agents.send, {
-    threadId: receipt.threadId,
-    text: "only lost doorbell",
-    requestKey: "lost",
-  });
-
-  await tick(t, 100);
-  expect(state.calls).toHaveLength(1);
-  // No subsequent send or direct event injection may rescue the accepted row.
-  await tick(t, 60_000);
-  await drain(t);
-  expect(state.calls).toHaveLength(2);
-
-  expect(await activity(t, receipt.threadId)).toMatchObject({
-    turnStatus: "idle",
-    queuedMessages: 0,
-  });
 });
 
 it.each([
@@ -1263,11 +1217,10 @@ it.each([
   },
 );
 
-it("two healthy slices complete when their combined duration exceeds the slice watchdog", async () => {
+it("two healthy slices each retain their independent in-action deadline", async () => {
   const t = setup();
 
-  // Each model takes 70s <90s, but together they exceed the derived 136s
-  // watchdog. A turn-wide deadline would incorrectly abort the second slice.
+  // Each model takes 70s <90s. Their combined time is not a turn deadline.
   state.run = { toolTimeoutMs: 1_000 };
 
   state.tools = true;
@@ -1331,7 +1284,7 @@ it("a child's slice limit frees its slot and delivers a failure after an immedia
   expect(messages.page.filter((message) => message.agentName === "Researcher")).toHaveLength(2);
 });
 
-it("loop rotation leaves no orphaned pings after busy arrivals", async () => {
+it("loop rotation leaves no orphaned events after busy arrivals", async () => {
   const t = setup();
   const receipt = await open(t);
 
@@ -1578,13 +1531,10 @@ it("registration child lane limits bound concurrent child slices without blockin
   });
 });
 
-it("completed slices ignore stale watchdogs, refuse replayed or overlapping slice claims and exclude time between slices", async () => {
+it("completed slices refuse replayed and overlapping claims and exclude time between slices", async () => {
   const t = setup();
   const receipt = await open(t);
   const args = { assignmentId: receipt.assignmentId, turnToken: receipt.assignmentId + ":0" };
-
-  const watchdog = (components.agevex.turns.failures as Record<string, unknown>)
-    .stalled as Parameters<typeof t.mutation>[0];
 
   const claimed = await t.mutation(components.agevex.turns.slices.claim, {
     ...args,
@@ -1600,22 +1550,14 @@ it("completed slices ignore stale watchdogs, refuse replayed or overlapping slic
     messageId: claimed.promptMessageId,
   });
 
-  await tick(t, sliceWatchdogMs(resolveRunSettings()) + 1_000);
+  await tick(t, 301_000);
 
   expect(await activity(t, receipt.threadId)).toMatchObject({
     turnStatus: "running",
     errorCode: null,
   });
 
-  // Between slices no slice is active: even the finished slice's own watchdog
-  // is inert, and replaying that slice id cannot buy a second generation.
-  await t.mutation(watchdog, { ...args, sliceId: "first" });
-
-  expect(await activity(t, receipt.threadId)).toMatchObject({
-    turnStatus: "running",
-    errorCode: null,
-  });
-
+  // Closing a slice must retain its replay fence.
   expect(
     await t.mutation(components.agevex.turns.slices.claim, { ...args, sliceId: "first" }),
   ).toBeNull();
@@ -1628,13 +1570,6 @@ it("completed slices ignore stale watchdogs, refuse replayed or overlapping slic
   expect(
     await t.mutation(components.agevex.turns.slices.claim, { ...args, sliceId: "third" }),
   ).toBeNull();
-
-  await t.mutation(watchdog, { ...args, sliceId: "first" });
-
-  expect(await activity(t, receipt.threadId)).toMatchObject({
-    turnStatus: "running",
-    errorCode: null,
-  });
 
   await t.mutation(components.agevex.turns.slices.finish, { ...args, errorCode: null });
   await drain(t);
@@ -1702,16 +1637,16 @@ it("an approval response followed by a fresh send completes the approval-blocked
   });
 });
 
-it("an idle deployment with an empty inbox schedules no recovery checks", async () => {
+it("normal turns schedule no agevex jobs, including completed alarms or recovery checks", async () => {
   const t = setup();
   const receipt = await open(t);
 
   await drain(t);
-  const settled = await recoveryJobs(t);
+  const settled = await scheduledJobs(t);
 
-  expect(settled).toMatchObject({ pending: 0 });
-  await tick(t, LIMITS.reconcileIntervalMs * 10);
-  expect(await recoveryJobs(t)).toEqual(settled);
+  expect(settled).toEqual({ total: 0, pending: 0 });
+  await tick(t, 30_000 * 10);
+  expect(await scheduledJobs(t)).toEqual(settled);
 
   await t.withIdentity({ subject: "alice" }).mutation(api.agents.send, {
     threadId: receipt.threadId,
@@ -1721,70 +1656,63 @@ it("an idle deployment with an empty inbox schedules no recovery checks", async 
 
   await drain(t);
   expect(state.calls).toHaveLength(2);
-  // Recovery now follows durable inbox ownership: claim cancels its check
-  // immediately, instead of leaving a delayed check for an already idle loop.
-  const afterWake = await recoveryJobs(t);
+  // The component scheduler contains neither completed nor pending alarms.
+  const afterWake = await scheduledJobs(t);
 
-  expect(afterWake).toMatchObject({ pending: 0 });
-  await tick(t, LIMITS.reconcileIntervalMs * 10);
-  expect(await recoveryJobs(t)).toEqual(afterWake);
+  expect(afterWake).toEqual({ total: 0, pending: 0 });
+  await tick(t, 30_000 * 10);
+  expect(await scheduledJobs(t)).toEqual(afterWake);
 });
 
-it("consuming the first ping then losing the second keeps one check through coalesced sends", async () => {
-  const t = setup("lostPing");
-  const receipt = await open(t);
+it.each([false, true])(
+  "cancel before await, with early delivery %s, releases the old event and starts a fresh loop",
+  async (delivered) => {
+    const t = setup("delayedWait");
+    const receipt = await open(t);
+    const alice = t.withIdentity({ subject: "alice" });
 
-  await drain(t);
-  const alice = t.withIdentity({ subject: "alice" });
+    await expect
+      .poll(async () => {
+        await tick(t, 100);
 
-  await alice.mutation(api.agents.send, {
-    threadId: receipt.threadId,
-    text: "consumed first ping",
-    requestKey: "first-ping",
-  });
+        return (await t.query(rawAssignment, { assignmentId: receipt.assignmentId }))?.wakeEventId;
+      })
+      .toBeTruthy();
 
-  await drain(t);
-  expect(state.calls).toHaveLength(2);
-  state.dropPing = true;
+    const previous = (await t.query(rawAssignment, { assignmentId: receipt.assignmentId }))!;
 
-  await t.withIdentity({ subject: "alice" }).mutation(api.agents.send, {
-    threadId: receipt.threadId,
-    text: "lost second ping",
-    requestKey: "second-ping",
-  });
+    if (delivered)
+      await alice.mutation(api.agents.send, {
+        threadId: receipt.threadId,
+        text: "cancel this queued work",
+        requestKey: "before-cancel",
+      });
 
-  const armed = await t.query(rawAssignment, {
-    assignmentId: receipt.assignmentId,
-  });
-
-  expect(armed?.pinged).toBe(true);
-  expect(armed?.recoveryAt).toBeDefined();
-
-  for (let i = 0; i < 3; i++) {
-    await alice.mutation(api.agents.send, {
-      threadId: receipt.threadId,
-      text: "coalesced " + i,
-      requestKey: "coalesced-" + i,
-    });
-
-    expect(await recoveryJobs(t)).toMatchObject({ pending: 1 });
+    await alice.mutation(api.agents.cancel, { threadId: receipt.threadId });
 
     expect(
-      (
-        await t.query(rawAssignment, {
-          assignmentId: receipt.assignmentId,
-        })
-      )?.recoveryAt,
-    ).toBe(armed?.recoveryAt);
-  }
+      (await t.query(rawAssignment, { assignmentId: receipt.assignmentId }))?.wakeEventId,
+    ).toBeUndefined();
 
-  await tick(t, LIMITS.reconcileIntervalMs + 1_000);
-  await drain(t);
-  expect(state.calls).toHaveLength(6);
-  expect(await recoveryJobs(t)).toMatchObject({ pending: 0 });
+    await alice.mutation(api.agents.send, {
+      threadId: receipt.threadId,
+      text: "fresh loop",
+      requestKey: "fresh-loop",
+    });
 
-  expect(await activity(t, receipt.threadId)).toMatchObject({
-    turnStatus: "idle",
-    queuedMessages: 0,
-  });
-});
+    expect(
+      (await t.query(rawAssignment, { assignmentId: receipt.assignmentId }))?.workflowId,
+    ).not.toBe(previous.workflowId);
+
+    await tick(t, 46_000);
+    await drain(t);
+    expect(state.calls).toHaveLength(2);
+
+    const events = await workflowCall<
+      { orphaned: number; total: number },
+      typeof import("./fixture/schema.js").default
+    >(t, "agevex/rootWorkflow", "query", "agevexJournal", "events");
+
+    expect(events).toEqual({ orphaned: 0, total: 1 });
+  },
+);
