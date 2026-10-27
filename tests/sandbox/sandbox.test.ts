@@ -1284,3 +1284,42 @@ it("an export racing a delete that lands just before its reservation is not foun
   expect(s.fake.calls.create).toBe(1);
   expect(await row(s)).toMatchObject({ state: "deleted" });
 });
+
+it("use extends the idle deadline while an unused sandbox is deleted exactly on expiry", async () => {
+  const ttl = 2 * LIMITS.actionBudgetMs;
+  const s = setup("thread", { ttl });
+
+  await invoke(s.t, "prepare");
+  await invoke(s.t, "prepare", {}, { threadId: "idle" });
+  const first = (await row(s))!;
+
+  await vi.advanceTimersByTimeAsync(ttl / 2);
+  await invoke(s.t, "prepare");
+  const used = (await row(s))!;
+
+  expect(used.idleExpiresAt).toBe(first.idleExpiresAt + ttl / 2);
+  expect(used.cleanupAt).toBe(Math.max(used.idleExpiresAt, used.leaseUntil));
+
+  await vi.advanceTimersByTimeAsync(first.idleExpiresAt - Date.now());
+  await invoke(s.t, "cleanup");
+  await advance(s.t, 0);
+  expect(s.fake.calls.delete).toBe(1);
+  expect(await row(s)).toMatchObject({ state: "ready" });
+
+  const idleKey = await keyFor({ subject: "owner", threadId: "idle", runId: "run" });
+
+  expect(await s.t.query(s.component.state.get, { scopeKey: idleKey })).toMatchObject({
+    state: "deleted",
+  });
+
+  await vi.advanceTimersByTimeAsync(used.idleExpiresAt - Date.now() - 1);
+  await invoke(s.t, "cleanup");
+  await advance(s.t, 0);
+  expect(s.fake.calls.delete).toBe(1);
+
+  await advance(s.t, Math.max(0, used.idleExpiresAt - Date.now()));
+  await invoke(s.t, "cleanup");
+  await advance(s.t, 0);
+  expect(s.fake.calls.delete).toBe(2);
+  expect(await row(s)).toMatchObject({ state: "deleted" });
+});

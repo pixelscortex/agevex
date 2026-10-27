@@ -243,3 +243,8 @@ auto-archive to 10; set auto-stop to zero for long jobs. Cleanup kills descendan
 in the original process group. Deliberately detached processes require sandbox
 stop/delete. See the
 [module README](https://github.com/pixelscortex/agevex/blob/HEAD/src/modules/sandbox/README.md).
+
+Sandbox use refreshes one absolute `idleExpiresAt` deadline. Cleanup waits until
+both that deadline and the action lease expire; the last background job rearms
+cleanup at the later deadline. Hosts continue to configure the idle duration
+with `limits.ttl`.
