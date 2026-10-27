@@ -647,28 +647,7 @@ it.each(["owned", "unmarked", "wrong-job", "unreadable"])(
     const jobId = crypto.randomUUID();
     const directory = `${LIMITS.backgroundRoot}/${jobId}`;
 
-    // macOS has no /proc. Supply only that filesystem view while retaining
-    // real getpgid(), real killpg(), and the unmodified adapter commands. The
-    // live test separately verifies Linux's actual inherited environments.
-    await writeFile(
-      join(patchDirectory, "sitecustomize.py"),
-      `import os,builtins
-original_scandir=os.scandir
-original_open=builtins.open
-original_killpg=os.killpg
-def scandir(path):
- return original_scandir(${JSON.stringify(procDirectory)} if path=='/proc' else path)
-def open_file(path,*args,**kwargs):
- if str(path).startswith('/proc/'): path=${JSON.stringify(procDirectory)}+str(path)[5:]
- return original_open(path,*args,**kwargs)
-def killpg(pid,sig):
- with original_open(${JSON.stringify(directory + "/fallback.audit")},'a') as f: f.write(str(pid)+'\\n')
- return original_killpg(pid,sig)
-os.scandir=scandir
-builtins.open=open_file
-os.killpg=killpg
-`,
-    );
+    await installProcView(patchDirectory, procDirectory, directory);
 
     const { ctx, provider } = harness({ PYTHONPATH: patchDirectory });
     const job = { jobId, directory, sandboxId: "local" };
@@ -739,40 +718,7 @@ os.killpg=killpg
 it("Daytona publishes group identity and exit status atomically while empty and partial writes stay running", async () => {
   const patchDirectory = await mkdtemp(join(tmpdir(), "agevex-publication-"));
 
-  // Slow every publication write in the actual adapter Python processes. The
-  // component mock still executes the complete adapter command unchanged.
-  await writeFile(
-    join(patchDirectory, "sitecustomize.py"),
-    `import builtins,time,os
-original=builtins.open
-class SlowFile:
- def __init__(self,f): self.f=f
- def __enter__(self): return self
- def __exit__(self,*args): return self.f.__exit__(*args)
- def write(self,value):
-  self.f.flush()
-  time.sleep(0.3)
-  half=max(1,len(value)//2)
-  self.f.write(value[:half]); self.f.flush()
-  time.sleep(0.3)
-  self.f.write(value[half:]); self.f.flush()
-def slow_open(path,mode="r",*args,**kwargs):
- f=original(path,mode,*args,**kwargs)
- if "w" in mode and ("group.pid" in str(path) or "status.exit" in str(path)): return SlowFile(f)
- return f
-builtins.open=slow_open
-`,
-  );
-
-  // The pre-fix wrapper writes status with shell printf. Slow that writer as
-  // well, so its empty/truncated published file is deterministically visible.
-  await writeFile(
-    join(patchDirectory, "sh"),
-    `#!/bin/sh
-exec /bin/sh -c 'printf() { sleep 0.3; command printf "%s" "$2" | head -c 1; sleep 0.3; command printf "%s" "$2" | tail -c +2; }; eval "$1"' sh "$2"
-`,
-    { mode: 0o755 },
-  );
+  await installSlowPublication(patchDirectory);
 
   const { ctx, provider } = harness({
     PYTHONPATH: patchDirectory,
@@ -1240,3 +1186,67 @@ open_marker='AGEVEX_JOB='+os.environ['TEST_JOB']+'\\0'
     await rm(patchDirectory, { recursive: true, force: true });
   }
 }, 30_000);
+
+/** Supply a proc filesystem view while preserving the real adapter commands. */
+async function installProcView(patchDirectory: string, procDirectory: string, directory: string) {
+  // macOS has no /proc. Supply only that filesystem view while retaining
+  // real getpgid(), real killpg(), and the unmodified adapter commands. The
+  // live test separately verifies Linux's actual inherited environments.
+  await writeFile(
+    join(patchDirectory, "sitecustomize.py"),
+    `import os,builtins
+original_scandir=os.scandir
+original_open=builtins.open
+original_killpg=os.killpg
+def scandir(path):
+ return original_scandir(${JSON.stringify(procDirectory)} if path=='/proc' else path)
+def open_file(path,*args,**kwargs):
+ if str(path).startswith('/proc/'): path=${JSON.stringify(procDirectory)}+str(path)[5:]
+ return original_open(path,*args,**kwargs)
+def killpg(pid,sig):
+ with original_open(${JSON.stringify(directory + "/fallback.audit")},'a') as f: f.write(str(pid)+'\\n')
+ return original_killpg(pid,sig)
+os.scandir=scandir
+builtins.open=open_file
+os.killpg=killpg
+`,
+  );
+}
+
+/** Expose partial publication writes deterministically in the existing OS fixture. */
+async function installSlowPublication(patchDirectory: string) {
+  // Slow every publication write in the actual adapter Python processes. The
+  // component mock still executes the complete adapter command unchanged.
+  await writeFile(
+    join(patchDirectory, "sitecustomize.py"),
+    `import builtins,time,os
+original=builtins.open
+class SlowFile:
+ def __init__(self,f): self.f=f
+ def __enter__(self): return self
+ def __exit__(self,*args): return self.f.__exit__(*args)
+ def write(self,value):
+  self.f.flush()
+  time.sleep(0.3)
+  half=max(1,len(value)//2)
+  self.f.write(value[:half]); self.f.flush()
+  time.sleep(0.3)
+  self.f.write(value[half:]); self.f.flush()
+def slow_open(path,mode="r",*args,**kwargs):
+ f=original(path,mode,*args,**kwargs)
+ if "w" in mode and ("group.pid" in str(path) or "status.exit" in str(path)): return SlowFile(f)
+ return f
+builtins.open=slow_open
+`,
+  );
+
+  // The pre-fix wrapper writes status with shell printf. Slow that writer as
+  // well, so its empty/truncated published file is deterministically visible.
+  await writeFile(
+    join(patchDirectory, "sh"),
+    `#!/bin/sh
+exec /bin/sh -c 'printf() { sleep 0.3; command printf "%s" "$2" | head -c 1; sleep 0.3; command printf "%s" "$2" | tail -c +2; }; eval "$1"' sh "$2"
+`,
+    { mode: 0o755 },
+  );
+}

@@ -48,6 +48,71 @@ export const live = {
 export const modelId = LIVE_MODELS[0];
 const maxUsd = Number(process.env.OPENROUTER_LIVE_MAX_USD ?? LIVE_LIMITS.maxUsd);
 
+/** Keep authoritative routing and cost evidence separate from the paid fetch. */
+function recordResponseBody(
+  body: string,
+  response: Response,
+  outcome: (typeof live.responses)[number],
+) {
+  for (const line of body.trim().startsWith("{") ? [`data: ${body}`] : body.split("\n")) {
+    if (!line.startsWith("data: ") || line === "data: [DONE]") continue;
+
+    try {
+      const chunk = JSON.parse(line.slice(6)) as {
+        error?: { code?: string | number; message?: string };
+        model?: string;
+        usage?: { cost?: number; prompt_tokens?: number; completion_tokens?: number };
+        choices?: {
+          finish_reason?: string;
+          delta?: { tool_calls?: { function?: { name?: string } }[] };
+        }[];
+      };
+
+      // Keep only small response metadata, never headers, provider error
+      // bodies, generated text or tool arguments that could hold secrets.
+      for (const choice of chunk.choices ?? []) {
+        if (choice.finish_reason && outcome.finishReasons.length < LIVE_LIMITS.requests)
+          outcome.finishReasons.push(choice.finish_reason);
+
+        for (const tool of choice.delta?.tool_calls ?? [])
+          if (tool.function?.name && outcome.tools.length < LIVE_LIMITS.requests)
+            outcome.tools.push(tool.function.name);
+      }
+
+      if (response.status >= 400 && chunk.error) {
+        outcome.errorCode = chunk.error.code;
+
+        outcome.errorMessage = chunk.error.message
+          ?.replaceAll(process.env.OPENROUTER_API_KEY ?? "skipped", "[REDACTED]")
+          .slice(0, 500);
+      }
+
+      if (chunk.model) {
+        outcome.model = chunk.model;
+        live.models.add(chunk.model);
+      }
+
+      if (typeof chunk.usage?.prompt_tokens === "number") {
+        live.inputTokens += chunk.usage.prompt_tokens - outcome.inputTokens;
+        outcome.inputTokens = chunk.usage.prompt_tokens;
+      }
+
+      if (typeof chunk.usage?.completion_tokens === "number") {
+        live.outputTokens += chunk.usage.completion_tokens - outcome.outputTokens;
+        outcome.outputTokens = chunk.usage.completion_tokens;
+      }
+
+      if (typeof chunk.usage?.cost === "number") {
+        live.costReported = true;
+        live.usd += chunk.usage.cost - (outcome.usd ?? 0);
+        outcome.usd = chunk.usage.cost;
+      }
+    } catch {
+      /* Keep SSE comments and non-JSON keepalives out of evidence. */
+    }
+  }
+}
+
 const provider = createOpenAI({
   apiKey: process.env.OPENROUTER_API_KEY ?? "skipped",
   baseURL: "https://openrouter.ai/api/v1",
@@ -97,63 +162,7 @@ const provider = createOpenAI({
       .clone()
       .text()
       .then((body) => {
-        for (const line of body.trim().startsWith("{") ? [`data: ${body}`] : body.split("\n")) {
-          if (!line.startsWith("data: ") || line === "data: [DONE]") continue;
-
-          try {
-            const chunk = JSON.parse(line.slice(6)) as {
-              error?: { code?: string | number; message?: string };
-              model?: string;
-              usage?: { cost?: number; prompt_tokens?: number; completion_tokens?: number };
-              choices?: {
-                finish_reason?: string;
-                delta?: { tool_calls?: { function?: { name?: string } }[] };
-              }[];
-            };
-
-            // Keep only small response metadata, never headers, provider error
-            // bodies, generated text or tool arguments that could hold secrets.
-            for (const choice of chunk.choices ?? []) {
-              if (choice.finish_reason && outcome.finishReasons.length < LIVE_LIMITS.requests)
-                outcome.finishReasons.push(choice.finish_reason);
-
-              for (const tool of choice.delta?.tool_calls ?? [])
-                if (tool.function?.name && outcome.tools.length < LIVE_LIMITS.requests)
-                  outcome.tools.push(tool.function.name);
-            }
-
-            if (response.status >= 400 && chunk.error) {
-              outcome.errorCode = chunk.error.code;
-
-              outcome.errorMessage = chunk.error.message
-                ?.replaceAll(process.env.OPENROUTER_API_KEY ?? "skipped", "[REDACTED]")
-                .slice(0, 500);
-            }
-
-            if (chunk.model) {
-              outcome.model = chunk.model;
-              live.models.add(chunk.model);
-            }
-
-            if (typeof chunk.usage?.prompt_tokens === "number") {
-              live.inputTokens += chunk.usage.prompt_tokens - outcome.inputTokens;
-              outcome.inputTokens = chunk.usage.prompt_tokens;
-            }
-
-            if (typeof chunk.usage?.completion_tokens === "number") {
-              live.outputTokens += chunk.usage.completion_tokens - outcome.outputTokens;
-              outcome.outputTokens = chunk.usage.completion_tokens;
-            }
-
-            if (typeof chunk.usage?.cost === "number") {
-              live.costReported = true;
-              live.usd += chunk.usage.cost - (outcome.usd ?? 0);
-              outcome.usd = chunk.usage.cost;
-            }
-          } catch {
-            /* Keep SSE comments and non-JSON keepalives out of evidence. */
-          }
-        }
+        recordResponseBody(body, response, outcome);
       });
 
     live.evidence.push(evidence);
