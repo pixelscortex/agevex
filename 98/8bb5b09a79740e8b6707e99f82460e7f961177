@@ -1,0 +1,79 @@
+src/client/endpoints/reads.ts
+  s_b94d21162db9c6::t_c728b596c6dd8c 26-27,246
+src/client/endpoints/text.ts
+  s_b94d21162db9c6::t_05f27017195d0f 33
+src/client/index.ts
+  s_b94d21162db9c6::t_0a3e42b42919be 37
+src/client/keys.ts
+  s_b94d21162db9c6::t_bf6fd6b4b6f167 9-10,15
+src/client/text/options.ts
+  s_b94d21162db9c6::t_d28c41346196da 20
+src/client/text/task.ts
+  s_b94d21162db9c6::t_b60ce7df32dfb5 71,74,131,143,211
+src/component/hooks/origins.ts
+  s_b94d21162db9c6::t_83463e6c436593 22
+src/component/subagents/runs.ts
+  s_b94d21162db9c6::t_0622e0fc3e8615 15,129
+src/component/text/jobs.ts
+  s_b94d21162db9c6::t_d5f25b7123696a 53,56
+src/component/text/state.ts
+  s_b94d21162db9c6::t_80b14cdcaa9208 10,12-14,19,41,118,147,162,184
+src/component/text/values.ts
+  s_b94d21162db9c6::t_3775f347cb83bd 3-5,18,26,29
+src/component/text/worker.ts
+  s_b94d21162db9c6::t_05db5e3c6933a4 33
+src/component/turns/runs.ts
+  s_b94d21162db9c6::t_6e74556fd2bd23 11,37
+src/component/turns/send.ts
+  s_b94d21162db9c6::t_e89798fa17b490 135
+src/shared/decisions.ts
+  s_b94d21162db9c6::t_33ad0af8ccf28d 3-7,70
+src/shared/json.ts
+  s_b94d21162db9c6::t_5e39946480ba8c 1-29
+tests/assignment-envelope.fixture.ts
+  s_b94d21162db9c6::t_c4c412c7300b9d 2-5,8,26,50-86
+tests/bounded-reads.test.ts
+  s_b94d21162db9c6::t_d5bb141c287b9f 11-12
+tests/cancel-history.fixture.ts
+  s_b94d21162db9c6::t_fc9144a9379b93 1-66
+tests/claim-bounds.fixture.ts
+  s_b94d21162db9c6::t_d6720431785ee8 6-12,17,29
+tests/claim-bounds.test.ts
+  s_b94d21162db9c6::t_4316da1d6f2bb1 6,45
+tests/deferred-answers.test.ts
+  s_b94d21162db9c6::t_69a95b05523112 8
+tests/delegation-v2.test.ts
+  s_b94d21162db9c6::t_c9c33954967259 58-62,1503-1505,1528-1532,1601
+tests/delegation.test.ts
+  s_b94d21162db9c6::t_6695e9f881bd2f 1311
+tests/json.test.ts
+  s_b94d21162db9c6::t_d96c60b232d222 1-23,26-35,37-39
+tests/message-parent-bounds.fixture.ts
+  s_b94d21162db9c6::t_116b3d070d8b55 2-3,6-11,117,160,162
+tests/review-regressions.test.ts
+  s_b94d21162db9c6::t_3290c127639b84 4,14,1348
+tests/run-tree.seed.ts
+  s_b94d21162db9c6::t_a0255e79a50505 2,11-12,18,33,131,168,195
+tests/sandbox/setup.ts
+  s_b94d21162db9c6::t_d46b38fc480e2e 11
+tests/slots.test.ts
+  s_b94d21162db9c6::t_d6700eae2a5284 14-15
+tests/text.test.ts
+  s_b94d21162db9c6::t_543dead1286b42 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "988bb5b09a79740e8b6707e99f82460e7f961177",
+  "prompts": {},
+  "sessions": {
+    "s_b94d21162db9c6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17b06-f2cf-7782-a290-3b2a34c6e36a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
