@@ -3,7 +3,7 @@
  *
  * The first slice of a queued turn consumes its reserved inbox head (and any
  * consecutive results of the same run), flushes posted notes into native
- * history, marks the turn running and arms the slice watchdog. Later slices
+ * history, marks the slice active. Later slices
  * of the same turn need a fresh slice id while the turn is between slices.
  * The claim also records run start and, for a
  * child, marks its delegation running. It returns the execution scope the
@@ -12,14 +12,12 @@
  */
 import { approvalBlocked } from "../approvals.js";
 import { v } from "convex/values";
-import { internal } from "../_generated/api.js";
 import { scope, turnOrigin as vTurnOrigin } from "../schema.js";
-import { runSettings, resolveRunSettings, sliceWatchdogMs, turnStepLimit, } from "../run_settings.js";
+import { runSettings, resolveRunSettings, turnStepLimit } from "../run_settings.js";
 import { readyRowLimit } from "../limits.js";
 import { claimNotes, noteHandles } from "../hooks/notes.js";
 import { firstReady } from "./inbox.js";
 import { appendEvent, runById } from "../subagents/runs.js";
-import { disarmRecovery } from "./recovery.js";
 import { disarmSlice } from "./boundaries.js";
 import { failChild, finishTurn, markRecoveryRequired } from "./finish.js";
 import { awaitingApprovalResults } from "./pause.js";
@@ -68,9 +66,11 @@ export async function claimSlice(ctx, args) {
         return null;
     const first = row.turnStatus === "queued";
     if (!first &&
-        // A running turn without a watchdog is between slices: continueTurn
-        // disarmed it, and only a fresh slice id may claim the next one.
-        !(row.turnStatus === "running" && !row.watchdogId && sliceId && row.lastSlice !== sliceId))
+        // Only a closed slice and a fresh id permit another paid claim.
+        !(row.turnStatus === "running" &&
+            !row.lastSlice?.active &&
+            sliceId &&
+            row.lastSlice?.id !== sliceId))
         return null;
     const resume = first && row.inboxId === row.turnReport?.resumeInboxId;
     const noteAnchor = first && row.inboxId ? await consumeHead(ctx, row) : row.promptMessageId;
@@ -89,7 +89,7 @@ export async function claimSlice(ctx, args) {
             messageIds: [],
             maxMessages,
         };
-    await markRunning(ctx, row, first && !resume, args, settings);
+    await markRunning(ctx, row, first && !resume, args);
     const modelId = budget?.models?.[row.agent];
     await markRunStarted(ctx, row, budget);
     const claim = {
@@ -193,25 +193,17 @@ async function flushNotes(ctx, row, first, noteAnchor, notes) {
     // A resumed tool result stays in its call's order, so append after it.
     await claimNotes(ctx, row, notes, anchor.message?.role !== "user" ? anchor.order : anchor.order - 1);
 }
-/** Publish the running state for this slice, retire the recovery check and
- * arm the slice watchdog (`turns.failures.stalled`), recorded on the row so only
- * disarmSlice clears it. */
-async function markRunning(ctx, row, first, args, settings) {
+/** Claim the paid slice atomically; Workpool owns detection of crashed steps. */
+async function markRunning(ctx, row, first, args) {
+    const lastSlice = { id: args.sliceId, active: true };
     await ctx.db.patch("assignments", row._id, {
         turnStatus: "running",
         turnReport: row.turnReport,
         modelSteps: first ? 1 : (row.modelSteps ?? 0) + 1,
-        lastSlice: args.sliceId,
+        lastSlice,
         inboxId: undefined,
     });
-    await disarmRecovery(ctx, row);
-    const watchdogId = await ctx.scheduler.runAfter(sliceWatchdogMs(settings), internal.turns.failures.stalled, {
-        assignmentId: args.assignmentId,
-        turnToken: args.turnToken,
-        sliceId: args.sliceId ?? args.turnToken,
-    });
-    await ctx.db.patch("assignments", row._id, { watchdogId });
-    row.watchdogId = watchdogId;
+    row.lastSlice = lastSlice;
 }
 /** Root lifecycle belongs to the accepted run; hook model choices never do. */
 async function markRunStarted(ctx, row, budget) {

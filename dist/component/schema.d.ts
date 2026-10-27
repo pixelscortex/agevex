@@ -188,12 +188,14 @@ export declare const pendingGeneration: import("convex/values").VObject<{
     epoch: number;
     getMessages: string;
     finalizeMessage: string;
+    failMessage: string;
 }, {
     messageId: import("convex/values").VString<string, "required">;
     executionId: import("convex/values").VString<string, "required">;
     epoch: import("convex/values").VFloat64<number, "required">;
     getMessages: import("convex/values").VString<string, "required">;
     finalizeMessage: import("convex/values").VString<string, "required">;
+    failMessage: import("convex/values").VString<string, "required">;
     stream: import("convex/values").VObject<{
         id: string;
         abort: string;
@@ -201,7 +203,7 @@ export declare const pendingGeneration: import("convex/values").VObject<{
         id: import("convex/values").VString<string, "required">;
         abort: import("convex/values").VString<string, "required">;
     }, "optional", "id" | "abort">;
-}, "required", "stream" | "messageId" | "executionId" | "epoch" | "getMessages" | "finalizeMessage" | "stream.id" | "stream.abort">;
+}, "required", "stream" | "messageId" | "executionId" | "epoch" | "getMessages" | "finalizeMessage" | "failMessage" | "stream.id" | "stream.abort">;
 declare const _default: import("convex/server").SchemaDefinition<{
     assignments: import("convex/server").TableDefinition<import("convex/values").VObject<{
         workflowId?: string | undefined;
@@ -215,13 +217,9 @@ declare const _default: import("convex/server").SchemaDefinition<{
             getThread: string;
         } | undefined;
         models?: Record<string, string> | undefined;
-        loopWaiting?: boolean | undefined;
-        pinged?: boolean | undefined;
-        recoveryAt?: number | undefined;
-        recoveryJobId?: import("convex/values").GenericId<"_scheduled_functions"> | undefined;
-        recoveryDelayMs?: number | undefined;
+        workflowTurnToken?: string | undefined;
+        wakeEventId?: string | undefined;
         modelSteps?: number | undefined;
-        watchdogId?: import("convex/values").GenericId<"_scheduled_functions"> | undefined;
         pendingGeneration?: {
             stream?: {
                 id: string;
@@ -232,6 +230,7 @@ declare const _default: import("convex/server").SchemaDefinition<{
             epoch: number;
             getMessages: string;
             finalizeMessage: string;
+            failMessage: string;
         } | undefined;
         runId?: import("convex/values").GenericId<"runs"> | undefined;
         childRunId?: string | undefined;
@@ -263,7 +262,10 @@ declare const _default: import("convex/server").SchemaDefinition<{
                 toolCallKey: ArrayBuffer;
             }[];
         } | undefined;
-        lastSlice?: string | undefined;
+        lastSlice?: {
+            id?: string | undefined;
+            active: boolean;
+        } | undefined;
         notesPending: number;
         agent: string;
         limits: {
@@ -321,6 +323,7 @@ declare const _default: import("convex/server").SchemaDefinition<{
         models: import("convex/values").VRecord<Record<string, string> | undefined, import("convex/values").VString<string, "required">, import("convex/values").VString<string, "required">, "optional", string>;
         runTurn: import("convex/values").VString<string, "required">;
         workflowId: import("convex/values").VString<string | undefined, "optional">;
+        workflowTurnToken: import("convex/values").VString<string | undefined, "optional">;
         limits: import("convex/values").VObject<{
             attachmentBytes: number;
             notesPending: number;
@@ -352,13 +355,8 @@ declare const _default: import("convex/server").SchemaDefinition<{
             slicesPerTurn: import("convex/values").VFloat64<number, "required">;
             leaseMs: import("convex/values").VFloat64<number, "required">;
         }, "required", "attachmentBytes" | "notesPending" | "maxDepth" | "messagesPerChild" | "parentNotesPerChild" | "rootLane" | "childLane" | "runLaunches" | "runHops" | "activeChildrenPerRoot" | "taskLength" | "queueLength" | "slicesPerTurn" | "leaseMs">;
-        loopWaiting: import("convex/values").VBoolean<boolean | undefined, "optional">;
-        pinged: import("convex/values").VBoolean<boolean | undefined, "optional">;
-        recoveryAt: import("convex/values").VFloat64<number | undefined, "optional">;
-        recoveryJobId: import("convex/values").VId<import("convex/values").GenericId<"_scheduled_functions"> | undefined, "optional">;
-        recoveryDelayMs: import("convex/values").VFloat64<number | undefined, "optional">;
+        wakeEventId: import("convex/values").VString<string | undefined, "optional">;
         modelSteps: import("convex/values").VFloat64<number | undefined, "optional">;
-        watchdogId: import("convex/values").VId<import("convex/values").GenericId<"_scheduled_functions"> | undefined, "optional">;
         pendingGeneration: import("convex/values").VObject<{
             stream?: {
                 id: string;
@@ -369,12 +367,14 @@ declare const _default: import("convex/server").SchemaDefinition<{
             epoch: number;
             getMessages: string;
             finalizeMessage: string;
+            failMessage: string;
         } | undefined, {
             messageId: import("convex/values").VString<string, "required">;
             executionId: import("convex/values").VString<string, "required">;
             epoch: import("convex/values").VFloat64<number, "required">;
             getMessages: import("convex/values").VString<string, "required">;
             finalizeMessage: import("convex/values").VString<string, "required">;
+            failMessage: import("convex/values").VString<string, "required">;
             stream: import("convex/values").VObject<{
                 id: string;
                 abort: string;
@@ -382,7 +382,7 @@ declare const _default: import("convex/server").SchemaDefinition<{
                 id: import("convex/values").VString<string, "required">;
                 abort: import("convex/values").VString<string, "required">;
             }, "optional", "id" | "abort">;
-        }, "optional", "stream" | "messageId" | "executionId" | "epoch" | "getMessages" | "finalizeMessage" | "stream.id" | "stream.abort">;
+        }, "optional", "stream" | "messageId" | "executionId" | "epoch" | "getMessages" | "finalizeMessage" | "failMessage" | "stream.id" | "stream.abort">;
         cancellationEpoch: import("convex/values").VFloat64<number, "required">;
         cancelled: import("convex/values").VBoolean<boolean, "required">;
         runId: import("convex/values").VId<import("convex/values").GenericId<"runs"> | undefined, "optional">;
@@ -459,10 +459,16 @@ declare const _default: import("convex/server").SchemaDefinition<{
                 effective: import("convex/values").VBoolean<boolean | undefined, "optional">;
             }, "required", "key" | "messageId" | "deferred" | "proposalId" | "providerExecuted" | "toolCallKey" | "resolved" | "effective">, "required">;
         }, "optional", "epoch" | "getMessages" | "inboxId" | "addMessages" | "cleanupPending" | "requests">;
-        lastSlice: import("convex/values").VString<string | undefined, "optional">;
+        lastSlice: import("convex/values").VObject<{
+            id?: string | undefined;
+            active: boolean;
+        } | undefined, {
+            id: import("convex/values").VString<string | undefined, "optional">;
+            active: import("convex/values").VBoolean<boolean, "required">;
+        }, "optional", "id" | "active">;
         activeRuns: import("convex/values").VFloat64<number, "required">;
         nextRunSequence: import("convex/values").VFloat64<number, "required">;
-    }, "required", "workflowId" | "notesPending" | "agent" | "limits" | "turnStatus" | "errorCode" | "activeTools" | "textConfig" | "subject" | "threadId" | "models" | "runTurn" | "loopWaiting" | "pinged" | "recoveryAt" | "recoveryJobId" | "recoveryDelayMs" | "modelSteps" | "watchdogId" | "pendingGeneration" | "cancellationEpoch" | "cancelled" | "runId" | "childRunId" | "rootAssignmentId" | "queuedMessages" | "nextSequence" | "nextTurn" | "turnToken" | "promptMessageId" | "turnReport" | "turnOrigin" | "inboxId" | "approvals" | "lastSlice" | "activeRuns" | "nextRunSequence" | "limits.attachmentBytes" | "limits.notesPending" | "limits.maxDepth" | "limits.messagesPerChild" | "limits.parentNotesPerChild" | "limits.rootLane" | "limits.childLane" | "limits.runLaunches" | "limits.runHops" | "limits.activeChildrenPerRoot" | "limits.taskLength" | "limits.queueLength" | "limits.slicesPerTurn" | "limits.leaseMs" | "textConfig.worker" | "textConfig.updateThread" | "textConfig.getThread" | `models.${string}` | "pendingGeneration.stream" | "pendingGeneration.messageId" | "pendingGeneration.executionId" | "pendingGeneration.epoch" | "pendingGeneration.getMessages" | "pendingGeneration.finalizeMessage" | "pendingGeneration.stream.id" | "pendingGeneration.stream.abort" | "turnReport.promptMessageId" | "turnReport.messageIds" | "turnReport.maxMessages" | "turnReport.resumeInboxId" | "approvals.epoch" | "approvals.getMessages" | "approvals.inboxId" | "approvals.addMessages" | "approvals.cleanupPending" | "approvals.requests">, {
+    }, "required", "workflowId" | "notesPending" | "agent" | "limits" | "turnStatus" | "errorCode" | "activeTools" | "textConfig" | "subject" | "threadId" | "models" | "runTurn" | "workflowTurnToken" | "wakeEventId" | "modelSteps" | "pendingGeneration" | "cancellationEpoch" | "cancelled" | "runId" | "childRunId" | "rootAssignmentId" | "queuedMessages" | "nextSequence" | "nextTurn" | "turnToken" | "promptMessageId" | "turnReport" | "turnOrigin" | "inboxId" | "approvals" | "lastSlice" | "activeRuns" | "nextRunSequence" | "limits.attachmentBytes" | "limits.notesPending" | "limits.maxDepth" | "limits.messagesPerChild" | "limits.parentNotesPerChild" | "limits.rootLane" | "limits.childLane" | "limits.runLaunches" | "limits.runHops" | "limits.activeChildrenPerRoot" | "limits.taskLength" | "limits.queueLength" | "limits.slicesPerTurn" | "limits.leaseMs" | "textConfig.worker" | "textConfig.updateThread" | "textConfig.getThread" | `models.${string}` | "pendingGeneration.stream" | "pendingGeneration.messageId" | "pendingGeneration.executionId" | "pendingGeneration.epoch" | "pendingGeneration.getMessages" | "pendingGeneration.finalizeMessage" | "pendingGeneration.failMessage" | "pendingGeneration.stream.id" | "pendingGeneration.stream.abort" | "turnReport.promptMessageId" | "turnReport.messageIds" | "turnReport.maxMessages" | "turnReport.resumeInboxId" | "approvals.epoch" | "approvals.getMessages" | "approvals.inboxId" | "approvals.addMessages" | "approvals.cleanupPending" | "approvals.requests" | "lastSlice.id" | "lastSlice.active">, {
         by_thread: ["threadId", "_creationTime"];
     }, {}, {}>;
     inbox: import("convex/server").TableDefinition<import("convex/values").VObject<{

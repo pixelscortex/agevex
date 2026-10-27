@@ -10,14 +10,6 @@ export declare function finishTurn(ctx: MutationCtx, args: {
     turnToken: string;
     errorCode: ErrorCode;
 }): Promise<null>;
-/** The slice watchdog fired. Detection only: never reassign an expired
- * token or replay a generation. Escalates only if the watchdog's own slice
- * is still the active one. */
-export declare function detectStall(ctx: MutationCtx, args: {
-    assignmentId: Id<"assignments">;
-    turnToken: string;
-    sliceId?: string;
-}): Promise<null>;
 /** Park the assignment for operator recovery with a typed error code. No
  * turn runs again until the host recovers it; wake ignores such rows. */
 export declare function markRecoveryRequired(ctx: MutationCtx, row: Doc<"assignments">, code: ErrorCode): Promise<void>;
@@ -30,9 +22,17 @@ export declare function deferChildFailure(ctx: MutationCtx, row: Doc<"assignment
 /** All terminal child failures share the idempotent settlement/notification
  * path (`subagents.settle.escalate`). A no-op for roots. */
 export declare function failChild(ctx: MutationCtx, row: Doc<"assignments">, code: ErrorCode): Promise<null>;
-/** The dispatch of `turnToken` failed with an unknown outcome (the host action
- * threw, or its workflow failed). Called by `turns.failures.ambiguous` and
- * `turns.failures.failWorkflow`. The token/status fence makes duplicates no-ops; the
- * paid generation is never retried. */
-export declare function markAmbiguous(ctx: MutationCtx, assignmentId: Id<"assignments">, turnToken: string): Promise<null>;
+/** Finalize an unknown paid outcome exactly once, fenced by loop, token and
+ * epoch. Exact native ids avoid transcript scans and stream materialization.
+ * Settlement adds <=222 KiB at maximum depth; root admission retires at most
+ * 152 failed-request controls. The full callback stays below 7,600 KiB reads.
+ * Native cleanup runs first in this transaction so failure cannot publish a
+ * terminal turn with a live placeholder. There is deliberately no fallback.
+ */
+export declare function failWorkflow(ctx: MutationCtx, args: {
+    assignmentId: Id<"assignments">;
+    workflowId: string;
+    executionId: string;
+    epoch: number;
+}): Promise<null>;
 export {};

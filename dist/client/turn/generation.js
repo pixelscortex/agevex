@@ -17,9 +17,8 @@ import {} from "./context.js";
 import { startTurnFence } from "./fence.js";
 import { hookRunner } from "./hook-runner.js";
 import { selectTurnModel } from "./routing.js";
-import { telemetryIntegrations } from "./slots.js";
+import { recordStepUsage, telemetryIntegrations } from "./slots.js";
 import { buildTurnTools } from "./tools.js";
-import { markUsagePartial } from "./usage.js";
 import { assertBudget } from "./admission.js";
 /**
  * Run one admitted turn's generation.
@@ -31,10 +30,14 @@ import { assertBudget } from "./admission.js";
 export async function generateTurn(rt, turn) {
     const gen = startGeneration(rt, turn);
     const { state } = gen;
+    let usageReported = false;
     try {
         const model = await selectTurnModel(rt, gen);
         const tools = await buildTurnTools(rt, gen);
         const { result, reason } = await nativeGeneration(rt, gen, tools, model);
+        // Publish usage before continuation can admit another slice or budget check.
+        await recordStepUsage(rt, gen, false);
+        usageReported = true;
         return await completeGeneration(rt, gen, result, reason);
     }
     catch {
@@ -61,10 +64,8 @@ export async function generateTurn(rt, turn) {
         };
     }
     finally {
-        if (rt.config.usage &&
-            state.modelStarted &&
-            (gen.fence.controller.signal.aborted || !turn.usageSaved))
-            await markUsagePartial(rt, turn);
+        if (!usageReported)
+            await recordStepUsage(rt, gen, true);
         gen.fence.stop();
     }
 }

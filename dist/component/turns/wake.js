@@ -1,82 +1,55 @@
-/**
- * The doorbell: publishing work to an assignment's loop workflow.
- *
- * Every transaction that can create or unblock work (accept, delivery, answers, finished turns, cancellation cleanup) ends by calling
- * `wake` in the same transaction. wake settles
- * an idle child whose last blocker cleared (R3), reserves at most one ready
- * inbox row as the next queued turn, starts or rings the loop workflow, and
- * leaves exactly the right recovery check armed. The loop's side of the
- * doorbell is `nextQueuedTurn` (`turns.loop.next`); `reconcileDoorbell`
- * (`turns.loop.reconcile`) re-rings a loop whose ping was lost. Touches
- * `assignments`, reads the ready `inbox` range and `subagentRuns`.
+/** Exact Workflow events connect queue admission to the assignment loop.
+ * Queue checks and producers serialize on the assignment row: an event can
+ * be delivered before awaitEvent registers and Workflow retains that delivery.
  */
 import { approvalBlocked } from "../approvals.js";
 import { laneManager, startLoop } from "../workflows/lanes.js";
-import { firstReady } from "./inbox.js";
+import { firstReady, readyRows } from "./inbox.js";
+import { readyRowLimit } from "../limits.js";
 import { runById } from "../subagents/runs.js";
 import { settleIdleParent } from "../subagents/settle.js";
 import { closeRootRun } from "./run_lifecycle.js";
-import { armRecovery, cancelIfPending, disarmRecovery, needsRecovery, nextRecoveryDelay, } from "./recovery.js";
-/** Whether this child currently has an open question to its parent. An asking
- * child is paused (not stuck): nothing may claim or ring it until the answer
- * commits. Roots never ask. */
+/** A question pauses child admission until its answer commits. */
 export async function isAsking(ctx, row) {
     if (!row.childRunId)
         return false;
-    const child = await runById(ctx, row.childRunId);
-    return child?.status === "asking";
+    return (await runById(ctx, row.childRunId))?.status === "asking";
 }
-/**
- * Publish at most one ready inbox row and ring the thread's loop in the same
- * transaction as acceptance/delivery. Selection is metadata-only: claim keeps
- * deletion until after the host's native approval guard. The loop rechecks
- * this indexed queue after every child workflow, so early or duplicate events
- * can never create an extra model call. Its own reads use ring=false to avoid
- * waking itself forever when idle.
+/** Publish claimable work in the producer's transaction. Never create a new
+ * event here: only the loop's empty-queue transaction owns event creation.
+ * Re-read after reservation so event delivery sees the committed turn token.
  */
-export async function wake(ctx, row, ring = true) {
-    if (row.cancelled || row.turnStatus === "recovery_required")
+export async function wake(ctx, row) {
+    if (row.cancelled || row.turnStatus === "recovery_required" || (await isAsking(ctx, row)))
         return;
-    // Questions pause this child until an answer commits. Admission forbids
-    // live descendants, so no descendant-result holding or bypass is necessary.
-    if (await isAsking(ctx, row)) {
-        await disarmRecovery(ctx, row);
-        return;
-    }
     await closeRootRun(ctx, row);
-    // Re-evaluate R3 after every blocker-clearing wake, including failed delivery
-    // and cancelled delivery. Idle children cannot wait for nonexistent work.
-    // answer/respond retain their inbox anchor until claim consumes it. That
-    // anchor fences R3 even after the last approval is cleared; claim then marks
-    // the turn running and clears lastTurnResult in the same transaction. Never
-    // remove the anchor before publishing the resumed turn, or R3 could settle
-    // the child with a provisional result before its answer is consumed.
-    if (await settleIdleParent(ctx, row)) {
-        await disarmRecovery(ctx, row);
+    // A resumed answer/approval keeps its inbox anchor until claim; otherwise
+    // R3 could settle a child before its continuation is consumed.
+    if (await settleIdleParent(ctx, row))
         return;
-    }
-    // Failed/blocked child delivery also calls wake, but may leave no inbox work.
-    // Such a doorbell would immediately lose its coalescing flag in
-    // disarmRecovery and accumulate unconsumed events across loop rotation.
-    const hasWork = await needsRecovery(ctx, row);
     await reserveHead(ctx, row);
-    await startOrRing(ctx, row, ring && hasWork);
-    // wake may have reserved the head or started a loop; use its committed row
-    // so recovery follows inbox ownership even before the first awaited ping.
     const current = (await ctx.db.get("assignments", row._id));
-    if (await needsRecovery(ctx, current))
-        await armRecovery(ctx, current);
-    else
-        await disarmRecovery(ctx, current);
+    if (current.turnStatus !== "queued" || approvalBlocked(current))
+        return;
+    if (!current.workflowId) {
+        const workflowId = await startLoop(ctx, current, !!current.childRunId);
+        await ctx.db.patch("assignments", current._id, { workflowId });
+    }
+    else if (current.wakeEventId) {
+        await laneManager(!!current.childRunId, current.limits).sendEvent(ctx, {
+            id: current.wakeEventId,
+        });
+        await ctx.db.patch("assignments", current._id, { wakeEventId: undefined });
+    }
 }
-/** Reserve the oldest ready row as the next queued turn of an idle, unpaused
- * assignment: mint its execution token and record the prompt, inbox row, run
- * and turn origin. The inbox row itself stays until claim deletes it, so
- * `queuedMessages` drops now and position math counts the reserved head. */
+/** Reserve at most one ready head, preserving FIFO and the native prompt.
+ * The row remains until claim's approval guard accepts it; queuedMessages
+ * excludes this reserved head from this point onward.
+ */
 async function reserveHead(ctx, row) {
     if (row.turnStatus !== "idle" || approvalBlocked(row))
         return;
-    const next = await firstReady(ctx, row._id);
+    const next = await firstClaimable(ctx, row);
     if (!next)
         return;
     await ctx.db.patch("assignments", row._id, {
@@ -90,85 +63,68 @@ async function reserveHead(ctx, row) {
         queuedMessages: row.queuedMessages - 1,
     });
 }
-/** Start the loop workflow if the assignment has none; otherwise send one
- * coalesced "ping" to a loop that is sleeping on it. `row` is the snapshot
- * wake started from: the ping guards read its pre-reservation state. */
-async function startOrRing(ctx, row, ring) {
-    if (!row.workflowId) {
-        const workflowId = await startLoop(ctx, row, !!row.childRunId);
-        await ctx.db.patch("assignments", row._id, { workflowId });
-        return;
-    }
-    if (ring &&
-        row.loopWaiting &&
-        !row.pinged &&
-        !approvalBlocked(row) &&
-        row.turnStatus !== "running") {
-        const manager = laneManager(!!row.childRunId, row.limits);
-        await manager.sendEvent(ctx, { workflowId: row.workflowId, name: "ping" });
-        await ctx.db.patch("assignments", row._id, { pinged: true });
-    }
-}
-/** The loop workflow's step: return the queued turn's token, or null after
- * recording that the loop now sleeps on its ping (`loopWaiting`). */
-export async function nextQueuedTurn(ctx, assignmentId) {
-    let row = await ctx.db.get("assignments", assignmentId);
-    if (!row || row.cancelled || row.turnStatus === "recovery_required")
-        return null;
-    if (approvalBlocked(row)) {
-        // The loop awaits ping for every null result, including approval pauses.
-        // Publish that wait before returning so a fresh send can ring the loop
-        // after the native approval response is recorded. No journal step changes.
-        await ctx.db.patch("assignments", row._id, { pinged: false, loopWaiting: true });
-        return null;
-    }
-    // next runs after the previous ping was consumed, or after a turn ended.
-    // Keep this in the existing mutation so the versioned step order is fixed.
-    await ctx.db.patch("assignments", row._id, { pinged: false, loopWaiting: false });
-    if (row.turnStatus === "idle") {
-        await wake(ctx, row, false);
-        row = await ctx.db.get("assignments", assignmentId);
-    }
-    if (row?.turnStatus === "queued")
-        return row.turnToken;
-    if (row)
-        await ctx.db.patch("assignments", row._id, { loopWaiting: true });
-    return null;
-}
-/**
- * Recovery lives outside the positional Workflow journal. A missing awaited
- * event can mean next's completion callback is still in flight, not that the
- * work was consumed. Keep checking through that transition with capped backoff.
- * Only Workflow's actual awaited ping permits a re-ring and a pinged reset;
- * this avoids another event/generation when resume is already in flight.
- * `recoveryAt` identifies the scheduled check; a superseded one is a no-op.
+/** Retire only queue metadata belonging to an ambiguous, terminal root
+ * request. Native results remain in history; note origins remain addressable.
+ * This also fences late deliveries after an unrelated request has resumed.
+ * <=152 ready rows (1 KiB each) and <=152 exact run reads (16 KiB each),
+ * memoized by run, plus <=152 patch/delete reads. No native bodies are read.
  */
-export async function reconcileDoorbell(ctx, assignmentId, recoveryAt) {
-    const row = await ctx.db.get("assignments", assignmentId);
-    if (!row || (recoveryAt !== undefined && row.recoveryAt !== recoveryAt))
-        return null;
-    if (!(await needsRecovery(ctx, row))) {
-        await disarmRecovery(ctx, row);
-        return null;
+export async function firstClaimable(ctx, row) {
+    if (row.childRunId)
+        return firstReady(ctx, row._id);
+    const failed = new Map();
+    const ready = await readyRows(ctx, row._id, readyRowLimit(row.limits));
+    let retired = 0;
+    let next = null;
+    for (const item of ready) {
+        if (!failed.has(item.runId)) {
+            const run = await ctx.db.get("runs", item.runId);
+            failed.set(item.runId, run?.finishedAt !== undefined && run.errorCode === "EXECUTION_AMBIGUOUS");
+        }
+        if (!failed.get(item.runId)) {
+            next = item;
+            break;
+        }
+        if (item.kind === "note" && item.from)
+            await ctx.db.patch("inbox", item._id, { passive: false });
+        else
+            await ctx.db.delete("inbox", item._id);
+        retired++;
     }
-    // Retire this check before arming its successor in this same transaction.
-    // A stale scheduled invocation must not clear a newer check's marker.
-    if (row.recoveryJobId)
-        await cancelIfPending(ctx, row.recoveryJobId);
-    await ctx.db.patch("assignments", row._id, {
-        recoveryAt: undefined,
-        recoveryJobId: undefined,
+    if (retired) {
+        row.queuedMessages -= retired;
+        await ctx.db.patch("assignments", row._id, { queuedMessages: row.queuedMessages });
+    }
+    return next;
+}
+/** Atomically reserve work or create the exact event this loop must await.
+ * Old loops stop cooperatively after cancel, including when cancellation
+ * races the gap between this mutation and awaitEvent registration. That lets
+ * every created event enter the journal before SDK cleanup deletes it.
+ */
+export async function nextQueuedTurn(ctx, assignmentId, workflowId) {
+    let row = await ctx.db.get("assignments", assignmentId);
+    if (!row || row.workflowId !== workflowId || row.cancelled)
+        return null;
+    // next runs only after the nested turn workflow has completed. A successful
+    // return that left its captured turn running has no remaining owner either;
+    // hand it to the same finalizer instead of parking the loop on a wake event.
+    if (row.turnStatus === "running" && row.turnToken === row.workflowTurnToken)
+        return { failure: { executionId: row.workflowTurnToken, epoch: row.cancellationEpoch } };
+    if (!approvalBlocked(row) && row.turnStatus !== "recovery_required") {
+        await wake(ctx, row);
+        row = (await ctx.db.get("assignments", assignmentId));
+        if (row.turnStatus === "queued" && !(await isAsking(ctx, row))) {
+            // Capture before dispatch, in the admission transaction. The current token
+            // may already name B when A's action ends and the loop driver later fails.
+            await ctx.db.patch("assignments", row._id, { workflowTurnToken: row.turnToken });
+            return { executionId: row.turnToken, epoch: row.cancellationEpoch };
+        }
+    }
+    const wakeEventId = await laneManager(!!row.childRunId, row.limits).createEvent(ctx, {
+        workflowId: workflowId,
+        name: "wake",
     });
-    const status = row.workflowId
-        ? await laneManager(!!row.childRunId, row.limits).status(ctx, row.workflowId)
-        : null;
-    if (status?.type === "inProgress" &&
-        status.running.some((step) => step.kind === "event" && step.name === "ping")) {
-        await ctx.db.patch("assignments", row._id, { pinged: false });
-        await wake(ctx, { ...row, loopWaiting: true, pinged: false, recoveryAt: undefined });
-    }
-    else {
-        await armRecovery(ctx, { ...row, recoveryAt: undefined }, nextRecoveryDelay(row));
-    }
-    return null;
+    await ctx.db.patch("assignments", row._id, { wakeEventId, workflowTurnToken: undefined });
+    return { wakeEventId };
 }

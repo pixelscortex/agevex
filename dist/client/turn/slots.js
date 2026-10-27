@@ -1,6 +1,6 @@
 // How the optional host slots take part in one turn.
 //
-// usage: `recordStepUsage` reports the model step a native save just captured.
+// usage: `recordStepUsage` reports provider completion, including dropped saves.
 // sandbox tools: `slotToolBags` asks each slot for its tools.
 // telemetry: `telemetryIntegrations` per generation, `flushTelemetry` per action.
 // Every slot is fail-open for evidence (usage, telemetry) and never retries paid
@@ -9,39 +9,40 @@
 import { LIMITS } from "../../component/limits.js";
 import { opaqueKey } from "../keys.js";
 import { sliceKey } from "./context.js";
-import { markUsagePartial } from "./usage.js";
-/**
- * Report the model step one native message save just captured.
- *
- * Agent 0.7.7 start.ts:382-417 saves step usage with its
- * native result. turns.slices.write returns those committed documents;
- * no transcript discovery is needed.
- * The fenced native save returns the committed document and exact identity;
- * no duplicate step reference or follow-up execution read is needed.
- */
-export async function recordStepUsage(rt, turn, usage, saved) {
-    const messages = saved?.messages ?? [];
-    const step = messages.find((message) => message.usage && message.status === "success");
-    if (!step?.usage)
+import { markUsagePartial, deliverStepUsage } from "./usage.js";
+import { settleUsageSave } from "./step-usage.js";
+/** Report exactly one provider completion after its save succeeds or fails.
+ * Preserve the existing native key; a dropped save uses the unique slice id in
+ * its place. Retries reuse this one event, including its original timestamp. */
+export async function recordStepUsage(rt, gen, failed) {
+    const { turn, fence } = gen;
+    if (!rt.config.usage || !gen.state.modelStarted)
         return;
+    const step = turn.stepUsage;
+    if (!step) {
+        await markUsagePartial(rt, turn);
+        return;
+    }
     try {
+        await settleUsageSave(turn, fence);
         const requestId = step.providerMetadata?.agevex?.requestId;
-        await usage.record(turn.rawCtx, {
+        const event = {
             ...turn.facts,
             purpose: "agent",
             model: step.model,
             provider: step.provider,
-            key: await opaqueKey("model", turn.facts.threadId, step._id, step.stepOrder),
-            messageId: String(step._id),
+            key: await opaqueKey("model", turn.facts.threadId, step.native?._id ?? sliceKey(turn), step.native?.stepOrder ?? 0),
+            messageId: step.native ? String(step.native._id) : null,
+            status: fence.controller.signal.aborted ? "aborted" : failed ? "failed" : step.status,
+            occurredAt: step.occurredAt,
             usage: step.usage,
             providerMetadata: step.providerMetadata,
             ...(typeof requestId === "string" ? { requestId } : {}),
-        });
+        };
+        await deliverStepUsage(rt.config.usage, turn, fence, event);
     }
     catch {
         await markUsagePartial(rt, turn);
-        // Billing evidence is best effort. Never replay a paid
-        // generation because its usage hook was unavailable.
     }
 }
 /**

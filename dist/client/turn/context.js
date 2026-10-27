@@ -25,3 +25,18 @@ export function stillOwns(row, turn) {
 export function stillRunning(row, turn) {
     return stillOwns(row, turn) && row.turnStatus === "running";
 }
+/** A native approval save intentionally clears the token. Only this slice's
+ * last committed assistant id can justify that exception for usage delivery;
+ * a resumed/replaced execution or a cancellation must still revoke retries. */
+export function stillReporting(row, turn) {
+    const messageId = turn.stepUsage?.native?._id ?? turn.usageSave?.messageId;
+    return (stillRunning(row, turn) ||
+        (!!row &&
+            !row.cancelled &&
+            row.cancellationEpoch === turn.claimed.cancellationEpoch &&
+            row.turnStatus === "idle" &&
+            !row.turnToken &&
+            row.approvalBlocked &&
+            !!messageId &&
+            row.messageIds[row.messageIds.length - 1] === messageId));
+}

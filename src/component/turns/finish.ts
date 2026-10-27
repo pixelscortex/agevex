@@ -1,23 +1,13 @@
-/**
- * Ending a turn: `finish`, and the failure paths shared by the watchdog
- * (`stalled`), dispatch failure (`ambiguous`/`failWorkflow`), an
- * approval-limit rejection in `write` and a corrupt child claim.
- *
- * A failing child turn first tries `deferChildFailure`: if descendants or
- * inbox work still fence settlement, the failure is recorded on the run and
- * the child idles instead of escalating. Otherwise the assignment becomes
- * `recovery_required` and the child's run is escalated to a failed
- * settlement (`subagents.settle.escalate`). Paid generations are never retried.
- * Touches `assignments`, `inbox` (the reserved head)
- * and, via escalate, `subagentRuns`.
+/** End turns and propagate child failures without replaying paid work.
+ * Workflow completion calls the exact-id, fenced failure finalizer below.
  */
+import { failCrashedGeneration } from "../cancellation/cleanup.js";
 import { internal } from "../_generated/api.js";
 import type { MutationCtx } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
 import { settlementBlocked } from "../subagents/settle.js";
-import { disarmRecovery } from "./recovery.js";
 import { disarmSlice } from "./boundaries.js";
-import { wake } from "./wake.js";
+import { wake, firstClaimable } from "./wake.js";
 import { endRootTurn } from "./run_lifecycle.js";
 
 type ErrorCode = Doc<"assignments">["errorCode"];
@@ -53,37 +43,6 @@ export async function finishTurn(
 
     await wake(ctx, { ...row, turnStatus: "idle" });
   }
-
-  return null;
-}
-
-/** The slice watchdog fired. Detection only: never reassign an expired
- * token or replay a generation. Escalates only if the watchdog's own slice
- * is still the active one. */
-export async function detectStall(
-  ctx: MutationCtx,
-  args: { assignmentId: Id<"assignments">; turnToken: string; sliceId?: string },
-) {
-  const row = await ctx.db.get("assignments", args.assignmentId);
-
-  if (
-    !row ||
-    row.cancelled ||
-    row.turnToken !== args.turnToken ||
-    row.turnStatus !== "running" ||
-    // The active slice is the armed watchdog's: claim writes lastSlice (or
-    // none for a first slice keyed by its token) with watchdogId, and only
-    // disarmSlice clears it. A newer slice's watchdog never matches here.
-    !row.watchdogId ||
-    (row.lastSlice ?? row.turnToken) !== (args.sliceId ?? args.turnToken)
-  )
-    return null;
-
-  if (await deferChildFailure(ctx, row)) return null;
-
-  await markRecoveryRequired(ctx, row, "EXECUTION_AMBIGUOUS");
-  await disarmSlice(ctx, row);
-  await failChild(ctx, row, "EXECUTION_AMBIGUOUS");
 
   return null;
 }
@@ -146,29 +105,37 @@ export async function failChild(ctx: MutationCtx, row: Doc<"assignments">, code:
   return null;
 }
 
-/** The dispatch of `turnToken` failed with an unknown outcome (the host action
- * threw, or its workflow failed). Called by `turns.failures.ambiguous` and
- * `turns.failures.failWorkflow`. The token/status fence makes duplicates no-ops; the
- * paid generation is never retried. */
-export async function markAmbiguous(
+/** Finalize an unknown paid outcome exactly once, fenced by loop, token and
+ * epoch. Exact native ids avoid transcript scans and stream materialization.
+ * Settlement adds <=222 KiB at maximum depth; root admission retires at most
+ * 152 failed-request controls. The full callback stays below 7,600 KiB reads.
+ * Native cleanup runs first in this transaction so failure cannot publish a
+ * terminal turn with a live placeholder. There is deliberately no fallback.
+ */
+export async function failWorkflow(
   ctx: MutationCtx,
-  assignmentId: Id<"assignments">,
-  turnToken: string,
+  args: { assignmentId: Id<"assignments">; workflowId: string; executionId: string; epoch: number },
 ) {
-  const row = await ctx.db.get("assignments", assignmentId);
+  const row = await ctx.db.get("assignments", args.assignmentId);
 
   if (
     !row ||
     row.cancelled ||
-    row.turnToken !== turnToken ||
+    row.workflowId !== args.workflowId ||
+    row.cancellationEpoch !== args.epoch ||
+    row.turnToken !== args.executionId ||
     (row.turnStatus !== "queued" && row.turnStatus !== "running")
   )
     return null;
 
-  // wake already removed the reserved head from queuedMessages. A dispatch
-  // that fails before claim must retire that exact row without decrementing
-  // again; otherwise the fence mistakes it for pending work and wake reserves
-  // the same head a second time. The token/status fence makes duplicates no-ops.
+  const pending = row.pendingGeneration;
+
+  if (pending && pending.executionId === args.executionId && pending.epoch === args.epoch) {
+    await failCrashedGeneration(ctx, pending);
+    await ctx.db.patch("assignments", row._id, { pendingGeneration: undefined });
+  }
+
+  // Admission already removed the reserved head from queuedMessages.
   if (row.turnStatus === "queued" && row.inboxId) {
     const head = await ctx.db.get("inbox", row.inboxId);
 
@@ -178,12 +145,36 @@ export async function markAmbiguous(
     row.inboxId = undefined;
   }
 
+  if (row.runId) await ctx.db.patch("runs", row.runId, { usagePartial: true });
+
+  await disarmSlice(ctx, row);
+
   if (await deferChildFailure(ctx, row)) return null;
 
   await markRecoveryRequired(ctx, row, "EXECUTION_AMBIGUOUS");
-  await disarmSlice(ctx, row);
-  await disarmRecovery(ctx, row);
   await failChild(ctx, row, "EXECUTION_AMBIGUOUS");
+  await wakeUnrelated(ctx, row);
 
   return null;
+}
+
+/** A queued root request has its own run budget and may proceed after this
+ * failed request. Same-run continuations stay parked: unknown paid work never
+ * becomes a fresh execution through this handoff. Failed request metadata is
+ * retired by the bounded ready-queue scan shared with future admission. */
+async function wakeUnrelated(ctx: MutationCtx, row: Doc<"assignments">) {
+  if (row.childRunId) return;
+
+  const next = await firstClaimable(ctx, row);
+
+  if (!next || next.runId === row.runId) return;
+
+  await ctx.db.patch("assignments", row._id, {
+    turnStatus: "idle",
+    turnToken: undefined,
+    promptMessageId: undefined,
+    errorCode: null,
+  });
+
+  await wake(ctx, (await ctx.db.get("assignments", row._id))!);
 }

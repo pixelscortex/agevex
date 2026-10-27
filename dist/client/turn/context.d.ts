@@ -4,6 +4,7 @@ import type { RunnerCtx } from "../registration/context.js";
 import type { SlotFacts } from "../slots.js";
 import type { Activity, HookContext, HookResult, ManagedAgent, RunErrorCode, TurnArgs } from "../types.js";
 import type { TurnFence } from "./fence.js";
+import type { StepUsage } from "./step-usage.js";
 /** The `turns.slices.execution` row a turn is fenced against. */
 export type Execution = FunctionReturnType<ComponentApi["turns"]["slices"]["execution"]>;
 /** The facts `turns.slices.claim` returns for a claimed turn. */
@@ -17,8 +18,14 @@ export type Turn = {
      * work must use the fenced `Generation.fence.ctx` instead.
      */
     rawCtx: RunnerCtx;
-    /** Native model usage committed before any later timeout/cancel. */
-    usageSaved?: boolean;
+    /** Provider evidence survives failed or fenced-out native saves. One step per slice. */
+    stepUsage?: StepUsage;
+    /** The native completion save; its exact placeholder id survives a delayed RPC reply. */
+    usageSave?: {
+        messageId?: string;
+        pending: Promise<unknown>;
+        settled: boolean;
+    };
     /** In-flight progress edges and idempotent cleanup owned by this action slice. */
     toolProgress: {
         pending: Set<Promise<void>>;
@@ -79,3 +86,7 @@ export declare function sliceKey(turn: Turn): string;
 export declare function stillOwns(row: Execution, turn: Turn): row is NonNullable<Execution>;
 /** `stillOwns` and the turn is still `running` (the generation-time fence). */
 export declare function stillRunning(row: Execution, turn: Turn): boolean;
+/** A native approval save intentionally clears the token. Only this slice's
+ * last committed assistant id can justify that exception for usage delivery;
+ * a resumed/replaced execution or a cancellation must still revoke retries. */
+export declare function stillReporting(row: Execution, turn: Turn): boolean;

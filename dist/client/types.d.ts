@@ -357,7 +357,7 @@ export type Registration = ThreadTextOptions & {
         runTurn: () => FunctionReference<"action", "internal", TurnArgs, null>;
         /**
          * Required only when collaboration is configured. Supplied so the managed
-         * tool can launch, the host runner can settle, and the watchdog can make one
+         * tool can launch, the host runner can settle, and Workflow failure can make one
          * bounded scheduled notification attempt.
          */
         coordinate?: () => FunctionReference<"mutation", "internal", CoordinateArgs, CoordinateResult>;

@@ -1,15 +1,12 @@
-/**
- * `dispatch`: the Workflow step that runs one paid model slice by calling the
- * host's registered `runTurn` action, never retried. A throwing action marks
- * the turn ambiguous (`turns.failures.ambiguous`) instead of re-running it.
- * Reads `assignments` through `turns.slices.execution`.
+/** One paid model slice is one non-retried Workpool action. Thrown errors and
+ * killed/cancelled steps reach Workflow's ordinary failure completion path.
  */
 import { v } from "convex/values";
 import type { FunctionHandle } from "convex/server";
 import { internalAction } from "../_generated/server.js";
 import { api } from "../_generated/api.js";
 
-/** One paid slice, never retried. Workflow only journals ids, never transcript text. */
+/** Workflow journals ids only; host generation owns the in-action deadline. */
 export const dispatch = internalAction({
   args: { assignmentId: v.id("assignments"), executionId: v.string(), sliceId: v.string() },
   returns: v.null(),
@@ -18,21 +15,14 @@ export const dispatch = internalAction({
 
     if (!row || row.cancelled || row.turnToken !== args.executionId) return null;
 
-    try {
-      await ctx.runAction(
-        row.runTurn as FunctionHandle<
-          "action",
-          { assignmentId: string; turnToken: string; sliceId: string },
-          null
-        >,
-        { assignmentId: args.assignmentId, turnToken: args.executionId, sliceId: args.sliceId },
-      );
-    } catch {
-      await ctx.runMutation(api.turns.failures.ambiguous, {
-        assignmentId: args.assignmentId,
-        turnToken: args.executionId,
-      });
-    }
+    await ctx.runAction(
+      row.runTurn as FunctionHandle<
+        "action",
+        { assignmentId: string; turnToken: string; sliceId: string },
+        null
+      >,
+      { assignmentId: args.assignmentId, turnToken: args.executionId, sliceId: args.sliceId },
+    );
 
     return null;
   },

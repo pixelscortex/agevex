@@ -5,7 +5,6 @@ import { assertFunctionHandle } from "../facts.js";
 import { appendTurnMessages } from "./message_ids.js";
 import { prepareDecisions, oversizedDecisionInput } from "./decision_save.js";
 import { runById } from "../subagents/runs.js";
-import { disarmRecovery } from "./recovery.js";
 import { disarmSlice } from "./boundaries.js";
 import { deferChildFailure, failChild, markRecoveryRequired } from "./finish.js";
 import { collectPause, countPauseRequests, retireConsumedApprovals, suspendForApprovals, } from "./pause.js";
@@ -29,6 +28,7 @@ export const writeArgs = {
     nativeMessages: v.optional(v.object({
         getMessages: v.string(),
         finalizeMessage: v.string(),
+        failMessage: v.string(),
     })),
 };
 /** Run one native/tool mutation under the execution fence and record its
@@ -95,6 +95,7 @@ function assertWriteHandles(args) {
     if (args.nativeMessages) {
         assertFunctionHandle(args.nativeMessages.getMessages, "nativeMessages.getMessages");
         assertFunctionHandle(args.nativeMessages.finalizeMessage, "nativeMessages.finalizeMessage");
+        assertFunctionHandle(args.nativeMessages.failMessage, "nativeMessages.failMessage");
     }
 }
 /** The row if the caller still owns a running turn at its token and epoch,
@@ -144,7 +145,6 @@ async function staleWrite(ctx, row, args) {
  * stops on the rejected save, and its stale finish cannot overwrite it. */
 async function rejectApprovalOverflow(ctx, row) {
     await disarmSlice(ctx, row);
-    await disarmRecovery(ctx, row);
     if (await deferChildFailure(ctx, row, "APPROVAL_LIMIT"))
         return null;
     await failChild(ctx, row, "APPROVAL_LIMIT");

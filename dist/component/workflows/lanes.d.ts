@@ -1,19 +1,6 @@
-/**
- * The two Workflow lanes, their versioned step sequences, and starting an
- * assignment's loop.
- *
- * Each lane (root and child) is its own nested Workflow component with its
- * own Workpool, so root turns and child turns never compete for the same
- * parallelism. Each assignment runs one long-lived *loop* workflow: it asks
- * `turns.loop.next` for a queued turn, runs that turn as a nested *turn*
- * workflow (one `workflows.workflows.worker.dispatch` action per paid model slice,
- * separated by `turns.slices.betweenSlices`), and otherwise sleeps on a
- * "ping" event that wake sends. The *done* callback rotates finished loops
- * before their journal grows past 8 MiB. Step order here is the deployed
- * journal format: never reorder it. Also used by turns/wake.ts (start or ring
- * a loop) and turns/cancel.ts (cancel a loop). Writes `assignments`
- * (workflowId, pinged, loopWaiting); a failed loop's `done` also runs
- * `turns.failures.failWorkflow` for its in-flight turn.
+/** Independent root/child Workflow lanes own execution, event waits and
+ * bounded journal rotation. Paid actions never retry. Workpool reports killed
+ * steps through normal failure completion, with its upstream recovery latency.
  */
 import { WorkflowManager, type WorkflowId } from "@convex-dev/workflow";
 import { type MutationCtx } from "../_generated/server.js";
@@ -35,6 +22,17 @@ export declare function laneManager(child: boolean, limits: Pick<Limits, "rootLa
  * The default slice bound is implicit; explicit overrides travel with the loop.
  */
 export declare function startLoop(ctx: MutationCtx, row: Doc<"assignments">, child: boolean): Promise<WorkflowId>;
+/** Every created event is awaited, including the final iteration before
+ * rotation. After delivery, queue admission is checked again under ownership.
+ */
+export declare function defineLoop(manager: WorkflowManager, child: boolean, inline?: boolean): import("convex/server").RegisteredMutation<"internal", import("@convex-dev/workflow").WorkflowArgs<{
+    assignmentId: import("convex/values").VId<import("convex/values").GenericId<"assignments">, "required">;
+    version: import("convex/values").VFloat64<number, "required">;
+    slicesPerTurn: import("convex/values").VFloat64<number | undefined, "optional">;
+}>, import("@convex-dev/workflow").WorkflowMutationResult<{
+    executionId: string;
+    epoch: number;
+} | null>>;
 export declare const rootTurn: import("convex/server").RegisteredMutation<"internal", import("@convex-dev/workflow").WorkflowArgs<{
     executionId: import("convex/values").VString<string, "required">;
     assignmentId: import("convex/values").VId<import("convex/values").GenericId<"assignments">, "required">;
@@ -45,7 +43,10 @@ export declare const rootLoop: import("convex/server").RegisteredMutation<"inter
     assignmentId: import("convex/values").VId<import("convex/values").GenericId<"assignments">, "required">;
     version: import("convex/values").VFloat64<number, "required">;
     slicesPerTurn: import("convex/values").VFloat64<number | undefined, "optional">;
-}>, import("@convex-dev/workflow").WorkflowMutationResult<null>>;
+}>, import("@convex-dev/workflow").WorkflowMutationResult<{
+    executionId: string;
+    epoch: number;
+} | null>>;
 export declare const rootDone: import("convex/server").RegisteredMutation<"internal", {
     workflowId: string;
     result: {
@@ -58,6 +59,7 @@ export declare const rootDone: import("convex/server").RegisteredMutation<"inter
         kind: "canceled";
     };
     context: {
+        epoch: number;
         assignmentId: import("convex/values").GenericId<"assignments">;
     };
 }, Promise<null>>;
@@ -71,7 +73,10 @@ export declare const childLoop: import("convex/server").RegisteredMutation<"inte
     assignmentId: import("convex/values").VId<import("convex/values").GenericId<"assignments">, "required">;
     version: import("convex/values").VFloat64<number, "required">;
     slicesPerTurn: import("convex/values").VFloat64<number | undefined, "optional">;
-}>, import("@convex-dev/workflow").WorkflowMutationResult<null>>;
+}>, import("@convex-dev/workflow").WorkflowMutationResult<{
+    executionId: string;
+    epoch: number;
+} | null>>;
 export declare const childDone: import("convex/server").RegisteredMutation<"internal", {
     workflowId: string;
     result: {
@@ -84,6 +89,7 @@ export declare const childDone: import("convex/server").RegisteredMutation<"inte
         kind: "canceled";
     };
     context: {
+        epoch: number;
         assignmentId: import("convex/values").GenericId<"assignments">;
     };
 }, Promise<null>>;

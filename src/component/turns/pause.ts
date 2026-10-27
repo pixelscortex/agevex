@@ -18,7 +18,6 @@ import type { Doc } from "../_generated/dataModel.js";
 import { LIMITS } from "../limits.js";
 import { approvalKey, callKey, keyString } from "../approvals.js";
 import { firstReady } from "./inbox.js";
-import { disarmRecovery } from "./recovery.js";
 import { disarmSlice } from "./boundaries.js";
 import { saveProposal } from "./decision_proposals.js";
 import type { PreparedAskUser } from "../../shared/tool-markers.js";
@@ -246,7 +245,6 @@ export async function suspendForApprovals(
   handles: { getMessages: string; addMessages: string },
 ) {
   await disarmSlice(ctx, row);
-  await disarmRecovery(ctx, row);
 
   if (approvalBlocked(row)) throw new ConvexError({ code: "APPROVAL_ALREADY_PENDING" });
 

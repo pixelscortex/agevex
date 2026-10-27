@@ -1,16 +1,12 @@
 import { resolveRunSettings } from "../run_settings.js";
 import { finishTurn } from "./finish.js";
-import { cancelIfPending } from "./recovery.js";
 import { wake } from "./wake.js";
-/** Close the in-flight slice: retire its
- * watchdog. Leaves `turnStatus` alone, so a running turn without a watchdog
- * reads as "between slices". */
+/** Close a slice without forgetting the id whose paid work must not replay. */
 export async function disarmSlice(ctx, row) {
-    // A watchdog firing now already owns its scheduled job. Clear the slice
-    // fence without attempting to cancel that in-progress detector itself.
-    if (row.watchdogId)
-        await cancelIfPending(ctx, row.watchdogId);
-    await ctx.db.patch("assignments", row._id, { watchdogId: undefined, activeTools: undefined });
+    await ctx.db.patch("assignments", row._id, {
+        lastSlice: row.lastSlice ? { ...row.lastSlice, active: false } : undefined,
+        activeTools: undefined,
+    });
 }
 /** The host action finished one slice and will run another: close the slice
  * (the turn stays running). */
@@ -22,14 +18,13 @@ export async function closeSlice(ctx, args) {
         row.cancellationEpoch !== args.cancellationEpoch ||
         row.turnStatus !== "running")
         return null;
-    // Disarming the slice's watchdog while the turn stays running is what
-    // marks it between slices (claim and betweenSlices read that pair).
-    // Keep the claimed ready-work prompt as the generation boundary across
-    // slices. Native Agent includes the whole response order, including
-    // tool results and notes in stepOrder chronology.
+    // A closed slice retains its id but releases next-slice admission.
     await disarmSlice(ctx, row);
     // A running slice cannot be claimed by wake; its next slice still owns it.
-    await wake(ctx, { ...row, watchdogId: undefined });
+    await wake(ctx, {
+        ...row,
+        lastSlice: row.lastSlice ? { ...row.lastSlice, active: false } : undefined,
+    });
     return null;
 }
 /** Phase 1c's seam: all between-slice state checks belong here. Returns the
@@ -41,8 +36,8 @@ export async function admitNextSlice(ctx, args) {
         row.cancelled ||
         row.turnToken !== args.executionId ||
         row.turnStatus !== "running" ||
-        // An armed watchdog means the slice never reached continueTurn.
-        row.watchdogId)
+        // Only continueTurn releases the active slice.
+        row.lastSlice?.active)
         return null;
     await disarmSlice(ctx, row);
     const run = row.runId ? await ctx.db.get("runs", row.runId) : null;

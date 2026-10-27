@@ -197,10 +197,10 @@ async function generateWithRepair(call, receipt, admission) {
                 if (error instanceof TaskDispatchRefused)
                     return { status: "failed", code: "TASK_FAILED" };
                 if (!NoObjectGeneratedError.isInstance(error)) {
-                    await recordTaskUsage(call, receipt, attempt, undefined, undefined);
+                    await recordTaskUsage(call, receipt, attempt, undefined, undefined, undefined, "failed");
                     throw error;
                 }
-                await recordTaskUsage(call, receipt, attempt, error.usage, undefined);
+                await recordTaskUsage(call, receipt, attempt, error.usage, undefined, undefined, "failed");
                 result = { status: "failed", code: "INVALID_OUTPUT" };
                 // Only invalid structured output permits one intentional re-ask. A
                 // transport error/unknown paid outcome is never repaired or retried.
@@ -271,8 +271,9 @@ async function generateOnce(call, receipt, attempt, repairText) {
     return result;
 }
 /** Report one attempt under an opaque per-attempt key. Never triggers another call. */
-async function recordTaskUsage(call, receipt, attempt, usage, providerMetadata, requestId) {
+async function recordTaskUsage(call, receipt, attempt, usage, providerMetadata, requestId, status = "success") {
     const { model, attribution, binding, options, ctx } = call;
+    const occurredAt = Date.now();
     try {
         const provider = typeof model === "string" ? model.split("/")[0] : model.provider;
         await (binding?.usage ?? options.usage)?.record(ctx, {
@@ -280,6 +281,8 @@ async function recordTaskUsage(call, receipt, attempt, usage, providerMetadata, 
             model: typeof model === "string" ? model : model.modelId,
             provider,
             key: await opaqueKey("task-usage", receipt.scope, receipt.key, attempt),
+            status: call.signal?.aborted ? "aborted" : status,
+            occurredAt,
             messageId: null,
             usage,
             providerMetadata,

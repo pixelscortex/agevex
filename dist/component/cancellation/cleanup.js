@@ -16,14 +16,35 @@ async function finalize(ctx, pending) {
         });
 }
 /** Abort the execution's tracked stream (if any), then fail its placeholder. */
-async function failPendingGeneration(ctx, pending) {
+export async function failPendingGeneration(ctx, pending) {
+    await abortPendingStream(ctx, pending);
+    await finalize(ctx, pending);
+}
+/** Crash cleanup needs no recovered output: avoid finalizeMessage's native
+ * delta materialization and six merge heads. Only the exact placeholder is
+ * read and patched (<=4 MiB including native patch/return reads), regardless of the
+ * transcript or stream backlog. The enclosing mutation owns token/epoch fences.
+ */
+export async function failCrashedGeneration(ctx, pending) {
+    await abortPendingStream(ctx, pending);
+    const [message] = await ctx.runQuery(pending.getMessages, { messageIds: [pending.messageId] });
+    if (message?.status === "pending")
+        await ctx.runMutation(pending.failMessage, {
+            messageId: pending.messageId,
+            // Both status strings are seven bytes. No new error field can push a
+            // maximum-size native document over 1 MiB; the turn records ambiguity.
+            patch: { status: "failed" },
+        });
+}
+/** Both terminal paths abort only the stream recorded by the creating write. */
+async function abortPendingStream(ctx, pending) {
     // Stream creation is tracked atomically too: never list a thread's streams
     // after cancellation, when a fresh generation may already own another one.
     if (pending.stream) {
         try {
             await ctx.runMutation(pending.stream.abort, {
                 streamId: pending.stream.id,
-                reason: "CANCELLED",
+                reason: "EXECUTION_ENDED",
             });
         }
         catch (error) {
@@ -33,7 +54,6 @@ async function failPendingGeneration(ctx, pending) {
                 throw error;
         }
     }
-    await finalize(ctx, pending);
 }
 /** Close the first recorded request natively: an "execution-denied" result
  * for its call and, for an undecided approval, a denial response. */

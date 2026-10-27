@@ -333,11 +333,11 @@ async function generateWithRepair<Input, Output>(
         if (error instanceof TaskDispatchRefused) return { status: "failed", code: "TASK_FAILED" };
 
         if (!NoObjectGeneratedError.isInstance(error)) {
-          await recordTaskUsage(call, receipt, attempt, undefined, undefined);
+          await recordTaskUsage(call, receipt, attempt, undefined, undefined, undefined, "failed");
           throw error;
         }
 
-        await recordTaskUsage(call, receipt, attempt, error.usage, undefined);
+        await recordTaskUsage(call, receipt, attempt, error.usage, undefined, undefined, "failed");
         result = { status: "failed", code: "INVALID_OUTPUT" };
 
         // Only invalid structured output permits one intentional re-ask. A
@@ -443,8 +443,10 @@ async function recordTaskUsage<Input, Output>(
   usage: unknown,
   providerMetadata: unknown,
   requestId?: string,
+  status: "success" | "failed" = "success",
 ) {
   const { model, attribution, binding, options, ctx } = call;
+  const occurredAt = Date.now();
 
   try {
     const provider = typeof model === "string" ? model.split("/")[0] : model.provider;
@@ -454,6 +456,8 @@ async function recordTaskUsage<Input, Output>(
       model: typeof model === "string" ? model : model.modelId,
       provider,
       key: await opaqueKey("task-usage", receipt.scope, receipt.key, attempt),
+      status: call.signal?.aborted ? "aborted" : status,
+      occurredAt,
       messageId: null,
       usage,
       providerMetadata,

@@ -29,13 +29,9 @@ export declare function assignmentByThread(ctx: Pick<QueryCtx, "db">, threadId: 
         getThread: string;
     } | undefined;
     models?: Record<string, string> | undefined;
-    loopWaiting?: boolean | undefined;
-    pinged?: boolean | undefined;
-    recoveryAt?: number | undefined;
-    recoveryJobId?: import("convex/values").GenericId<"_scheduled_functions"> | undefined;
-    recoveryDelayMs?: number | undefined;
+    workflowTurnToken?: string | undefined;
+    wakeEventId?: string | undefined;
     modelSteps?: number | undefined;
-    watchdogId?: import("convex/values").GenericId<"_scheduled_functions"> | undefined;
     pendingGeneration?: {
         stream?: {
             id: string;
@@ -46,6 +42,7 @@ export declare function assignmentByThread(ctx: Pick<QueryCtx, "db">, threadId: 
         epoch: number;
         getMessages: string;
         finalizeMessage: string;
+        failMessage: string;
     } | undefined;
     runId?: import("convex/values").GenericId<"runs"> | undefined;
     childRunId?: string | undefined;
@@ -77,7 +74,10 @@ export declare function assignmentByThread(ctx: Pick<QueryCtx, "db">, threadId: 
             toolCallKey: ArrayBuffer;
         }[];
     } | undefined;
-    lastSlice?: string | undefined;
+    lastSlice?: {
+        id?: string | undefined;
+        active: boolean;
+    } | undefined;
     notesPending: number;
     agent: string;
     limits: {

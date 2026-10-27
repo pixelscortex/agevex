@@ -21,12 +21,21 @@ export declare const clone: import("convex/server").RegisteredMutation<"internal
 export declare const result: import("convex/server").RegisteredQuery<"internal", {
     workflowId: import("convex/values").GenericId<"workflows">;
 }, Promise<any>>;
-/** Fault injection drops only unconsumed doorbells, never accepted inbox rows. */
-export declare const dropPings: import("convex/server").RegisteredMutation<"internal", {
-    workflowId: import("convex/values").GenericId<"workflows">;
-}, Promise<null>>;
 /** Count orphaned events using the real nested Workflow store. */
 export declare const events: import("convex/server").RegisteredQuery<"internal", {}, Promise<{
     orphaned: number;
     total: number;
 }>>;
+/** Reach the test-only scheduler fault in this lane's nested Workpool. */
+export declare const interrupt: import("convex/server").RegisteredMutation<"internal", {
+    mode: "failed" | "canceled" | "scheduler";
+}, Promise<number>>;
+/** Callback failure must remain observable, never trigger a hidden repair job. */
+export declare const completionFailures: import("convex/server").RegisteredQuery<"internal", {}, Promise<any[]>>;
+/** Fill the bounded loop journal before measuring the entire completion call.
+ * Historical turns are already complete; only the original last pair is live.
+ * Distinct nested ids exercise Workflow's real batch cleanup bookkeeping.
+ */
+export declare const fillCompletionHistory: import("convex/server").RegisteredMutation<"internal", {
+    workflowId: import("convex/values").GenericId<"workflows">;
+}, Promise<number>>;

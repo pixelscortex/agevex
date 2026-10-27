@@ -59,9 +59,8 @@ async function finishChildTurn(
   } catch {
     // The outcome could not be recorded, so this failure propagates on
     // purpose. Finishing the turn here would clear the child token and
-    // with it the only claim-armed watchdog that could still record this
-    // run, stranding it active forever. `workflows.worker.dispatch` catches the
-    // thrown action and calls `turns.failures.ambiguous`, which fails the turn
+    // its failure ownership. The non-retried Workflow action fails and its
+    // completion calls `turns.failures.failWorkflow`, which fails the turn
     // and escalates the run exactly once; nothing replays the
     // generation.
     throw new Error("EXECUTION_AMBIGUOUS");
@@ -72,7 +71,7 @@ async function finishChildTurn(
   // capability, so finalizing first would let a `turns.slices.finish` failure
   // skip notification permanently: the run would already be terminal,
   // `escalate` would return without scheduling anything, and the
-  // watchdog ignores a recovery-required child. Ordering it first makes
+  // failure callback cannot retry a terminal child. Ordering it first makes
   // delivery independent of the finalization outcome, and it is still
   // bounded and one-shot — `deliver` no-ops once delivery is no longer
   // `pending`, so the ambiguity path cannot replay it.

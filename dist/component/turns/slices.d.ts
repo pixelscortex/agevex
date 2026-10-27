@@ -2,8 +2,8 @@
  * Claim one model slice, not an entire retriable action. A first slice consumes
  * the reserved inbox row, while subsequent slices require both continuation
  * state and a new slice id under the same execution token. Replayed or racing
- * calls therefore cannot pay for the same slice twice. Each slice arms its own
- * watchdog; lane wait and time between completed slices do not spend it. Consecutive child results
+ * calls therefore cannot pay for the same slice twice. Each slice has an in-action
+ * deadline; lane wait and time between completed slices do not spend it. Consecutive child results
  * share a final prompt anchor, letting native context include the whole batch.
  * See turns/claim.ts.
  */
@@ -91,6 +91,7 @@ export declare const write: import("convex/server").RegisteredMutation<"public",
     nativeMessages?: {
         getMessages: string;
         finalizeMessage: string;
+        failMessage: string;
     } | undefined;
     args: any;
     handle: string;

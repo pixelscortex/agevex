@@ -1,9 +1,8 @@
 import { internal } from "../_generated/api.js";
 import { mutation } from "../_generated/server.js";
 import { appendEvent } from "../subagents/runs.js";
-import { childLane, rootLane } from "../workflows/lanes.js";
+import { laneManager } from "../workflows/lanes.js";
 import { readyRows } from "./inbox.js";
-import { cancelIfPending } from "./recovery.js";
 import { readyRowLimit } from "../limits.js";
 import { RUN_LIMITS } from "../run_settings.js";
 import { v } from "convex/values";
@@ -63,10 +62,6 @@ async function liveChildren(ctx, root) {
  * pre-cancel snapshot: the pending generation, notes,
  * run and workflow it names are the ones cleaned up here. */
 async function cancelAssignment(ctx, row, runIds) {
-    if (row.watchdogId)
-        await cancelIfPending(ctx, row.watchdogId);
-    if (row.recoveryJobId)
-        await cancelIfPending(ctx, row.recoveryJobId);
     const approvalCleanup = !!row.approvals?.requests.length;
     await ctx.db.patch("assignments", row._id, cancelledState(row, approvalCleanup));
     // Only ready rows are read here. Raw passive bodies are cleared by one
@@ -84,8 +79,14 @@ async function cancelAssignment(ctx, row, runIds) {
     }
     if (row.runId)
         runIds.add(row.runId);
-    if (row.workflowId)
-        await (row.childRunId ? childLane : rootLane).cancel(ctx, row.workflowId);
+    // Workflow 0.4.10 cannot cancel an event created before await registration.
+    // Deliver the exact pending wait, then let the old loop observe its lost
+    // workflow ownership and stop. This also covers an already-sent event whose
+    // producer cleared the pointer. Epoch fences stop all late paid writes.
+    if (row.wakeEventId)
+        await laneManager(!!row.childRunId, row.limits).sendEvent(ctx, {
+            id: row.wakeEventId,
+        });
 }
 /** The cancelled, idle state: a new epoch fences every late write, all turn
  * and queue state is cleared, and a recorded approval pause stays blocked
@@ -98,15 +99,12 @@ function cancelledState(row, approvalCleanup) {
         turnStatus: "idle",
         errorCode: null,
         turnToken: undefined,
-        watchdogId: undefined,
-        recoveryAt: undefined,
-        recoveryJobId: undefined,
-        recoveryDelayMs: undefined,
         promptMessageId: undefined,
         inboxId: undefined,
         workflowId: undefined,
-        loopWaiting: false,
-        pinged: false,
+        workflowTurnToken: undefined,
+        wakeEventId: undefined,
+        lastSlice: row.lastSlice ? { ...row.lastSlice, active: false } : undefined,
         queuedMessages: 0,
         notesPending: 0,
         approvals: approvalCleanup ? { ...row.approvals, cleanupPending: true } : undefined,
@@ -128,7 +126,7 @@ async function scheduleCleanup(ctx, row, approvalCleanup) {
             approvalEpoch: approvalCleanup ? row.approvals.epoch : undefined,
         });
 }
-/** Cancel sets fences before canceling Workflow, which cannot abort actions.
+/** Cancel sets fences before releasing Workflow, which cannot abort actions.
  * See `cancelRoot`. */
 export const cancel = mutation({
     args: { assignmentId: v.id("assignments"), subject: v.string() },

@@ -95,6 +95,8 @@ export async function expectJournalUnchanged<Schema extends AnySchema>(
  */
 function normalizeTurn(turn: Turn) {
   const replace = (value: unknown): unknown => {
+    if (value === turn.id) return "$workflow";
+
     if (typeof value === "string")
       return (
         turn.args.executionId ? value.replaceAll(turn.args.executionId, "$execution") : value
@@ -103,7 +105,12 @@ function normalizeTurn(turn: Turn) {
     if (Array.isArray(value)) return value.map(replace);
 
     if (value && typeof value === "object")
-      return Object.fromEntries(Object.entries(value).map(([key, v]) => [key, replace(v)]));
+      return Object.fromEntries(
+        Object.entries(value).map(([key, v]) => [
+          key,
+          key === "wakeEventId" || key === "eventId" ? "$event" : replace(v),
+        ]),
+      );
 
     return value;
   };

@@ -2,23 +2,22 @@
  * `cancel`: stop a root thread and every live descendant in ONE bounded
  * transaction.
  *
- * Cancel sets fences before it cancels Workflow (which cannot abort a running
+ * Cancel sets fences before releasing Workflow (which cannot abort a running
  * action): each affected assignment gets a new cancellation epoch, is idled,
  * loses its ready inbox rows and run budget, and has its loop workflow
- * cancelled; every live delegation fails with ROOT_UNAVAILABLE. Work that
+ * released; every live delegation fails with ROOT_UNAVAILABLE. Work that
  * cannot fit the budget (unsaved note bodies, pending native placeholders,
  * approval cleanup) is handed to finite jobs (hooks.notes.cancelNotes,
  * cancellation.cleanup.cleanup). The full read/write arithmetic is in
  * limits.ts. Touches `assignments`, `inbox`, `runs` and `subagentRuns`.
  */
-import type { WorkflowId } from "@convex-dev/workflow";
+import type { EventId } from "@convex-dev/workflow";
 import { internal } from "../_generated/api.js";
 import { type MutationCtx, mutation } from "../_generated/server.js";
 import type { Doc, Id } from "../_generated/dataModel.js";
 import { appendEvent } from "../subagents/runs.js";
-import { childLane, rootLane } from "../workflows/lanes.js";
+import { laneManager } from "../workflows/lanes.js";
 import { readyRows } from "./inbox.js";
-import { cancelIfPending } from "./recovery.js";
 import { readyRowLimit } from "../limits.js";
 import { RUN_LIMITS } from "../run_settings.js";
 import { v } from "convex/values";
@@ -110,10 +109,6 @@ async function cancelAssignment(
   row: Doc<"assignments">,
   runIds: Set<Id<"runs">>,
 ) {
-  if (row.watchdogId) await cancelIfPending(ctx, row.watchdogId);
-
-  if (row.recoveryJobId) await cancelIfPending(ctx, row.recoveryJobId);
-
   const approvalCleanup = !!row.approvals?.requests.length;
 
   await ctx.db.patch("assignments", row._id, cancelledState(row, approvalCleanup));
@@ -136,8 +131,14 @@ async function cancelAssignment(
 
   if (row.runId) runIds.add(row.runId);
 
-  if (row.workflowId)
-    await (row.childRunId ? childLane : rootLane).cancel(ctx, row.workflowId as WorkflowId);
+  // Workflow 0.4.10 cannot cancel an event created before await registration.
+  // Deliver the exact pending wait, then let the old loop observe its lost
+  // workflow ownership and stop. This also covers an already-sent event whose
+  // producer cleared the pointer. Epoch fences stop all late paid writes.
+  if (row.wakeEventId)
+    await laneManager(!!row.childRunId, row.limits).sendEvent(ctx, {
+      id: row.wakeEventId as EventId,
+    });
 }
 
 /** The cancelled, idle state: a new epoch fences every late write, all turn
@@ -151,15 +152,12 @@ function cancelledState(row: Doc<"assignments">, approvalCleanup: boolean) {
     turnStatus: "idle" as const,
     errorCode: null,
     turnToken: undefined,
-    watchdogId: undefined,
-    recoveryAt: undefined,
-    recoveryJobId: undefined,
-    recoveryDelayMs: undefined,
     promptMessageId: undefined,
     inboxId: undefined,
     workflowId: undefined,
-    loopWaiting: false,
-    pinged: false,
+    workflowTurnToken: undefined,
+    wakeEventId: undefined,
+    lastSlice: row.lastSlice ? { ...row.lastSlice, active: false } : undefined,
     queuedMessages: 0,
     notesPending: 0,
     approvals: approvalCleanup ? { ...row.approvals!, cleanupPending: true } : undefined,
@@ -188,7 +186,7 @@ async function scheduleCleanup(
     });
 }
 
-/** Cancel sets fences before canceling Workflow, which cannot abort actions.
+/** Cancel sets fences before releasing Workflow, which cannot abort actions.
  * See `cancelRoot`. */
 export const cancel = mutation({
   args: { assignmentId: v.id("assignments"), subject: v.string() },

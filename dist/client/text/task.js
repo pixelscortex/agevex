@@ -98,6 +98,7 @@ async function generate(rt, ctx, args, model, prompt, dispatch) {
                                 throw new Error("TEXT_INACTIVE");
                             dispatch.started = true;
                             timer = setTimeout(() => {
+                                dispatch.aborted = true;
                                 controller.abort();
                                 abort();
                             }, TEXT_LIMITS.timeoutMs);
@@ -109,14 +110,18 @@ async function generate(rt, ctx, args, model, prompt, dispatch) {
         });
         const result = await Promise.race([pending, timeout]);
         dispatch.known = true;
+        dispatch.occurredAt = Date.now();
         dispatch.usage = result.usage;
         dispatch.metadata = result.providerMetadata;
         dispatch.requestId = result.response.id;
-        return result.output.text;
+        const text = result.output.text;
+        dispatch.succeeded = true;
+        return text;
     }
     catch (error) {
         if (NoObjectGeneratedError.isInstance(error)) {
             dispatch.known = true;
+            dispatch.occurredAt = Date.now();
             dispatch.usage = error.usage;
         }
         throw error;
@@ -140,6 +145,8 @@ async function recordUsage(rt, ctx, args, state, model, dispatch) {
             provider: typeof model === "string" ? model.split("/")[0] : model.provider,
             key: await opaqueKey("thread-text-usage", args.assignmentId, "title"),
             messageId: null,
+            status: dispatch.aborted ? "aborted" : dispatch.succeeded ? "success" : "failed",
+            occurredAt: dispatch.occurredAt ?? Date.now(),
             usage: dispatch.usage,
             providerMetadata: dispatch.metadata,
             requestId: dispatch.requestId,

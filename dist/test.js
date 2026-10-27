@@ -55,5 +55,9 @@ export function registerWorkflow(t, name) {
         "./component/agevexJournal.ts": () => import("./testing/journal.js"),
     });
     workpool.register(t, `${name}/workpool`);
+    t.registerComponent(`${name}/workpool`, workpool.schema, {
+        ...workpool.modules,
+        "./component/agevexCrash.ts": () => import("./testing/crash.js"),
+    });
 }
 export { expectJournalUnchanged } from "./testing/expect-journal.js";

@@ -44,10 +44,12 @@ export declare const writeArgs: {
     nativeMessages: import("convex/values").VObject<{
         getMessages: string;
         finalizeMessage: string;
+        failMessage: string;
     } | undefined, {
         getMessages: import("convex/values").VString<string, "required">;
         finalizeMessage: import("convex/values").VString<string, "required">;
-    }, "optional", "getMessages" | "finalizeMessage">;
+        failMessage: import("convex/values").VString<string, "required">;
+    }, "optional", "getMessages" | "finalizeMessage" | "failMessage">;
 };
 type WriteArgs = ObjectType<typeof writeArgs>;
 /** Run one native/tool mutation under the execution fence and record its

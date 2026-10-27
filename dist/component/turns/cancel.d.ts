@@ -1,4 +1,4 @@
-/** Cancel sets fences before canceling Workflow, which cannot abort actions.
+/** Cancel sets fences before releasing Workflow, which cannot abort actions.
  * See `cancelRoot`. */
 export declare const cancel: import("convex/server").RegisteredMutation<"public", {
     subject: string;

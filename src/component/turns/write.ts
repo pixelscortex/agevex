@@ -23,7 +23,6 @@ import { assertFunctionHandle } from "../facts.js";
 import { appendTurnMessages } from "./message_ids.js";
 import { prepareDecisions, oversizedDecisionInput } from "./decision_save.js";
 import { runById } from "../subagents/runs.js";
-import { disarmRecovery } from "./recovery.js";
 import { disarmSlice } from "./boundaries.js";
 import { deferChildFailure, failChild, markRecoveryRequired } from "./finish.js";
 import {
@@ -61,6 +60,7 @@ export const writeArgs = {
     v.object({
       getMessages: v.string(),
       finalizeMessage: v.string(),
+      failMessage: v.string(),
     }),
   ),
 };
@@ -153,6 +153,7 @@ function assertWriteHandles(args: WriteArgs) {
   if (args.nativeMessages) {
     assertFunctionHandle(args.nativeMessages.getMessages, "nativeMessages.getMessages");
     assertFunctionHandle(args.nativeMessages.finalizeMessage, "nativeMessages.finalizeMessage");
+    assertFunctionHandle(args.nativeMessages.failMessage, "nativeMessages.failMessage");
   }
 }
 
@@ -215,7 +216,6 @@ async function staleWrite(ctx: MutationCtx, row: Doc<"assignments"> | null, args
  * stops on the rejected save, and its stale finish cannot overwrite it. */
 async function rejectApprovalOverflow(ctx: MutationCtx, row: Doc<"assignments">) {
   await disarmSlice(ctx, row);
-  await disarmRecovery(ctx, row);
 
   if (await deferChildFailure(ctx, row, "APPROVAL_LIMIT")) return null;
 

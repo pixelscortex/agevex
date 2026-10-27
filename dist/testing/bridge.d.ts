@@ -30,7 +30,7 @@ export declare const write: import("convex/server").RegisteredMutation<"internal
     module: string;
 }, Promise<any>>;
 /** Observe scheduler activity in this component, including completed checks. */
-export declare const recoveryJobs: import("convex/server").RegisteredQuery<"internal", {}, Promise<{
+export declare const scheduledJobs: import("convex/server").RegisteredQuery<"internal", {}, Promise<{
     total: number;
     pending: number;
 }>>;
@@ -55,37 +55,11 @@ export declare const childResultMessageId: import("convex/server").RegisteredQue
 export declare const fillHookMetadata: import("convex/server").RegisteredMutation<"internal", {
     assignmentId: import("convex/values").GenericId<"assignments">;
 }, Promise<null>>;
-/** Exact run and claim-armed watchdog metadata for offline settings fixtures. */
+/** Exact accepted run metadata for offline settings fixtures. */
 export declare const runMetadata: import("convex/server").RegisteredQuery<"internal", {
     assignmentId: string;
 }, Promise<{
     run: any;
-    watchdog: {
-        _id: import("convex/values").GenericId<"_scheduled_functions">;
-        _creationTime: number;
-        completedTime?: number | undefined;
-        name: string;
-        args: any[];
-        scheduledTime: number;
-        state: {
-            kind: "pending";
-        } | {
-            kind: "inProgress";
-        } | {
-            kind: "success";
-        } | {
-            kind: "failed";
-            error: string;
-        } | {
-            kind: "canceled";
-        };
-    } | {
-        _id: import("convex/values").GenericId<"_storage">;
-        _creationTime: number;
-        contentType?: string | undefined;
-        sha256: string;
-        size: number;
-    } | null;
 }>>;
 /** Fill the <=168-run cancellation fixture with maximum-size accepted settings.
  * Read+patch <=168*16 KiB twice (<6 MiB), no messages or transcript scans. */

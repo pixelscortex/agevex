@@ -1,18 +1,12 @@
 import type { ToolSet } from "ai";
 import type { RuntimeContext } from "../registration/context.js";
-import type { SlotFacts, UsageSlot } from "../slots.js";
+import type { SlotFacts } from "../slots.js";
 import type { HookContext, Registration } from "../types.js";
-import { type Turn } from "./context.js";
-/**
- * Report the model step one native message save just captured.
- *
- * Agent 0.7.7 start.ts:382-417 saves step usage with its
- * native result. turns.slices.write returns those committed documents;
- * no transcript discovery is needed.
- * The fenced native save returns the committed document and exact identity;
- * no duplicate step reference or follow-up execution read is needed.
- */
-export declare function recordStepUsage(rt: RuntimeContext, turn: Turn, usage: UsageSlot, saved: unknown): Promise<void>;
+import { type Generation, type Turn } from "./context.js";
+/** Report exactly one provider completion after its save succeeds or fails.
+ * Preserve the existing native key; a dropped save uses the unique slice id in
+ * its place. Retries reuse this one event, including its original timestamp. */
+export declare function recordStepUsage(rt: RuntimeContext, gen: Generation, failed: boolean): Promise<void>;
 /**
  * Tool bags the configured slots contribute to this turn: sandbox tools only
  * for agents that opted in. Each

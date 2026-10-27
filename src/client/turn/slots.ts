@@ -1,60 +1,65 @@
 // How the optional host slots take part in one turn.
 //
-// usage: `recordStepUsage` reports the model step a native save just captured.
+// usage: `recordStepUsage` reports provider completion, including dropped saves.
 // sandbox tools: `slotToolBags` asks each slot for its tools.
 // telemetry: `telemetryIntegrations` per generation, `flushTelemetry` per action.
 // Every slot is fail-open for evidence (usage, telemetry) and never retries paid
 // work. Called from `turn/generation.ts`, `turn/tools.ts`, `turn/fence.ts` and
 // `turn/run-turn.ts`.
 
-import type { MessageDoc } from "@convex-dev/agent";
 import type { ToolSet } from "ai";
 import { LIMITS } from "../../component/limits.js";
 import { opaqueKey } from "../keys.js";
 import type { RuntimeContext } from "../registration/context.js";
-import type { SlotFacts, UsageSlot } from "../slots.js";
+import type { SlotFacts, UsageEvent } from "../slots.js";
 import type { HookContext, Registration } from "../types.js";
-import { sliceKey, type Turn } from "./context.js";
-import { markUsagePartial } from "./usage.js";
+import { sliceKey, type Generation, type Turn } from "./context.js";
+import { markUsagePartial, deliverStepUsage } from "./usage.js";
+import { settleUsageSave } from "./step-usage.js";
 
-/**
- * Report the model step one native message save just captured.
- *
- * Agent 0.7.7 start.ts:382-417 saves step usage with its
- * native result. turns.slices.write returns those committed documents;
- * no transcript discovery is needed.
- * The fenced native save returns the committed document and exact identity;
- * no duplicate step reference or follow-up execution read is needed.
- */
-export async function recordStepUsage(
-  rt: RuntimeContext,
-  turn: Turn,
-  usage: UsageSlot,
-  saved: unknown,
-) {
-  const messages = (saved as { messages?: MessageDoc[] } | null)?.messages ?? [];
-  const step = messages.find((message) => message.usage && message.status === "success");
+/** Report exactly one provider completion after its save succeeds or fails.
+ * Preserve the existing native key; a dropped save uses the unique slice id in
+ * its place. Retries reuse this one event, including its original timestamp. */
+export async function recordStepUsage(rt: RuntimeContext, gen: Generation, failed: boolean) {
+  const { turn, fence } = gen;
 
-  if (!step?.usage) return;
+  if (!rt.config.usage || !gen.state.modelStarted) return;
+
+  const step = turn.stepUsage;
+
+  if (!step) {
+    await markUsagePartial(rt, turn);
+
+    return;
+  }
 
   try {
+    await settleUsageSave(turn, fence);
+
     const requestId = step.providerMetadata?.agevex?.requestId;
 
-    await usage.record(turn.rawCtx, {
+    const event: UsageEvent = {
       ...turn.facts,
       purpose: "agent",
       model: step.model,
       provider: step.provider,
-      key: await opaqueKey("model", turn.facts.threadId, step._id, step.stepOrder),
-      messageId: String(step._id),
+      key: await opaqueKey(
+        "model",
+        turn.facts.threadId,
+        step.native?._id ?? sliceKey(turn),
+        step.native?.stepOrder ?? 0,
+      ),
+      messageId: step.native ? String(step.native._id) : null,
+      status: fence.controller.signal.aborted ? "aborted" : failed ? "failed" : step.status,
+      occurredAt: step.occurredAt,
       usage: step.usage,
       providerMetadata: step.providerMetadata,
       ...(typeof requestId === "string" ? { requestId } : {}),
-    });
+    };
+
+    await deliverStepUsage(rt.config.usage, turn, fence, event);
   } catch {
     await markUsagePartial(rt, turn);
-    // Billing evidence is best effort. Never replay a paid
-    // generation because its usage hook was unavailable.
   }
 }
 

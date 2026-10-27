@@ -1,7 +1,7 @@
 /** One reactive, request-scoped run tree. Native Agent owns all message bodies.
  * D = HOST_LIMITS.runLaunches.max = 50.
- * (1+D)*14 KiB assignments +D*4 KiB children +3*14 KiB ownership
- * +14 KiB root assignment +16 KiB run metadata +1 KiB ready probe = 987 KiB core reads.
+ * (1+D)*13 KiB assignments +D*4 KiB children +3*13 KiB ownership
+ * +13 KiB root assignment +16 KiB run metadata +1 KiB ready probe = 932 KiB core reads.
  * Any app usage projection is responsible for its own bounded reads.
  * The host checks both Convex and JSON output bytes against 128 KiB.
  * No per-node transcript or settlement scans: reuse the already bounded
@@ -162,7 +162,7 @@ function childNode(run, assignments, parents, blocked) {
 }
 /** Progress is visible only while the same assignment is actively running. */
 function currentTool(row, state) {
-    return state.status === "running" && row?.watchdogId
+    return state.status === "running" && row?.lastSlice?.active
         ? (row.activeTools?.[row.activeTools.length - 1]?.name ?? null)
         : null;
 }

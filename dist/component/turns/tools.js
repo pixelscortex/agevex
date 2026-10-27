@@ -18,13 +18,13 @@ export const mark = mutation({
     handler: async (ctx, args) => {
         const row = await ctx.db.get("assignments", args.assignmentId);
         // Disarmed slices and stale turns may never restore a marker after finish,
-        // approval pause, watchdog, cancellation, or a newer slice's claim.
+        // approval pause, step failure, cancellation, or a newer slice's claim.
         if (!row ||
             row.cancelled ||
             row.turnStatus !== "running" ||
-            !row.watchdogId ||
+            !row.lastSlice?.active ||
             row.turnToken !== args.turnToken ||
-            row.lastSlice !== args.sliceId)
+            row.lastSlice?.id !== args.sliceId)
             return null;
         if (!/^[a-f0-9]{64}$/.test(args.key) ||
             (args.name !== undefined &&

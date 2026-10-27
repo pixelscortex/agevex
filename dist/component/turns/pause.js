@@ -15,7 +15,6 @@ import { ConvexError, getConvexSize } from "convex/values";
 import { LIMITS } from "../limits.js";
 import { approvalKey, callKey, keyString } from "../approvals.js";
 import { firstReady } from "./inbox.js";
-import { disarmRecovery } from "./recovery.js";
 import { disarmSlice } from "./boundaries.js";
 import { saveProposal } from "./decision_proposals.js";
 /** Decided approvals still need native results from continuation generation. */
@@ -151,7 +150,6 @@ async function addDeferredCalls(ctx, pause, messages, deferredTools, askTools) {
  * the request hashes and native handles. */
 export async function suspendForApprovals(ctx, row, pause, handles) {
     await disarmSlice(ctx, row);
-    await disarmRecovery(ctx, row);
     if (approvalBlocked(row))
         throw new ConvexError({ code: "APPROVAL_ALREADY_PENDING" });
     if (row.approvals?.requests.length)

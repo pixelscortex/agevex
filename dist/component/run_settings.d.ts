@@ -24,7 +24,6 @@ export declare const RUN_LIMITS: {
     readonly toolsPerSlice: 16;
     readonly persistenceMs: 30000;
     readonly sliceDeadlineMs: 300000;
-    readonly watchdogMarginMs: 30000;
     readonly metadataBytes: number;
     readonly nativeEnvelopeBytes: number;
     readonly cancelBudgets: number;
@@ -32,7 +31,7 @@ export declare const RUN_LIMITS: {
 };
 /** Public options on Agent.run; validation happens at registration. */
 export type RunSettings = Partial<ResolvedRunSettings>;
-/** Policy returned by claim and consumed by generation and its watchdog. */
+/** Policy returned by claim and consumed by generation. */
 export declare const runSettings: import("convex/values").VObject<{
     askUser?: boolean | undefined;
     mode: "stream" | "generate";
@@ -102,7 +101,5 @@ export declare function sliceDeadlineMs(settings: ResolvedRunSettings): number;
  * Approval resumes start another workflow, so claim must retain this ceiling.
  */
 export declare function turnStepLimit(settings: ResolvedRunSettings, slicesPerTurn: number): number;
-/** The server waits beyond the client fence so timeout finalization can commit. */
-export declare function sliceWatchdogMs(settings: ResolvedRunSettings): number;
 /** Bound both Convex and JSON bytes, including multi-byte names and escaping. */
 export declare function assertSettingsSnapshot(settings: SettingsSnapshot): void;

@@ -37,12 +37,17 @@ export async function expectJournalUnchanged(t, path, fixture) {
  */
 function normalizeTurn(turn) {
     const replace = (value) => {
+        if (value === turn.id)
+            return "$workflow";
         if (typeof value === "string")
             return (turn.args.executionId ? value.replaceAll(turn.args.executionId, "$execution") : value).replaceAll(turn.args.assignmentId, "$assignment");
         if (Array.isArray(value))
             return value.map(replace);
         if (value && typeof value === "object")
-            return Object.fromEntries(Object.entries(value).map(([key, v]) => [key, replace(v)]));
+            return Object.fromEntries(Object.entries(value).map(([key, v]) => [
+                key,
+                key === "wakeEventId" || key === "eventId" ? "$event" : replace(v),
+            ]));
         return value;
     };
     return {

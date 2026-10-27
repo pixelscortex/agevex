@@ -1,9 +1,5 @@
-/** The loop workflow's step: the queued turn's token, or null to sleep. */
+/** Workflow ownership fences old loops after cancellation and rotation. */
 export declare const next: import("convex/server").RegisteredMutation<"internal", {
+    workflowId: string;
     assignmentId: import("convex/values").GenericId<"assignments">;
-}, Promise<string | null>>;
-/** The scheduled recovery check; see `reconcileDoorbell` in turns/wake.ts. */
-export declare const reconcile: import("convex/server").RegisteredMutation<"internal", {
-    recoveryAt?: number | undefined;
-    assignmentId: import("convex/values").GenericId<"assignments">;
-}, Promise<null>>;
+}, Promise<import("./wake.js").NextTurn>>;

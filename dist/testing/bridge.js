@@ -54,10 +54,12 @@ export const write = internalMutationGeneric({
     handler: (ctx, a) => ctx.runMutation(componentsGeneric()[a.lane][a.module][a.name], a.args),
 });
 /** Observe scheduler activity in this component, including completed checks. */
-export const recoveryJobs = internalQueryGeneric({
+export const scheduledJobs = internalQueryGeneric({
     args: {},
     handler: async (ctx) => {
-        const jobs = (await ctx.db.system.query("_scheduled_functions").collect()).filter((job) => job.name === "turns/loop:reconcile");
+        // The on-demand receipt-retention job predates turn execution and remains.
+        // Every other component-owned job is visible here, including completed ones.
+        const jobs = (await ctx.db.system.query("_scheduled_functions").collect()).filter((job) => job.name !== "receipts/effects:purge");
         return {
             total: jobs.length,
             pending: jobs.filter((job) => job.state.kind === "pending" || job.state.kind === "inProgress")
@@ -113,7 +115,7 @@ export const fillHookMetadata = internalMutationGeneric({
         return null;
     },
 });
-/** Exact run and claim-armed watchdog metadata for offline settings fixtures. */
+/** Exact accepted run metadata for offline settings fixtures. */
 export const runMetadata = internalQueryGeneric({
     args: { assignmentId: v.string() },
     handler: async (ctx, { assignmentId }) => {
@@ -121,7 +123,6 @@ export const runMetadata = internalQueryGeneric({
         const row = id ? await ctx.db.get(id) : null;
         return {
             run: row?.runId ? await ctx.db.get(row.runId) : null,
-            watchdog: row?.watchdogId ? await ctx.db.system.get(row.watchdogId) : null,
         };
     },
 });

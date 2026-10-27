@@ -11,7 +11,6 @@ export const RUN_LIMITS = {
     toolsPerSlice: 16,
     persistenceMs: 30_000,
     sliceDeadlineMs: 300_000,
-    watchdogMarginMs: 30_000,
     metadataBytes: 16 << 10,
     // 256 bytes native id/time + <=256 lifecycle (ids, times, error) + <=512
     // counter growth and JSON escaping. Reserve before accepting a run.
@@ -25,7 +24,7 @@ export const RUN_LIMITS = {
     // nativeEnvelopeBytes, so settings and model choices share the remaining room.
     settingsBytes: 15 << 10,
 };
-/** Policy returned by claim and consumed by generation and its watchdog. */
+/** Policy returned by claim and consumed by generation. */
 export const runSettings = v.object({
     askUser: v.optional(v.boolean()),
     mode: v.union(v.literal("stream"), v.literal("generate")),
@@ -67,8 +66,7 @@ export function resolveRunSettings(input = {}) {
     }
     if (result.modelTimeoutMs +
         RUN_LIMITS.toolsPerSlice * result.toolTimeoutMs +
-        RUN_LIMITS.persistenceMs +
-        RUN_LIMITS.watchdogMarginMs >
+        RUN_LIMITS.persistenceMs >
         PLATFORM.convexActionMs)
         throw new Error("RUN_DEADLINE_EXCEEDS_ACTION_LIMIT");
     return result;
@@ -88,10 +86,6 @@ export function sliceDeadlineMs(settings) {
  */
 export function turnStepLimit(settings, slicesPerTurn) {
     return Math.min(settings.stepsPerTurn, slicesPerTurn === LIMITS.slicesPerTurn ? RUN_LIMITS.stepsPerTurn.max : slicesPerTurn);
-}
-/** The server waits beyond the client fence so timeout finalization can commit. */
-export function sliceWatchdogMs(settings) {
-    return sliceDeadlineMs(settings) + RUN_LIMITS.watchdogMarginMs;
 }
 /** Bound both Convex and JSON bytes, including multi-byte names and escaping. */
 export function assertSettingsSnapshot(settings) {

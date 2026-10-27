@@ -1,21 +1,8 @@
-/**
- * The two Workflow lanes, their versioned step sequences, and starting an
- * assignment's loop.
- *
- * Each lane (root and child) is its own nested Workflow component with its
- * own Workpool, so root turns and child turns never compete for the same
- * parallelism. Each assignment runs one long-lived *loop* workflow: it asks
- * `turns.loop.next` for a queued turn, runs that turn as a nested *turn*
- * workflow (one `workflows.workflows.worker.dispatch` action per paid model slice,
- * separated by `turns.slices.betweenSlices`), and otherwise sleeps on a
- * "ping" event that wake sends. The *done* callback rotates finished loops
- * before their journal grows past 8 MiB. Step order here is the deployed
- * journal format: never reorder it. Also used by turns/wake.ts (start or ring
- * a loop) and turns/cancel.ts (cancel a loop). Writes `assignments`
- * (workflowId, pinged, loopWaiting); a failed loop's `done` also runs
- * `turns.failures.failWorkflow` for its in-flight turn.
+/** Independent root/child Workflow lanes own execution, event waits and
+ * bounded journal rotation. Paid actions never retry. Workpool reports killed
+ * steps through normal failure completion, with its upstream recovery latency.
  */
-import { WorkflowManager } from "@convex-dev/workflow";
+import { WorkflowManager, } from "@convex-dev/workflow";
 import { components, internal } from "../_generated/api.js";
 import { internalMutation } from "../_generated/server.js";
 import { RUN_LIMITS } from "../run_settings.js";
@@ -69,7 +56,7 @@ export function startLoop(ctx, row, child) {
             : {}),
     }, {
         onComplete: child ? internal.workflows.lanes.childDone : internal.workflows.lanes.rootDone,
-        context: { assignmentId: row._id },
+        context: { assignmentId: row._id, epoch: row.cancellationEpoch },
         startAsync: true,
     });
 }
@@ -78,6 +65,10 @@ const args = {
     version: v.number(),
     slicesPerTurn: v.optional(v.number()),
 };
+// Ordinary step failure returns its identity. Driver failure has no return
+// value: loop.next persists the same token before handing the turn to Workflow.
+// Neither path borrows a current token that could already name a successor.
+const failedTurn = v.object({ executionId: v.string(), epoch: v.number() });
 /** The one between-slice seam: Phase 1c can add notes/hooks without new steps. */
 async function betweenSlices(step, assignmentId, executionId) {
     return step.runMutation(internal.turns.slices.betweenSlices, { assignmentId, executionId });
@@ -108,63 +99,83 @@ function defineTurn(manager) {
         return null;
     });
 }
-/** The bounded loop: `turnsPerLoop` iterations of "run the queued turn, or
- * sleep until wake's ping", then completion and rotation via done. */
-function defineLoop(manager, child) {
-    return manager.define({ args, returns: v.null() }).handler(async (step, args) => {
+/** Every created event is awaited, including the final iteration before
+ * rotation. After delivery, queue admission is checked again under ownership.
+ */
+export function defineLoop(manager, child, inline = true) {
+    return manager
+        .define({ args, returns: v.union(v.null(), failedTurn) })
+        .handler(async (step, args) => {
         if (args.version !== LIMITS.workflowVersion)
             throw new Error("UNKNOWN_WORKFLOW_VERSION");
         for (let turns = 0; turns < LIMITS.turnsPerLoop; turns++) {
-            const executionId = await step.runMutation(internal.turns.loop.next, {
-                assignmentId: args.assignmentId,
-            });
-            if (executionId)
-                await step.runWorkflow(child ? internal.workflows.lanes.childTurn : internal.workflows.lanes.rootTurn, {
-                    ...args,
-                    executionId,
-                });
+            // Inline admission and await registration commit together, so a failed
+            // driver cannot strand an event outside its journal. Tests defer this
+            // step to exercise the SDK's durable early-delivery behavior too.
+            const next = await step.runMutation(internal.turns.loop.next, { assignmentId: args.assignmentId, workflowId: step.workflowId }, { inline });
+            if (!next)
+                return null;
+            if ("failure" in next)
+                return next.failure;
+            if ("executionId" in next) {
+                try {
+                    await step.runWorkflow(child ? internal.workflows.lanes.childTurn : internal.workflows.lanes.rootTurn, { ...args, executionId: next.executionId });
+                }
+                catch {
+                    // Workpool's ordinary failed/canceled-step completion resumes here.
+                    // The completion mutation owns the one atomic failure handoff.
+                    return next;
+                }
+            }
             else
-                await step.awaitEvent({ name: "ping" });
+                await step.awaitEvent({ id: next.wakeEventId, name: "wake" });
         }
         return null;
     });
 }
-/** Loop completion: a failed loop marks its in-flight turn ambiguous; a
- * finished loop is replaced by a fresh one and its journal cleaned up. Only
- * the row's current, uncancelled workflow may do either. */
+/** Completion is the single failure handoff. Finalization uses only bounded
+ * exact-id native cleanup and existing settlement paths, without a repair job.
+ * A thrown callback is recorded by Workflow as onCompleteFailures; it is never
+ * retried by agevex. Stale old loops only clean their own journal/events.
+ */
 function defineDone(manager, child) {
     return internalMutation({
         args: {
             workflowId: v.string(),
             result: vResultValidator,
-            context: v.object({ assignmentId: v.id("assignments") }),
+            context: v.object({ assignmentId: v.id("assignments"), epoch: v.number() }),
         },
         returns: v.null(),
         handler: async (ctx, { workflowId, result, context }) => {
             const row = await ctx.db.get("assignments", context.assignmentId);
-            if (!row || row.workflowId !== workflowId || row.cancelled)
-                return null;
-            await ctx.db.patch("assignments", row._id, {
-                workflowId: undefined,
-                pinged: false,
-                loopWaiting: false,
-            });
-            if (result.kind !== "success") {
-                if (row.turnToken)
+            // The workflow's returns validator has already checked this payload.
+            const returned = result.kind === "success" ? result.returnValue : null;
+            // The loop driver can fail/cancel before it consumes a nested completion.
+            // A normal rotation can also end just after a successful nested workflow
+            // left its turn running. Both must settle the captured turn, while a
+            // queued successor belongs to a fresh loop and must retain its token.
+            const captured = row?.workflowTurnToken && (result.kind !== "success" || row.turnStatus === "running")
+                ? { executionId: row.workflowTurnToken, epoch: context.epoch }
+                : null;
+            const failure = returned ?? captured;
+            if (row?.workflowId === workflowId && row.cancellationEpoch === context.epoch) {
+                if (failure)
                     await ctx.runMutation(internal.turns.failures.failWorkflow, {
                         assignmentId: row._id,
-                        executionId: row.turnToken,
+                        workflowId,
+                        ...failure,
                     });
-                return null;
+                await ctx.db.patch("assignments", row._id, {
+                    workflowId: undefined,
+                    workflowTurnToken: undefined,
+                    wakeEventId: undefined,
+                });
+                if (!row.cancelled) {
+                    const current = (await ctx.db.get("assignments", row._id));
+                    const nextId = await startLoop(ctx, current, child);
+                    await ctx.db.patch("assignments", row._id, { workflowId: nextId });
+                }
             }
-            // Rotate bounded loops before the journal reaches 8 MiB. Idle loops stay
-            // asleep on events; rotation consumes no model work or inbox rows.
-            const nextId = await startLoop(ctx, row, child);
-            await ctx.db.patch("assignments", row._id, { workflowId: nextId });
-            // 0.4.10 exposes no event deletion API, and cleanup deletes only events
-            // referenced by journal steps (workflow.ts/deleteSteps). wake sends only
-            // to a sleeping loop with no pending ping; next clears that flag after
-            // consumption. Therefore rotation has no surplus SDK events to delete.
             await manager.cleanup(ctx, workflowId);
             return null;
         },
