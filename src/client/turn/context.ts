@@ -20,6 +20,7 @@ import type {
   TurnArgs,
 } from "../types.js";
 import type { TurnFence } from "./fence.js";
+import type { StepUsage } from "./step-usage.js";
 
 /** The `turns.slices.execution` row a turn is fenced against. */
 export type Execution = FunctionReturnType<ComponentApi["turns"]["slices"]["execution"]>;
@@ -36,8 +37,8 @@ export type Turn = {
    * work must use the fenced `Generation.fence.ctx` instead.
    */
   rawCtx: RunnerCtx;
-  /** Native model usage committed before any later timeout/cancel. */
-  usageSaved?: boolean;
+  /** Provider evidence survives failed or fenced-out native saves. One step per slice. */
+  stepUsage?: StepUsage;
   /** In-flight progress edges and idempotent cleanup owned by this action slice. */
   toolProgress: { pending: Set<Promise<void>>; clear: Set<() => void>; closed: boolean };
   args: TurnArgs;

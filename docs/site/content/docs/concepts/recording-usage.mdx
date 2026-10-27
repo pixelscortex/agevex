@@ -4,12 +4,33 @@ description: Record model steps, reconcile costs and enforce your own spend poli
 status: Available
 ---
 
-`usage.record(ctx, event)` runs after each saved model step. It receives trusted
-subject, root/thread/run/agent, model, purpose, native token usage, provider
-metadata, provider response `requestId` when known, and the exact native
-`messageId`. `key` is stable for deduplication. Standalone tasks and title calls
-create no native message and use `messageId: null`; their provider id still
-identifies the paid call. Tool effects can write your ledger directly.
+`usage.record(ctx, event)` receives one event for each managed model step whose
+provider reported usage, including failed, aborted, timed-out and cancelled
+steps. It receives trusted subject, root/thread/run/agent, model, purpose,
+native-shaped token usage, provider metadata and provider response `requestId`
+when known. `status` is `"success" | "failed" | "aborted"` (timeouts and fencing
+are aborted); your app decides which outcomes to bill. `occurredAt` is the
+provider step finish time in epoch milliseconds, captured before delivery.
+
+`messageId` is the exact native message id, or `null` if the save failed or was
+fenced out. Standalone tasks and title calls also use `null`. `key` retains the
+native step's idempotent identity; a dropped save uses the slice identity instead.
+Multiple saved assistant/tool rows for one step produce one event. Missing
+provider usage is never estimated or invented; missing evidence marks reporting
+partial. Tool effects can write your ledger directly.
+
+Managed step delivery makes at most `LIMITS.usageRecordAttempts` (3) attempts
+with the same key, timestamp and payload, separated by
+`LIMITS.usageRecordBackoffMs` (25 ms). Each attempt is capped by
+`LIMITS.usageRecordTimeoutMs` (1 second); the whole active delivery is also raced
+against the turn's live deadline/fence. Each retry rechecks execution ownership.
+No retry starts after cancellation or the deadline. A step already aborted gets
+one bounded attempt to deliver incurred usage through the raw action context.
+An in-flight host promise cannot be cancelled and may still commit later, so
+**deduplicate by key in your app's transaction**. Delivery is in-action only;
+there is no persisted queue or scheduler redelivery. Exhaustion/interruption
+marks reporting partial and never reruns the model. Usage is delivered before
+continuing to another model step or checking its budget.
 
 The following app table keeps observed spend separate from a later real cost.
 Use your installed host's generated server helpers in a real app; the generic
@@ -27,6 +48,8 @@ export default defineSchema({
     agent: v.string(),
     model: v.optional(v.string()),
     purpose: v.optional(v.string()),
+    status: v.union(v.literal("success"), v.literal("failed"), v.literal("aborted")),
+    occurredAt: v.number(),
     messageId: v.union(v.null(), v.string()),
     generationId: v.union(v.null(), v.string()),
     tokens: v.any(),
@@ -68,6 +91,8 @@ export const usage: UsageSlot = {
       agent: event.agent,
       model: event.model,
       purpose: event.purpose,
+      status: event.status,
+      occurredAt: event.occurredAt,
       messageId: event.messageId,
       generationId: event.requestId ?? null,
       tokens: event.usage ?? null,
@@ -84,6 +109,8 @@ export const record = internalMutation({
     agent: v.string(),
     model: v.optional(v.string()),
     purpose: v.optional(v.string()),
+    status: v.union(v.literal("success"), v.literal("failed"), v.literal("aborted")),
+    occurredAt: v.number(),
     messageId: v.union(v.null(), v.string()),
     generationId: v.union(v.null(), v.string()),
     tokens: v.any(),
@@ -170,7 +197,7 @@ It reads OpenRouter's generation endpoint once, with a 30-second deadline and
 Unavailable evidence returns null; the helper never retries. The app decides
 whether to schedule another lookup and when to stop.
 
-Usage callback failures set a sticky partial marker and never replay paid work.
+Exhausted usage delivery failures set a sticky partial marker and never replay paid work.
 Budget checks happen before model steps and local effects; already-started work
 can overshoot. `usage.view` is a small optional query adapter for app-owned
 exclusive node/run totals. Without it run-tree usage stays null. The app bounds

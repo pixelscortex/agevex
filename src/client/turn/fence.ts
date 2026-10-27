@@ -19,7 +19,7 @@ import { askUserTools, type AskUserSave } from "../../shared/tool-markers.js";
 import { deferredToolNames } from "../registration/graph.js";
 import type { RunnerCtx, RuntimeContext } from "../registration/context.js";
 import { stillRunning, type Turn } from "./context.js";
-import { recordStepUsage } from "./slots.js";
+import { attachUsageMessage } from "./step-usage.js";
 
 /** The live fence of one generation. */
 export type TurnFence = {
@@ -194,17 +194,7 @@ function fencedContext(
           await fencedWriteArgs(turn, ref, payload),
         );
 
-        if (functionKey(ref) === addMessagesKey) {
-          // The native transaction committed this evidence even if cancellation
-          // follows before the model result reaches the host action.
-          const messages = (saved as { messages?: { usage?: unknown; status: string }[] } | null)
-            ?.messages;
-
-          if (messages?.some((message) => message.usage && message.status === "success"))
-            turn.usageSaved = true;
-
-          if (rt.config.usage) await recordStepUsage(rt, turn, rt.config.usage, saved);
-        }
+        if (functionKey(ref) === addMessagesKey) attachUsageMessage(turn, saved);
 
         return saved;
       } catch (error) {

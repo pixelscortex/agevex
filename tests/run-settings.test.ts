@@ -629,7 +629,7 @@ it("a run without settings uses defaults through all slices", async () => {
 });
 
 it.each(["stream", "generate"] as const)(
-  "aborted paid steps report partial usage when native evidence is dropped (%s)",
+  "aborted steps report partial only when provider usage is unavailable (%s)",
   async (mode) => {
     for (const reason of ["tool timeout", "tool limit", "model timeout", "cancel"]) {
       reset();
@@ -677,7 +677,17 @@ it.each(["stream", "generate"] as const)(
         await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
 
       await drain(t);
-      expect(await t.query(components.agevex.turns.slices.usageReporting, { runId })).toBe(true);
+
+      // Completed provider usage survives a tool timeout or generate-mode tool
+      // cap even when Agent cannot save; a stream capped before finish has no
+      // usage evidence, just like a provider that never completes.
+      const hasUsage =
+        reason === "tool timeout" || (mode === "generate" && reason === "tool limit");
+
+      expect(await t.query(components.agevex.turns.slices.usageReporting, { runId })).toBe(
+        !hasUsage,
+      );
+
       expect(fixture.calls).toHaveLength(1);
       release();
       await t.finishInProgressScheduledFunctions();
