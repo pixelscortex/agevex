@@ -4,7 +4,7 @@ description: Record model steps, reconcile costs and enforce your own spend poli
 status: Available
 ---
 
-`usage.record(ctx, event)` receives one event for each managed model step whose
+`usage.record(ctx, event)` is offered one event for each managed model step whose
 provider reported usage, including failed, aborted, timed-out and cancelled
 steps. It receives trusted subject, root/thread/run/agent, model, purpose,
 native-shaped token usage, provider metadata and provider response `requestId`
@@ -19,13 +19,24 @@ Multiple saved assistant/tool rows for one step produce one event. Missing
 provider usage is never estimated or invented; missing evidence marks reporting
 partial. Tool effects can write your ledger directly.
 
+Delivery waits for an outstanding save while the turn fence is live. If its RPC
+reply misses the deadline, agevex reads the exact placeholder id that the native
+save replaces, preserving the committed message id and legacy key. If the save
+is still unresolved and no committed usage can be verified, no event is emitted
+and reporting becomes partial; an unknown outcome never gets a fallback key.
+
 Managed step delivery makes at most `LIMITS.usageRecordAttempts` (3) attempts
 with the same key, timestamp and payload, separated by
 `LIMITS.usageRecordBackoffMs` (25 ms). Each attempt is capped by
 `LIMITS.usageRecordTimeoutMs` (1 second); the whole active delivery is also raced
-against the turn's live deadline/fence. Each retry rechecks execution ownership.
+against the turn's live deadline/fence, including retry ownership reads. A
+legitimate approval pause permits retries; cancellation or a stale execution
+revokes them.
 No retry starts after cancellation or the deadline. A step already aborted gets
 one bounded attempt to deliver incurred usage through the raw action context.
+Exact-id recovery and that final delivery each have a separate 1-second bound
+and can finish after the turn deadline. An unavailable recovery read marks
+reporting partial without emitting an event with an unverified identity.
 An in-flight host promise cannot be cancelled and may still commit later, so
 **deduplicate by key in your app's transaction**. Delivery is in-action only;
 there is no persisted queue or scheduler redelivery. Exhaustion/interruption

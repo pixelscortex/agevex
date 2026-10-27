@@ -11,6 +11,9 @@ import { requireReceipt } from "./receipt.js";
 import { LIMITS } from "../src/component/limits.js";
 import { sliceDeadlineMs, resolveRunSettings } from "../src/component/run_settings.js";
 import type { UsageEvent } from "../src/client/slots.js";
+import * as generation from "../src/client/turn/generation.js";
+import { opaqueKey } from "../src/client/keys.js";
+import type { MessageDoc } from "@convex-dev/agent";
 
 const modules = import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]);
 
@@ -62,9 +65,278 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.clearAllTimers();
   vi.useRealTimers();
 });
+
+it.each(["generate", "stream"] as const)(
+  "an approval pause in %s retries a transient usage failure and keeps reporting complete",
+  async (mode) => {
+    fixture.run.Main = { mode };
+    fixture.approval = true;
+    fixture.steps.Main = () => call("echo", { text: "approval" });
+    let attempts = 0;
+
+    fixture.slots.usage = {
+      record: async (_ctx, event) => {
+        attempts++;
+
+        if (attempts === 1) {
+          // Cross a cancellation poll while the native approval save has cleared
+          // its execution token. A legitimate pause must survive that poll too.
+          await t.action(async () => {
+            await vi.advanceTimersByTimeAsync(LIMITS.cancelPollMs);
+          });
+
+          throw new Error("transient");
+        }
+
+        events.push(event);
+      },
+    };
+
+    const t = setup();
+    const receipt = await open(t);
+
+    await drain(t);
+    expect(attempts).toBe(2);
+    expect(events).toHaveLength(1);
+    expect(events[0].status).toBe("success");
+    expect(await partial(t, receipt.threadId)).toBe(false);
+    expect(fixture.calls).toHaveLength(1);
+  },
+);
+
+it("cancellation during an approval-pause delivery revokes its retry allowance", async () => {
+  fixture.approval = true;
+  fixture.steps.Main = () => call("echo", { text: "approval" });
+  let attempts = 0;
+
+  fixture.slots.usage = {
+    record: async (_ctx, event) => {
+      attempts++;
+      await owner(t).mutation(api.agents.cancel, { threadId: event.threadId });
+      throw new Error("cancelled pause");
+    },
+  };
+
+  const t = setup();
+  const receipt = await open(t);
+
+  await drain(t);
+  expect(attempts).toBe(1);
+  expect(events).toHaveLength(0);
+  expect(await partial(t, receipt.threadId)).toBe(true);
+});
+
+/** Delay only the action's RPC reply, AFTER the real nested transaction commits. */
+function holdSaveReply(mode: "late" | "drop" | "pending" | "unreadable" = "late") {
+  let committed: MessageDoc | undefined;
+  let release!: () => void;
+
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  const original = generation.generateTurn;
+
+  vi.spyOn(generation, "generateTurn").mockImplementation(async (rt, turn) => {
+    const raw = turn.rawCtx;
+
+    turn.rawCtx = {
+      ...raw,
+      runMutation: (async (ref, args) => {
+        const isCompletion =
+          args && "args" in args && args.args?.messages?.some((m: { usage?: unknown }) => m.usage);
+
+        if (isCompletion && mode === "drop") throw new Error("save rolled back");
+
+        if (isCompletion && mode === "pending") await gate;
+
+        const result = await raw.runMutation(ref, args);
+
+        if (isCompletion) {
+          committed = (result as { messages: MessageDoc[] }).messages.find((m) => m.usage);
+          await gate;
+        }
+
+        return result;
+      }) as typeof raw.runMutation,
+      runQuery: (async (ref, args) => {
+        if (mode === "unreadable" && args && "messageIds" in args) await gate;
+
+        return raw.runQuery(ref, args);
+      }) as typeof raw.runQuery,
+    };
+
+    return original(rt, turn);
+  });
+
+  return { committed: () => committed, release: () => release() };
+}
+
+it.each(["generate", "stream"] as const)(
+  "a committed %s save keeps its native message and legacy key when its reply misses the deadline",
+  async (mode) => {
+    fixture.run.Main = { mode, modelTimeoutMs: 1_000, toolTimeoutMs: 1_000 };
+    const held = holdSaveReply();
+    const t = setup();
+    const receipt = await open(t);
+
+    try {
+      await waitFor(t, () => !!held.committed());
+      expect(events).toHaveLength(0);
+
+      await t.action(async () => {
+        await vi.advanceTimersByTimeAsync(sliceDeadlineMs(resolveRunSettings(fixture.run.Main)));
+      });
+
+      await waitFor(t, () => events.length === 1);
+      const native = held.committed()!;
+
+      expect(events[0]).toMatchObject({ messageId: native._id, status: "aborted" });
+
+      expect(events[0].key).toBe(
+        await opaqueKey("model", receipt.threadId, native._id, native.stepOrder),
+      );
+
+      expect(await partial(t, receipt.threadId)).toBe(false);
+    } finally {
+      held.release();
+
+      await t.action(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      await drain(t);
+    }
+
+    expect(events).toHaveLength(1);
+    expect(fixture.calls).toHaveLength(1);
+  },
+);
+
+it.each(["generate", "stream"] as const)(
+  "a %s completion save that rolls back reports null instead of its placeholder id",
+  async (mode) => {
+    fixture.run.Main = { mode };
+    holdSaveReply("drop");
+    const t = setup();
+    const receipt = await open(t);
+
+    await drain(t);
+    expect(events).toHaveLength(1);
+    expect(events[0].messageId).toBeNull();
+    expect(await partial(t, receipt.threadId)).toBe(false);
+    expect(fixture.calls).toHaveLength(1);
+  },
+);
+
+it.each(["pending", "unreadable"] as const)(
+  "an %s save outcome marks reporting partial within the evidence bound without choosing a false key",
+  async (mode) => {
+    fixture.run.Main = { modelTimeoutMs: 1_000, toolTimeoutMs: 1_000 };
+    const held = holdSaveReply(mode);
+    const t = setup();
+    const receipt = await open(t);
+
+    try {
+      if (mode === "unreadable") await waitFor(t, () => !!held.committed());
+      else await waitFor(t, () => fixture.calls.length === 1);
+
+      await t.action(async () => {
+        await vi.advanceTimersByTimeAsync(sliceDeadlineMs(resolveRunSettings(fixture.run.Main)));
+        await vi.advanceTimersByTimeAsync(LIMITS.usageRecordTimeoutMs);
+      });
+
+      expect(await partial(t, receipt.threadId)).toBe(true);
+      expect(events).toHaveLength(0);
+    } finally {
+      held.release();
+
+      await t.action(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      await drain(t);
+    }
+
+    expect(events).toHaveLength(0);
+    expect(fixture.calls).toHaveLength(1);
+  },
+);
+
+it.each(["cancel", "deadline"] as const)(
+  "a stalled retry ownership read releases immediately on %s",
+  async (stop) => {
+    fixture.run.Main = { modelTimeoutMs: 1_000, toolTimeoutMs: 1_000 };
+    let attempts = 0;
+    let reading = false;
+    let release!: () => void;
+
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const original = generation.generateTurn;
+
+    fixture.slots.usage = {
+      record: async () => {
+        attempts++;
+        throw new Error("transient");
+      },
+    };
+
+    vi.spyOn(generation, "generateTurn").mockImplementation(async (rt, turn) => {
+      const raw = turn.rawCtx;
+
+      turn.rawCtx = {
+        ...raw,
+        runQuery: (async (ref, args) => {
+          if (attempts === 1 && !reading) {
+            reading = true;
+            await gate;
+          }
+
+          return raw.runQuery(ref, args);
+        }) as typeof raw.runQuery,
+      };
+
+      return original(rt, turn);
+    });
+
+    const t = setup();
+    const receipt = await open(t);
+
+    try {
+      await waitFor(t, () => reading);
+
+      if (stop === "cancel")
+        await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
+
+      await t.action(async () => {
+        await vi.advanceTimersByTimeAsync(
+          stop === "cancel"
+            ? LIMITS.cancelPollMs
+            : sliceDeadlineMs(resolveRunSettings(fixture.run.Main)),
+        );
+      });
+
+      // The stalled query is still pending; only the fence can release delivery.
+      expect(await partial(t, receipt.threadId)).toBe(true);
+      expect(attempts).toBe(1);
+    } finally {
+      release();
+
+      await t.action(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      await drain(t);
+    }
+  },
+);
 
 it.each(["generate", "stream"] as const)(
   "a paid %s step that fails reports provider usage once with failed status",

@@ -8,7 +8,8 @@ import type { UsageEvent, UsageSlot } from "../slots.js";
 import { LIMITS } from "../../component/limits.js";
 
 /** At most three host deliveries, never provider retries. Every retry checks
- * the authoritative fence, and both hooks and backoff race the live deadline.
+ * the authoritative fence (including this slice's native approval pause), and
+ * ownership reads, hooks and backoff all race the live deadline.
  * If completion is already aborted, allow ONE bounded raw-context delivery of
  * incurred usage; no retry is admitted after revocation. Arbitrary host promises
  * cannot be cancelled, so an in-flight hook may still commit: apps MUST dedupe.
@@ -24,7 +25,7 @@ export async function deliverStepUsage(
     const alreadyAborted = fence.controller.signal.aborted;
 
     try {
-      if (attempt > 0) await fence.assertActive();
+      if (attempt > 0) await fence.wait(fence.assertActive(true));
 
       const pending = boundedUsageCall(() => usage.record(turn.rawCtx, event));
 
@@ -44,11 +45,11 @@ export async function deliverStepUsage(
 }
 
 /** A host that never settles must not hold the action open indefinitely. */
-async function boundedUsageCall(invoke: () => Promise<void>) {
+export async function boundedUsageCall<T>(invoke: () => Promise<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   try {
-    await Promise.race([
+    return await Promise.race([
       Promise.resolve().then(invoke),
       new Promise<never>((_resolve, reject) => {
         timer = setTimeout(() => reject(new Error("USAGE_TIMEOUT")), LIMITS.usageRecordTimeoutMs);

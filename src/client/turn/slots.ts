@@ -15,6 +15,7 @@ import type { SlotFacts, UsageEvent } from "../slots.js";
 import type { HookContext, Registration } from "../types.js";
 import { sliceKey, type Generation, type Turn } from "./context.js";
 import { markUsagePartial, deliverStepUsage } from "./usage.js";
+import { settleUsageSave } from "./step-usage.js";
 
 /** Report exactly one provider completion after its save succeeds or fails.
  * Preserve the existing native key; a dropped save uses the unique slice id in
@@ -33,6 +34,8 @@ export async function recordStepUsage(rt: RuntimeContext, gen: Generation, faile
   }
 
   try {
+    await settleUsageSave(turn, fence);
+
     const requestId = step.providerMetadata?.agevex?.requestId;
 
     const event: UsageEvent = {

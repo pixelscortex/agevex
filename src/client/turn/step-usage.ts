@@ -9,6 +9,8 @@ import type {
 } from "@ai-sdk/provider";
 import type { UsageEvent } from "../slots.js";
 import type { Turn } from "./context.js";
+import type { TurnFence } from "./fence.js";
+import { boundedUsageCall } from "./usage.js";
 
 export type StepUsage = Pick<
   UsageEvent,
@@ -63,4 +65,68 @@ export function attachUsageMessage(turn: Turn, saved: unknown) {
   const native = messages.find((message) => message.usage);
 
   if (turn.stepUsage && native && !turn.stepUsage.native) turn.stepUsage.native = native;
+}
+
+/** Track completion before dispatch, including handle preparation. Agent 0.7.7
+ * component/messages.ts:364-388 replaces the exact pending id with the first
+ * response row. Retain that id so a lost reply cannot choose a different key. */
+export function trackUsageSave(turn: Turn, payload: unknown, invoke: () => Promise<unknown>) {
+  const args = payload as { pendingMessageId?: string; messages?: { usage?: unknown }[] };
+
+  const pending = invoke().then((saved) => {
+    attachUsageMessage(turn, saved);
+
+    return saved;
+  });
+
+  if (args.messages?.some((message) => message.usage)) {
+    const save = { messageId: args.pendingMessageId, pending, settled: false };
+
+    turn.usageSave = save;
+
+    void pending.then(
+      () => {
+        save.settled = true;
+      },
+      () => {
+        save.settled = true;
+      },
+    );
+  }
+
+  return pending;
+}
+
+/** Wait for the outstanding save while the fence is live. After revocation,
+ * recover a committed replacement by its exact pre-recorded id, never history.
+ * One native document <=1 MiB is read, even at hard maximum host settings.
+ * Recovery gets the existing 1s evidence bound after abort, like the final hook.
+ * An unresolved save is unknown, not a dropped save: mark partial rather than
+ * emitting a fallback key that a late commit would make incorrect. */
+export async function settleUsageSave(turn: Turn, fence: TurnFence) {
+  const save = turn.usageSave;
+
+  if (!save || turn.stepUsage?.native) return;
+
+  try {
+    await fence.wait(save.pending);
+  } catch {
+    // A failed reply does not prove rollback. Read the exact native row below.
+  }
+
+  if (turn.stepUsage?.native) return;
+
+  if (save.messageId) {
+    const recover = boundedUsageCall(() =>
+      turn.rawCtx.runQuery(turn.managed.component.messages.getMessagesByIds, {
+        messageIds: [save.messageId!],
+      }),
+    );
+
+    const messages = fence.controller.signal.aborted ? await recover : await fence.wait(recover);
+
+    attachUsageMessage(turn, { messages });
+  }
+
+  if (!turn.stepUsage?.native && !save.settled) throw new Error("USAGE_SAVE_UNKNOWN");
 }
