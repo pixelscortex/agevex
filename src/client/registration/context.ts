@@ -79,7 +79,7 @@ export function createRuntimeContext(component: ComponentApi, config: Registrati
 /** Every configured optional slot must expose the methods the runtime calls. */
 function assertSlots(config: Registration) {
   for (const [slot, methods] of [
-    [config.usage, ["scope"]],
+    [config.usage, ["record"]],
     [config.budget, ["check"]],
     [config.telemetry, ["integration", "flush"]],
     [config.sandbox, ["tools"]],

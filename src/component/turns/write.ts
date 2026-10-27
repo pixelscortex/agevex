@@ -8,7 +8,7 @@
  * mutation as a nested call in the SAME transaction: cancellation either wins
  * or the write commits first, with no race. Around native message saves it
  * also records coordination facts atomically: the exact message refs, the
- * usage step, the child's final result id, the pending generation and stream,
+ * child's final result id, the pending generation and stream,
  * and any approval pause (turns/pause.ts). Touches `assignments`,
  * `subagentRuns.childResultMessageId` and `inbox`.
  */
@@ -41,7 +41,6 @@ export const writeArgs = {
   args: v.any(),
   rejectStale: v.optional(v.boolean()),
   nativeStream: v.optional(v.string()),
-  trackUsage: v.optional(v.boolean()),
   deferredTools: v.optional(v.array(v.string())),
   askUserTools: v.optional(
     v.record(
@@ -125,7 +124,7 @@ export async function fencedWrite(ctx: MutationCtx, args: WriteArgs): Promise<un
     const saved = (await ctx.db.get("assignments", row._id))!;
 
     // Pure invariant, unreachable given the writer bounds: every growth during
-    // a save is reserved (report, refs, usage step, pending generation, a full
+    // a save is reserved (report, refs, pending generation, a full
     // approval pause), and every fixed host string is bounded where it enters
     // (names and handles: send.ts, assertWriteHandles, launch.ts, refs.ts).
     // tests/save-bounds.test.ts builds the largest row production can write
@@ -231,7 +230,7 @@ async function rejectApprovalOverflow(ctx: MutationCtx, row: Doc<"assignments">)
 }
 
 /** Coordination facts recorded with a native message save, in order: exact
- * refs, the usage step, retired approvals, the child's final result, the
+ * refs, retired approvals, the child's final result, the
  * pending generation, and finally any new approval pause. */
 async function recordNativeSave(
   ctx: MutationCtx,
@@ -243,16 +242,6 @@ async function recordNativeSave(
   // Agent 0.7.7 addMessages returns the actual pending document, including
   // its id (vercel/client/saveInputMessages.ts). Record only coordination
   // metadata in the SAME transaction as the native placeholder creation.
-
-  const modelStep =
-    args.trackUsage || row.textConfig?.summary
-      ? messages.find((message) => message.usage && message.status === "success")
-      : undefined;
-
-  if (modelStep)
-    await ctx.db.patch("assignments", row._id, {
-      modelStep: { messageId: String(modelStep._id), stepOrder: modelStep.stepOrder },
-    });
 
   // Claiming a continuation never consumes a decision: cancel can still
   // win while the tool/provider awaits I/O. Retire only with its native save.
@@ -275,7 +264,7 @@ async function recordNativeSave(
 }
 
 /** Capture the exact last successful non-empty assistant message with its native
- * save. Root history must never reuse a modelStep from a previous user request;
+ * save. Root history retains only its own accepted result;
  * the child's candidate is still verified by settlement before delivery. */
 async function recordResult(ctx: MutationCtx, row: Doc<"assignments">, messages: MessageDoc[]) {
   const finals = messages.filter(

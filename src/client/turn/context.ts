@@ -3,14 +3,14 @@
 // `Turn` is what one `runTurn` action knows after a successful claim (the queued
 // execution, the claimed facts, the executing agent, attribution facts).
 // `Generation` adds what exists only while the model runs: the cancellation fence,
-// the hook context, the hook runner, the meter and the mutable generation flags.
+// the hook context, the hook runner, and the mutable generation flags.
 // `TurnOutcome` is what generation hands to finalization. The fence predicates
 // `stillOwns` / `stillRunning` live here because every phase re-checks them.
 
 import type { FunctionReturnType } from "convex/server";
 import type { ComponentApi } from "../../component/_generated/component.js";
 import type { RunnerCtx } from "../registration/context.js";
-import type { MeterBackend, SlotFacts } from "../slots.js";
+import type { SlotFacts } from "../slots.js";
 import type {
   Activity,
   HookContext,
@@ -79,7 +79,6 @@ export type Generation = {
   fence: TurnFence;
   hc: HookContext;
   hook: HookRunner;
-  backend: MeterBackend | undefined;
   state: GenerationState;
 };
 

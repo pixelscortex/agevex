@@ -5,7 +5,13 @@ import agent from "@convex-dev/agent/test";
 import { mockModel } from "@convex-dev/agent";
 import { z } from "zod";
 import agevex from "../src/test.js";
-import { defineTask, runTask, type SlotFacts, type TaskOptions } from "../src/client/index.js";
+import {
+  defineTask,
+  runTask,
+  type SlotFacts,
+  type UsageEvent,
+  type TaskOptions,
+} from "../src/client/index.js";
 import { components } from "./fixture/api.js";
 import schema from "./fixture/schema.js";
 import { fingerprint } from "../src/client/once.js";
@@ -190,22 +196,9 @@ it("a task replay returns its stored typed result and records each paid attempt 
   const charges: unknown[] = [];
 
   const usage = {
-    scope: (_ctx: unknown, facts: SlotFacts) => ({
-      estimate: async () => {
-        throw new Error("unexpected");
-      },
-      record: async (provider: string, args: { key: string }) => {
-        charges.push({ provider, args, facts });
-
-        return {
-          key: args.key,
-          attach: async () => {},
-          correct: async () => {},
-          settle: async () => {},
-          get: async () => null,
-        };
-      },
-    }),
+    record: async (_ctx: unknown, event: UsageEvent) => {
+      charges.push({ provider: event.provider, args: event, facts: event });
+    },
   };
 
   const invoke = () =>
@@ -442,7 +435,7 @@ it("refused dispatch records no usage and replays a failed receipt without paid 
   const { model, definition } = task(['{"category":"yes"}']);
 
   const scope = vi.fn(() => {
-    throw new Error("a refused dispatch must not reach the meter");
+    throw new Error("a refused dispatch must not reach the usage hook");
   });
 
   const beforeDispatch = vi.fn(async () => {
@@ -457,7 +450,7 @@ it("refused dispatch records no usage and replays a failed receipt without paid 
         { text: "hello" },
         {
           ...options,
-          usage: { scope },
+          usage: { record: scope },
           beforeDispatch,
         },
       ),

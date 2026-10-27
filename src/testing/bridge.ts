@@ -45,7 +45,7 @@ export const delegationState = internalQuery({
         status: run.status,
         depth: run.depth,
         childThreadId: run.childThreadId ?? null,
-        createdAt: run.createdAt,
+        createdAt: run._creationTime,
         startedAt: run.startedAt ?? null,
         finishedAt: runTimes(run).finishedAt,
       }));

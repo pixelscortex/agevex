@@ -50,7 +50,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
   const rt = createRuntimeContext(component, config);
 
   return {
-    /** Run a structured task outside a turn, metered by the registration's usage slot. */
+    /** Run a structured task outside a turn, reported through the registration's usage slot. */
     runTask: <Input, Output>(
       ctx: RunnerCtx,
       task: Task<Input, Output>,

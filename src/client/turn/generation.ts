@@ -13,21 +13,14 @@ import { boundedModel } from "./deadlines.js";
 import { LIMITS } from "../../component/limits.js";
 import { boundedDownload } from "./download.js";
 import type { RuntimeContext } from "../registration/context.js";
-import { scopedMeter } from "../slots.js";
 import { bindTaskContext } from "../tasks.js";
 import type { HookContext, Registration } from "../types.js";
 import { completeGeneration } from "./completion.js";
-import {
-  sliceKey,
-  type Generation,
-  type GenerationState,
-  type Turn,
-  type TurnOutcome,
-} from "./context.js";
+import { type Generation, type GenerationState, type Turn, type TurnOutcome } from "./context.js";
 import { startTurnFence } from "./fence.js";
 import { hookRunner } from "./hook-runner.js";
 import { selectTurnModel } from "./routing.js";
-import { extractAttachedFiles, meterBackend, telemetryIntegrations } from "./slots.js";
+import { extractAttachedFiles, telemetryIntegrations } from "./slots.js";
 import { buildTurnTools } from "./tools.js";
 import { markUsagePartial } from "./usage.js";
 import { assertBudget } from "./admission.js";
@@ -88,7 +81,7 @@ export async function generateTurn(rt: RuntimeContext, turn: Turn): Promise<Turn
 /**
  * Start the fence and assemble the `Generation`: hook tasks (`runTask` inside a
  * hook) are bound to the fenced context, so they share the turn's receipts and
- * cancellation fence; hooks get the hook-scoped meter.
+ * cancellation fence.
  */
 function startGeneration(rt: RuntimeContext, turn: Turn): Generation {
   const { args, claimed, facts, turnKey } = turn;
@@ -106,10 +99,6 @@ function startGeneration(rt: RuntimeContext, turn: Turn): Generation {
     },
   });
 
-  const backend = meterBackend(rt.config, turn.rawCtx, { ...facts, purpose: "tool" }, () =>
-    markUsagePartial(rt, turn),
-  );
-
   const state: GenerationState = {
     modelStarted: false,
     hookFailed: false,
@@ -123,17 +112,11 @@ function startGeneration(rt: RuntimeContext, turn: Turn): Generation {
     ...facts,
     promptMessageId: claimed.requestMessageId,
     signal: fence.controller.signal,
-    meter: scopedMeter(
-      meterBackend(rt.config, turn.rawCtx, { ...facts, purpose: "hook" }, () =>
-        markUsagePartial(rt, turn),
-      ),
-      `${sliceKey(turn)}:hook`,
-    ),
   };
 
   const hook = hookRunner(rt, turn, fence, state);
 
-  return { turn, fence, hc, hook, backend, state };
+  return { turn, fence, hc, hook, state };
 }
 
 /**

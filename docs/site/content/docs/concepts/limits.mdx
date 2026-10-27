@@ -41,7 +41,7 @@ own validated defaults, hard ceilings and combined action budget.
 | `taskPromptLength`       | 16,000        | 16,000        |
 | `agents`                 | 64            | 64            |
 | `minuteMs`               | 60,000        | 60,000        |
-| `assignmentBytes`        | 16 KiB        | 16 KiB        |
+| `assignmentBytes`        | 14 KiB        | 14 KiB        |
 | `nameLength`             | 200           | 200           |
 | `turnsPerLoop`           | 50            | 50            |
 | `workflowVersion`        | 1             | 1             |
@@ -76,7 +76,7 @@ stored function handle at most `functionHandleBytes` UTF-8 bytes (real Convex
 handles are about 60–100). Sends, delegations and native writes beyond them
 fail with `INVALID_SUBJECT`, `INVALID_AGENT` or `INVALID_FUNCTION_HANDLE`
 before anything is saved. With every field at its cap, an assignment stays
-under its 16 KiB envelope.
+under its 14 KiB envelope.
 
 `slicesPerTurn` and `stepsPerTurn` also bound approval resumes, which keep the
 turn's step count; see

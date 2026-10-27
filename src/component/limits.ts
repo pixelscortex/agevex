@@ -68,19 +68,19 @@ export const HOST_LIMITS = {
  * Reads <=3I+2N+5A+2C+2+64A+U=9,368 <32,000.
  * Indexed queries <=3 child-status ranges +A inbox ranges +64A=1,043 <4,096.
  * Bytes read (KiB): ready scan/delete 2I=4,864; run guard/patch 2U*16=5,376;
- * assignments 2A*16=512; scheduler 2A*4=128; children 2C*4=120;
- * final root 2*16=32; SDK 64A*3=3,072; cleanup jobs A*4=64.
- * Total <=14,168 KiB <16,384 KiB, leaving 2,216 KiB headroom.
- * Bytes written (KiB): U*16+I+N+2A*16+A*16+2A*4+C*4+16+64A*4
- * =10,572 KiB <16 MiB. No staged hook continuation or routing locks remain.
+ * assignments 2A*14=448; scheduler 2A*4=128; children 2C*4=120;
+ * final root 2*14=28; SDK 64A*3=3,072; cleanup jobs A*4=64.
+ * Total <=14,100 KiB <16,384 KiB, leaving 2,284 KiB headroom.
+ * Bytes written (KiB): U*16+I+N+2A*14+A*16+2A*4+C*4+16+64A*4
+ * =10,508 KiB <16 MiB. No staged hook continuation or routing locks remain.
  * Native messages/placeholders are NEVER read by cancel; cleanup is separate.
  *
- * Assignment envelope is 16 KiB, including native/system fields. The all-fields
+ * Assignment envelope is 14 KiB, including native/system fields. The all-fields
  * fixture tests/save-bounds.fixture.ts fills every remaining writer bound:
- * approvals <=4,802 B; report <=2,635 B; metadata handles <=822 B;
+ * approvals <=4,802 B; report <=2,635 B; metadata handles <=806 B;
  * pending generation <=988 B; runTurn <=258 B; names <=1,204 B;
- * model map <=510 B; limits <=309 B; remaining fields/names/overhead <=1,144 B.
- * Total <=12,672 B; 16,384-12,672=3,712 B headroom at every writer cap.
+ * model map <=510 B; limits <=309 B; remaining fields/names/overhead <=1,064 B.
+ * Total <=12,576 B; 14,336-12,576=1,760 B headroom at every writer cap.
  * No summary body, context ring, review history, cadence or text job is stored.
  * activeTools is excluded from save growth: write clears it first, and the
  * progress writer separately refuses a marker crossing assignmentBytes.
@@ -122,7 +122,7 @@ export const LIMITS = {
   taskPromptLength: 16_000,
   agents: 64,
   minuteMs: 60_000,
-  assignmentBytes: 16 << 10,
+  assignmentBytes: 14 << 10,
   turnReportBytes: 3 << 10,
   messageIdBytes: 37,
   maxDepth: HOST_LIMITS.maxDepth.default,

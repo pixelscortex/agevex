@@ -235,7 +235,8 @@ export function runTreeEndpoint(ep: EndpointContext) {
 
         const nodes = new Map(usage.nodes.map((node) => [node.nodeId, node.usage]));
 
-        tree.usage = usage.total;
+        // A host view cannot erase evidence already lost by the core.
+        tree.usage = { ...usage.total, reporting: partial ? "partial" : usage.total.reporting };
 
         for (const node of tree.nodes)
           node.usage = nodes.get(node.parentId === null ? null : node.id) ?? null;

@@ -247,7 +247,7 @@ it("fence abort drops late step saves and never advertises their ids in afterTur
   expect(events[0].messageIds).not.toContain(assistantIds(saves.flat())[0]);
 });
 
-it.each(["managed", "metered_once"])(
+it.each(["managed", "once_only"])(
   "%s tools receive the trusted root request id across tool-step slices",
   async (name) => {
     const seen: ToolContext[] = [];

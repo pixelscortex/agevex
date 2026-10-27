@@ -1,0 +1,177 @@
+---
+title: Recording usage in your app
+description: Record model steps, reconcile costs and enforce your own spend policy.
+status: Available
+---
+
+`usage.record(ctx, event)` runs after each saved model step. It receives trusted
+subject, root/thread/run/agent, model, purpose, native token usage, provider
+metadata, provider response `requestId` when known, and the exact native
+`messageId`. `key` is stable for deduplication. Standalone tasks and title calls
+create no native message and use `messageId: null`; their provider id still
+identifies the paid call. Tool effects can write your ledger directly.
+
+The following app table keeps observed spend separate from a later real cost.
+Use your installed host's generated server helpers in a real app; the generic
+builders keep this standalone recipe independent of your schema types.
+
+```ts title="convex/schema.ts"
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+export default defineSchema({
+  usage: defineTable({
+    key: v.string(),
+    subject: v.string(),
+    runId: v.string(),
+    threadId: v.string(),
+    agent: v.string(),
+    model: v.optional(v.string()),
+    purpose: v.optional(v.string()),
+    messageId: v.union(v.null(), v.string()),
+    generationId: v.union(v.null(), v.string()),
+    tokens: v.any(),
+    usd: v.union(v.null(), v.number()),
+    settled: v.boolean(),
+  })
+    .index("by_key", ["key"])
+    .index("by_run", ["subject", "runId"]),
+});
+```
+
+```ts title="convex/usage.ts"
+import {
+  internalActionGeneric,
+  internalMutationGeneric,
+  internalQueryGeneric,
+  type DataModelFromSchemaDefinition,
+  type MutationBuilder,
+  type QueryBuilder,
+} from "convex/server";
+import schema from "./schema.js";
+import { v, getConvexSize } from "convex/values";
+import type { BudgetSlot, UsageSlot } from "agevex";
+import { openRouterCost, tokenEstimate } from "agevex/usage";
+import { internal } from "./_generated/api.js";
+
+// Example rates: replace with your model's actual prices, including free rates.
+type DataModel = DataModelFromSchemaDefinition<typeof schema>;
+const internalMutation = internalMutationGeneric as MutationBuilder<DataModel, "internal">;
+const internalQuery = internalQueryGeneric as QueryBuilder<DataModel, "internal">;
+const estimate = tokenEstimate({ inputUsdPerMillion: 2, outputUsdPerMillion: 8 });
+export const usage: UsageSlot = {
+  record: async (ctx, event) => {
+    await ctx.runMutation(internal.usage.record, {
+      key: event.key,
+      subject: event.subject,
+      runId: event.runId,
+      threadId: event.threadId,
+      agent: event.agent,
+      model: event.model,
+      purpose: event.purpose,
+      messageId: event.messageId,
+      generationId: event.requestId ?? null,
+      tokens: event.usage ?? null,
+      usd: estimate(event)?.usd ?? null,
+    });
+  },
+};
+export const record = internalMutation({
+  args: {
+    key: v.string(),
+    subject: v.string(),
+    runId: v.string(),
+    threadId: v.string(),
+    agent: v.string(),
+    model: v.optional(v.string()),
+    purpose: v.optional(v.string()),
+    messageId: v.union(v.null(), v.string()),
+    generationId: v.union(v.null(), v.string()),
+    tokens: v.any(),
+    usd: v.union(v.null(), v.number()),
+  },
+  returns: v.null(),
+  handler: async (ctx, event) => {
+    if (
+      await ctx.db
+        .query("usage")
+        .withIndex("by_key", (q) => q.eq("key", event.key))
+        .unique()
+    )
+      return null;
+    if (
+      Math.max(getConvexSize(event), new TextEncoder().encode(JSON.stringify(event)).length) > 4096
+    )
+      throw new Error("USAGE_TOO_LARGE");
+    await ctx.db.insert("usage", { ...event, settled: false });
+    // This example's model is OpenRouter; route by provider in mixed-provider apps.
+    if (event.generationId)
+      await ctx.scheduler.runAfter(5000, internal.usage.reconcile, {
+        key: event.key,
+        generationId: event.generationId,
+      });
+    return null;
+  },
+});
+export const reconcile = internalActionGeneric({
+  args: { key: v.string(), generationId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const real = await openRouterCost({
+      apiKey: process.env.OPENROUTER_API_KEY!,
+      generationId: args.generationId,
+    });
+    if (real) await ctx.runMutation(internal.usage.settle, { key: args.key, usd: real.usd });
+    return null;
+  },
+});
+export const settle = internalMutation({
+  args: { key: v.string(), usd: v.number() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("usage")
+      .withIndex("by_key", (q) => q.eq("key", args.key))
+      .unique();
+    if (row) await ctx.db.patch(row._id, { usd: args.usd, settled: true });
+    return null;
+  },
+});
+export const spend = internalQuery({
+  args: { subject: v.string(), runId: v.string() },
+  returns: v.union(v.null(), v.number()),
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("usage")
+      .withIndex("by_run", (q) => q.eq("subject", args.subject).eq("runId", args.runId))
+      .take(101);
+    if (rows.length > 100 || rows.some((row) => row.usd === null)) return null;
+    return rows.reduce((sum, row) => sum + row.usd!, 0);
+  },
+});
+export const budget: BudgetSlot = {
+  check: async (ctx, args) => {
+    const usd = await ctx.runQuery(internal.usage.spend, args);
+    return { allowed: usd !== null && usd < 1 };
+  },
+};
+```
+
+Pass `usage` and `budget` to `registerAgent`. This recipe caps each payload at 4 KiB; allow 1 KiB more for system fields,
+so the 101-row read stays below 505 KiB; larger ledgers should use app aggregates. The 100-row cutoff fails
+closed. Authorize any public ledger access through your app's subject policy.
+Use model/provider-specific rates and bound generation ids in your app.
+
+`tokenEstimate(rates)({ usage })` returns `{ usd } | null`, accepting native
+Agent, SDK totals, and prompt/completion token shapes. Missing tokens stay
+unknown; zero tokens cost zero. Rates must be finite and nonnegative.
+`openRouterCost({ apiKey, generationId })` returns `{ usd, tokens } | null`.
+It reads OpenRouter's generation endpoint once, with a 30-second deadline and
+16 KiB response ceiling. Tokens prefer native billing counts and may be null.
+Unavailable evidence returns null; the helper never retries. The app decides
+whether to schedule another lookup and when to stop.
+
+Usage callback failures set a sticky partial marker and never replay paid work.
+Budget checks happen before model steps and local effects; already-started work
+can overshoot. `usage.view` is a small optional query adapter for app-owned
+exclusive node/run totals. Without it run-tree usage stays null. The app bounds
+that adapter's reads; core preserves the partial marker on its projection.

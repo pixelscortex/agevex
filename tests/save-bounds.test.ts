@@ -69,7 +69,6 @@ it.each([
     executionId: "save",
     cancellationEpoch: 0,
     ...handles,
-    trackUsage: true,
     args: {
       threadId: native.threadId,
       promptMessageId: native.promptMessageId,
@@ -156,8 +155,6 @@ it("send stores names and handles at their caps and refuses one unit or byte mor
         worker: "w".repeat(LIMITS.functionHandleBytes),
         updateThread: "u".repeat(LIMITS.functionHandleBytes),
         getThread: "g".repeat(LIMITS.functionHandleBytes),
-        title: false,
-        summary: false,
       },
       ...over,
     });
@@ -174,8 +171,6 @@ it("send stores names and handles at their caps and refuses one unit or byte mor
           worker: longHandle,
           updateThread: "u",
           getThread: "g",
-          title: false,
-          summary: false,
         },
       },
       "INVALID_FUNCTION_HANDLE",

@@ -123,12 +123,11 @@ tool result. Slice completion clears stale markers, and late writes are fenced.
 Cancelling live work preserves any root outcome and finish time already recorded.
 
 Without a usage adapter's query-safe `view`, envelope and node usage are `null`.
-`meter.usageSlot()` supplies live exclusive totals, so each node is summed once
-to obtain the envelope total, including root title/summary work. `estimatedUsd`
-and `settledUsd` remain separate; `unknown` and `reporting` describe coverage.
-Corrections replace estimated cost without repeating generation.
+Apps may supply exclusive node and run totals through `usage.view`; their
+queries own read bounds. `estimatedUsd` and `settledUsd` remain separate;
+`unknown` and `reporting` describe coverage. See [recording usage](/docs/concepts/recording-usage).
 
-The tree includes at most 50 launches plus the root. Reads stay below 8 MiB including the meter projection; output is capped
+The tree includes at most 50 launches plus the root. Reads stay below 8 MiB for core coordination; output is capped
 at 128 KiB. `delegations({ threadId, paginationOpts })` retains its existing
 history contract across requests: newest-first, at most 50 runs per page, with
 stored statuses.

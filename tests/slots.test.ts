@@ -11,8 +11,7 @@ import { fixture, reset, exports, api, registration, text, call, main } from "./
 import { components, rawAssignment } from "./fixture/api.js";
 import { requireReceipt } from "./receipt.js";
 import { LIMITS, registerAgent } from "../src/client/index.js";
-import { scopedMeter } from "../src/client/slots.js";
-import type { SlotFacts, MeterBackend, MeterChargeBackend } from "../src/client/slots.js";
+import type { UsageEvent, UsageSlot, SlotFacts } from "../src/client/slots.js";
 import { HOST_LIMITS, type Limits } from "../src/component/limits.js";
 const modules = import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]);
 
@@ -71,49 +70,6 @@ const waitFor = async (t: Test, check: () => boolean) =>
     })
     .toBe(true);
 
-function meter() {
-  const scopes: SlotFacts[] = [];
-  const operations: { op: string; provider?: string; args: Record<string, unknown> }[] = [];
-
-  const handle = (key: string): MeterChargeBackend => ({
-    key,
-    attach: async (args) => {
-      operations.push({ op: "attach", args });
-    },
-    correct: async (args) => {
-      operations.push({ op: "correct", args });
-    },
-    settle: async (args) => {
-      operations.push({ op: "settle", args });
-    },
-    get: async () => null,
-  });
-
-  const backend: MeterBackend = {
-    estimate: async (provider, args) => {
-      operations.push({ op: "estimate", provider, args });
-
-      return handle(args.key);
-    },
-    record: async (provider, args) => {
-      operations.push({ op: "record", provider, args });
-
-      return handle(args.key);
-    },
-  };
-
-  return {
-    scopes,
-    operations,
-    slot: {
-      scope: (_ctx: unknown, facts: SlotFacts) => {
-        scopes.push(facts);
-
-        return backend;
-      },
-    },
-  };
-}
 async function upload(t: Test, subject = "alice", content = "file text") {
   const file = await t.action(
     async (ctx) =>
@@ -141,100 +97,35 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-it.each(["managed", "metered_once"])(
-  "%s receives attributed meter and stable default charge/operation keys",
-  async (name) => {
-    const usage = meter();
+it("each saved model step records one exact-id usage event and replay records none", async () => {
+  const usage = usageRecorder();
 
-    fixture.slots.usage = usage.slot;
-    fixture.steps.Main = (n) => (n === 0 ? call(name, {}) : text("finished"));
-
-    fixture.toolWork = async (tc) => {
-      const charge = await tc.meter.estimate("paid", { quantity: 1 });
-
-      await charge.attach({ requestId: "request" });
-      await charge.correct({ quantity: 2 });
-      await charge.settle({ usd: 0.01 });
-      await tc.meter.record("paid", {});
-
-      return "done";
-    };
-
-    const t = setup();
-    const receipt = await open(t);
-
-    await drain(t);
-    const tc = fixture.toolContext!;
-
-    expect(tc).toMatchObject({
-      subject: "alice",
-      rootThreadId: receipt.threadId,
-      threadId: receipt.threadId,
-      agent: "Main",
-    });
-
-    expect(usage.scopes).toContainEqual({
-      purpose: "tool",
-      subject: "alice",
-      rootThreadId: receipt.threadId,
-      threadId: receipt.threadId,
-      runId: tc.runId,
-      agent: "Main",
-    });
-
-    const operations = usage.operations.filter(
-      (op) => op.provider === "paid" || ["attach", "correct", "settle"].includes(op.op),
-    );
-
-    const keys = operations.map((op) => op.args.key);
-
-    expect(keys).toHaveLength(5);
-    expect(new Set(keys).size).toBe(5);
-
-    for (const key of keys) expect(key).toMatch(/^[a-f0-9]{64}$/);
-
-    expect((await status(t, receipt.threadId)).errorCode).toBeNull();
-  },
-);
-
-it("managed tools receive a no-op meter when no usage slot is registered", async () => {
-  fixture.steps.Main = (n) => (n === 0 ? call("managed", {}) : text("finished"));
-
-  fixture.toolWork = async (tc) => {
-    const c = await tc.meter.record("anything", {});
-
-    await c.attach({ requestId: "r" });
-    await c.correct({ quantity: 1 });
-    await c.settle({ credits: 2 });
-
-    return "done";
-  };
-
-  const t = setup();
-  const receipt = await open(t);
-
-  await drain(t);
-  expect(fixture.toolContext?.subject).toBe("alice");
-  expect((await status(t, receipt.threadId)).errorCode).toBeNull();
-});
-
-it("each saved model step records one exact-id charge and replay records none", async () => {
-  const usage = meter();
-
+  fixture.generationIds = true;
   fixture.slots.usage = usage.slot;
   fixture.steps.Main = (n) => (n === 0 ? call("managed", {}) : text("finished"));
   const t = setup();
   const receipt = await open(t);
 
   await drain(t);
-  expect(usage.operations).toHaveLength(2);
+  expect(usage.events).toHaveLength(2);
 
-  expect(usage.scopes.some((facts) => "model" in facts && typeof facts.model === "string")).toBe(
+  for (const event of usage.events) {
+    expect(event.messageId).toBeTruthy();
+
+    const [native] = await t.query(components.agent.messages.getMessagesByIds, {
+      messageIds: [event.messageId!],
+    });
+
+    expect(event.usage).toEqual(native!.usage);
+    expect(event.requestId).toBeTruthy();
+  }
+
+  expect(usage.events.some((facts) => "model" in facts && typeof facts.model === "string")).toBe(
     true,
   );
 
-  expect(usage.operations[0].args.key).toMatch(/^[a-f0-9]{64}$/);
-  expect(new Set(usage.operations.map((op) => op.args.key)).size).toBe(2);
+  expect(usage.events[0].key).toMatch(/^[a-f0-9]{64}$/);
+  expect(new Set(usage.events.map((op) => op.key)).size).toBe(2);
 
   const execution = (await t.query(rawAssignment, {
     assignmentId: receipt.assignmentId,
@@ -248,17 +139,14 @@ it("each saved model step records one exact-id charge and replay records none", 
 
   await owner(t).mutation(api.agents.open, { agent: "Main", prompt: "hello", requestKey: "first" });
   await drain(t);
-  expect(usage.operations).toHaveLength(2);
+  expect(usage.events).toHaveLength(2);
 });
 
 it("usage recording failure preserves a successful paid turn", async () => {
   fixture.slots.usage = {
-    scope: () => ({
-      ...meter().slot.scope({}, {} as SlotFacts),
-      record: async () => {
-        throw new Error("unavailable");
-      },
-    }),
+    record: async () => {
+      throw new Error("unavailable");
+    },
   };
 
   const t = setup();
@@ -267,6 +155,9 @@ it("usage recording failure preserves a successful paid turn", async () => {
   await drain(t);
   expect((await status(t, receipt.threadId)).errorCode).toBeNull();
   expect(fixture.calls).toHaveLength(1);
+  const runId = (await status(t, receipt.threadId)).runId!;
+
+  expect(await t.query(components.agevex.turns.slices.usageReporting, { runId })).toBe(true);
 });
 
 it.each([0, HOST_LIMITS.notesPending.max])(
@@ -789,7 +680,7 @@ it("without extract the hard maximum of attachments reaches the model as native 
 });
 
 it("child model usage retains the root thread and shared user-run attribution", async () => {
-  const usage = meter();
+  const usage = usageRecorder();
 
   fixture.slots.usage = usage.slot;
 
@@ -800,8 +691,8 @@ it("child model usage retains the root thread and shared user-run attribution", 
   const receipt = await open(t);
 
   await drain(t);
-  const root = usage.scopes.find((facts) => facts.agent === "Main")!;
-  const child = usage.scopes.find((facts) => facts.agent === "Builder")!;
+  const root = usage.events.find((facts) => facts.agent === "Main")!;
+  const child = usage.events.find((facts) => facts.agent === "Builder")!;
 
   expect(child).toMatchObject({
     subject: "alice",
@@ -897,38 +788,11 @@ it.each(["x".repeat(129), "😀".repeat(100)])(
 );
 
 it.each(["x".repeat(250), "id:delta:reserved"])(
-  "opaque charge and operation keys are bounded and replay stable (%s)",
-  async (id) => {
-    const usage = meter();
-
-    const invoke = async () => {
-      const scoped = scopedMeter(usage.slot.scope({}, {} as SlotFacts), id);
-      const c = await scoped.estimate("paid", { quantity: 1 });
-
-      await c.attach({ requestId: "original" });
-      await c.correct({ quantity: 2 });
-      await c.settle({ usd: 1 });
-      await scoped.record("paid", { key: id });
-    };
-
-    await invoke();
-    await invoke();
-    const keys = usage.operations.map((op) => op.args.key);
-
-    expect(keys.slice(0, 5)).toEqual(keys.slice(5));
-
-    for (const key of keys) expect(key).toMatch(/^[a-f0-9]{64}$/);
-
-    expect(new Set(keys.slice(0, 5)).size).toBe(5);
-  },
-);
-
-it.each(["x".repeat(250), "id:delta:reserved"])(
   "once tools accept long/reserved ids and retain native attribution (%s)",
   async (id) => {
     fixture.steps.Main = (n) =>
       n === 0
-        ? [{ type: "tool-call", toolName: "metered_once", toolCallId: id, input: "{}" }]
+        ? [{ type: "tool-call", toolName: "once_only", toolCallId: id, input: "{}" }]
         : text("finished");
 
     const t = setup();
@@ -1158,3 +1022,16 @@ it("public thread ids reject oversized UTF-8 facts with typed errors", async () 
     }),
   ).rejects.toThrow("INVALID_THREADID");
 });
+
+/** Record the public callback facts without a second billing component. */
+function usageRecorder() {
+  const events: UsageEvent[] = [];
+
+  const slot: UsageSlot = {
+    record: async (_ctx, event) => {
+      events.push(event);
+    },
+  };
+
+  return { events, slot };
+}

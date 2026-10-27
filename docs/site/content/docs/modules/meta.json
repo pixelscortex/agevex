@@ -1,5 +1,5 @@
 {
   "title": "Modules",
   "icon": "Boxes",
-  "pages": ["meter", "sandbox", "extract", "telemetry", "tools"]
+  "pages": ["sandbox", "extract", "telemetry", "tools"]
 }

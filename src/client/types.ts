@@ -100,8 +100,6 @@ export type AuthorizationScope =
         | "pendingApprovals"
         | "title"
         | "rename"
-        | "summary"
-        | "summarize"
         | "note"
         | "respond"
         | "answer"
@@ -144,7 +142,7 @@ export type AuthorizationScope =
  */
 export type ExecutionScope = {
   /** Background text uses the same persisted-principal policy without a user connection. */
-  purpose?: "title" | "summary";
+  purpose?: "title";
   subject: string;
   agent: string;
   assignmentId: string;

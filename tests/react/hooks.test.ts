@@ -54,7 +54,6 @@ it("skipped when id missing never subscribes or writes to a previous thread", as
       approvals: hooks.usePendingApprovals(),
       ask: hooks.useAsk(),
       title: hooks.useTitle(),
-      summary: hooks.useSummary(),
     }),
     { wrapper: t.wrapper },
   );

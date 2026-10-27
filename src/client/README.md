@@ -49,8 +49,7 @@ failed statuses, timestamps, current local tool and exact
 message links. Finished nodes never show tools. Transcript bodies stay native.
 
 `usage.view` runs in the host query, after authorization; without it all usage
-is null. Meter supplies exclusive per-node totals and the request total, keeping
-estimates and settled cost distinct. `delegations` retains paginated stored-state
+is null. Apps supply exclusive per-node totals and the request total. `delegations` retains paginated stored-state
 history. `turn/tools.ts` records bounded progress around local tools and streams;
 slice/turn/cancellation fences clear it even if the action does not return.
 
@@ -65,7 +64,7 @@ narration by exact id. No transcript listing or text matching is involved.
 The assignment accumulates ids in the native save transaction. One assistant
 row per step bounds the list by run `stepsPerTurn` and any non-default host
 `slicesPerTurn` cap (matching Workflow v1): at most 64 ids × (37 ASCII bytes + 2 Convex string bytes) = 2,496 bytes.
-Prompt/cap/resume metadata brings the reservation to 3 KiB within the 16 KiB
+Prompt/cap/resume metadata brings the reservation to 3 KiB within the 14 KiB
 assignment envelope. New user/queued/child work starts fresh lists; approval
 resumes retain the list and step count.
 So approving a call requested on the turn's last allowed step ends the turn with
@@ -80,15 +79,12 @@ response. Contexts without a managed prompt may omit the id; hooks inherit it.
 
 ## Background text
 
-`text/options.ts` validates default-on title policy and on-demand summary
-settings. Hosts export `textTask` and supply `refs.textTask`, or opt
-out with `title: false` while leaving summary off. `endpoints/text.ts` authorizes
-root title/rename/summary/summarize operations. `text/task.ts` rechecks execution
-policy (`purpose: title | summary`) and budget, reads the exact title message or a bounded native summary page,
-and invokes a receipt-backed generation without tools or repairs. Usage records the
-triggering run, purpose and exact provider response id; evidence failures mark
-reporting partial and cannot retry the model. Title and summary text live only on the native Agent thread. Dispatch starts the paid lease; preparation
-can be cancelled without an unknown outcome. Native app titles always win.
+`text/options.ts` validates default-on titles. Hosts export `textTask` and
+supply `refs.textTask`, or opt out with `title: false`. The worker rechecks
+authorization and budget, reads the first accepted message by exact id, and
+generates without tools, repairs or retries. Native title checks and writes
+share a mutation, so app/user titles win. Usage callbacks get the triggering run
+and provider response id; failures mark reporting partial without repeating work.
 
 ## File map
 
@@ -98,7 +94,7 @@ can be cancelled without an unknown outcome. Native app titles always win.
 | `runtime.ts`                  | `registerAgent`: composes everything below.                                     |
 | `agent.ts`                    | The managed `Agent` class (native Agent plus graph metadata).                   |
 | `types.ts`                    | Public types: hooks, registration, scopes, events, coordinator args.            |
-| `slots.ts`                    | Optional slot contracts and the replay-stable scoped meter.                     |
+| `slots.ts`                    | Stateless optional slot contracts.                                              |
 | `once.ts`                     | `defineOnceTool` / `bindOnceTool`: exactly-once tools on the receipts ledger.   |
 | `tasks.ts`                    | `defineTask` / `runTask`: one structured model call per receipt.                |
 | `keys.ts`                     | `fingerprint` and `opaqueKey`.                                                  |
@@ -125,7 +121,7 @@ can be cancelled without an unknown outcome. Native app titles always win.
 | `turn/context.ts`             | `Turn`, `Generation`, `TurnOutcome` and the fence predicates.                   |
 | `turn/claim.ts`               | Load the execution and claim the turn.                                          |
 | `turn/admission.ts`           | `authorizeExecution` and the budget check.                                      |
-| `turn/usage.ts`               | Fail-open evidence and bounded reconciliation on slice exit.                    |
+| `turn/usage.ts`               | Fail-open usage observation marker.                                             |
 | `turn/provider-evidence.ts`   | Preserve exact provider response ids in native saved metadata.                  |
 | `turn/fence.ts`               | Cancellation deadline, poll and the fenced action context.                      |
 | `turn/generation.ts`          | One generation: phases, native model step, failure mapping.                     |

@@ -10,7 +10,6 @@
 
 import type * as cancellation_cleanup from "../cancellation/cleanup.js";
 import type * as text_state from "../text/state.js";
-import type * as text_requests from "../text/requests.js";
 import type * as text_worker from "../text/worker.js";
 import type * as files_attachments from "../files/attachments.js";
 import type * as hooks_notes from "../hooks/notes.js";
@@ -43,7 +42,6 @@ import { anyApi, componentsGeneric } from "convex/server";
 const fullApi: ApiFromModules<{
   "cancellation/cleanup": typeof cancellation_cleanup;
 "text/state": typeof text_state;
-"text/requests": typeof text_requests;
 "text/worker": typeof text_worker;
     "files/attachments": typeof files_attachments;
   "hooks/notes": typeof hooks_notes;

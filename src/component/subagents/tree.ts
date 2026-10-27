@@ -1,10 +1,10 @@
 /** One reactive, request-scoped run tree. Native Agent owns all message bodies.
  * D = HOST_LIMITS.runLaunches.max = 50.
- * (1+D)*16 KiB assignments +D*4 KiB children +3*16 KiB ownership
- * +2*16 KiB root metadata +1 KiB ready probe = 1097 KiB core reads.
- * Meter's batched projection adds a conservative <=5160 KiB: combined <=6257 KiB <8 MiB;
+ * (1+D)*14 KiB assignments +D*4 KiB children +3*14 KiB ownership
+ * +14 KiB root assignment +16 KiB run metadata +1 KiB ready probe = 987 KiB core reads.
+ * Any app usage projection is responsible for its own bounded reads.
  * The host checks both Convex and JSON output bytes against 128 KiB.
- * No per-node transcript, meter or settlement scans: reuse the already bounded
+ * No per-node transcript or settlement scans: reuse the already bounded
  * child set to project transitive delivery fences in memory.
  */
 import type { Doc } from "../_generated/dataModel.js";
@@ -186,7 +186,7 @@ function childNode(
     parentId: parents.get(run.actorAssignmentId)!,
     agent: run.agent,
     ...state,
-    createdAt: run.createdAt,
+    createdAt: run._creationTime,
     startedAt: run.startedAt ?? null,
     finishedAt: runTimes(run).finishedAt,
     currentTool: currentTool(row, state),

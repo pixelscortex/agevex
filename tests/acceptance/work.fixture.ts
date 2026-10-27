@@ -18,12 +18,9 @@ import {
   registerAgent,
   type ManagedAgent,
   type SlotFacts,
-  type UsageSlot,
 } from "../../src/client/index.js";
 import { createAskUserTool } from "../../src/modules/tools/client/index.js";
 import agevex from "../../src/test.js";
-import meterTest from "../../src/modules/meter/test.js";
-import { defineMeter } from "../../src/modules/meter/client/index.js";
 import { main, builder, reviewer, reset } from "../delegation-v2.host.js";
 import { components } from "../fixture/api.js";
 import { runTurnReference, coordinateReference } from "../host.js";
@@ -78,7 +75,7 @@ const fetchWork = defineOnceTool({
 export const evidence: { facts: SlotFacts; key: string; usage: unknown }[] = [];
 
 /** No app tool trusts a model-supplied owner. Children inherit trusted subject facts. */
-function runtime(usage: UsageSlot) {
+function runtime() {
   const review: ManagedAgent = new Agent(components.agent, {
     name: "Reviewer",
     languageModel: reviewer.textModel,
@@ -118,18 +115,8 @@ function runtime(usage: UsageSlot) {
       if (scope.subject !== "alice") throw new Error("FORBIDDEN");
     },
     usage: {
-      ...usage,
-      scope: (ctx, facts) => {
-        const backend = usage.scope(ctx, facts);
-
-        return {
-          ...backend,
-          record: async (provider, args) => {
-            evidence.push({ facts, key: args.key, usage: args.usage });
-
-            return backend.record(provider, args);
-          },
-        };
+      record: async (_ctx, event) => {
+        evidence.push({ facts: event, key: event.key, usage: event.usage });
       },
     },
   });
@@ -145,7 +132,7 @@ export function setup() {
     modules: {
       "./fixture/_generated/api.js": () => import("../fixture/_generated/api.js"),
       "./fixture/agents.ts": async () => {
-        const rt = runtime(meter.usageSlot());
+        const rt = runtime();
 
         return { ...rt.internalFunctions(), ...rt.authorizedEndpoints() };
       },
@@ -155,12 +142,6 @@ export function setup() {
 
   native.register(t);
   agevex.register(t);
-
-  const meter = defineMeter(meterTest.register(t), {
-    providers: {
-      "mock-provider": { inline: () => ({ usd: 0.01 }), estimate: () => ({ usd: 0.005 }) },
-    },
-  });
 
   t.registerComponent("agevex", agevex.schema, {
     ...agevex.modules,

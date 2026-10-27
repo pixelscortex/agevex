@@ -8,7 +8,7 @@ fences, receipts, and optional modules. Core never imports an optional module.
 
 - `src/component/`: core Convex functions, schema and generated types.
 - `src/client/`: core API imported by the host app; `src/test.ts`: registration.
-- `src/modules/{meter,sandbox,extract}/`: `component/` runs in Convex,
+- `src/modules/{sandbox,extract}/`: `component/` runs in Convex,
   `client/index.ts` is the host entry, `shared/` is pure code used by both sides,
   and `test.ts` registers that component and its nested dependencies.
 - `src/modules/telemetry/client/`: host library, no component or tables.

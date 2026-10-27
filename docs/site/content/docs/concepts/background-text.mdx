@@ -1,70 +1,32 @@
 ---
-title: Background text
-description: Native thread titles and on-demand summaries with receipt-backed dispatch.
+title: Background titles
+description: Native thread titles with receipt-backed dispatch.
 status: Available
 ---
 
-Titles run once after the first user message commits, without waiting for an
-assistant answer. Their default model is the root Agent model, including its
-accepted model override. `title: { model, prompt, maxOutputTokens }` configures
-that call; `title: false` disables it. Outputs fit 120 Unicode code points and 512 encoded bytes.
+Titles generate once after the first accepted native user message. Configure
+`title: { model, prompt, maxOutputTokens }` or disable with `title: false`.
+The default model is the root model, including accepted model overrides.
+Export `textTask` from `runtime.internalFunctions()` and supply `refs.textTask`.
+Generated-reference cycles may use `RegisteredAction<"internal", TextTaskArgs, null>`.
 
-Export `textTask` from `runtime.internalFunctions()` and supply `refs.textTask`
-when either titles or summaries are enabled. Generated-reference inference cycles
-can use `RegisteredAction<"internal", TextTaskArgs, null>` from `convex/server`,
-with `TextTaskArgs` imported from `agevex`.
+`title({ threadId })` reads `{ text: string | null }` from Agent.
+`rename({ threadId, text })` writes the native title; identical writes replay.
+The returned `messageId` identifies the thread; renaming creates no message.
+The native title check and generated update share one transaction, so app/user
+titles always win. Public reads and writes authorize the persisted root owner.
 
-## User titles
+Workers use child/background capacity, recheck `authorizeExecution` with
+`purpose: "title"` and the budget hook, then read the first prompt by exact id.
+Input fits 48 KiB. Output defaults to 128 tokens, configurable up to 4,096;
+titles fit 120 characters and 512 encoded bytes. Calls have a 30-second timeout,
+no tools, no repairs and no automatic paid retries.
 
-`title({ threadId })` returns `{ text: string | null }` from the native Agent
-thread. Call `rename({ threadId, text })` to set it; repeating identical text
-returns `replayed: true`. The response `{ messageId, replayed }` identifies the
-native thread in `messageId`; renaming creates no message.
+The existing receipt ledger holds temporary run/first-message identities and
+dispatch status, never generated text. The paid lease starts at dispatch.
+Crashes become unknown and never buy a second call. Titles survive cancellation
+because they describe the first accepted message. Usage callbacks receive the
+triggering run and provider response id; observation failures mark usage partial.
+Apps own their pricing and budget policy.
 
-A user rename or title set directly on the native thread always wins over late
-automatic generation. The native title check and generated title update share a
-transaction. All metadata endpoints authorize the persisted root owner.
-
-## On-demand summaries
-
-Leave `summary` absent or false to make no summary calls. `summary: {}` enables
-`summarize({ threadId, requestKey })`, returning `queued` or `replayed`.
-Configure `model`, `prompt` and `maxOutputTokens` separately for summaries.
-A developer who wants a cadence calls `summarize` from their own `afterTurn` hook.
-
-`summary({ threadId })` reads `{ text }` or null directly from the native Agent
-thread's `summary` field. Generation uses the native previous summary and a
-bounded recent page of successful, non-tool messages. It reads at most 24 messages
-with a 2 MiB query byte budget (plus one crossing document), and passes at most
-48 KiB of message JSON plus 8 KiB of previous summary to the model. Summary output
-fits 8 KiB. It never rewrites messages or stores a second summary on agevex rows.
-
-One summary can be in flight per thread; a different request key receives
-`SUMMARY_BUSY` until it closes. Repeating the active key still replays. The
-existing receipts ledger holds this single admission marker.
-
-Each request key schedules at most one attempt within receipt retention. A fresh
-key explicitly requests a fresh summary, including after failed or unknown work.
-No cadence, completion counter, context ring or summary coverage metadata is kept.
-
-## Capacity, usage and failure
-
-Workers use the child/background lane. Each call rechecks `authorizeExecution`
-with persisted ownership and `purpose: "title" | "summary"`, then the optional
-budget. Titles use 128 output tokens and summaries 2,048 unless `maxOutputTokens`
-sets a positive integer cap up to 4,096. Configured prompts fit 4,096 characters.
-Calls stop waiting after 30 seconds, including providers that ignore abort. Tasks
-use no tools, no repairs and no paid retries.
-
-Usage passes through the ordinary usage slot with the purpose, triggering root
-run and exact provider response id when available. Evidence failures mark usage
-partial without buying another call. Reconciliation scheduling failure alone
-does not mark usage partial. Unknown-cost title/summary charges remain visible;
-the meter's budget gate ignores them, while known and estimated spend still counts.
-
-The existing receipts ledger keeps temporary identities and dispatch status,
-never generated text. The paid lease starts immediately before provider dispatch.
-Crashes and transport failures become unknown, and the same request key never
-retries them. Failures preserve prior native text and foreground progress.
-Cancellation fences summary publication; titles still describe the first accepted
-message even when its turn is cancelled. Incurred usage remains recorded.
+For conversation recaps, see [Summaries with Convex Agent](/docs/concepts/agent-summaries).

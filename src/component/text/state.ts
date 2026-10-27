@@ -5,34 +5,22 @@ import type { FunctionHandle } from "convex/server";
 import type { Doc } from "../_generated/dataModel.js";
 import { mutation, internalMutation, type MutationCtx } from "../_generated/server.js";
 import { internal } from "../_generated/api.js";
-import { LIMITS } from "../limits.js";
 import { findReceipt } from "../receipts/records.js";
-import { textScope, releaseSummary, type TextJob } from "./jobs.js";
+import { textScope, type TextJob } from "./jobs.js";
 import { TEXT_LIMITS, textKind, validText } from "./values.js";
 
 export const jobArgs = { assignmentId: v.id("assignments"), kind: textKind, key: v.string() };
-type JobArgs = { assignmentId: Doc<"assignments">["_id"]; kind: "title" | "summary"; key: string };
+type JobArgs = { assignmentId: Doc<"assignments">["_id"]; kind: "title"; key: string };
 
-/** Summary writes belong to the accepting epoch; title belongs to the first
- * accepted message and deliberately survives foreground cancellation. */
+/** Title generation describes the first accepted message and survives cancellation. */
 async function liveJob(ctx: MutationCtx, args: JobArgs) {
-  if (
-    (args.kind === "title" && args.key !== "title") ||
-    (args.kind === "summary" &&
-      (!args.key.startsWith("summary:") ||
-        args.key.length <= "summary:".length ||
-        args.key.length > LIMITS.requestKeyLength + "summary:".length))
-  )
-    return null;
+  if (args.key !== "title") return null;
 
   const row = await ctx.db.get("assignments", args.assignmentId);
   const receipt = await findReceipt(ctx, textScope(args.assignmentId), args.key);
   const job = receipt?.result as TextJob | undefined;
 
   if (!row?.textConfig || receipt?.status !== "running" || !job) return null;
-
-  if (args.kind === "summary" && (row.cancelled || job.epoch !== row.cancellationEpoch))
-    return null;
 
   return { row, receipt, job };
 }
@@ -71,7 +59,7 @@ export const claim = mutation({
 
     const { row, receipt, job } = live;
 
-    if (args.kind === "title" && (await hasNativeTitle(ctx, row))) {
+    if (await hasNativeTitle(ctx, row)) {
       await ctx.db.patch("receipts", receipt._id, {
         status: "done",
         result: undefined,
@@ -106,7 +94,7 @@ export const dispatch = mutation({
 
     const { row, receipt, job } = live;
 
-    if (args.kind === "title" && (await hasNativeTitle(ctx, row))) {
+    if (await hasNativeTitle(ctx, row)) {
       await ctx.db.patch("receipts", receipt._id, { status: "done", result: undefined });
 
       return false;
@@ -135,8 +123,6 @@ export const expire = internalMutation({
       receipt.leaseUntil !== undefined &&
       receipt.leaseUntil <= Date.now()
     ) {
-      await releaseSummary(ctx, args.assignmentId, args.key);
-
       await ctx.db.patch("receipts", receipt._id, {
         status: "unknown",
         leaseUntil: undefined,
@@ -148,7 +134,7 @@ export const expire = internalMutation({
   },
 });
 
-/** Native updateThread supports both fields (Agent component/threads.ts:85-106).
+/** Native updateThread supports title (Agent component/threads.ts:85-106).
  * Reading native title and writing it inside this transaction makes concurrent
  * user/app renames conflict and retry against the new title instead of overwrite. */
 export const commit = mutation({
@@ -180,8 +166,6 @@ export const commit = mutation({
     const status =
       expired || (args.status === "unknown" && paid) ? "unknown" : done ? "done" : "failed";
 
-    await releaseSummary(ctx, args.assignmentId, args.key);
-
     await ctx.db.patch("receipts", receipt._id, {
       status,
       leaseUntil: undefined,
@@ -190,12 +174,12 @@ export const commit = mutation({
 
     if (!done || !live) return false;
 
-    if (args.kind === "title" && (await hasNativeTitle(ctx, live.row))) return true;
+    if (await hasNativeTitle(ctx, live.row)) return true;
 
     await ctx.runMutation(
       live.row.textConfig!.updateThread as FunctionHandle<
         "mutation",
-        { threadId: string; patch: { title?: string; summary?: string } },
+        { threadId: string; patch: { title?: string } },
         unknown
       >,
       { threadId: live.row.threadId, patch: { [args.kind]: args.text! } },

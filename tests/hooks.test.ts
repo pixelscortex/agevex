@@ -93,9 +93,6 @@ it("beforeTurn notes become escaped user-role context in the same turn", async (
   fixture.hooks.beforeTurn = async (hc) => {
     expect(hc.subject).toBe("alice");
     expect(hc.signal.aborted).toBe(false);
-    const charge = await hc.meter.estimate("test", { quantity: 1 });
-
-    await charge.settle({ usd: 0 });
 
     return { note: '<advice from="x">' };
   };

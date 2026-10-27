@@ -13,8 +13,7 @@ Every managed tool receives a `ToolContext` through the AI SDK `options.context`
 a native `createTool` also gets the facts on its injected context and
 `defineOnceTool` as its second argument. `subject`, `rootThreadId`,
 `threadId`, `runId`, `agent` and `toolCallId` are non-empty strings of at most
-128 UTF-8 bytes; `nativeToolCallId` preserves the provider id, while `signal`
-and `meter` are objects.
+128 UTF-8 bytes; `nativeToolCallId` preserves the provider id, while `signal` is an AbortSignal.
 
 `promptMessageId?: string` is the trusted native request anchor returned by
 the component's turn claim, never model input. For a root request it identifies
@@ -33,26 +32,16 @@ export const budget: BudgetSlot = {
 };
 ```
 
-This fixed allowlist is a minimal policy. For a spending cap, use the
-[meter budget slot](/docs/modules/meter), which checks host-owned totals.
-Pass the adapter as `budget` in the [registration](/docs/getting-started).
+This fixed allowlist is a minimal policy. For a spending cap, read your own ledger.
+See [Recording usage in your app](/docs/concepts/recording-usage).
 
-## Meter
+## Usage
 
-`tc.meter` is always present, and a no-op meter without a usage slot. Charge
-keys hash the tool-call identity and an ordinal; operation keys hash the
-charge, the method and an ordinal. Opaque keys are full SHA-256 hex, 64 ASCII
-bytes. Model usage is recorded once per saved step; failures never replay it.
-
-Usage facts also carry a trusted `purpose` and optional delegation `nodeId`.
-The optional `usage.reconcile(ctx, { subject, runId })` runs on slice exit and
-only schedules billing-evidence reads. Meter replaces the original charge's
-estimated cost when provider evidence arrives. Its optional reactive
-`view(ctx, { subject, runId, nodeIds, partial? })` returns exclusive node totals
-and complete run totals for at most 59 known nodes, without transcript reads.
-See [meter](/docs/modules/meter) for pricing, OpenRouter lookups and coverage.
-Core's sticky run observation-failure marker composes with that view's partial
-coverage; an omitted view means disabled reporting, not fabricated zero cost.
+`usage.record(ctx, event)` receives each saved model step, trusted attribution,
+token usage, exact native message id and provider response id when available.
+The app owns deduplication, pricing and reconciliation. Callback failures mark
+the run partial and never repeat paid work. `usage.view` optionally supplies
+query-safe app totals to the run tree; without it usage is null.
 
 ## Budget
 

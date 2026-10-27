@@ -38,13 +38,12 @@ export { LIMITS, PLATFORM } from "../component/limits.js";
 export type { Limits } from "../component/limits.js";
 export { defineOnceTool } from "./once.js";
 export type { NoteArgs } from "./host/notes.js";
-export type { ToolContext, ScopedMeter, MeterCharge } from "./once.js";
+export type { ToolContext } from "./once.js";
 
 export type { OriginMessage } from "./endpoints/index.js";
 export type {
   SlotFacts,
   SlotActionCtx,
-  ChargeCost,
   UsageSlot,
   UsageView,
   UsageViewArgs,
@@ -53,8 +52,7 @@ export type {
   TelemetrySlot,
   SandboxSlot,
   ExtractSlot,
-  MeterBackend,
-  MeterChargeBackend,
+  UsageEvent,
 } from "./slots.js";
 export type { SandboxCompletion } from "./runtime.js";
 export { defineTask, runTask } from "./tasks.js";

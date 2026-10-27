@@ -22,8 +22,6 @@ export const {
   answer,
   title,
   rename,
-  summary,
-  summarize,
 } = runtime.authorizedEndpoints();
 ```
 
@@ -101,6 +99,5 @@ Pass the pending item to the action so a descendant approval addresses its own
 thread. Read each ask's schema/question to build your form. The server validates
 structured answers and edited inputs. Hooks never imply approval before a receipt.
 
-`useTitle` returns the native title in `data` and `rename(text)`. `useSummary` returns the native summary data and
-`summarize()`. `useRunTree` preserves the supplied function ref's return type;
+`useTitle` returns the native title in `data` and `rename(text)`. `useRunTree` preserves the supplied function ref's return type;
 its shape follows your exported endpoint.

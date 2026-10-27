@@ -131,7 +131,7 @@ export async function acceptSend(ctx: MutationCtx, args: ObjectType<typeof accep
     }),
   );
 
-  if (first && args.textConfig?.title)
+  if (first && args.textConfig)
     await queueText(
       ctx,
       (await ctx.db.get("assignments", row._id))!,

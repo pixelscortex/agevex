@@ -56,9 +56,6 @@ export function createAgevexHooks<Tree extends TreeRef = NonNullable<AgevexApi["
     useTitle(threadId?: string) {
       return useTitle(api, threadId);
     },
-    useSummary(threadId?: string) {
-      return useSummary(api, threadId);
-    },
   };
 }
 
@@ -157,19 +154,5 @@ function useTitle(api: Omit<AgevexApi, "runTree">, threadId?: string) {
 
       return rename({ threadId: id, text });
     },
-  };
-}
-
-function useSummary(api: Omit<AgevexApi, "runTree">, threadId?: string) {
-  const data = useQuery(required(api, "summary"), threadId === undefined ? "skip" : { threadId });
-  const summarize = useMutation(required(api, "summarize"));
-
-  return {
-    ...queryState(threadId, data),
-    summarize: async (intent?: { requestKey: string }) =>
-      summarize({
-        threadId: threadRequired(threadId),
-        requestKey: intent?.requestKey ?? requestKey(),
-      }),
   };
 }

@@ -18,7 +18,7 @@ export type SandboxContext = GenericActionCtx<GenericDataModel>;
 export type SandboxFacts = Pick<ToolContext, "subject" | "threadId" | "runId">;
 /**
  * The part of core's ToolContext this module reads. A full ToolContext (which
- * also carries rootThreadId, agent and meter) satisfies it, so host code that
+ * also carries rootThreadId and agent) satisfies it, so host code that
  * already holds one passes it unchanged, while the module's own export path can
  * build a call without fabricating facts it never uses.
  */

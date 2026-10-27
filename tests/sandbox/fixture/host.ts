@@ -8,7 +8,7 @@ import {
 import { ConvexError, v, type Value } from "convex/values";
 import type { Tool } from "ai";
 import type { AgentComponent } from "@convex-dev/agent";
-import { bindOnceTool, noopMeter, type ToolContext } from "../../../src/client/once.js";
+import { bindOnceTool, type ToolContext } from "../../../src/client/once.js";
 import type { ComponentApi as CoreApi } from "../../../src/component/_generated/component.js";
 import { defineSandbox } from "../../../src/modules/sandbox/client/index.js";
 import type { ComponentApi } from "../../../src/modules/sandbox/component/_generated/component.js";
@@ -178,7 +178,6 @@ export const invoke = internalActionGeneric({
       threadId: args.threadId ?? "thread",
       rootThreadId: args.threadId ?? "thread",
       agent: "SandboxTest",
-      meter: noopMeter,
       runId: args.runId ?? "run",
       toolCallId: args.key ?? crypto.randomUUID(),
       signal: new AbortController().signal,

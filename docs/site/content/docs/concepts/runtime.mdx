@@ -13,7 +13,7 @@ and `sandboxComplete`. See the complete [registration](/docs/getting-started).
 Export `runTurn`, `textTask` and `coordinate` as internal host functions. Only roots go in
 `registration.agents`; reachable children belong in each Agent's `subagents`.
 Direct native Agent calls remain unmanaged. `refs.textTask` is required for
-default-on titles or opt-in summaries; see [background text](/docs/concepts/background-text).
+default-on titles; see [background text](/docs/concepts/background-text).
 
 ## Execute bounded slices
 
@@ -81,8 +81,6 @@ All require the host authorization policy. Optional arguments use `?`.
 | `answer`           | `threadId, toolCallId, value`                 | `{ messageId, replayed }`                             |
 | `title`            | `threadId`                                    | `{ text }`                                            |
 | `rename`           | `threadId, text`                              | `{ messageId, replayed }`                             |
-| `summary`          | `threadId`                                    | `{ text }` or null                                    |
-| `summarize`        | `threadId, requestKey`                        | `{ status: "queued" or "replayed" }`                  |
 | `cancel`           | `threadId`                                    | `null`                                                |
 | `messages`         | `threadId, paginationOpts`                    | Native message page with origin metadata              |
 | `streams`          | `threadId, streamArgs`                        | Native stream synchronization result                  |
@@ -174,12 +172,12 @@ approval, approving it ends the turn with `SLICE_LIMIT` and the thread enters
 
 ## Usage and budget boundaries
 
-Optional usage is recorded after every saved model step and app observation.
+Optional usage is recorded after every saved model step .
 The budget slot checks observed run totals before the next model or local tool
-boundary. Provider-cost lookups correct the same meter charges after work;
+boundary. Apps reconcile provider costs in their own ledger;
 they never replay generation. Budget denial stops with `BUDGET_EXCEEDED`, with
 in-flight overshoot accepted. See [slots](/docs/concepts/slots) and
-[meter](/docs/modules/meter) for coverage and reconciliation.
+[recording usage](/docs/concepts/recording-usage) for coverage and reconciliation.
 
 ## Shared lane capacity
 

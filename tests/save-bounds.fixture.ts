@@ -56,7 +56,6 @@ export const seed = mutation({
           ...row.turnReport!,
           messageIds: [...row.turnReport!.messageIds, args.promptMessageId],
         },
-        modelStep: { messageId: args.promptMessageId, stepOrder: 0 },
       };
 
       const growth = LIMITS.assignmentBytes + Number(args.overflow) - getConvexSize(after);
@@ -103,8 +102,6 @@ function textFields() {
       worker: handle,
       updateThread: handle,
       getThread: handle,
-      title: true,
-      summary: true,
     },
   };
 }
@@ -131,11 +128,6 @@ function approvalFields(inboxId: Id<"inbox">, proposalId: Id<"receipts">) {
       })),
     },
   };
-}
-
-/** Metering holds only the exact native model step. */
-function referenceFields() {
-  return { modelStep: { messageId: nativeId("s"), stepOrder: 2 ** 52 } };
 }
 
 export const largestRow = mutation({
@@ -179,7 +171,6 @@ export const largestRow = mutation({
 
     await ctx.db.patch("assignments", id, {
       ...textFields(),
-      ...referenceFields(),
       ...approvalFields(inboxId, proposalId),
       notesPending: 2 ** 52,
       models: largestModels(),

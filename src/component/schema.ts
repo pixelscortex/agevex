@@ -192,10 +192,6 @@ export default defineSchema({
     activeTools: v.optional(v.array(v.object({ key: v.string(), name: v.string() }))),
     // Native thread metadata dispatch handles; bodies remain in Agent.
     textConfig: v.optional(textConfig),
-    // Fixed-size references only: the native component continues to own bodies.
-    // Exact step identity captured with the native save, consumed by usage
-    // recording. Scalar reference only, never a copy of model output.
-    modelStep: v.optional(v.object({ messageId: v.string(), stepOrder: v.number() })),
     // Read by note admission/claim/cancel; never charged to ready work.
     notesPending: v.number(),
     subject: v.string(),
@@ -438,7 +434,6 @@ export default defineSchema({
     errorCode: runErrorCode,
     deliveryToken: v.string(),
     coordinateHandle: v.string(),
-    createdAt: v.number(),
     sequence: v.number(),
     // Set by the first claim of the child's first turn; never derived, because
     // the "started" event of that turn leaves the event ring after 3 turns.

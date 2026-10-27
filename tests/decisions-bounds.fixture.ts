@@ -56,7 +56,6 @@ export const seed = mutation({
           deliveryToken: "fixture",
           coordinateHandle: "fixture",
           errorCode: null,
-          createdAt: Date.now(),
           sequence: offset,
           events: [],
         });
@@ -112,7 +111,6 @@ export const seed = mutation({
         deliveryToken: "fixture",
         coordinateHandle: "fixture",
         errorCode: null,
-        createdAt: Date.now(),
         sequence: offset,
         events: [],
       });

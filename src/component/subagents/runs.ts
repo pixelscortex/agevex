@@ -113,7 +113,6 @@ export function newSubagentRun(fields: {
     // Delivery capability: the host coordinator proves it with this token.
     deliveryToken: crypto.randomUUID(),
     coordinateHandle: request.coordinateHandle,
-    createdAt: now,
     events: [{ phase: "queued", at: now, errorCode: null }],
   };
 

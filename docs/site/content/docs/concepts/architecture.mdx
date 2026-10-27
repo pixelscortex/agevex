@@ -24,13 +24,12 @@ journals and dispatch.
 | `src/modules/<name>/shared/`    | Pure shared contracts and bounds, where needed | Internal                      |
 | `src/modules/<name>/test.ts`    | Module and nested dependency registration      | `agevex/<name>/test`          |
 
-Meter, sandbox and extract own components. Telemetry is a host library. Tools
+Sandbox and extract own components. Telemetry is a host library. Tools
 provide host factories and installable state under `registry/`.
 
 Use the repository file maps:
 [client](https://github.com/pixelscortex/agevex/blob/HEAD/src/client/README.md),
 [component](https://github.com/pixelscortex/agevex/blob/HEAD/src/component/README.md),
-[meter](https://github.com/pixelscortex/agevex/blob/HEAD/src/modules/meter/README.md),
 [sandbox](https://github.com/pixelscortex/agevex/blob/HEAD/src/modules/sandbox/README.md),
 [extract](https://github.com/pixelscortex/agevex/blob/HEAD/src/modules/extract/README.md),
 [telemetry](https://github.com/pixelscortex/agevex/blob/HEAD/src/modules/telemetry/README.md)
@@ -56,7 +55,6 @@ and [tools](https://github.com/pixelscortex/agevex/blob/HEAD/src/modules/tools/R
 | Core                 | `runs`                                               | Accepted request's model snapshot, launch/hop budgets and cancellation                   |
 | Core                 | `receipts`                                           | Request/effect fingerprints, claims, leases, bounded results and file attestations       |
 | Core                 | `subagentRuns`                                       | Child linkage, verified result id, delivery capability and bounded events                |
-| Meter                | `charges`, `deliveries`, `claims`                    | Charge/operation receipts and sink outbox; nested Aggregate and Workpool own their state |
 | Sandbox              | `sandboxes`, `jobs`                                  | Scope identities, provider references, claims and deadlines                              |
 | Extract              | `artifacts`, `indexes`                               | Extraction identities and namespace publication fences; nested Workflow owns its journal |
 | Native Agent         | Native tables                                        | Threads, messages, files and stream state                                                |

@@ -21,7 +21,7 @@ import {
   runTreeEndpoint,
   streamsEndpoint,
 } from "./reads.js";
-import { titleEndpoint, renameEndpoint, summaryEndpoint, summarizeEndpoint } from "./text.js";
+import { titleEndpoint, renameEndpoint } from "./text.js";
 import { openEndpoint, sendEndpoint } from "./requests.js";
 
 export type { OriginMessage } from "./reads.js";
@@ -37,8 +37,6 @@ export function authorizedEndpoints(
   return {
     title: titleEndpoint(ep),
     rename: renameEndpoint(ep),
-    summary: summaryEndpoint(ep),
-    summarize: summarizeEndpoint(ep),
     open: openEndpoint(ep),
     send: sendEndpoint(ep),
     respond: respondEndpoint(ep),

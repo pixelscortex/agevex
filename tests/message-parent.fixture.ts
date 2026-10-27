@@ -19,14 +19,6 @@ const modules = import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]);
 
 export const evidence: { facts: SlotFacts; key: string; usage: unknown }[] = [];
 
-const charge = {
-  key: "fake",
-  attach: async () => {},
-  correct: async () => {},
-  settle: async () => {},
-  get: async () => null,
-};
-
 /** Registration adds native approval/deferred tools only for boundary tests. */
 function runtime(limits?: Registration["limits"], boundary?: "approval" | "deferred") {
   const tools: ToolSet = boundary
@@ -69,14 +61,9 @@ function runtime(limits?: Registration["limits"], boundary?: "approval" | "defer
     },
     authorizeExecution: async () => {},
     usage: {
-      scope: (_ctx, facts) => ({
-        estimate: async () => charge,
-        record: async (_provider, args) => {
-          evidence.push({ facts, key: args.key, usage: args.usage });
-
-          return charge;
-        },
-      }),
+      record: async (_ctx, event) => {
+        evidence.push({ facts: event, key: event.key, usage: event.usage });
+      },
     },
   });
 }

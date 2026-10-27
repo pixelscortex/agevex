@@ -10,7 +10,6 @@ import {
   type CoordinateResult,
   type AgentHooks,
   type SlotFacts,
-  type MeterChargeBackend,
   type UsageSlot,
 } from "../../../src/client/index.js";
 
@@ -165,23 +164,15 @@ const provider = createOpenAI({
 
 export const taskModel = provider.chat(modelId);
 
-const handle = (key: string): MeterChargeBackend => ({
-  key,
-  attach: async () => {},
-  correct: async () => {},
-  settle: async () => {},
-  get: async () => null,
-});
-
 export const fakeUsage: UsageSlot = {
-  scope: (_ctx, facts) => ({
-    estimate: async (_provider, args) => handle(args.key),
-    record: async (provider, args) => {
-      live.charges.push({ facts, provider, key: args.key, usage: args.usage });
-
-      return handle(args.key);
-    },
-  }),
+  record: async (_ctx, event) => {
+    live.charges.push({
+      facts: event,
+      provider: event.provider ?? "model",
+      key: event.key,
+      usage: event.usage,
+    });
+  },
 };
 const native = componentsGeneric().agent as unknown as NativeComponent<"agent">;
 const agevex = componentsGeneric().agevex as unknown as ComponentApi<"agevex">;

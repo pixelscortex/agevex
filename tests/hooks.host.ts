@@ -146,8 +146,8 @@ export const main = new Agent(components.agent, {
         return (await fixture.toolWork?.(tc)) ?? "done";
       },
     }),
-    metered_once: defineOnceTool({
-      name: "metered_once",
+    once_only: defineOnceTool({
+      name: "once_only",
       input: z.object({}),
       run: async (_input, tc) => {
         fixture.toolContext = tc;

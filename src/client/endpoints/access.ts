@@ -29,8 +29,6 @@ export type ThreadOperation =
   | "pendingApprovals"
   | "title"
   | "rename"
-  | "summary"
-  | "summarize"
   | "send"
   | "respond"
   | "answer"

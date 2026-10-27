@@ -20,8 +20,6 @@ export const api = Object.fromEntries(
     "answer",
     "title",
     "rename",
-    "summary",
-    "summarize",
   ].map((name) => [name, ref(name)]),
 ) as AgevexApi;
 

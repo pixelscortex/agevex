@@ -188,7 +188,7 @@ function delegationView(run: Doc<"subagentRuns">) {
     agent: run.agent,
     status: run.status,
     deliveryStatus: run.deliveryStatus,
-    createdAt: run.createdAt,
+    createdAt: run._creationTime,
     startedAt: run.startedAt ?? null,
     ...runTimes(run),
     resultMessageId: run.resultMessageId ?? null,

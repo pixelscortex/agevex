@@ -73,7 +73,7 @@ async function performTextTask(
 
   const options = rt.config[args.kind];
 
-  if (options === false || (args.kind === "summary" && !options)) throw new Error("TEXT_DISABLED");
+  if (options === false) throw new Error("TEXT_DISABLED");
 
   if (rt.config.budget && !(await rt.config.budget.check(ctx, state)).allowed)
     throw new Error("BUDGET_EXCEEDED");
@@ -95,13 +95,10 @@ async function performTextTask(
 
   if (!model) throw new Error("TEXT_TASK_MODEL_REQUIRED");
 
-  const input = await textInput(ctx, agent.component, state, args.kind);
+  const input = await textInput(ctx, agent.component, state);
 
   const prompt =
-    options?.prompt ??
-    (args.kind === "title"
-      ? "Name this conversation in six words or fewer. Return a short title."
-      : "Summarize the conversation, preserving decisions, open questions and useful references.");
+    options?.prompt ?? "Name this conversation in six words or fewer. Return a short title.";
 
   try {
     const text = await generate(
@@ -147,9 +144,7 @@ async function generate(
       }),
       prompt,
       maxRetries: LIMITS.modelRetries,
-      maxOutputTokens:
-        (options ? options.maxOutputTokens : undefined) ??
-        (args.kind === "title" ? TEXT_LIMITS.titleTokens : TEXT_LIMITS.summaryTokens),
+      maxOutputTokens: (options ? options.maxOutputTokens : undefined) ?? TEXT_LIMITS.titleTokens,
       abortSignal: controller.signal,
       prepareStep: ({ model: resolved }) => ({
         model: wrapLanguageModel({
@@ -194,7 +189,7 @@ async function generate(
 }
 
 /** Evidence failures never trigger another generation. There is no text body
- * in the receipt or charge; only one opaque usage key per accepted job. */
+ * in the receipt or usage event; only one opaque usage key per accepted job. */
 async function recordUsage(
   rt: RuntimeContext,
   ctx: RunnerCtx,
@@ -204,22 +199,21 @@ async function recordUsage(
   dispatch: Dispatch,
 ) {
   try {
-    await rt.config.usage
-      ?.scope(ctx, {
-        subject: state.subject,
-        rootThreadId: state.threadId,
-        threadId: state.threadId,
-        runId: state.runId,
-        agent: state.agent,
-        purpose: args.kind,
-        model: typeof model === "string" ? model : model.modelId,
-      })
-      .record(typeof model === "string" ? model.split("/")[0] : model.provider, {
-        key: await opaqueKey("thread-text-usage", args.assignmentId, args.key),
-        usage: dispatch.usage,
-        providerMetadata: dispatch.metadata,
-        requestId: dispatch.requestId,
-      });
+    await rt.config.usage?.record(ctx, {
+      subject: state.subject,
+      rootThreadId: state.threadId,
+      threadId: state.threadId,
+      runId: state.runId,
+      agent: state.agent,
+      purpose: "title",
+      model: typeof model === "string" ? model : model.modelId,
+      provider: typeof model === "string" ? model.split("/")[0] : model.provider,
+      key: await opaqueKey("thread-text-usage", args.assignmentId, args.key),
+      messageId: null,
+      usage: dispatch.usage,
+      providerMetadata: dispatch.metadata,
+      requestId: dispatch.requestId,
+    });
   } catch {
     try {
       await ctx.runMutation(rt.component.turns.slices.usageFailed, { runId: state.runId });
@@ -227,71 +221,31 @@ async function recordUsage(
       /* Evidence must never affect a paid outcome. */
     }
   }
-
-  try {
-    await rt.config.usage?.reconcile?.(ctx, state);
-  } catch {
-    /* Reconciliation scheduling is separate from evidence completeness. */
-  }
 }
 
-/** Titles read the exact accepted native id. On-demand summary input uses
- * Agent's bounded native query (messages.ts:787-847), never a parallel ring.
- * One successful non-tool stream reads <=2 MiB + one <=1 MiB crossing document;
- * 24 output messages + <=1 MiB native thread stay below the 16 MiB read budget.
- * The model sees <=48 KiB of message JSON plus <=8 KiB native previous summary. */
+/** Titles read one exact accepted native message (<=1 MiB); the encoded prompt
+ * is trimmed to <=48 KiB. No transcript discovery or parallel context ring. */
 async function textInput(
   ctx: RunnerCtx,
   component: import("@convex-dev/agent").AgentComponent,
   state: Snapshot,
-  kind: TextTaskArgs["kind"],
 ) {
-  if (kind === "title") {
-    if (!state.messageId) throw new Error("NO_TITLE_MESSAGE");
+  if (!state.messageId) throw new Error("NO_TITLE_MESSAGE");
 
-    const [message] = await ctx.runQuery(component.messages.getMessagesByIds, {
-      messageIds: [state.messageId],
-    });
-
-    if (!message) throw new Error("NO_TITLE_MESSAGE");
-
-    let preview = new TextDecoder().decode(
-      new TextEncoder().encode(message.text ?? "").slice(0, TEXT_LIMITS.inputBytes / 2),
-    );
-
-    while (
-      new TextEncoder().encode(JSON.stringify({ message: preview })).length > TEXT_LIMITS.inputBytes
-    )
-      preview = preview.slice(0, Math.floor(preview.length / 2));
-
-    return JSON.stringify({ message: preview });
-  }
-
-  const page = await ctx.runQuery(component.messages.listMessagesByThreadId, {
-    threadId: state.threadId,
-    order: "desc",
-    statuses: ["success"],
-    excludeToolMessages: true,
-    paginationOpts: {
-      cursor: null,
-      numItems: TEXT_LIMITS.messages,
-      maximumRowsRead: TEXT_LIMITS.messages,
-      maximumBytesRead: TEXT_LIMITS.readBytes,
-    },
+  const [message] = await ctx.runQuery(component.messages.getMessagesByIds, {
+    messageIds: [state.messageId],
   });
 
-  const thread = await ctx.runQuery(component.threads.getThread, { threadId: state.threadId });
-  const messages = page.page.reverse().map((doc) => doc.message);
+  if (!message) throw new Error("NO_TITLE_MESSAGE");
+
+  let preview = new TextDecoder().decode(
+    new TextEncoder().encode(message.text ?? "").slice(0, TEXT_LIMITS.inputBytes / 2),
+  );
 
   while (
-    messages.length &&
-    new TextEncoder().encode(JSON.stringify(messages)).length > TEXT_LIMITS.inputBytes
+    new TextEncoder().encode(JSON.stringify({ message: preview })).length > TEXT_LIMITS.inputBytes
   )
-    messages.shift();
+    preview = preview.slice(0, Math.floor(preview.length / 2));
 
-  if (!messages.length) throw new Error("NO_SUMMARY_MESSAGES");
-
-  const previous = thread?.summary && validText(thread.summary, "summary") ? thread.summary : "";
-
-  return JSON.stringify({ previous, messages });
+  return JSON.stringify({ message: preview });
 }

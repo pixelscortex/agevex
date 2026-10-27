@@ -16,7 +16,6 @@ import { waitFor } from "./message-parent.fixture.js";
 import { components, rawAssignment } from "./fixture/api.js";
 import { TREE_LIMITS } from "../src/component/run_tree_values.js";
 import { HOST_LIMITS, LIMITS } from "../src/component/limits.js";
-import { seedUsage } from "./run-tree-meter.seed.js";
 import { RUN_LIMITS } from "../src/component/run_settings.js";
 
 beforeEach(() => vi.useFakeTimers());
@@ -380,51 +379,8 @@ it.each([false, true])(
   },
 );
 
-it("exclusive meter usage sums to request totals including root background charges", async () => {
-  const { t, meter } = setup({ meter: true });
-
-  v2.steps.Main = (n) => (n === 0 ? [delegate("Builder")] : text("done"));
-  const receipt = await open(t);
-
-  await drain(t);
-  const tree = (await read(t, receipt.threadId))!;
-
-  for (const node of tree.nodes)
-    await t.action(async (ctx) => {
-      await meter
-        .scope(ctx, {
-          subject: "alice",
-          rootThreadId: receipt.threadId,
-          threadId: node.messages.threadId,
-          runId: tree.rootRunId,
-          agent: node.agent,
-          nodeId: node.parentId === null ? undefined : node.id,
-          purpose: node.parentId === null ? "summary" : "agent",
-        })
-        .record("fake", { key: node.id, usage: { inputTokens: 3, outputTokens: 7 } });
-    });
-
-  const measured = (await read(t, receipt.threadId))!;
-
-  for (const metric of [
-    "inputTokens",
-    "outputTokens",
-    "estimatedUsd",
-    "settledUsd",
-    "unknown",
-  ] as const)
-    expect(measured.nodes.reduce((sum, node) => sum + (node.usage![metric] ?? 0), 0)).toBeCloseTo(
-      measured.usage![metric] ?? 0,
-    );
-
-  expect(measured.usage!.settledUsd).toBeGreaterThanOrEqual(0.02);
-  await t.mutation(components.agevex.turns.slices.usageFailed, { runId: tree.rootRunId });
-  expect((await read(t, receipt.threadId))!.usage!.reporting).toBe("partial");
-});
-
-it("all hard-maximum assignment and child envelopes plus meter stay below 8 MiB and 128 KiB output", async () => {
+it("all hard-maximum assignment and child envelopes stay below 8 MiB and 128 KiB output", async () => {
   const { t } = setup({
-    meter: true,
     limits: Object.fromEntries(Object.entries(HOST_LIMITS).map(([key, value]) => [key, value.max])),
   });
 
@@ -437,11 +393,6 @@ it("all hard-maximum assignment and child envelopes plus meter stay below 8 MiB 
 
   expect(sizes.children).toEqual(Array(TREE_LIMITS.descendants).fill(4 << 10));
 
-  await seedUsage(t, "alice", root.rootRunId, [
-    null,
-    ...Array.from({ length: TREE_LIMITS.descendants }, (_, i) => `node-${i}`),
-  ]);
-
   const tree = (await read(t, root.threadId))!;
 
   expect(tree.nodes).toHaveLength(1 + TREE_LIMITS.descendants);
@@ -451,4 +402,47 @@ it("all hard-maximum assignment and child envelopes plus meter stay below 8 MiB 
   );
 
   expect(tree.nodes.every((node) => node.status === "done")).toBe(true);
+});
+
+it("an app usage view supplies run totals and preserves the sticky partial marker", async () => {
+  const usage = {
+    inputTokens: 3,
+    outputTokens: 7,
+    estimatedUsd: 0.01,
+    settledUsd: 0.02,
+    unknown: 0,
+    reporting: "available" as const,
+  };
+
+  const views: unknown[] = [];
+
+  const { t } = setup({
+    usage: {
+      record: async () => {},
+      view: async (_ctx, args) => {
+        views.push(args);
+
+        return { total: usage, nodes: args.nodeIds.map((nodeId) => ({ nodeId, usage })) };
+      },
+    },
+  });
+
+  v2.steps.Main = (n) => (n === 0 ? [delegate("Builder")] : text("done"));
+  const receipt = await open(t);
+
+  await drain(t);
+  const tree = (await read(t, receipt.threadId))!;
+
+  expect(tree.usage).toEqual(usage);
+  expect(tree.nodes.every((node) => node.usage?.inputTokens === 3)).toBe(true);
+
+  expect(views).toContainEqual({
+    subject: "alice",
+    runId: tree.rootRunId,
+    nodeIds: [null, tree.nodes[1].id],
+    partial: false,
+  });
+
+  await t.mutation(components.agevex.turns.slices.usageFailed, { runId: tree.rootRunId });
+  expect((await read(t, receipt.threadId))!.usage!.reporting).toBe("partial");
 });

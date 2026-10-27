@@ -43,7 +43,6 @@ const pageNames = [...new Set(blocks.map((b) => b.page))];
 const typeImports = `import type { ApiFromModules, FilterApi, FunctionReference } from "convex/server";
 import type { ComponentApi as Core } from "agevex/_generated/component.js";
 import type { AgentComponent } from "@convex-dev/agent";
-import type { ComponentApi as Meter } from "agevex/meter/_generated/component.js";
 import type { ComponentApi as Extract } from "agevex/extract/_generated/component.js";
 import type { ComponentApi as Sandbox } from "agevex/sandbox/_generated/component.js";
 import type { ComponentApi as Daytona } from "@daytona/convex";
@@ -116,7 +115,7 @@ for (const page of pageNames) {
 type FullApi = ApiFromModules<{\n${typedModules}\n}>;
 export declare const api: FilterApi<FullApi, FunctionReference<any,"public">>;
 export declare const internal: FilterApi<FullApi, FunctionReference<any,"internal">>;
-export declare const components: {agevex:Core;agent:AgentComponent;meter:Meter;agevexExtract:Extract;sandbox:Sandbox;daytona:Daytona};
+export declare const components: {agevex:Core;agent:AgentComponent;agevexExtract:Extract;sandbox:Sandbox;daytona:Daytona};
 `,
   );
 }

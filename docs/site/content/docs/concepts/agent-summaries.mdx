@@ -1,0 +1,48 @@
+---
+title: Summaries with Convex Agent
+description: Generate, store and inject summaries using the native Agent APIs.
+status: Available
+---
+
+Apps own summary generation and cadence. Authorize the thread before this
+internal action is scheduled, bound its input, and dedupe paid requests in your
+app. This example accepts an app-selected excerpt instead of scanning messages.
+
+```ts title="convex/summaries.ts"
+import { getThreadMetadata, updateThreadMetadata, type ContextHandler } from "@convex-dev/agent";
+import { internalActionGeneric } from "convex/server";
+import { v } from "convex/values";
+import { generateText } from "ai";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { components } from "./_generated/api.js";
+
+const model = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY }).chat("openrouter/free");
+export const generateSummary = internalActionGeneric({
+  args: { threadId: v.string(), excerpt: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { threadId, excerpt }) => {
+    if (new TextEncoder().encode(excerpt).length > 48 * 1024) throw new Error("INPUT_TOO_LARGE");
+    const { text } = await generateText({
+      model,
+      maxRetries: 0,
+      maxOutputTokens: 1024,
+      prompt: `Summarize this conversation data:\n${excerpt}`,
+    });
+    await updateThreadMetadata(ctx, components.agent, { threadId, patch: { summary: text } });
+    return null;
+  },
+});
+
+export const contextHandler: ContextHandler = async (ctx, { threadId, allMessages }) => {
+  const thread = threadId ? await getThreadMetadata(ctx, components.agent, { threadId }) : null;
+  return thread?.summary
+    ? [{ role: "system", content: `Conversation summary:\n${thread.summary}` }, ...allMessages]
+    : allMessages;
+};
+```
+
+Pass the optional `contextHandler` to your Agent constructor options.
+Agent stores the summary on its own thread;
+agevex needs no endpoint, cadence counter, context ring or receipt for it.
+API evidence: Agent 0.7.7 `src/client/threads.ts:42–64` and
+`src/vercel/client/search.ts:693–706`.

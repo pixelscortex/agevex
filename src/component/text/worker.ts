@@ -7,7 +7,7 @@ import { childLane } from "../workflows/lanes.js";
 import { internalMutation } from "../_generated/server.js";
 import { textArgs } from "./values.js";
 import { findReceipt } from "../receipts/records.js";
-import { textScope, releaseSummary, type TextJob } from "./jobs.js";
+import { textScope, type TextJob } from "./jobs.js";
 
 export const work = childLane
   .define({ args: { ...textArgs, handle: v.string() }, returns: v.null() })
@@ -31,8 +31,6 @@ export const done = internalMutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const receipt = await findReceipt(ctx, textScope(args.context.assignmentId), args.context.key);
-
-    await releaseSummary(ctx, args.context.assignmentId, args.context.key);
 
     if (receipt?.status === "running") {
       const job = receipt.result as TextJob | undefined;

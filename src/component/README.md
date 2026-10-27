@@ -15,7 +15,8 @@ The host exports `runTurn`, `coordinate` and, when enabled, `textTask`.
 3. The loop dispatches one non-retried host action per paid model slice.
    `turns/claim.ts` consumes ready work, flushes app notes and arms its watchdog.
 4. Every native write passes the token/epoch fence in `turns/write.ts`. Exact
-   message, stream, usage and approval identities commit with their native saves.
+   message, stream and approval identities commit with their native saves.
+   Usage reads the committed native save result directly.
 5. Tool steps continue through `turns/boundaries.ts`; approval resumes retain
    the reporting request, accumulated assistant ids and spent step allowance.
 6. `turns/finish.ts` idles a successful turn or records recovery_required. Child
@@ -50,33 +51,26 @@ exhaustion returns RUN_BUDGET. Root activeRuns also bounds all live descendants.
 
 At hard maxima, each assignment has at most 100 queued messages +50 results
 +2 head/answer rows. Cancellation covers 16*152=2,432 ready rows and deduplicates
-at most 168 budgets. Its conservative ceilings are 14,168 KiB read and 10,572 KiB
+at most 168 budgets. Its conservative ceilings are 14,100 KiB read and 10,508 KiB
 written, below 16 MiB. Passive note bodies are excluded and cleaned separately.
 The complete document/query/byte arithmetic lives in `limits.ts`, with enforced
 transaction-limit fixtures for cancellation, claim, decisions, tree and saves.
 
-Assignments fit 16 KiB, including system fields. The maximal all-fields fixture
-uses 12,672 bytes: approvals 4,802; reporting 2,635; text handles 822; pending
-generation 988; runTurn 258; names 1,204; models 510; limits 309; remaining fields,
-names and object overhead 1,144. This leaves 3,712 bytes of headroom. Native
-saves clear active tool markers before growing the row; their own writer also
-checks the envelope. Runs stay within 16 KiB, delegations within 4 KiB.
+Assignments fit 14 KiB including system fields. The all-fields fixture uses
+at most 12,576 bytes after dropping the duplicate model-step identity and title
+enablement flags. Native saves clear active tool markers before growing the
+row; the progress writer also checks the envelope. Runs fit 16 KiB, delegations 4 KiB.
 
 ## Thread metadata
 
 Only textConfig remains on assignments: worker/native thread handles and
-feature enablement. Temporary run/epoch/first-message identities use existing
+no feature flags. Temporary run/first-message identities use existing
 receipts and disappear when work closes. No generated content is copied there.
 Titles generate once from the first accepted native prompt. The commit reads
 native title and updates it atomically, so app/user titles always win.
 
-Summaries are explicit requests with requestKey idempotency. Input uses Agent's
-bounded recent-message query: at most 24 successful non-tool messages, a 2 MiB
-page budget plus at most one <=1 MiB crossing document. The native thread read
-adds at most 1 MiB in a separate query. Serialized input is <=48 KiB of messages
-plus <=8 KiB of previous native summary. Results update native threads.summary;
-the read endpoint queries that same native field. Unknown paid work is never
-retried; a fresh key explicitly requests new work. Workflow cleanup is finite.
+Apps own summaries through the native Agent thread metadata and contextHandler.
+Title receipts retain only dispatch capabilities; cleanup is finite.
 
 ## Tables and readers
 
@@ -115,3 +109,24 @@ metadata fit a 3 KiB reservation. ToolContext.promptMessageId uses that request.
 Loops rotate after bounded turns/doorbells to protect the 8 MiB journal. The
 versioned step sequence remains stable and journal replay tests verify it.
 agevex/test mounts inspection functions only in the test harness.
+
+## Native-state audit
+
+- Native titles remain the only title state; textConfig stores dispatch handles
+  and receipts fence paid title admission, which Agent metadata cannot do.
+- Exact prompt/result/question ids and turnReport stay because queues, delivery
+  verification and afterTurn require identities without transcript scans.
+- pendingGeneration retains exact placeholder/stream ids and cleanup handles so
+  cancellation can close only its own native resources after a crashed action.
+- subject/agent and accepted models/settings remain trusted ownership and
+  execution policy; native userId/agentName are descriptive message metadata.
+- run/delegation lifecycles, counters, epochs and receipts stay because Agent
+  does not coordinate request budgets, descendants, paid effects or approvals.
+- activeTools tracks currently executing local effects, which native message or
+  stream status cannot determine; usagePartial records missing host observations.
+- Temporary inbox note bodies and compact approval proposals stay until their
+  ordered native save or edited-input decision; they have distinct lifecycles.
+
+Native message order/stepOrder, stream status and token usage are never copied
+onto agevex tables. Provider response ids are added to native providerMetadata
+because Agent's mapping omits response.id (`client/turn/provider-evidence.ts`).

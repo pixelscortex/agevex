@@ -57,14 +57,11 @@ sleeping workflows use no slot. See
 
 ## Usage and budgets
 
-Optional `agevex/meter` records each saved model step and app-reported tool cost
-while a run works. `openRouterProvider` reconciles exact generation ids on those
-same charges; `Provider.lookup` supports other billing adapters. Configure
-`Provider.estimate` or `tokenEstimate` for costs unavailable inline. Its bounded
-`usageView` reads exclusive node and run totals from existing aggregates.
-`budgetSlot` stops the next model/tool boundary on observed spend; in-flight work
-may overshoot. No credit reservations or resumable pause are added. See
-[meter wiring](src/modules/meter/README.md).
+The usage hook reports each saved model step to your app's ledger, including
+its exact native message id, provider response id and token usage. The budget
+hook reads your own spend before each step or local tool. Helpers at
+`agevex/usage` estimate token cost and fetch a real OpenRouter generation cost.
+See [Recording usage in your app](docs/site/content/docs/concepts/recording-usage.mdx).
 
 ## Optional sandboxes
 
@@ -271,8 +268,6 @@ export const {
   runTree,
   title,
   rename,
-  summary,
-  summarize,
 } = runtime.authorizedEndpoints();
 ```
 
@@ -282,37 +277,21 @@ Convex generated-reference inference cycles, annotate `runTurn` with
 `RegisteredMutation<"internal", CoordinateArgs, CoordinateResult>` from
 `convex/server`; the argument/result types are exported by `agevex`.
 A root without children needs `refs.runTurn` and `refs.textTask` by default.
-Set `title: false` and leave summary disabled to omit `refs.textTask`.
+Set `title: false` to omit `refs.textTask`.
 Annotate its export with `RegisteredAction<"internal", TextTaskArgs, null>`
 when generated-reference inference needs an explicit type.
 
-## Background title and summary
+## Background titles
 
-Titles are on by default: one tool-free background call after the first user
-message, using the root model (including an accepted model override). Configure
-`title: { model, prompt, maxOutputTokens }` or disable with `title: false`.
-`maxOutputTokens` (a positive integer up to 4,096, refused at registration
-otherwise) overrides the title's 128 or the summary's 2,048 output cap. Export the supplied
-`textTask` internal action and provide `refs.textTask` when either feature is on.
-Native app titles and user `rename({ threadId, text })` always win over late
-work. Titles are generated even if the first turn is cancelled. `title` returns
-`{ text }` from the native thread. Repeating an identical rename replays and adds
-no message.
+Titles generate once after the first accepted message, using the root model.
+Configure `title: { model, prompt, maxOutputTokens }` or `title: false`.
+Export `textTask` and provide `refs.textTask` when enabled. The default output
+cap is 128 tokens, with a hard maximum of 4,096. App/user native titles always
+win over late generation, including cancellation. Jobs recheck authorization
+and budget, run without tools or repairs, and never retry uncertain paid work.
+Usage failures mark the run partial. See [titles](docs/site/content/docs/concepts/background-text.mdx).
 
-Summaries are off. `summary: {}` enables on-demand
-`summarize({ threadId, requestKey })`; developers can call it from their own
-`afterTurn` hook for a cadence. `summary({ threadId })` reads `{ text }` or null
-from the native Agent thread summary. No summary content, cadence counter or
-context ring is stored by agevex. See [background text](docs/site/content/docs/concepts/background-text.mdx).
-
-Jobs use child capacity, 30-second model deadlines, no tools, no repairs and no
-paid retries. Their usage carries `title`/`summary` purpose labels on the
-triggering root run. Authorization and budget are rechecked before spend; failures
-leave the conversation and previous metadata unaffected. An unknown-cost
-title/summary charge stays recorded, billed and visible but never stops the
-run that triggered it (the budget gate ignores background `unknown`s). A fresh summary key
-can request new work after an unknown/failed result; cadence resumes after known
-failures. A job lease starts at provider dispatch, after authorization and input reads.
+Apps can build [summaries with Convex Agent](docs/site/content/docs/concepts/agent-summaries.mdx).
 
 ## Durable execution
 
@@ -422,11 +401,9 @@ Every managed tool receives a `ToolContext` through AI SDK `options.context`.
 Native `createTool` also receives these facts on its normal injected context;
 `defineOnceTool` receives them as its second argument. Facts include `subject`,
 `rootThreadId`, `threadId`, the shared user `runId`, `agent`, `toolCallId`,
-`signal`, and `meter`. The meter is always present. Charge keys hash the
-tool-call identity and ordinal; operations hash the charge, method and ordinal.
-Explicit keys distinguish logical operations when necessary. Model usage is
-recorded once per saved step with exact native thread/message/step ids;
-recording failures never replay or fail the generation.
+`signal` and the trusted `promptMessageId`. Model usage is reported once per
+saved step with the exact native message id; hook failures mark usage partial
+and never replay or fail the generation. Apps own tool-cost recording.
 
 Budget `check(ctx, { subject, runId })` runs before each slice. A denial ends
 with `BUDGET_EXCEEDED` in activity and a passive thread note admitted under
@@ -444,7 +421,7 @@ discards that run's pending notes. Core never resumes an uncertain paid step.
 Semantic slot facts (subject, agent, root/thread/run ids) are nonempty and at most
 128 UTF-8 bytes (`LIMITS.factBytes`); invalid registration/endpoint facts throw a
 typed `ConvexError`. Opaque keys use full SHA-256 hex (64 ASCII bytes) over
-canonical, domain-separated parts, including explicit meter keys and once-tool
+canonical, domain-separated parts, including usage keys and once-tool
 keys. Replay produces the same key; original semantic facts stay in attribution.
 `tc.toolCallId` is bounded the same way; `tc.nativeToolCallId` retains the provider id.
 
@@ -620,7 +597,7 @@ accepted by a provider still depend on that provider's abort behavior.
 At the hard maximum of 15 descendants, cancel covers 16 assignments, up to
 2,432 ready rows (`16 × (100 messages + 50 results + 2 control rows)`) and
 384 pending notes. Cancel deduplicates up to 168 request budgets. Its conservative
-read bound is 14,168 KiB of 16,384 KiB; written bytes stay within 10,572 KiB.
+read bound is 14,100 KiB of 16,384 KiB; written bytes stay within 10,508 KiB.
 Native message bodies are cleaned separately.
 
 Pending native tool approvals block generation and leave the inbox row
@@ -709,14 +686,6 @@ integers are required and lanes must fit scheduled concurrency. Registrations
 sharing a component mount share its lane capacities. `PLATFORM` contains
 documented facts, not checked by the SDK, including Workflow journal/step
 ceilings (8 MiB / 800 KiB). Workflow enforces those byte limits.
-
-## Optional cost meter
-
-Mount `agevex/meter/convex.config` and import `defineMeter` from `agevex/meter`
-for keyed cost recording, estimates/corrections, aggregate thread/subject/run
-reads, fail-closed budget gates (unpriceable charges record `unknown`),
-request-id lookups, batched Polar/webhook/custom sinks and host-driven
-retention (`prune`). Core wiring is separate. See the [meter API, limits and delivery semantics](src/modules/meter/README.md).
 
 ## Registry tools
 
