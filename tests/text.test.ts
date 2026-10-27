@@ -228,6 +228,12 @@ it("title uses the configured prompt and rejects oversized output without a repa
   expect(JSON.stringify(state.titleCalls[0].prompt)).toContain("Describe this in three words.");
   expect((await title(t, receipt.threadId)).text).toBeNull();
 
+  // The rejected answer was paid for; its request id lets the host reconcile it.
+  expect(state.usageAttempts.find((event) => event.purpose === "title")).toMatchObject({
+    status: "failed",
+    requestId: "request-title",
+  });
+
   expect(await activity(t, receipt.threadId)).toMatchObject({
     turnStatus: "idle",
     errorCode: null,
