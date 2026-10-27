@@ -26,6 +26,7 @@ import { HOST_LIMITS, LIMITS } from "../component/limits.js";
 import { fingerprint, opaqueKey } from "./keys.js";
 import { assertFact } from "../component/facts.js";
 import type { SlotFacts, UsageSlot } from "./slots.js";
+import { deliverUsage, type UsageDeliveryGuard } from "./turn/usage.js";
 
 type TaskModel = Extract<LanguageModel, string | LanguageModelV4>;
 export type Task<Input, Output> = {
@@ -69,6 +70,7 @@ type Binding = {
   usage?: UsageSlot;
   turnKey: string;
   fence?: { assignmentId: string; executionId: string; cancellationEpoch: number };
+  usageDelivery?: { ctx: ActionCtx; guard: UsageDeliveryGuard };
 };
 // Action-local capabilities are never serialized into Workflow arguments. Hook
 // calls use the same receipts and cancellation fence as managed tool effects.
@@ -447,25 +449,39 @@ async function recordTaskUsage<Input, Output>(
 ) {
   const { model, attribution, binding, options, ctx } = call;
   const occurredAt = Date.now();
+  const slot = binding?.usage ?? options.usage;
+
+  if (!slot) return;
 
   try {
     const provider = typeof model === "string" ? model.split("/")[0] : model.provider;
 
-    await (binding?.usage ?? options.usage)?.record(ctx, {
-      ...attribution,
-      model: typeof model === "string" ? model : model.modelId,
-      provider,
-      key: await opaqueKey("task-usage", receipt.scope, receipt.key, attempt),
-      status: call.signal?.aborted ? "aborted" : status,
-      occurredAt,
-      messageId: null,
-      usage,
-      providerMetadata,
-      requestId,
-    });
+    await deliverUsage(
+      slot,
+      binding?.usageDelivery?.ctx ?? ctx,
+      {
+        ...attribution,
+        model: typeof model === "string" ? model : model.modelId,
+        provider,
+        key: await opaqueKey("task-usage", receipt.scope, receipt.key, attempt),
+        status: call.signal?.aborted ? "aborted" : status,
+        occurredAt,
+        messageId: null,
+        usage,
+        providerMetadata,
+        requestId,
+      },
+      binding?.usageDelivery?.guard ?? {
+        signal: call.signal,
+        wait: (work) => abortTask(work, call.signal),
+      },
+    );
   } catch {
     try {
-      await ctx.runMutation(call.component.turns.slices.usageFailed, { runId: attribution.runId });
+      await (binding?.usageDelivery?.ctx ?? ctx).runMutation(
+        call.component.turns.slices.usageFailed,
+        { runId: attribution.runId },
+      );
     } catch {
       /* Recording evidence must never trigger another paid call. */
     }

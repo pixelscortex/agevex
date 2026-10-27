@@ -11,14 +11,37 @@ import type { UsageEvent } from "../slots.js";
 import type { Turn } from "./context.js";
 import type { TurnFence } from "./fence.js";
 import { boundedUsageCall } from "./usage.js";
+import { providerEvidence } from "./provider-evidence.js";
 
 export type StepUsage = Pick<
   UsageEvent,
   "model" | "provider" | "usage" | "occurredAt" | "status"
 > & {
+  finished: boolean;
   providerMetadata?: SharedV4ProviderMetadata;
   native?: Pick<MessageDoc, "_id" | "stepOrder">;
 };
+
+/** Metadata proves provider admission even if the stream never reaches finish.
+ * Keep it on this same step so finish enriches evidence instead of billing twice. */
+export function captureStepResponse(
+  turn: Turn,
+  model: Pick<LanguageModelV4, "modelId" | "provider">,
+  requestId?: string,
+  modelId?: string,
+) {
+  if (turn.stepUsage?.finished) return;
+
+  turn.stepUsage = {
+    ...turn.stepUsage,
+    model: modelId ?? turn.stepUsage?.model ?? model.modelId,
+    provider: model.provider,
+    status: "failed",
+    occurredAt: Date.now(),
+    finished: false,
+    providerMetadata: providerEvidence(turn.stepUsage?.providerMetadata, requestId),
+  };
+}
 
 /** Retain the first completion only, even if a malformed stream finishes twice.
  * Match Agent vercel/mapping.ts:241-253's native usage vocabulary. Preserve
@@ -30,15 +53,16 @@ export function captureStepUsage(
   reason: string,
   providerMetadata?: SharedV4ProviderMetadata,
 ) {
-  if (!usage || turn.stepUsage) return;
+  if (!usage || turn.stepUsage?.finished) return;
 
   const input = usage.inputTokens;
   const output = usage.outputTokens;
 
   turn.stepUsage = {
-    model: model.modelId,
+    model: turn.stepUsage?.model ?? model.modelId,
     provider: model.provider,
     occurredAt: Date.now(),
+    finished: true,
     status: ["stop", "length", "tool-calls"].includes(reason) ? "success" : "failed",
     providerMetadata,
     usage: {

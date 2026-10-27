@@ -8,6 +8,7 @@ import { components } from "./fixture/api.js";
 import schema from "./fixture/schema.js";
 import { requireReceipt } from "./receipt.js";
 import { state, reset, exports, api, titleModel, registration } from "./text.host.js";
+import { LIMITS } from "../src/component/limits.js";
 const modules = import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]);
 
 function setup() {
@@ -288,22 +289,53 @@ it("title output caps are validated before acceptance", () => {
   }
 });
 
-it("title usage failures mark the run partial without repeating paid work", async () => {
-  state.usageFails = true;
+it.each(["throw", "stall"])(
+  "title hooks that always %s exhaust bounded attempts before partial without repeating paid work",
+  async (failure) => {
+    state.titleUsageFailures = LIMITS.usageRecordAttempts;
+    state.titleUsageStalls = failure === "stall";
+    const t = setup();
+    const receipt = await open(t);
+
+    await drain(t);
+    expect((await title(t, receipt.threadId)).text).toBe("Generated title");
+    expect(state.titleCalls).toHaveLength(1);
+    const attempts = state.usageAttempts.filter((event) => event.purpose === "title");
+
+    expect(attempts).toHaveLength(LIMITS.usageRecordAttempts);
+    expect(new Set(attempts.map((event) => event.key)).size).toBe(1);
+    expect(new Set(attempts.map((event) => event.occurredAt)).size).toBe(1);
+    expect(state.usage.filter((event) => event.facts.purpose === "title")).toHaveLength(0);
+    const runId = (await activity(t, receipt.threadId)).runId!;
+
+    expect(await t.query(components.agevex.turns.slices.usageReporting, { runId })).toBe(true);
+
+    expect(await activity(t, receipt.threadId)).toMatchObject({
+      turnStatus: "idle",
+      errorCode: null,
+    });
+  },
+);
+
+it("a title hook that throws once retries the same event, records once and keeps reporting complete", async () => {
+  state.titleUsageFailures = 1;
   const t = setup();
   const receipt = await open(t);
+  const before = Date.now();
 
   await drain(t);
-  expect((await title(t, receipt.threadId)).text).toBe("Generated title");
+  const attempts = state.usageAttempts.filter((event) => event.purpose === "title");
+
+  expect(attempts).toHaveLength(2);
+  expect(attempts[1]).toBe(attempts[0]);
+  expect(attempts[0].status).toBe("success");
+  expect(attempts[0].occurredAt).toBeGreaterThanOrEqual(before);
+  expect(state.usage.filter((event) => event.facts.purpose === "title")).toHaveLength(1);
   expect(state.titleCalls).toHaveLength(1);
+  expect((await title(t, receipt.threadId)).text).toBe("Generated title");
   const runId = (await activity(t, receipt.threadId)).runId!;
 
-  expect(await t.query(components.agevex.turns.slices.usageReporting, { runId })).toBe(true);
-
-  expect(await activity(t, receipt.threadId)).toMatchObject({
-    turnStatus: "idle",
-    errorCode: null,
-  });
+  expect(await t.query(components.agevex.turns.slices.usageReporting, { runId })).toBe(false);
 });
 
 it("title string models preserve provider response identity and attribution", async () => {

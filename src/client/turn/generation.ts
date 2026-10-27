@@ -90,6 +90,14 @@ function startGeneration(rt: RuntimeContext, turn: Turn): Generation {
     attribution: { ...facts, purpose: "hook" },
     turnKey,
     usage: rt.config.usage,
+    usageDelivery: {
+      ctx: turn.rawCtx,
+      guard: {
+        signal: fence.controller.signal,
+        wait: fence.wait,
+        assertActive: () => fence.assertActive(true),
+      },
+    },
     fence: {
       assignmentId: args.assignmentId,
       executionId: args.turnToken,
