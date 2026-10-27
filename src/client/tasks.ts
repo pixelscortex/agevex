@@ -339,7 +339,16 @@ async function generateWithRepair<Input, Output>(
           throw error;
         }
 
-        await recordTaskUsage(call, receipt, attempt, error.usage, undefined, undefined, "failed");
+        await recordTaskUsage(
+          call,
+          receipt,
+          attempt,
+          error.usage,
+          undefined,
+          error.response?.id,
+          "failed",
+        );
+
         result = { status: "failed", code: "INVALID_OUTPUT" };
 
         // Only invalid structured output permits one intentional re-ask. A
