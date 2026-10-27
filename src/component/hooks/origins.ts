@@ -19,7 +19,7 @@ type Origin = { origin: "note" | "result"; from?: string; runId?: string };
  * Control rows with a native id never retain bodies; no history prefix is read.
  * Only rows belonging to this subject's assignment are reported.
  */
-export async function messageOrigins(
+async function messageOrigins(
   ctx: QueryCtx,
   args: { assignmentId: Id<"assignments">; subject: string; messageIds: string[] },
 ) {

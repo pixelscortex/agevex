@@ -8,7 +8,8 @@ import { setup, api, components, rawAssignment, state } from "./setup.js";
 import { main } from "./host.js";
 import type { ManagedAgent, OriginMessage } from "../src/client/index.js";
 import { z } from "zod";
-import { defineOnceTool, LIMITS } from "../src/client/index.js";
+import { defineOnceTool } from "../src/client/index.js";
+import { LIMITS } from "../src/component/limits.js";
 import { HOST_LIMITS } from "../src/component/limits.js";
 
 type Test = ReturnType<typeof setup>;

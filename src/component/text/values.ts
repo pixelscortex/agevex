@@ -1,6 +1,8 @@
 /** Native thread text policy. Temporary capabilities use the existing receipts
  * ledger; title bodies are never stored by agevex. */
-import { v, getConvexSize } from "convex/values";
+import { v } from "convex/values";
+
+import { valueBytes } from "../../shared/json.js";
 
 export const TEXT_LIMITS = {
   titleCharacters: 120,
@@ -13,8 +15,7 @@ export const TEXT_LIMITS = {
   titleTokens: 128,
 } as const;
 
-export const textKind = v.literal("title");
-export const textArgs = { assignmentId: v.string(), kind: textKind, key: v.string() };
+export const textArgs = { assignmentId: v.string() };
 export const textConfig = v.object({
   worker: v.string(),
   updateThread: v.string(),
@@ -22,11 +23,10 @@ export const textConfig = v.object({
 });
 
 /** Count encoded output as well as characters before updating native metadata. */
-export function validText(text: string, _kind: "title") {
+export function validText(text: string) {
   return (
     !!text.trim() &&
-    Math.max(new TextEncoder().encode(JSON.stringify(text)).length, getConvexSize(text)) <=
-      TEXT_LIMITS.titleBytes &&
+    valueBytes(text) <= TEXT_LIMITS.titleBytes &&
     Array.from(text).length <= TEXT_LIMITS.titleCharacters
   );
 }

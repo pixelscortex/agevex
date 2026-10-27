@@ -132,13 +132,7 @@ export async function acceptSend(ctx: MutationCtx, args: ObjectType<typeof accep
   );
 
   if (first && args.textConfig)
-    await queueText(
-      ctx,
-      (await ctx.db.get("assignments", row._id))!,
-      "title",
-      runId,
-      args.promptMessageId,
-    );
+    await queueText(ctx, (await ctx.db.get("assignments", row._id))!, runId, args.promptMessageId);
 
   await wake(ctx, { ...row, queuedMessages: row.queuedMessages + 1 });
 

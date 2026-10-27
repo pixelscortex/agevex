@@ -1,6 +1,7 @@
 // @vitest-environment edge-runtime
 import { sliceWatchdogMs, resolveRunSettings } from "../src/component/run_settings.js";
 import { opaqueKey } from "../src/client/keys.js";
+import { advanceUntil } from "./clock.js";
 import { requireReceipt } from "./receipt.js";
 import { it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { setup, api, internal, components, rawAssignment, state } from "./setup.js";
@@ -10,7 +11,7 @@ import { componentsGeneric, createFunctionHandle, type FunctionReference } from 
 import { createThread, listMessages, saveMessage } from "@convex-dev/agent";
 import { main, coordinateReference, fixtureRuntime } from "./host.js";
 import { HOST_LIMITS } from "../src/component/limits.js";
-import { LIMITS } from "../src/client/index.js";
+import { LIMITS } from "../src/component/limits.js";
 
 // Avoid expanding upstream Config's full model-id union just to set context.
 const modelContext = (
@@ -1344,13 +1345,7 @@ it("loop rotation leaves no orphaned pings after busy arrivals", async () => {
 
     const before = state.calls.length;
 
-    await expect
-      .poll(async () => {
-        await tick(t, 100);
-
-        return state.calls.length;
-      })
-      .toBe(before + 1);
+    await advanceUntil(t, () => state.calls.length === before + 1);
 
     await alice.mutation(api.agents.send, {
       threadId: receipt.threadId,

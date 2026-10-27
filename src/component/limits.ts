@@ -17,9 +17,6 @@ import { v } from "convex/values";
  * values cross our steps. These platform facts are never host overrides.
  */
 export const PLATFORM = {
-  journalBytes: 8 << 20,
-  stepBytes: 800 << 10,
-  nodeActionMs: 10 * 60_000,
   convexActionMs: 30 * 60_000,
   scheduledConcurrency: 8,
 } as const;

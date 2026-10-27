@@ -34,7 +34,7 @@ export type {
   ObserveAgentEvent,
 } from "./types.js";
 
-export { LIMITS, PLATFORM } from "../component/limits.js";
+export { HOST_LIMITS } from "../component/limits.js";
 export type { Limits } from "../component/limits.js";
 export { defineOnceTool } from "./once.js";
 export type { NoteArgs } from "./host/notes.js";

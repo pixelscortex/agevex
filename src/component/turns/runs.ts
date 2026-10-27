@@ -8,7 +8,7 @@
  * here, and cancel marks the run cancelled for every assignment under it.
  */
 import type { WithoutSystemFields } from "convex/server";
-import { getConvexSize } from "convex/values";
+import { valueBytes } from "../../shared/json.js";
 import { assertSettingsSnapshot, RUN_LIMITS } from "../run_settings.js";
 import type { Doc } from "../_generated/dataModel.js";
 
@@ -34,18 +34,7 @@ export function newRun(
 
   // Reserve 1 KiB for native id/time, lifecycle fields and bounded counter
   // growth. Both JSON UTF-8 and Convex bytes must stay <=16 KiB after updates.
-  if (
-    Math.max(
-      getConvexSize(row),
-      new TextEncoder().encode(
-        JSON.stringify(row, (_key, value) =>
-          typeof value === "bigint" ? value.toString() : value,
-        ),
-      ).byteLength,
-    ) +
-      RUN_LIMITS.nativeEnvelopeBytes >
-    RUN_LIMITS.metadataBytes
-  )
+  if (valueBytes(row) + RUN_LIMITS.nativeEnvelopeBytes > RUN_LIMITS.metadataBytes)
     throw new Error("RUN_METADATA_TOO_LARGE");
 
   return row;

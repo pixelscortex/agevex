@@ -12,7 +12,7 @@ import type { WithoutSystemFields } from "convex/server";
 import type { MutationCtx, QueryCtx } from "../_generated/server.js";
 import type { Doc } from "../_generated/dataModel.js";
 import { LIMITS } from "../limits.js";
-import { getConvexSize } from "convex/values";
+import { valueBytes } from "../../shared/json.js";
 import { TREE_LIMITS } from "../run_tree_values.js";
 
 type SubagentRun = Doc<"subagentRuns">;
@@ -126,10 +126,6 @@ export function newSubagentRun(fields: {
  * at task attachment so native reference growth cannot break the 4 KiB read budget.
  */
 export function assertRunMetadata(row: WithoutSystemFields<SubagentRun>) {
-  if (
-    Math.max(getConvexSize(row), new TextEncoder().encode(JSON.stringify(row)).byteLength) +
-      TREE_LIMITS.childGrowthBytes >
-    TREE_LIMITS.childBytes
-  )
+  if (valueBytes(row) + TREE_LIMITS.childGrowthBytes > TREE_LIMITS.childBytes)
     throw new Error("RUN_METADATA_TOO_LARGE");
 }

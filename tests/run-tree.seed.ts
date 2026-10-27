@@ -1,5 +1,5 @@
 /** Component-local adversarial fixtures; these handlers never ship in core. */
-import { v, getConvexSize, type Value } from "convex/values";
+import { v } from "convex/values";
 import type { Doc } from "../src/component/_generated/dataModel.js";
 import { mutation, query, type MutationCtx } from "../src/component/_generated/server.js";
 import { newRootAssignment } from "../src/component/turns/assignments.js";
@@ -8,32 +8,14 @@ import { newSubagentRun } from "../src/component/subagents/runs.js";
 import { HOST_LIMITS, LIMITS, resolveLimits } from "../src/component/limits.js";
 import { TREE_LIMITS } from "../src/component/run_tree_values.js";
 import { resolveRunSettings } from "../src/component/run_settings.js";
+import { valueBytes } from "../src/shared/json.js";
+import { maximumLimits, maximumRun, padded } from "./assignment-envelope.fixture.js";
 import { closeRootRun, endRootTurn } from "../src/component/turns/run_lifecycle.js";
-
-/** Fill opaque handles/fingerprints, never returned content, to their row caps. */
-function padded<T extends Record<string, Value | undefined>>(
-  row: T,
-  field: keyof T,
-  bytes: number,
-) {
-  const size = Math.max(getConvexSize(row), new TextEncoder().encode(JSON.stringify(row)).length);
-  const previous = row[field];
-
-  if (typeof previous !== "string") throw new Error("FIXTURE_PADDING_REQUIRES_STRING");
-
-  const { _id, _creationTime, ...fields } = row;
-
-  // Measure the persisted row, including system fields and the old value.
-  // ASCII padding grows both representations by exactly one byte per character.
-  return { ...fields, [field]: "x".repeat(bytes - size + previous.length) };
-}
 
 export const seedMaximum = mutation({
   args: {},
   handler: async (ctx) => {
-    const limits = resolveLimits(
-      Object.fromEntries(Object.entries(HOST_LIMITS).map(([key, bound]) => [key, bound.max])),
-    );
+    const limits = maximumLimits();
 
     const rootId = await ctx.db.insert(
       "assignments",
@@ -48,17 +30,7 @@ export const seedMaximum = mutation({
 
     const runId = await ctx.db.insert(
       "runs",
-      newRun(
-        undefined,
-        Array.from({ length: LIMITS.agents }, (_, i) => ({
-          agent: `${i}`.padEnd(100, "a"),
-          settings: resolveRunSettings(),
-        })),
-        {
-          rootAssignmentId: rootId,
-          taskMessageId: "task-root",
-        },
-      ),
+      maximumRun({ rootAssignmentId: rootId, taskMessageId: "task-root" }),
     );
 
     await ctx.db.patch("assignments", rootId, { runId });
@@ -156,10 +128,7 @@ export const maximumSizes = query({
       ),
     );
 
-    const sizes = (row: unknown) =>
-      Math.max(getConvexSize(row as Value), new TextEncoder().encode(JSON.stringify(row)).length);
-
-    return { assignments: assignments.map(sizes), children: children.map(sizes) };
+    return { assignments: assignments.map(valueBytes), children: children.map(valueBytes) };
   },
 });
 
@@ -196,17 +165,7 @@ export const envelopeLifecycle = mutation({
 
     const base = newRun(models, settings, metadata);
 
-    const size = (row: unknown) =>
-      Math.max(
-        getConvexSize(row as Value),
-        new TextEncoder().encode(
-          JSON.stringify(row, (_key, value) =>
-            typeof value === "bigint" ? value.toString() : value,
-          ),
-        ).length,
-      );
-
-    let padding = bytes - size(base);
+    let padding = bytes - valueBytes(base);
 
     for (const entry of settings) {
       const added = Math.min(padding, LIMITS.requestKeyLength - entry.agent.length);
@@ -233,7 +192,7 @@ export const envelopeLifecycle = mutation({
     await endRootTurn(ctx, ended, failed ? "EXECUTION_AMBIGUOUS" : null);
     await closeRootRun(ctx, ended);
 
-    return { bytes: size((await ctx.db.get("runs", runId))!), runId };
+    return { bytes: valueBytes((await ctx.db.get("runs", runId))!), runId };
   },
 });
 

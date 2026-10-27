@@ -3,7 +3,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { createThread, saveMessage } from "@convex-dev/agent";
 import { componentsGeneric, createFunctionHandle, type ApiFromModules } from "convex/server";
-import { getConvexSize } from "convex/values";
+import { valueBytes } from "../src/shared/json.js";
 import agevex from "../src/test.js";
 import { HOST_LIMITS, LIMITS } from "../src/component/limits.js";
 import { setup, components, rawAssignment } from "./setup.js";
@@ -42,9 +42,7 @@ it("a full 16 KiB child drains 50 child results and maximum notes with six nativ
   const { rootId, childId } = await t.mutation(seedRef, native);
 
   for (const assignmentId of [rootId, childId])
-    expect(getConvexSize(await t.query(rawAssignment, { assignmentId }))).toBe(
-      LIMITS.assignmentBytes,
-    );
+    expect(valueBytes(await t.query(rawAssignment, { assignmentId }))).toBe(LIMITS.assignmentBytes);
 
   const previous = (await t.query(rawAssignment, { assignmentId: childId }))!;
 

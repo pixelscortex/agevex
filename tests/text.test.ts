@@ -3,7 +3,7 @@
 import { beforeEach, afterEach, it, expect, vi } from "vite-plus/test";
 import { convexTest } from "convex-test";
 import native from "@convex-dev/agent/test";
-import agevex from "../src/test.js";
+import agevex from "../src/testing/test.js";
 import { components } from "./fixture/api.js";
 import schema from "./fixture/schema.js";
 import { requireReceipt } from "./receipt.js";

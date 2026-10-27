@@ -20,7 +20,6 @@ export const textScope = (assignmentId: Id<"assignments">) => `thread-text:${ass
 export async function queueText(
   ctx: MutationCtx,
   row: Doc<"assignments">,
-  kind: "title",
   runId: Id<"runs">,
   messageId?: string,
 ) {
@@ -51,10 +50,10 @@ export async function queueText(
     await laneManager(true, row.limits).start(
       ctx,
       internal.text.worker.work,
-      { assignmentId: row._id, kind, key, handle: row.textConfig.worker },
+      { assignmentId: row._id, handle: row.textConfig.worker },
       {
         startAsync: true,
-        context: { assignmentId: row._id, kind, key },
+        context: { assignmentId: row._id },
         onComplete: internal.text.worker.done,
       },
     );

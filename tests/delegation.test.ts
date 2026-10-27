@@ -1308,7 +1308,7 @@ it("run budget denies the 13th launch", async () => {
   });
 });
 
-it("gives the next accepted user prompt its own launch allowance", async () => {
+it("gives each accepted user prompt a fresh run budget through native delivery", async () => {
   const t = setup();
 
   state.delegate = true;
@@ -1629,63 +1629,6 @@ it("spends no launch allowance on a stale, out-of-graph or policy-denied attempt
   expect(await launch("call-4")).toMatchObject({ status: "queued" });
   expect((await runs(t, receipt.threadId)).page).toHaveLength(4);
   await t.mutation(components.agevex.turns.slices.finish, { ...rootTurn, errorCode: null });
-});
-
-// Phase 1a drops legacy per-prompt counters; breaking schema changes need no migration.
-
-it("gives each accepted user prompt a fresh run budget", async () => {
-  const t = setup();
-  const { assignmentId, threadId } = await open(t, "prompt 1", "r1");
-
-  const spendPrompt = async (index: number, prefix: string) => {
-    const rootTurn = { assignmentId, turnToken: `${assignmentId}:${index}` };
-
-    expect(await t.mutation(components.agevex.turns.slices.claim, rootTurn)).not.toBeNull();
-    const children = [];
-
-    for (const n of [1, 2, 3])
-      children.push(await reserveAndAttachChild(t, rootTurn, `${prefix}-${n}`));
-
-    // Phase 1a: the fourth launch still fits both the run and concurrent budgets.
-    expect(await probeReserve(t, rootTurn, `${prefix}-4`)).toBe("reserved");
-
-    // Free the concurrent slots through the real settlement path, so the next
-    // prompt is answered by its own allowance rather than by the cap.
-    for (const child of children) {
-      const claimed = await claimChild(t, child.childTurn);
-
-      await t.mutation(coordinateReference(), {
-        op: "settle",
-        ...child.childTurn,
-        runId: claimed.runId,
-        resultMessageId: "not-a-saved-native-message",
-        errorCode: null,
-      });
-    }
-
-    await t.mutation(components.agevex.turns.slices.finish, { ...rootTurn, errorCode: null });
-  };
-
-  await spendPrompt(0, "first");
-
-  expect(await activity(t, threadId)).toMatchObject({
-    subagents: { active: 0, history: 3, total: 3 },
-  });
-
-  await t.withIdentity({ subject: "alice" }).mutation(api.agents.send, {
-    threadId,
-    text: "prompt 2",
-    requestKey: "r2",
-  });
-
-  // The next accepted user prompt claims a new turn token, which starts a fresh
-  // run budget of twelve instead of continuing the spent one.
-  await spendPrompt(1, "second");
-
-  expect(await activity(t, threadId)).toMatchObject({
-    turnStatus: "idle",
-    subagents: { active: 0, history: 6, total: 6 },
-  });
 });
 
 it("never settles or delivers one root's run with another root's capability", async () => {

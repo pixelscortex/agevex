@@ -1,19 +1,20 @@
 /** A child claims a full previous report, 152 ready rows and maximum notes. */
 import { v } from "convex/values";
 import { mutation } from "../src/component/_generated/server.js";
-import { HOST_LIMITS, LIMITS, resolveLimits } from "../src/component/limits.js";
 import { newRootAssignment } from "../src/component/turns/assignments.js";
-import { newRun } from "../src/component/turns/runs.js";
 import { newSubagentRun } from "../src/component/subagents/runs.js";
-import { resolveRunSettings } from "../src/component/run_settings.js";
-import { fillAssignment, fillNotes, fullReport } from "./assignment-envelope.fixture.js";
+import {
+  fillAssignment,
+  fillNotes,
+  fullReport,
+  maximumLimits,
+  maximumRun,
+} from "./assignment-envelope.fixture.js";
 
 export const seed = mutation({
   args: { threadId: v.string(), promptMessageId: v.string() },
   handler: async (ctx, args) => {
-    const limits = resolveLimits(
-      Object.fromEntries(Object.entries(HOST_LIMITS).map(([key, bound]) => [key, bound.max])),
-    );
+    const limits = maximumLimits();
 
     const base = newRootAssignment({
       subject: "alice",
@@ -25,16 +26,7 @@ export const seed = mutation({
 
     const rootId = await ctx.db.insert("assignments", base);
 
-    const runId = await ctx.db.insert(
-      "runs",
-      newRun(
-        undefined,
-        Array.from({ length: LIMITS.agents }, (_, i) => ({
-          agent: String(i).padEnd(100, "a"),
-          settings: resolveRunSettings(),
-        })),
-      ),
-    );
+    const runId = await ctx.db.insert("runs", maximumRun());
 
     await ctx.db.patch("assignments", rootId, { runId });
     const root = (await ctx.db.get("assignments", rootId))!;
