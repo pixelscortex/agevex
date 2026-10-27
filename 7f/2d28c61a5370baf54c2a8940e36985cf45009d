@@ -1,0 +1,69 @@
+tests/prompt-cache-turns.test.ts
+  s_6ba18a61e22dcf::t_b4edc097553a1c 39,48,50,53,55,61,72,79,84,96,114,120,123,165,167,175,211,215,217,223,229,239
+  s_6ba18a61e22dcf::t_5718cfb7c3d0a4 164
+  s_6ba18a61e22dcf::t_54bba8048a8567 93-94,98-100,251,257
+  s_6ba18a61e22dcf::t_c15aa81d8f8a1b 1-10,17-23,31-38,49,54,62-65,71,75-78,85-92,95,97,101-108,110-113,121-122,124-133,141,148-152,159,187-191,193-204,206-210,212-214,216,221-222,230-236,240-250,252-256,258-259
+  s_6ba18a61e22dcf::t_f0d6aafdb0b16f 24-30,40-47,51-52,56-60,66-70,73-74,80-83,109,115-119,134-140,142-147,153-156,158,160-163,168-174,176,178-186,192,205,218-220,224-228,237-238
+  s_6ba18a61e22dcf::t_2f36cf2dd9a8bc 11-16
+  s_6ba18a61e22dcf::t_42327eeadfb04a 157,166,177
+src/client/turn/generation.ts
+  s_6ba18a61e22dcf::t_2e74ee11e6b894 170
+  s_6ba18a61e22dcf::t_08997f83913f8f 17
+  s_6ba18a61e22dcf::t_c98d9cea9de9af 26
+  s_6ba18a61e22dcf::t_f0d6aafdb0b16f 160-169,171-172
+src/client/turn/tools.ts
+  s_6ba18a61e22dcf::t_f0d6aafdb0b16f 76-80
+  s_6ba18a61e22dcf::t_c98d9cea9de9af 74-75,81-82
+tests/prompt-cache.test.ts
+  s_6ba18a61e22dcf::t_c15aa81d8f8a1b 1-3,5-8,10-38,44,58-59,61-65,70,72-73,76-77,90,92-96,98-99,103-104,106-111,117,124,131,137-145,148-149,151-153,157-160,168
+  s_6ba18a61e22dcf::t_08997f83913f8f 4
+  s_6ba18a61e22dcf::t_b4edc097553a1c 9,60,71,91,97,105,120,123,125,130,132,150,164
+  s_6ba18a61e22dcf::t_f0d6aafdb0b16f 39-43,45-57,66-69,74-75,78-89,100-102,112-116,118-119,121-122,126-129,133-136,146-147,154-156,161-163,165-167
+docs/site/content/docs/concepts/prompt-caching.mdx
+  s_6ba18a61e22dcf::t_446eaa1b0c58dc 1-47
+package.json
+  s_6ba18a61e22dcf::t_51421b28a5e07a 90
+src/client/turn/prompt-cache.ts
+  s_6ba18a61e22dcf::t_f0d6aafdb0b16f 51-54,62-68,77-80,83-87,96-101,107-115,119-126,142-160
+  s_6ba18a61e22dcf::t_446eaa1b0c58dc 47,56,103
+  s_6ba18a61e22dcf::t_b4edc097553a1c 20,23,55,69,102
+  s_6ba18a61e22dcf::t_bb48f564d6e361 1-19,21-22,24-46,48-50,57-61,70-76,81-82,88-95,104-106,116-118,127-141,161
+tests/hooks.host.ts
+  s_6ba18a61e22dcf::t_42327eeadfb04a 1,36,151,166,215
+  s_6ba18a61e22dcf::t_7161ecb0e42e2d 35,76-81,83-85,214
+  s_6ba18a61e22dcf::t_b4edc097553a1c 82
+tests/prompt-cache-providers.test.ts
+  s_6ba18a61e22dcf::t_5718cfb7c3d0a4 1-12,14,18-20,27,29-51
+  s_6ba18a61e22dcf::t_54bba8048a8567 15-17
+  s_6ba18a61e22dcf::t_b4edc097553a1c 13,21,26,28,58,63,78,82
+  s_6ba18a61e22dcf::t_f0d6aafdb0b16f 22-25,52-57,59-62,64-77,79-81,83-86
+src/client/types.ts
+  s_6ba18a61e22dcf::t_2e74ee11e6b894 295,308-309
+  s_6ba18a61e22dcf::t_08997f83913f8f 21,354-363
+  s_6ba18a61e22dcf::t_c98d9cea9de9af 22,296-297,307
+docs/site/content/docs/concepts/meta.json
+  s_6ba18a61e22dcf::t_446eaa1b0c58dc 10
+src/client/agent.ts
+  s_6ba18a61e22dcf::t_2e74ee11e6b894 11,90-91,94
+  s_6ba18a61e22dcf::t_2f36cf2dd9a8bc 92-93
+  s_6ba18a61e22dcf::t_c98d9cea9de9af 14,47-48,81,105
+  s_6ba18a61e22dcf::t_f4c18d848f3325 95
+bun.lock
+  s_6ba18a61e22dcf::t_f5a33bc0e4c1a7 14,59-60,667-668
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7f2d28c61a5370baf54c2a8940e36985cf45009d",
+  "prompts": {},
+  "sessions": {
+    "s_6ba18a61e22dcf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17e36-25fb-7460-be6c-f1aaf7cc9fa3",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
