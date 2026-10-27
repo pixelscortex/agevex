@@ -1,0 +1,68 @@
+src/component/README.md
+  s_e8eff8940126ee::t_e5ffd35eb29114 60,139-143
+  s_e8eff8940126ee::t_64b434bfb38f89 144
+docs/site/content/docs/concepts/runtime.mdx
+  s_e8eff8940126ee::t_e5ffd35eb29114 205-209
+tests/failure-bounds.fixture.ts
+  s_e8eff8940126ee::t_8b118482ddd5ad 6,51
+  s_e8eff8940126ee::t_4c72562d2f7233 52
+src/testing/journal.ts
+  s_e8eff8940126ee::t_8b118482ddd5ad 18,155-163,169-195,203-210
+  s_e8eff8940126ee::t_5a21c1a0d9862e 164-167,196-202
+  s_e8eff8940126ee::t_facf621939a06b 168,211
+tests/save-bounds.fixture.ts
+  s_e8eff8940126ee::t_a2a25ac95824b3 167
+tests/failure-bounds.test.ts
+  s_e8eff8940126ee::t_8b118482ddd5ad 4,7,10,14,106,153,170,177,187
+  s_e8eff8940126ee::t_833ba1810fc954 5,28-48,141
+  s_e8eff8940126ee::t_5a21c1a0d9862e 143-152,159-169,171,189-197
+  s_e8eff8940126ee::t_8e754365261367 142,188
+tests/loop-completion.test.ts
+  s_e8eff8940126ee::t_6b6b54734a756c 1-51,56,63-72,89-98,108-136,159-164,172-175
+  s_e8eff8940126ee::t_5a21c1a0d9862e 52-55,58-61,74-87,100-106,142,144-146,149-153,156-158,166-170
+  s_e8eff8940126ee::t_e40114fc442997 57,62,73,88,99,107,137-141,143,147-148,154-155,165,171
+tests/failure.fixture.ts
+  s_e8eff8940126ee::t_5df66c7cb37361 7-11,30-35
+tests/loop-ownership.test.ts
+  s_e8eff8940126ee::t_1e1bcbc3beae4c 1-97,106-109,121-141,149-151,156-200
+  s_e8eff8940126ee::t_7c4d18f39ce9ae 98-104,110-119,143-147,152-153
+  s_e8eff8940126ee::t_22c7b6554b54bf 105,120,142,148,154-155
+src/component/limits.ts
+  s_69c8ef4bb3c517::t_efabd2de6b4794 80-81,111-114
+src/component/schema.ts
+  s_69c8ef4bb3c517::t_5ed01e473358c4 206-209
+src/component/turns/cancel.ts
+  s_69c8ef4bb3c517::t_058a17d3467f1e 158
+src/component/turns/loop.ts
+  s_69c8ef4bb3c517::t_8fb4019a8595d2 11
+src/component/turns/wake.ts
+  s_69c8ef4bb3c517::t_001f7ed41f74d1 121-122,138-143,148-152,154,162
+src/component/workflows/lanes.ts
+  s_e8eff8940126ee::t_d8638dcacb6a31 89-91,159-160,182,195-206,218
+tests/step-failure.test.ts
+  s_e8eff8940126ee::t_250ed128e860eb 9,410-414,416,418-420,422-428,430,432-433,435-436,438-439,441-448,450-455,457-460,462-466,468-469,471-476,478,480-484,486-491,493-500
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1964c4ba9be8b44e9e3b8b41bb7e7e8bb4aa5a12",
+  "prompts": {},
+  "sessions": {
+    "s_69c8ef4bb3c517": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17bc4-6da9-79f2-9e00-a38d35a16be7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_e8eff8940126ee": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17bc4-6da9-7352-8d4f-420fa011dd32",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
