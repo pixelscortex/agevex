@@ -1,0 +1,34 @@
+src/client/turn/prompt-cache.ts
+  s_d863bd773ba186::t_fd56f9d8f8535f 145
+  s_51fbc688730d1c::t_08d60c4710d00f 140-144,146-163,174,182-185
+docs/site/content/docs/concepts/prompt-caching.mdx
+  s_d863bd773ba186::t_3a8924d9d33f8d 36-37
+src/client/turn/tools.ts
+  s_d863bd773ba186::t_f91d9bffe703c5 74
+tests/prompt-cache.test.ts
+  s_d863bd773ba186::t_867403f77359b5 96-105,142-162,199-212
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f67f510e8ac910c0c65fa5f25793b021b6c61503",
+  "prompts": {},
+  "sessions": {
+    "s_51fbc688730d1c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8aca7eb0-49ce-4eb5-b17e-f885c3afbcba",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_d863bd773ba186": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f4c4785-2854-417e-a40c-3ead78279372",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
