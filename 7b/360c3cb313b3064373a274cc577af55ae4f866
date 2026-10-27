@@ -1,0 +1,43 @@
+scripts/fixtures/crash_agevex.js.txt
+  s_9e86c7598ef846::t_8dca6b27cff59c 11-12
+  s_9e86c7598ef846::t_029c1a9ee3dd48 2-6
+  s_9e86c7598ef846::t_ed21008f720f83 1,7-10,13-14
+scripts/fixtures/crash_host.ts.txt
+  s_9e86c7598ef846::t_0fc5b8316eef1a 19
+  s_9e86c7598ef846::t_8dca6b27cff59c 45-46,62-63,75-85
+  s_9e86c7598ef846::t_808a5732060924 1-18,20-44,47-61,64-74
+scripts/probe-crash.ts
+  s_9e86c7598ef846::t_fce1068e660838 226-229
+  s_9e86c7598ef846::t_8dca6b27cff59c 113,184-188,216,230-239
+  s_9e86c7598ef846::t_be4654909a184a 1-112,114-183,189-215,217-225,240-250
+.events-crash-probe.json
+  s_9e86c7598ef846::t_9cce878bbb6bac 1-33
+package.json
+  s_29f5ea53930538::t_16e757a2c25f0a 80-81
+scripts/fixtures/crash_workpool.js.txt
+  s_29f5ea53930538::t_354b3fb0773ff7 1-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7b360c3cb313b3064373a274cc577af55ae4f866",
+  "prompts": {},
+  "sessions": {
+    "s_29f5ea53930538": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17b19-0fbf-74d2-a0fe-ed2d0e009c47",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_9e86c7598ef846": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17ba5-8cf9-7521-a93f-b4a080a56ee6",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
