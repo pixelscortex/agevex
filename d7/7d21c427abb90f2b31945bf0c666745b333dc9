@@ -1,0 +1,60 @@
+dist/client/slots.d.ts
+  h_51b7a781d7f2c3 49,53-56,62
+dist/client/tasks.d.ts
+  h_51b7a781d7f2c3 7,57-60
+dist/client/tasks.js
+  h_51b7a781d7f2c3 17,278-280,283,294-296,301
+dist/client/text/task.js
+  h_51b7a781d7f2c3 10,137-138,140
+dist/client/turn/context.d.ts
+  h_51b7a781d7f2c3 48
+dist/client/turn/deadlines.js
+  h_51b7a781d7f2c3 8,46-49
+dist/client/turn/generation.js
+  h_51b7a781d7f2c3 85-92
+dist/client/turn/slots.d.ts
+  h_51b7a781d7f2c3 6
+dist/client/turn/slots.js
+  h_51b7a781d7f2c3 3,14,37-38
+dist/client/turn/step-usage.d.ts
+  h_51b7a781d7f2c3 10,14-16
+dist/client/turn/step-usage.js
+  h_51b7a781d7f2c3 2-17,22,27,30
+dist/client/turn/usage.d.ts
+  h_51b7a781d7f2c3 7-13,23-26
+dist/client/turn/usage.js
+  h_51b7a781d7f2c3 11-21,23,25-27,31,35,37
+src/client/README.md
+  h_51b7a781d7f2c3 35-36,39-43,49-51,57
+src/client/slots.ts
+  h_51b7a781d7f2c3 47,51-54,60
+src/client/tasks.ts
+  h_51b7a781d7f2c3 29,73,452-454,459-478,481-484
+src/client/text/task.ts
+  h_51b7a781d7f2c3 20,212-213,215
+src/client/turn/context.ts
+  h_51b7a781d7f2c3 60
+src/client/turn/deadlines.ts
+  h_51b7a781d7f2c3 10,60-63
+src/client/turn/generation.ts
+  h_51b7a781d7f2c3 93-100
+src/client/turn/slots.ts
+  h_51b7a781d7f2c3 3,20,54-55
+src/client/turn/step-usage.ts
+  h_51b7a781d7f2c3 14,20,25-45,56,62,65
+src/client/turn/usage.ts
+  h_51b7a781d7f2c3 7,10-16,31-48,50,53,55,58,62,64
+src/component/README.md
+  h_51b7a781d7f2c3 59-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d77d21c427abb90f2b31945bf0c666745b333dc9",
+  "prompts": {},
+  "humans": {
+    "h_51b7a781d7f2c3": {
+      "author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
