@@ -2,8 +2,8 @@
  * At most 49 small rows plus ready references are written per transaction.
  * No terminal child assignment or native transcript is needed by cancellation. */
 import { v } from "convex/values";
-import { mutation } from "../src/component/_generated/server.js";
-import { newSubagentRun } from "../src/component/subagents/runs.js";
+import { mutation, query } from "../src/component/_generated/server.js";
+import { newSubagentRun, runById } from "../src/component/subagents/runs.js";
 
 export const seed = mutation({
   args: { assignmentId: v.id("assignments"), count: v.number() },
@@ -21,7 +21,6 @@ export const seed = mutation({
       await ctx.db.insert("subagentRuns", {
         ...newSubagentRun({
           request: { agent: "Reviewer", payloadFingerprint: "hash", coordinateHandle: "opaque" },
-          runId: key,
           actor,
           root,
           budget,
@@ -63,4 +62,11 @@ export const seed = mutation({
 
     return null;
   },
+});
+
+/** Verify public delegation identity against the persisted row, without an index. */
+export const identity = query({
+  args: { runId: v.string() },
+  returns: v.union(v.null(), v.id("subagentRuns")),
+  handler: async (ctx, { runId }) => (await runById(ctx, runId))?._id ?? null,
 });

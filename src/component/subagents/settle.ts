@@ -100,7 +100,7 @@ export async function settleRunState(
  * if the coordinator throws. */
 export async function scheduleNotify(ctx: MutationCtx, run: Doc<"subagentRuns">) {
   await ctx.scheduler.runAfter(0, internal.subagents.deliver.notify, {
-    runId: run.runId,
+    runId: run._id,
     deliveryToken: run.deliveryToken,
     coordinateHandle: run.coordinateHandle,
   });

@@ -18,6 +18,11 @@ Parents receive `agevex_delegate` with `{ agent, task, wait?: "each" }` and
 Each settled result reaches the parent independently. `wait` defaults to
 `"each"`; that is its only supported value.
 
+Delegation `runId` values are the run’s native document `_id`, used unchanged
+by delegation endpoints, run-tree node IDs and React hooks. Treat IDs as opaque
+strings; do not parse them or assume a UUID format. The root request ID still
+identifies its separate run budget.
+
 ## Delivery rules
 
 - **R1** The inbox holds ready work in FIFO order. A claim coalesces

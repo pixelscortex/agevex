@@ -344,7 +344,7 @@ async function claimChild(
   return {
     ...claim,
     subagent: {
-      runId: run.runId,
+      runId: run._id,
       agent: run.agent,
       rootAgent: root.agent,
       actorAgent: run.actorAgent,

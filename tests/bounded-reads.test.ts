@@ -1922,6 +1922,7 @@ it("a call waits for every approval decision and every preceding tool result to 
           const parts = content.filter(
             (part) => (part.type === "tool-result") === (role === "tool"),
           );
+
           return parts.length ? [{ message: { role, content: parts } }] : [];
         }),
       },

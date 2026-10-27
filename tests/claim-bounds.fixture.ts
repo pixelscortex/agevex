@@ -37,7 +37,6 @@ export const seed = mutation({
       agent: "Builder",
       threadId: args.threadId,
       rootAssignmentId: rootId,
-      childRunId: "claim-child",
       runId,
       promptMessageId: args.promptMessageId,
       turnStatus: "queued",
@@ -50,7 +49,6 @@ export const seed = mutation({
 
     const run = newSubagentRun({
       request: { agent: "Builder", payloadFingerprint: "hash", coordinateHandle: "opaque" },
-      runId: "claim-child",
       actor: root,
       root,
       budget,
@@ -60,7 +58,13 @@ export const seed = mutation({
       now: Date.now(),
     });
 
-    await ctx.db.insert("subagentRuns", { ...run, childAssignmentId: childId, status: "running" });
+    const childRunId = await ctx.db.insert("subagentRuns", {
+      ...run,
+      childAssignmentId: childId,
+      status: "running",
+    });
+
+    await ctx.db.patch("assignments", childId, { childRunId });
     let head;
     let previousResume;
 

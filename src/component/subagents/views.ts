@@ -73,7 +73,7 @@ export async function settlementScope(
   if (!run.childThreadId) return null;
 
   return {
-    runId: run.runId,
+    runId: run._id,
     agent: run.agent,
     subject: child.subject,
     childThreadId: run.childThreadId,
@@ -114,7 +114,7 @@ export async function terminalContext(ctx: QueryCtx, run: Doc<"subagentRuns">) {
   if (!root || !parent) return null;
 
   return {
-    runId: run.runId,
+    runId: run._id,
     agent: run.agent,
     rootAgent: root.agent,
     parentAgent: parent.agent,
@@ -181,7 +181,7 @@ export async function delegationPage(
 /** One run in the public delegation history (`schema.subagentRun`). */
 function delegationView(run: Doc<"subagentRuns">) {
   return {
-    runId: run.runId,
+    runId: run._id,
     // Defensively preserve absence between reservation and attachment,
     // or on older rows, even though the coordinator commits both together.
     childThreadId: run.childThreadId ?? null,
@@ -194,7 +194,7 @@ function delegationView(run: Doc<"subagentRuns">) {
     resultMessageId: run.resultMessageId ?? null,
     errorCode: run.errorCode,
     events: run.events.map((event) => ({
-      runId: run.runId,
+      runId: run._id,
       agent: run.agent,
       ...event,
     })),

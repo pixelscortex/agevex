@@ -61,7 +61,7 @@ it("a full 16 KiB child drains 50 child results and maximum notes with six nativ
       notes,
     });
 
-    expect(claim?.subagent?.runId).toBe("claim-child");
+    expect(claim?.subagent?.runId).toBe(previous.childRunId);
 
     return ctx.meta.getTransactionMetrics();
   });

@@ -52,7 +52,7 @@ async function messageOrigins(
       .unique();
 
     if (result?.actorAssignmentId === row._id)
-      origins[id] = { origin: "result", runId: result.runId };
+      origins[id] = { origin: "result", runId: result._id };
   }
 
   return origins;

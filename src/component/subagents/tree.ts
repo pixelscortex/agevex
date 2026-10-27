@@ -59,7 +59,7 @@ export async function requestTree(
 
   for (const child of children) {
     if (child.childAssignmentId) {
-      parents.set(child.childAssignmentId, child.runId);
+      parents.set(child.childAssignmentId, child._id);
       const assignment = await ctx.db.get("assignments", child.childAssignmentId);
 
       if (assignment) assignments.set(assignment._id, assignment);
@@ -183,7 +183,7 @@ function childNode(
               : { status: run.status === "queued" ? "queued" : "asleep" }));
 
   return {
-    id: run.runId,
+    id: run._id,
     parentId: parents.get(run.actorAssignmentId)!,
     agent: run.agent,
     ...state,

@@ -17,12 +17,11 @@ import { TREE_LIMITS } from "../run_tree_values.js";
 
 type SubagentRun = Doc<"subagentRuns">;
 
-/** The run with this public run id (unique `by_run` index), or null. */
+/** Public delegation ids are native document ids; malformed or foreign ids miss. */
 export async function runById(ctx: QueryCtx | MutationCtx, runId: string) {
-  return ctx.db
-    .query("subagentRuns")
-    .withIndex("by_run", (q) => q.eq("runId", runId))
-    .unique();
+  const id = ctx.db.normalizeId("subagentRuns", runId);
+
+  return id ? ctx.db.get("subagentRuns", id) : null;
 }
 
 /** True once a run reached a terminal status. Delivery may still be pending. */
@@ -78,7 +77,6 @@ export function runTimes(run: Pick<SubagentRun, "events" | "deliveryStatus">) {
 export function newSubagentRun(fields: {
   /** The caller's reserve arguments: target agent, payload hash, coordinator. */
   request: { agent: string; payloadFingerprint: string; coordinateHandle: string };
-  runId: string;
   actor: Doc<"assignments">;
   root: Doc<"assignments">;
   budget: Doc<"runs">;
@@ -90,7 +88,6 @@ export function newSubagentRun(fields: {
   const { request, actor, root, now } = fields;
 
   const row: WithoutSystemFields<SubagentRun> = {
-    runId: fields.runId,
     // The root epoch this delegation belongs to; cancel bumps it to fence.
     rootCancellationEpoch: root.cancellationEpoch,
     depth: fields.depth,

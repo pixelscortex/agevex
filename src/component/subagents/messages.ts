@@ -225,7 +225,7 @@ export async function interactionTarget(ctx: QueryCtx, args: InteractionArgs) {
 
   return {
     kind: "ready" as const,
-    runId: run.runId,
+    runId: run._id,
     agent: run.agent,
     subject: root.subject,
     childThreadId: child.threadId,
@@ -283,7 +283,7 @@ export async function sendToChild(
   await ctx.db.patch("runs", budget._id, { hops: budget.hops + 1 });
   await post(ctx, child, budget._id, args.messageId, "parent", run.status === "asking");
 
-  return { status: "accepted" as const, runId: run.runId };
+  return { status: "accepted" as const, runId: run._id };
 }
 
 /** `subagents.messages.askParent`: asking holds the active slot. Its native assistant id and the parent's inbox id commit with
@@ -311,7 +311,7 @@ export async function askParentRun(
   await ctx.db.patch("runs", budget._id, { hops: budget.hops + 1 });
   await post(ctx, parent, budget._id, args.parentMessageId, "note");
 
-  return { status: "accepted" as const, runId: run.runId };
+  return { status: "accepted" as const, runId: run._id };
 }
 
 /** Trusted target projection for the host's atomic native message saves. */

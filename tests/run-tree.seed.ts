@@ -68,16 +68,7 @@ async function maximumChild(
     }),
     rootAssignmentId: root._id,
     runId: budget._id,
-    childRunId: `node-${i}`,
   });
-
-  const assignment = (await ctx.db.get("assignments", childId))!;
-
-  await ctx.db.replace(
-    "assignments",
-    childId,
-    padded(assignment, "runTurn", LIMITS.assignmentBytes),
-  );
 
   const run = newSubagentRun({
     request: {
@@ -85,7 +76,6 @@ async function maximumChild(
       payloadFingerprint: "hash",
       coordinateHandle: "opaque",
     },
-    runId: `node-${i}`,
     actor: root,
     root,
     budget,
@@ -105,6 +95,15 @@ async function maximumChild(
     startedAt: Date.now(),
     events: [{ phase: "completed", at: Date.now(), errorCode: null }],
   } satisfies Omit<Doc<"subagentRuns">, "_id" | "_creationTime">);
+
+  await ctx.db.patch("assignments", childId, { childRunId });
+  const assignment = (await ctx.db.get("assignments", childId))!;
+
+  await ctx.db.replace(
+    "assignments",
+    childId,
+    padded(assignment, "runTurn", LIMITS.assignmentBytes),
+  );
 
   const child = (await ctx.db.get("subagentRuns", childRunId))!;
 
@@ -259,7 +258,6 @@ export const lifecycle = mutation({
       await ctx.db.insert("subagentRuns", {
         ...newSubagentRun({
           request: { agent: "Builder", payloadFingerprint: "hash", coordinateHandle: "opaque" },
-          runId: "gap",
           actor: root,
           root,
           budget,

@@ -30,7 +30,6 @@ export const seed = mutation({
     for (let index = 1; index < ordinary; index++)
       await ctx.db.insert("subagentRuns", {
         ...template,
-        runId: `headroom-${index}`,
         dedupKey: `headroom-${index}`,
         payloadFingerprint: "x".repeat(3 << 10),
         childAssignmentId: undefined,
@@ -86,7 +85,6 @@ export const fillQueue = mutation({
         await ctx.db.insert("subagentRuns", {
           ...template,
           parentRunId,
-          runId: `older-pending-${offset + child}`,
           dedupKey: `older-pending-${offset + child}`,
           payloadFingerprint: "x".repeat(3 << 10),
           childAssignmentId: undefined,

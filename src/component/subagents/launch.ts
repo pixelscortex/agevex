@@ -72,7 +72,7 @@ export async function reserveRun(ctx: MutationCtx, args: ReserveArgs) {
     if (duplicate.payloadFingerprint !== args.payloadFingerprint)
       return denied("DELEGATION_CONFLICT");
 
-    return { kind: "replay" as const, runId: duplicate.runId, agent: duplicate.agent };
+    return { kind: "replay" as const, runId: duplicate._id, agent: duplicate.agent };
   }
 
   if (root.activeRuns >= root.limits.activeChildrenPerRoot) return denied("ACTIVE_LIMIT");
@@ -95,15 +95,13 @@ export async function reserveRun(ctx: MutationCtx, args: ReserveArgs) {
     hops: budget.hops + 1,
   });
 
-  const runId = crypto.randomUUID();
   const now = Date.now();
   const sequence = root.nextRunSequence + 1;
 
-  await ctx.db.insert(
+  const runId = await ctx.db.insert(
     "subagentRuns",
     newSubagentRun({
       request: args,
-      runId,
       actor: row,
       root,
       budget,

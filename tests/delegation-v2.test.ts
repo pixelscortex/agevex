@@ -2628,3 +2628,28 @@ it.each([1, HOST_LIMITS.messagesPerChild.max])(
     expect((await tree(t, root.threadId)).every((run) => run.status === "completed")).toBe(true);
   },
 );
+
+it("public delegation ids are document ids and reject malformed or other-table ids", async () => {
+  const t = setup(maxima);
+  const root = await manualRoot(t);
+  const child = await launch(t, root, "Reviewer");
+
+  const identity = componentsGeneric().agevex.cancel_history
+    .identity as unknown as FunctionReference<"query", "public", { runId: string }, string | null>;
+
+  expect(await t.query(identity, { runId: child.runId })).toBe(child.runId);
+  expect(await t.query(identity, { runId: "not-a-document-id" })).toBeNull();
+  expect(await t.query(identity, { runId: root.assignmentId })).toBeNull();
+
+  const delegations = await owner(t).query(api.agents.delegations, {
+    threadId: root.threadId,
+    paginationOpts: { cursor: null, numItems: 20 },
+  });
+
+  expect(delegations.page[0].runId).toBe(child.runId);
+  const runTree = await owner(t).query(api.agents.runTree, { threadId: root.threadId });
+
+  expect(runTree?.nodes.find((node) => node.parentId !== null)?.id).toBe(child.runId);
+  await owner(t).mutation(api.agents.cancel, { threadId: root.threadId });
+  await drain(t);
+});
