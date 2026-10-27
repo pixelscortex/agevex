@@ -17,23 +17,18 @@ import { LIMITS } from "../limits.js";
 import { v } from "convex/values";
 
 /** File and message ids are bounded opaque identities. */
-export function assertFileIdentity(value: string) {
+function assertFileIdentity(value: string) {
   if (!value || value.length > LIMITS.fileIdLength) throw new Error("INVALID_FILE_IDENTITY");
 }
 
 /** The native component handle namespaces every file id. */
-export function assertNativeHandle(value: string) {
+function assertNativeHandle(value: string) {
   if (!value || new TextEncoder().encode(value).byteLength > LIMITS.functionHandleBytes)
     throw new Error("INVALID_NATIVE_HANDLE");
 }
 
 /** The subject's upload grant for one native file, or null. */
-export function uploadGrant(
-  ctx: Pick<QueryCtx, "db">,
-  native: string,
-  fileId: string,
-  subject: string,
-) {
+function uploadGrant(ctx: Pick<QueryCtx, "db">, native: string, fileId: string, subject: string) {
   return ctx.db
     .query("receipts")
     .withIndex("by_file", (q) =>
@@ -43,7 +38,7 @@ export function uploadGrant(
 }
 
 /** Every binding of one native message (never more than filesPerMessage). */
-export function messageBindings(ctx: Pick<QueryCtx, "db">, native: string, messageId: string) {
+function messageBindings(ctx: Pick<QueryCtx, "db">, native: string, messageId: string) {
   return ctx.db
     .query("receipts")
     .withIndex("by_message", (q) => q.eq("native", native).eq("messageId", messageId))
@@ -54,7 +49,7 @@ export function messageBindings(ctx: Pick<QueryCtx, "db">, native: string, messa
  * it. Refuses more than `filesPerMessage` bindings per message (across
  * repeated calls) and any file the subject holds no grant for; re-binding an
  * already bound file is a no-op. */
-export async function bindFiles(
+async function bindFiles(
   ctx: MutationCtx,
   args: { native: string; files: string[]; subject: string; threadId: string; messageId: string },
 ) {

@@ -32,7 +32,7 @@ import { wake } from "./wake.js";
 /** `replayed` is true when an identical retry was served from the response
  * receipt, so a host can tell a first decision from a replay (e.g. to record
  * single-use consent only once). */
-export const vResponseResult = v.object({ messageId: v.string(), replayed: v.boolean() });
+const vResponseResult = v.object({ messageId: v.string(), replayed: v.boolean() });
 
 type ResponseReceipt = { scope: string; key: string; fingerprint: string };
 
@@ -82,7 +82,7 @@ async function saveResponseReceipt(ctx: MutationCtx, receipt: ResponseReceipt, m
  * response saved directly through Agent is not seen by this runtime.
  * Saves the native approval response, marks the request resolved, and once
  * every request is resolved releases the pause into its continuation turn. */
-export async function respondToApproval(
+async function respondToApproval(
   ctx: MutationCtx,
   args: {
     assignmentId: Id<"assignments">;
@@ -177,7 +177,7 @@ export async function respondToApproval(
  * At most 16 fixed-size references are reindexed per answer.
  * No tool payload is copied into coordination state, even for large inputs.
  */
-export async function answerDeferredCall(
+async function answerDeferredCall(
   ctx: MutationCtx,
   args: { assignmentId: Id<"assignments">; subject: string; toolCallId: string; value: unknown },
 ) {

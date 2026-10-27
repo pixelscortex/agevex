@@ -259,7 +259,7 @@ export const interactionResult = v.union(
 /** `subagents.messages.messageChild`: the exact native follow-up id is saved in the
  * child's inbox in the same transaction. Answers an open question (resuming
  * the child) when the child is asking; spends one hop either way. */
-export async function sendToChild(
+async function sendToChild(
   ctx: MutationCtx,
   args: {
     assignmentId: Doc<"assignments">["_id"];
@@ -288,7 +288,7 @@ export async function sendToChild(
 
 /** `subagents.messages.askParent`: asking holds the active slot. Its native assistant id and the parent's inbox id commit with
  * BOTH native saves; spends one hop. */
-export async function askParentRun(
+async function askParentRun(
   ctx: MutationCtx,
   args: {
     assignmentId: Doc<"assignments">["_id"];

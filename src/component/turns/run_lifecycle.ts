@@ -18,7 +18,7 @@ export function readyForRun(ctx: QueryCtx, assignmentId: Id<"assignments">, runI
 /** Transitive delivery fences, scoped to one request.
  * One probe <=4 KiB, plus <=1 KiB ready work.
  */
-export async function rootRunBlocked(ctx: QueryCtx, root: Doc<"assignments">, runId: Id<"runs">) {
+async function rootRunBlocked(ctx: QueryCtx, root: Doc<"assignments">, runId: Id<"runs">) {
   if (await readyForRun(ctx, root._id, runId)) return true;
 
   if (

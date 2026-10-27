@@ -25,7 +25,7 @@ import { v } from "convex/values";
 
 /** Cancel the root thread owned by `subject` and all its live descendants.
  * Returns the affected native threads so the host can abort their streams. */
-export async function cancelRoot(
+async function cancelRoot(
   ctx: MutationCtx,
   args: { assignmentId: Id<"assignments">; subject: string },
 ) {

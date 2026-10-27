@@ -1,5 +1,6 @@
 // @vitest-environment edge-runtime
 /** Cancel must remove every row in the enlarged, conservative ready-work envelope. */
+import { valueBytes } from "../src/shared/json.js";
 import { getConvexSize } from "convex/values";
 import { componentsGeneric, type FunctionReference } from "convex/server";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
@@ -86,7 +87,7 @@ it("cancel clears 2,432 ready rows and 168 maximum-size budgets across sixteen a
     const filled = await t.query(rawAssignment, { assignmentId });
 
     expect(filled?.turnReport?.messageIds).toHaveLength(HOST_LIMITS.slicesPerTurn.max);
-    expect(getConvexSize(filled)).toBe(LIMITS.assignmentBytes);
+    expect(valueBytes(filled)).toBe(LIMITS.assignmentBytes);
     expect(getConvexSize(filled?.turnReport)).toBeLessThanOrEqual(LIMITS.turnReportBytes);
     expect(filled?.notesPending).toBe(HOST_LIMITS.notesPending.max);
   }

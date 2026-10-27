@@ -21,7 +21,7 @@ import { wake } from "../turns/wake.js";
 import { delegateScope } from "./views.js";
 import { canOweResult, reserveFor } from "./headroom.js";
 
-export const reserveArgs = {
+const reserveArgs = {
   assignmentId: v.id("assignments"),
   turnToken: v.string(),
   toolCallId: v.string(),
@@ -30,7 +30,7 @@ export const reserveArgs = {
   coordinateHandle: v.string(),
 };
 
-export const reservation = v.union(
+const reservation = v.union(
   v.object({ kind: v.literal("reserved"), runId: v.string() }),
   v.object({ kind: v.literal("replay"), runId: v.string(), agent: v.string() }),
   v.object({ kind: v.literal("denied"), code: denialCode }),
@@ -49,7 +49,7 @@ const denied = <Code extends Denial["code"]>(code: Code) => ({ kind: "denied" as
  * Root counters include every descendant. Depth is checked from the immediate
  * parent run, so a shared child definition cannot bypass the configured bound.
  */
-export async function reserveRun(ctx: MutationCtx, args: ReserveArgs) {
+async function reserveRun(ctx: MutationCtx, args: ReserveArgs) {
   // The agent name becomes the child assignment's `agent`; the handle is
   // stored on the run row. Bound both before any read or write.
   assertName(args.agent, "agent");
@@ -150,7 +150,7 @@ async function reservationScope(ctx: MutationCtx, args: ReserveArgs) {
   return { kind: "scope" as const, row, root, depth };
 }
 
-export const attachArgs = {
+const attachArgs = {
   runId: v.string(),
   childThreadId: v.string(),
   promptMessageId: v.string(),
@@ -163,7 +163,7 @@ export const attachArgs = {
  * child action, leaving scheduler capacity available for those children.
  * Idempotent: an already attached run is a no-op.
  */
-export async function attachChild(ctx: MutationCtx, args: ObjectType<typeof attachArgs>) {
+async function attachChild(ctx: MutationCtx, args: ObjectType<typeof attachArgs>) {
   const run = await runById(ctx, args.runId);
 
   if (!run || run.childAssignmentId) return null;
