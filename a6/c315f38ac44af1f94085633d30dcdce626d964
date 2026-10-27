@@ -1,0 +1,52 @@
+docs/site/content/docs/concepts/recording-usage.mdx
+  s_69c8ef4bb3c517::t_3c9a8107ded22b 7,22-27,32-34,37-39
+tests/usage-completeness.test.ts
+  s_69c8ef4bb3c517::t_ae16f1ff63ebe2 138-140,150,208-210,278-280,284-289,319-323,332-334
+  s_69c8ef4bb3c517::t_02581049ec730b 88-90,258-260
+  s_69c8ef4bb3c517::t_3c9a8107ded22b 85-87,92-93,134,152-153,155,166-170,224,232-256,262-265
+  s_69c8ef4bb3c517::t_206d388405699c 151
+  s_69c8ef4bb3c517::t_4f0f961afb85f4 14-16,68,73-84,94-133,135-136,142-149,154,156-165,171-206,212-223,225-231,266-276,282-283,290-318,324-330,336-339
+  s_69c8ef4bb3c517::t_e33dc14c878c0e 91,137,141,207,211,257,261,277,281,331,335,340
+src/client/README.md
+  s_69c8ef4bb3c517::t_3c9a8107ded22b 36,38-40,46-48
+src/client/turn/usage.ts
+  s_69c8ef4bb3c517::t_4c895591959495 28,48,52
+  s_69c8ef4bb3c517::t_3c9a8107ded22b 11-12
+src/client/turn/context.ts
+  s_69c8ef4bb3c517::t_206d388405699c 137
+  s_69c8ef4bb3c517::t_4c895591959495 42-43,121-136,138
+  s_7e2cb8d0b553bf::t_61672c06f80d73 139
+src/client/turn/slots.ts
+  s_69c8ef4bb3c517::t_4c895591959495 18,37-38
+src/client/turn/step-usage.ts
+  s_69c8ef4bb3c517::t_4c895591959495 12-13,69-87,94-132
+  s_69c8ef4bb3c517::t_ae16f1ff63ebe2 88-93
+src/client/turn/fence.ts
+  s_69c8ef4bb3c517::t_206d388405699c 30
+  s_69c8ef4bb3c517::t_4c895591959495 21-22,31,84,94,99-101,194,199-202
+  s_69c8ef4bb3c517::t_ae16f1ff63ebe2 195-198
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a6c315f38ac44af1f94085633d30dcdce626d964",
+  "prompts": {},
+  "sessions": {
+    "s_69c8ef4bb3c517": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17bc4-6da9-79f2-9e00-a38d35a16be7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    },
+    "s_7e2cb8d0b553bf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17bb9-7949-7460-a63c-acbf0f07d2df",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
