@@ -51,7 +51,6 @@ export type {
   BudgetSlot,
   TelemetrySlot,
   SandboxSlot,
-  ExtractSlot,
   UsageEvent,
 } from "./slots.js";
 export type { SandboxCompletion } from "./runtime.js";

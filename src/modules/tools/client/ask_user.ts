@@ -1,9 +1,9 @@
 /**
- * Deferred question tool installed into the host app through the registry.
+ * Deferred question tool exported directly to the host app.
  * Core records its pending native call and resumes only after the owner answers.
  * This item owns no state table and performs no tool effect.
  */
-import { assertFormSchema, validateAnswer, type JsonSchema } from "agevex";
+import { assertFormSchema, validateAnswer, type JsonSchema } from "../../../client/index.js";
 import { asSchema, jsonSchema, tool, type Schema } from "ai";
 import { z } from "zod";
 import { ConvexError } from "convex/values";

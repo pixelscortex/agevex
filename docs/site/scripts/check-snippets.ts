@@ -1,7 +1,7 @@
 // Compile every docs TypeScript block in temporary host apps against built exports.
 // Typed API references catch stale arguments without deploying or calling providers.
 import { join, dirname } from "node:path";
-import { mkdir, symlink, readdir, copyFile, mkdtemp } from "node:fs/promises";
+import { mkdir, symlink, readdir, mkdtemp } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 const repo = fileURLToPath(new URL("../../..", import.meta.url));
 const fixture = await mkdtemp(join("/tmp", "agevex-doc-snippets-"));
@@ -43,7 +43,6 @@ const pageNames = [...new Set(blocks.map((b) => b.page))];
 const typeImports = `import type { ApiFromModules, FilterApi, FunctionReference } from "convex/server";
 import type { ComponentApi as Core } from "agevex/_generated/component.js";
 import type { AgentComponent } from "@convex-dev/agent";
-import type { ComponentApi as Extract } from "agevex/extract/_generated/component.js";
 import type { ComponentApi as Sandbox } from "agevex/sandbox/_generated/component.js";
 import type { ComponentApi as Daytona } from "@daytona/convex";
 `;
@@ -59,21 +58,6 @@ for (const page of pageNames) {
   for (const b of base) {
     if (b.lang === "ts" && b.title.startsWith("convex/"))
       await Bun.write(join(group, b.title), b.code);
-  }
-
-  for (const item of ["todo", "goals", "ask-user", "continue-budget"]) {
-    const source = join(repo, "src/modules/tools/registry", item);
-
-    for (const file of await readdir(source)) {
-      if (!file.endsWith(".ts")) continue;
-
-      await mkdir(join(group, "convex/agevexTools"), { recursive: true });
-      await copyFile(join(source, file), join(group, "convex/agevexTools", file));
-
-      if (file.endsWith("State.ts"))
-        modules["agevexTools/" + file.slice(0, -3)] =
-          "../agevexTools/" + file.replace(/\.ts$/, ".js");
-    }
   }
 
   let index = 0;
@@ -115,7 +99,7 @@ for (const page of pageNames) {
 type FullApi = ApiFromModules<{\n${typedModules}\n}>;
 export declare const api: FilterApi<FullApi, FunctionReference<any,"public">>;
 export declare const internal: FilterApi<FullApi, FunctionReference<any,"internal">>;
-export declare const components: {agevex:Core;agent:AgentComponent;agevexExtract:Extract;sandbox:Sandbox;daytona:Daytona};
+export declare const components: {agevex:Core;agent:AgentComponent;sandbox:Sandbox;daytona:Daytona};
 `,
   );
 }

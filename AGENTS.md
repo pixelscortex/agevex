@@ -8,14 +8,13 @@ fences, receipts, and optional modules. Core never imports an optional module.
 
 - `src/component/`: core Convex functions, schema and generated types.
 - `src/client/`: core API imported by the host app; `src/test.ts`: registration.
-- `src/modules/{sandbox,extract}/`: `component/` runs in Convex,
+- `src/modules/sandbox/`: `component/` runs in Convex,
   `client/index.ts` is the host entry, `shared/` is pure code used by both sides,
   and `test.ts` registers that component and its nested dependencies.
 - `src/modules/telemetry/client/`: host library, no component or tables.
-- `src/modules/tools/`: host factories in `client/`, installable host state and
-  schemas in `registry/`. Rebuild the docs registry after changing an item.
+- `src/modules/tools/client/`: the stateless `ask_user` factory; no registry.
 - `src/testing/`: shared deterministic test utilities; `tests/<module>/`: tests.
-- `docs/site/`: independent Bun docs/registry app, included in root checks.
+- `docs/site/`: independent Bun docs app, included in root checks.
 
 Component code never imports a client. Preserve component and function names.
 Package subpaths are `agevex/<module>`, with `/convex.config`, `/test` and
@@ -31,11 +30,9 @@ Use `bun`/`bunx` only. Install dependencies with `bun install` and
 - `bun run test`: offline fake backends, two workers, no prior build required.
 - `bun run check:deploy`: push the built package to a local anonymous Convex
   backend (no cloud); `release:git` runs it before publishing.
-- `bun run test:live`: opt-in OpenRouter, Daytona, Firecrawl and telemetry checks.
-  Keys come from `/Volumes/mypixel/pxc/agevex/.env.local`: `OPENROUTER_API_KEY`,
-  `DAYTONA_API_KEY`, `FIRECRAWL_API_KEY`; telemetry also needs the Langfuse keys
-  and base URL. Never print secrets. Use `openrouter/free`; at most three
-  Firecrawl calls and one smallest, cheapest image per full live run.
+- `bun run test:live`: opt-in OpenRouter and Daytona checks. Keys come from
+  `/Volumes/mypixel/pxc/agevex/.env.local`: `OPENROUTER_API_KEY` and
+  `DAYTONA_API_KEY`. Never print secrets. Use `openrouter/free`.
 
 ## Conventions
 

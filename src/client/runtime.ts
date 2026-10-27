@@ -59,7 +59,7 @@ export function registerAgent(component: ComponentApi, config: Registration) {
     ) => runTask(ctx, task, input, { ...options, component, usage: config.usage ?? options.usage }),
     /** Trusted upload-path helper: bind a stored native file to an authorized subject. */
     registerFile: (ctx: CoordinatorCtx, args: RegisterFileArgs) => registerFile(rt, ctx, args),
-    /** Exact attachment policy for an extract adapter's authorize callback. */
+    /** Exact attachment policy for a host tool's authorize callback. */
     fileAttached: (ctx: Pick<RunnerCtx, "runQuery">, args: FileAttachedArgs) =>
       fileAttached(rt, ctx, args),
     sandboxComplete: (ctx: CoordinatorCtx, event: SandboxCompletion) =>

@@ -6,7 +6,7 @@
 // contracts from here. Validator-derived types come from the component schema.
 
 import type { ThreadTextOptions, TextTaskArgs } from "./text/options.js";
-import type { UsageSlot, BudgetSlot, TelemetrySlot, SandboxSlot, ExtractSlot } from "./slots.js";
+import type { UsageSlot, BudgetSlot, TelemetrySlot, SandboxSlot } from "./slots.js";
 import type {
   GenericActionCtx,
   GenericDataModel,
@@ -358,7 +358,6 @@ export type Registration = ThreadTextOptions & {
   budget?: BudgetSlot;
   telemetry?: TelemetrySlot;
   sandbox?: SandboxSlot;
-  extract?: ExtractSlot;
   /** Host-owned model ids accepted in open/send. Both options must be supplied together. */
   modelAllowlist?: readonly string[];
   /** Resolver is called only in actions, after validating the stored id against the allowlist. */

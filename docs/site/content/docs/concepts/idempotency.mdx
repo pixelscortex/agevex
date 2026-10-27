@@ -68,6 +68,6 @@ requires a stable `key`, server-derived `attribution` and a model on the task
 or options. One repair re-ask is allowed for invalid structured output; unknown
 paid outcomes are never retried. See [slots](/docs/concepts/slots).
 
-Sandbox and extract have their own durable claims. They do not share the core
+Sandbox has its own durable claims. It does not share the core
 request ledger for all module operations. Receipt fencing controls admission;
 external exactly-once effects still require provider support.

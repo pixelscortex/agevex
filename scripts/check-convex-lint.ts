@@ -9,11 +9,7 @@ import { join } from "node:path";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
-const componentPaths = [
-  "src/component",
-  "src/modules/sandbox/component",
-  "src/modules/extract/component",
-];
+const componentPaths = ["src/component", "src/modules/sandbox/component"];
 
 const fixtureDir = join(repoRoot, "scripts", "fixtures");
 const expectedRule = "@convex-dev/require-args-validator";

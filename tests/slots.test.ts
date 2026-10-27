@@ -4,6 +4,7 @@ import { convexTest } from "convex-test";
 import agent from "@convex-dev/agent/test";
 import { storeFile } from "@convex-dev/agent";
 import { tool } from "ai";
+import { telemetry } from "../src/modules/telemetry/client/index.js";
 import { z } from "zod";
 import agevex from "../src/test.js";
 import schema from "./fixture/schema.js";
@@ -290,7 +291,7 @@ it("telemetry integration and flush failures cannot fail the turn", async () => 
 });
 
 it("an uncooperative telemetry flush cannot hold an action longer than three seconds", async () => {
-  fixture.slots.telemetry = { integration: () => ({}), flush: () => new Promise(() => {}) };
+  fixture.slots.telemetry = telemetry({ integration: {}, flush: () => new Promise(() => {}) });
   const t = setup();
   const receipt = await open(t);
 
@@ -562,56 +563,6 @@ it("open and send reject another subject's files before saving a native attachme
   expect(JSON.stringify((await transcript(t, receipt.threadId)).page)).not.toContain("foreign");
 });
 
-it("each attached file starts extraction and file tools are bound to the owned thread", async () => {
-  const admitted: { fileId: string; threadId: string }[] = [];
-  const bound: unknown[] = [];
-
-  fixture.slots.extract = {
-    run: async (_ctx, args) => {
-      admitted.push(args);
-    },
-    tools: (tc) => {
-      bound.push(tc);
-
-      return {
-        read_file: tool({ inputSchema: z.object({}), execute: () => "text" }),
-        search_files: tool({ inputSchema: z.object({}), execute: () => [] }),
-      };
-    },
-  };
-
-  const t = setup();
-  const files: string[] = [];
-
-  for (let n = 0; n < LIMITS.filesPerMessage; n++)
-    files.push(await upload(t, "alice", `extract ${n}`));
-
-  const receipt = await open(t, files);
-
-  await drain(t);
-
-  expect(admitted).toEqual(
-    files.map((fileId) => ({ fileId, threadId: receipt.threadId, subject: "alice" })),
-  );
-
-  expect(bound[0]).toMatchObject({ threadId: receipt.threadId, subject: "alice" });
-  expect(JSON.stringify(fixture.calls[0].args.prompt)).toContain("Attached files");
-
-  expect(
-    fixture.calls[0].args.prompt.some(
-      (message) =>
-        Array.isArray(message.content) && message.content.some((part) => part.type === "file"),
-    ),
-  ).toBe(false);
-
-  for (const fileId of files)
-    expect(
-      await t.query((ctx) =>
-        registration().fileAttached(ctx, { threadId: receipt.threadId, subject: "alice", fileId }),
-      ),
-    ).toBe(true);
-});
-
 it("one message never binds more than filesPerMessage attachments, so forMessage returns every bound file", async () => {
   const t = setup();
   const native = "native-files";
@@ -646,7 +597,7 @@ it("one message never binds more than filesPerMessage attachments, so forMessage
   );
 });
 
-it("without extract the hard maximum of attachments reaches the model as native file parts", async () => {
+it("the hard maximum of attachments reaches the model as native file parts", async () => {
   const t = setup();
   const files = [];
 

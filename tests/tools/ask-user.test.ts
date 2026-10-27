@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { setup, api, native, state } from "./setup.js";
 import { rawAssignment } from "../fixture/api.js";
 import { requireReceipt } from "../receipt.js";
-import { ASK_USER_LIMITS } from "../../src/modules/tools/registry/ask-user/askUser.js";
+import { ASK_USER_LIMITS } from "../../src/modules/tools/client/ask_user.js";
 
 beforeEach(() => vi.useFakeTimers());
 

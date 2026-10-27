@@ -83,7 +83,6 @@ function assertSlots(config: Registration) {
     [config.budget, ["check"]],
     [config.telemetry, ["integration", "flush"]],
     [config.sandbox, ["tools"]],
-    [config.extract, ["run", "tools"]],
   ] as const) {
     if (
       slot !== undefined &&

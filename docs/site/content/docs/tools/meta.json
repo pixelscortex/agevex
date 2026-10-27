@@ -1,4 +1,4 @@
 {
-  "title": "Registry tools",
-  "pages": ["index", "todo", "goals", "ask-user", "continue-budget"]
+  "title": "Tools",
+  "pages": ["index", "ask-user", "raise-budget"]
 }

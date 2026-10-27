@@ -381,7 +381,7 @@ export default defineSchema({
         fileId: v.string(),
         subject: v.string(),
         // Absent: trusted upload grant. Present: exact native attachment saved
-        // atomically with that message, read by extraction admission and policy.
+        // atomically with that message, read by attachment policy.
         threadId: v.optional(v.string()),
         messageId: v.optional(v.string()),
       }),

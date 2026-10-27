@@ -1,7 +1,7 @@
 // One admitted turn's generation: exactly one native model step.
 //
 // `generateTurn` starts the cancellation fence, binds hook tasks to it, then runs
-// the phases in order: extract admission, model selection (`routing.ts`), tool
+// the phases in order: model selection (`routing.ts`), tool
 // set (`tools.ts`), the native stream/generate call (`nativeGeneration`), and the
 // post-step decisions (`completion.ts`). A throw from those phases becomes an
 // outcome: a hook failure is HOOK_FAILED; a `beforeTurn` block finishes a root
@@ -20,7 +20,7 @@ import { type Generation, type GenerationState, type Turn, type TurnOutcome } fr
 import { startTurnFence } from "./fence.js";
 import { hookRunner } from "./hook-runner.js";
 import { selectTurnModel } from "./routing.js";
-import { extractAttachedFiles, telemetryIntegrations } from "./slots.js";
+import { telemetryIntegrations } from "./slots.js";
 import { buildTurnTools } from "./tools.js";
 import { markUsagePartial } from "./usage.js";
 import { assertBudget } from "./admission.js";
@@ -37,7 +37,6 @@ export async function generateTurn(rt: RuntimeContext, turn: Turn): Promise<Turn
   const { state } = gen;
 
   try {
-    await extractAttachedFiles(rt, turn, gen.fence);
     const model = await selectTurnModel(rt, gen);
     const tools = await buildTurnTools(rt, gen);
     const { result, reason } = await nativeGeneration(rt, gen, tools, model);
@@ -136,7 +135,7 @@ async function nativeGeneration(
 
   // Admission already checked this boundary. Only pre-model host work can
   // change observed spend before the call; do not read a policy twice otherwise.
-  if (turn.managed.hooks?.beforeTurn || config.extract) await assertBudget(rt, gen);
+  if (turn.managed.hooks?.beforeTurn) await assertBudget(rt, gen);
 
   const args = {
     promptMessageId: turn.claimed.promptMessageId,

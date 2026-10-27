@@ -30,7 +30,7 @@ export const fixture = {
   generationIds: false,
   run: {} as Record<string, RunSettings>,
   modes: [] as string[],
-  slots: {} as Pick<Registration, "usage" | "budget" | "telemetry" | "sandbox" | "extract">,
+  slots: {} as Pick<Registration, "usage" | "budget" | "telemetry" | "sandbox">,
   sandbox: false,
   supportsUrls: true,
   toolContext: undefined as ToolContext | undefined,

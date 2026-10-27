@@ -1,74 +1,119 @@
-/**
- * Host entry point for action-scoped telemetry and reusable registration slots.
- * Public exports stay here; turn construction, SDK callbacks and bounded export
- * live in concept modules. This optional library owns no component or tables.
+/** Host-owned AI SDK 7 telemetry, with trusted attribution and isolated failures.
+ * AI SDK's telemetry.ts defines callbacks and execution wrappers; agevex owns
+ * neither spans nor exporters. Core turn/slots.ts owns the final flush deadline.
  */
-import type { TelemetrySlot } from "../../../client/slots.js";
-import { createTurnTelemetry } from "./turn.js";
-import { validateOptions } from "./attribution.js";
-import type { TelemetryOptions, TurnTelemetry } from "./types.js";
+import type { Telemetry } from "ai";
+import type { SlotFacts, TelemetrySlot } from "../../../client/slots.js";
 
-export { braintrust, langfuse, type Exporter } from "./exporters.js";
-export type { Credential, Setting } from "./credential.js";
-export type { Enabled } from "./enabled.js";
-export { LIMITS } from "./limits.js";
-export type { Attribute, AttributeValue, OtlpPayload, Sanitize, Span } from "./otlp.js";
+export type TelemetryFacts = Readonly<SlotFacts & { turnKey: string }>;
+export type TelemetryOptions = {
+  /** A factory can bind facts to an exporter's own metadata/span context. */
+  integration: Telemetry | ((facts: TelemetryFacts) => Telemetry);
+  flush?: (facts: TelemetryFacts, signal?: AbortSignal) => void | PromiseLike<void>;
+};
 
-export type { Facts, TelemetryOptions, TurnTelemetry } from "./types.js";
-
-/**
- * Action-scoped, one-shot buffer. Create a fresh instance for each turn, attach its
- * integration to streamText, consume the stream, then await flush in finally.
- *
- * AI SDK 7's callback seam is ai/src/telemetry/telemetry.ts:136-360;
- * telemetry-options.ts:24-76 contains integrations and has no tracer option.
- * The observer-only failure guard follows the verified prior art in
- * agents/src/runtime/tracing.ts:133-215, without its durable outbox/SDK layer.
+/** Adapt a host integration without keeping buffers or credentials in agevex.
+ * Fact snapshots are frozen and overwrite event.agevex, so model/tool content
+ * cannot impersonate the run owner. Exporters must explicitly consume these
+ * facts (or the factory argument); the SDK has no generic metadata option.
  */
-export function telemetry(options: TelemetryOptions): TurnTelemetry {
-  return createTurnTelemetry(options);
-}
-
-/**
- * Registration adapter. Configuration can be shared; mutable span buffers cannot.
- * Core supplies an opaque, stable turnKey and always flushes that key in finally.
- * Removing its entry before awaiting export prevents a hung exporter from keeping
- * a turn in the shared registry or contaminating later/concurrent turns. A retry
- * after flush gets a fresh buffer with stable ids and may export duplicates.
- */
-telemetry.slot = (options: TelemetryOptions): TelemetrySlot => {
-  validateOptions(options);
-  const configuration = { ...options, exporters: [...options.exporters] };
-  const turns = new Map<string, TurnTelemetry>();
-
+export function telemetry({ integration, flush }: TelemetryOptions): TelemetrySlot {
   return {
     integration(facts) {
-      const existing = turns.get(facts.turnKey);
-      const turn = existing ?? createTurnTelemetry(configuration, false);
-      // Validate/copy facts before admitting a new entry, so invalid attribution
-      // cannot leave an unflushable buffer behind. Each integration's call paths
-      // still come from the same per-turn ordinal allocator.
-      const integration = turn.integration(facts);
-
-      if (!existing) turns.set(facts.turnKey, turn);
-
-      return integration;
-    },
-    async flush(facts, signal) {
-      const turn = turns.get(facts.turnKey);
-
-      turns.delete(facts.turnKey);
+      const trusted = Object.freeze({ ...facts });
 
       try {
-        // Missing, empty and already-flushed keys are no-ops. The one-shot buffer
-        // seals synchronously, even if signal was already aborted. Core owns the
-        // 3 s deadline; only race its signal here, without another timer/retry.
-        // A direct host call without a signal gets the module's own deadline
-        // instead (decided per flush in the turn buffer, see bestEffort's caller).
-        await turn?.flush(signal);
+        const host = typeof integration === "function" ? integration(trusted) : integration;
+
+        return guard(host, trusted);
       } catch {
-        /* No telemetry export failure may change managed execution. */
+        return {};
+      }
+    },
+    async flush(facts, signal) {
+      try {
+        await flush?.(Object.freeze({ ...facts }), signal);
+      } catch {
+        /* Evidence delivery must never change managed execution. */
       }
     },
   };
-};
+}
+
+/** Preserve prototypes and method receivers, including class-based integrations.
+ * A proxy guards every SDK callback, including experimental callbacks, rather
+ * than duplicating the SDK's evolving callback list. Getter failures are also
+ * observer failures. Execution wrappers need a separate guard: replaying their
+ * execute callback after an exporter throws could repeat paid model/tool work.
+ */
+function guard(host: Telemetry, facts: TelemetryFacts): Telemetry {
+  return new Proxy({} as Telemetry, {
+    get(_target, key) {
+      const target = host;
+
+      try {
+        const callback: unknown = Reflect.get(target, key, target);
+
+        if (typeof callback !== "function") return undefined;
+
+        if (key === "executeLanguageModelCall" || key === "executeTool")
+          return (options: Execution) => executeOnce(target, callback as Wrapper, options, facts);
+
+        return async (event: unknown) => {
+          try {
+            await Reflect.apply(callback, target, [attributed(event, facts)]);
+          } catch {
+            /* Sync throws and rejected callbacks cannot fail the turn. */
+          }
+        };
+      } catch {
+        return undefined;
+      }
+    },
+  });
+}
+
+/** Keep SDK payloads intact while replacing any untrusted attribution. onError
+ * carries arbitrary values, so expose its original value alongside the facts.
+ */
+function attributed(event: unknown, facts: TelemetryFacts) {
+  return event !== null && typeof event === "object"
+    ? { ...event, agevex: facts }
+    : { error: event, agevex: facts };
+}
+
+type Execution = { execute: () => PromiseLike<unknown> };
+type Wrapper = (options: Execution) => PromiseLike<unknown>;
+
+/** Memoize before starting work, retaining both success and failure. Exporter
+ * failures before or after execute fall back to this exact promise; underlying
+ * execution errors still propagate. Even a wrapper calling execute twice or
+ * failing after starting it without awaiting cannot repeat an effect.
+ */
+async function executeOnce(
+  host: Telemetry,
+  wrapper: Wrapper,
+  options: Execution,
+  facts: TelemetryFacts,
+) {
+  let result: Promise<unknown> | undefined;
+
+  const execute = () => {
+    if (!result) {
+      result = Promise.resolve().then(() => options.execute());
+      // A wrapper may start work then reject without awaiting it. Observe that
+      // rejection immediately while preserving it for the execution outcome.
+      void result.catch(() => {});
+    }
+
+    return result;
+  };
+
+  try {
+    await wrapper.call(host, { ...attributed(options, facts), execute });
+  } catch {
+    /* Only the model/tool's own promise may determine the execution outcome. */
+  }
+
+  return execute();
+}

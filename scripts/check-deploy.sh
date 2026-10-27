@@ -39,13 +39,11 @@ import { defineApp } from "convex/server";
 import agent from "@convex-dev/agent/convex.config";
 import agevex from "agevex/convex.config";
 import sandbox from "agevex/sandbox/convex.config";
-import extract from "agevex/extract/convex.config";
 
 const app = defineApp();
 app.use(agent);
 app.use(agevex);
 app.use(sandbox);
-app.use(extract);
 export default app;
 EOF
 

@@ -6,7 +6,7 @@
 // and a fenced action context whose every native write goes through
 // `turns.slices.write`, which re-checks the execution, token and epoch in the write's own
 // transaction (the transactional write fence). Built by `turn/generation.ts`;
-// the model call, hooks, slot tools, extract admission and hook notes use
+// the model call, hooks, slot tools, hook notes use
 // `TurnFence.ctx`. Receipt-bound tools (`bindOnceTool`) get the raw context plus
 // explicit fence args, and the runner's own control reads and writes (usage
 // reporting, the post-step snapshot, `continueAfterToolCalls`) use `Turn.rawCtx`.

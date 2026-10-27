@@ -1,8 +1,7 @@
 // How the optional host slots take part in one turn.
 //
 // usage: `recordStepUsage` reports the model step a native save just captured.
-// extract: `extractAttachedFiles` admits the turn's attachments at turn start.
-// sandbox / extract tools: `slotToolBags` asks each slot for its tools.
+// sandbox tools: `slotToolBags` asks each slot for its tools.
 // telemetry: `telemetryIntegrations` per generation, `flushTelemetry` per action.
 // Every slot is fail-open for evidence (usage, telemetry) and never retries paid
 // work. Called from `turn/generation.ts`, `turn/tools.ts`, `turn/fence.ts` and
@@ -10,14 +9,12 @@
 
 import type { MessageDoc } from "@convex-dev/agent";
 import type { ToolSet } from "ai";
-import { createFunctionHandle } from "convex/server";
 import { LIMITS } from "../../component/limits.js";
 import { opaqueKey } from "../keys.js";
 import type { RuntimeContext } from "../registration/context.js";
 import type { SlotFacts, UsageSlot } from "../slots.js";
 import type { HookContext, Registration } from "../types.js";
 import { sliceKey, type Turn } from "./context.js";
-import type { TurnFence } from "./fence.js";
 import { markUsagePartial } from "./usage.js";
 
 /**
@@ -62,33 +59,8 @@ export async function recordStepUsage(
 }
 
 /**
- * Admit the turn's attached files to the extract slot, once, at turn start.
- * Admission is the extract module's durable, deduplicated run; core never
- * retries extraction or reads its component state.
- */
-export async function extractAttachedFiles(rt: RuntimeContext, turn: Turn, fence: TurnFence) {
-  const { claimed, managed } = turn;
-
-  if (!rt.config.extract || !claimed.isTurnStart) return;
-
-  const files = await fence.ctx.runQuery(rt.component.files.attachments.forMessage, {
-    messageId: claimed.promptMessageId,
-    subject: claimed.subject,
-    threadId: claimed.threadId,
-    native: await createFunctionHandle(managed.component.files.get),
-  });
-
-  for (const fileId of files)
-    await rt.config.extract.run(fence.ctx, {
-      fileId,
-      threadId: claimed.threadId,
-      subject: claimed.subject,
-    });
-}
-
-/**
  * Tool bags the configured slots contribute to this turn: sandbox tools only
- * for agents that opted in, extract tools whenever extract is configured. Each
+ * for agents that opted in. Each
  * bag gets an opaque per-slice call key.
  */
 export async function slotToolBags(
@@ -101,9 +73,6 @@ export async function slotToolBags(
 
   if (turn.managed.sandbox && config.sandbox)
     bags.push(config.sandbox.tools({ ...hc, toolCallId: await slotCallKey(turn) }));
-
-  if (config.extract)
-    bags.push(config.extract.tools({ ...hc, toolCallId: await slotCallKey(turn) }));
 
   return bags;
 }

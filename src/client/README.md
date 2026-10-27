@@ -23,7 +23,7 @@ agent index, and `open` looks roots up in `config.agents`.
    (`turns.slices.claim`, which also delivers pending notes).
 5. **Admit.** `turn/admission.ts` re-runs `authorizeExecution` and the budget slot.
 6. **Generate.** `turn/generation.ts` starts the cancellation fence
-   (`turn/fence.ts`), runs extract admission and `beforeTurn` / model routing
+   (`turn/fence.ts`), runs `beforeTurn` / model routing
    (`turn/routing.ts`), builds the tool set with hooks and collaboration tools
    (`turn/tools.ts`, `turn/collaboration-tools.ts`) and runs one native stream or
    generate step. `turn/deadlines.ts` separates provider/tool deadlines and caps
@@ -131,5 +131,5 @@ and provider response id; failures mark reporting partial without repeating work
 | `turn/collaboration-tools.ts` | Managed delegation, parent/child messages and blocking parent questions.        |
 | `turn/completion.ts`          | Post-step decisions: tool continuation, `afterTurn` notification, child result. |
 | `turn/finish.ts`              | Finish the turn; settle and deliver for a child.                                |
-| `turn/slots.ts`               | Usage, extract, sandbox and telemetry slots during a turn.                      |
+| `turn/slots.ts`               | Usage, sandbox and telemetry slots during a turn.                               |
 | `turn/download.ts`            | Byte-bounded attachment downloads for one generation.                           |
