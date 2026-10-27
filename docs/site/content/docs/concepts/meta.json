@@ -7,6 +7,7 @@
     "background-text",
     "agent-summaries",
     "recording-usage",
+    "prompt-caching",
     "delegation",
     "react-hooks",
     "main-builder-reviewer",

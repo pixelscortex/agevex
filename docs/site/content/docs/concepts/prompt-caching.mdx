@@ -1,0 +1,52 @@
+---
+title: Prompt caching
+icon: Database
+description: Automatic five-minute prompt caching for managed Claude turns.
+status: Available
+---
+
+Managed turns automatically mark Claude prompt prefixes for five-minute caching:
+OpenRouter models whose ids begin with `anthropic/`, and direct
+`@ai-sdk/anthropic` models. Each step uses its actual model after `beforeTurn`
+routing, including approval resumes and delegated child turns. Other providers,
+Bedrock, Vertex, `runTask` and title tasks receive no automatic markers.
+
+Agevex marks the final system block to cache the preceding tools and instructions.
+OpenRouter also receives automatic rolling cache control; direct Anthropic gets
+a marker on the last message's last content part. No TTL override is sent.
+If your app already supplies cache hints, agevex adds nothing for that call.
+Hints are never saved in agevex tables.
+
+Opt out on an agent (the experimental API may change):
+
+```ts title="convex/agents.ts"
+import { Agent } from "agevex";
+import { components } from "./_generated/api";
+import { openrouter } from "@openrouter/ai-sdk-provider";
+
+export const assistant = new Agent(components.agent, {
+  name: "Assistant",
+  languageModel: openrouter("anthropic/claude-sonnet-4.6"),
+  instructions: "Help the user finish their task.",
+  experimental: { claude: { cache: false } },
+});
+```
+
+Keep instructions and tool descriptions stable: put timestamps and request IDs
+in appended user messages. Keep the tool set and its order the same between
+turns. App-provided tool definitions, context handlers and retrieved history can still change the
+prefix. Switching models in `beforeTurn` loses cache reuse; sliding history
+windows and pauses longer than five minutes can also lose hits. Opting out
+removes agevex's markers; it does not disable provider implicit caching.
+
+If you set cache hints yourself (call or agent `providerOptions`, messages,
+tools, or the OpenRouter model's `cache_control`/`extraBody`), agevex adds none
+for that call. If your model is wrapped with middleware that sets caching,
+agevex cannot see it: set `experimental: { claude: { cache: false } }`.
+
+Cache hits require a sufficiently long prefix. Anthropic's model-specific minima
+include 1,024 tokens for Sonnet 4.5/4.6, 4,096 for Opus 4.5/4.6 and Haiku 4.5,
+and 2,048 for Haiku 3.5. Shorter prompts silently miss. Cache writes can cost
+more than ordinary input; repeated reads cost less. Consult the current
+[Anthropic caching documentation](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)
+for your model's minimum and prices.

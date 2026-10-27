@@ -8,9 +8,10 @@
 
 import { Agent as NativeAgent, type AgentComponent, type Config } from "@convex-dev/agent";
 import type { LanguageModelV4 } from "@ai-sdk/provider";
+import type { ProviderOptions } from "@ai-sdk/provider-utils";
 import type { Instructions, LanguageModel, StopCondition, ToolSet } from "ai";
 import type { RunSettings } from "../component/run_settings.js";
-import type { AgentHooks, ManagedAgent } from "./types.js";
+import type { AgentExperiments, AgentHooks, ManagedAgent } from "./types.js";
 
 // Replace the native model property before restating it: intersecting the two
 // gateway id unions exceeds TypeScript's representable union size as the model
@@ -43,6 +44,8 @@ type AgentOptions<Tools extends ToolSet> = Omit<Config, "languageModel"> & {
   run?: RunSettings;
   sandbox?: boolean;
   hooks?: AgentHooks;
+  /** Managed turns cache Claude prefixes by default; this experimental policy may change. */
+  experimental?: AgentExperiments;
 };
 
 // Equivalent supported constructor inputs, without the upstream intersection of
@@ -75,6 +78,7 @@ export class Agent<
   readonly sandbox: boolean;
   readonly subagents: readonly ManagedAgent[];
   readonly hooks?: AgentHooks;
+  readonly experimental?: AgentExperiments;
   /**
    * Native tools declared on this agent, kept so the managed runtime can merge
    * its reserved delegation tool with them. Inherited native behavior is
@@ -82,6 +86,12 @@ export class Agent<
    * native `streamText` `tools` override already allows.
    */
   readonly declaredTools: ToolSet;
+
+  /** Internal view of the current native options, including host updates. */
+  get _agevexProviderOptions(): ProviderOptions | undefined {
+    // Even property access on native Config can expand both gateway-id unions.
+    return (this.options as unknown as { providerOptions?: ProviderOptions }).providerOptions;
+  }
 
   constructor(component: AgentComponent, options: AgentOptions<AgentTools>) {
     super(component, options);
@@ -92,6 +102,7 @@ export class Agent<
     this.sandbox = options.sandbox ?? false;
     this.subagents = options.subagents ?? [];
     this.hooks = options.hooks;
+    this.experimental = options.experimental;
     this.declaredTools = options.tools ?? EMPTY_TOOLS;
   }
 }
