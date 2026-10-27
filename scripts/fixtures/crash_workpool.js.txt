@@ -1,0 +1,20 @@
+/** Injected into a PRIVATE COPY of Workpool for the local crash probe only. */
+import { internalMutation } from "./_generated/server.js";
+import { v } from "convex/values";
+
+/** Cancel the running scheduler job, without invoking recovery or changing its cadence. */
+export const cancel = internalMutation({
+  args: {}, returns: v.any(),
+  handler: async (ctx) => {
+    const state = await ctx.db.query("internalState").unique();
+    for (const entry of state?.running ?? []) {
+      const work = await ctx.db.get(entry.workId);
+      if (work?.fnName !== "agentStep") continue;
+      const job = await ctx.db.system.get(entry.scheduledId);
+      if (job?.state.kind !== "inProgress") continue;
+      await ctx.scheduler.cancel(entry.scheduledId);
+      return { canceledAt: Date.now(), startedAt: entry.started, scheduledId: entry.scheduledId };
+    }
+    return null;
+  },
+});

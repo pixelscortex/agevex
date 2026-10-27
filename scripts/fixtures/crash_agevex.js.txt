@@ -1,0 +1,14 @@
+/** Probe-only exact-id diagnostics in the private LOCAL agevex package copy. */
+import { query } from "./_generated/server.js";
+import { v } from "convex/values";
+
+/** Read timestamps already recorded by normal failure finalization. */
+export const result = query({
+  args: { threadId: v.string() }, returns: v.any(),
+  handler: async (ctx, { threadId }) => {
+    const row = await ctx.db.query("assignments").withIndex("by_thread", (q) => q.eq("threadId", threadId)).unique();
+    const run = row?.runId ? await ctx.db.get(row.runId) : null;
+    return { finalizedAt: run?.turnEndedAt ?? null, pendingGeneration: !!row?.pendingGeneration, modelSteps: row?.modelSteps ?? null,
+      nativeIds: row?.pendingGeneration?.stream ? { messageId: row.pendingGeneration.messageId, streamId: row.pendingGeneration.stream.id } : null };
+  },
+});
