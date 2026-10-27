@@ -1,0 +1,27 @@
+README.md
+  s_b94d21162db9c6::t_c4fe4afe821292 5,10-11,13-15,18,20-22,25-26,28,30-39,44,46-48,51-53
+docs/site/content/docs/concepts/architecture.mdx
+  s_b94d21162db9c6::t_7f17a00c4006fe 46
+docs/site/content/docs/concepts/limits.mdx
+  s_b94d21162db9c6::t_d0c405ace0f84e 8-10,86-87
+src/component/workflows/lanes.ts
+  s_b94d21162db9c6::t_b548f8d536deb3 65
+src/modules/sandbox/client/credential.ts
+  s_b94d21162db9c6::t_9eb0b5937f2ea3 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "19e2b7f187f6f0b0d7305175a246c45064e0c289",
+  "prompts": {},
+  "sessions": {
+    "s_b94d21162db9c6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17b06-f2cf-7782-a290-3b2a34c6e36a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "JustKira <shighgamerhg@gmail.com>"
+    }
+  }
+}
