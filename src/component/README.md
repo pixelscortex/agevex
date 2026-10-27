@@ -56,7 +56,8 @@ written, below 16 MiB. Passive note bodies are excluded and cleaned separately.
 The complete document/query/byte arithmetic lives in `limits.ts`, with enforced
 transaction-limit fixtures for cancellation, claim, decisions, tree and saves.
 
-Assignments fit 13 KiB including system fields. The all-fields fixture uses
+The `assignments` schema has 33 fields (excluding system fields). Assignments fit
+13 KiB including system fields. The all-fields fixture uses
 at most 12,791 bytes, including the exact wake event, captured Workflow turn token, active slice fence and native failure handle. Native saves clear active tool markers before growing the
 row; the progress writer also checks the envelope. Runs fit 16 KiB, delegations 4 KiB.
 

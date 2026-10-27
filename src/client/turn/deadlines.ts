@@ -7,7 +7,7 @@ import type { LanguageModelV4 } from "@ai-sdk/provider";
 import { RUN_LIMITS } from "../../component/run_settings.js";
 import type { Generation } from "./context.js";
 import { providerEvidence } from "./provider-evidence.js";
-import { captureStepUsage } from "./step-usage.js";
+import { captureStepResponse, captureStepUsage } from "./step-usage.js";
 
 /** Provider-only deadline, covering the entire stream, and a tool-call cap. */
 export function boundedModel(gen: Generation, model: LanguageModel): LanguageModelV4 {
@@ -57,7 +57,10 @@ export function boundedModel(gen: Generation, model: LanguageModel): LanguageMod
           stream: result.stream.pipeThrough(
             new TransformStream({
               transform(part, controller) {
-                if (part.type === "response-metadata" && part.id) requestId = part.id;
+                if (part.type === "response-metadata") {
+                  requestId = part.id ?? requestId;
+                  captureStepResponse(turn, resolved, requestId, part.modelId);
+                }
 
                 if (part.type === "finish") {
                   part = {

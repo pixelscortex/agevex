@@ -11,6 +11,7 @@ import {
   registerAgent,
   type Registration,
   type SlotFacts,
+  type UsageEvent,
   type TextTaskArgs,
   type TurnArgs,
 } from "../src/client/index.js";
@@ -32,6 +33,9 @@ export const state = {
   revoke: false,
   denyBudget: false,
   usageFails: false,
+  titleUsageFailures: 0,
+  titleUsageStalls: false,
+  usageAttempts: [] as UsageEvent[],
 };
 
 /** Shared root model also answers default-title structured calls. */
@@ -108,6 +112,14 @@ export function registration() {
     budget: { check: async () => ({ allowed: !state.denyBudget }) },
     usage: {
       record: async (_ctx, event) => {
+        state.usageAttempts.push(event);
+
+        if (event.purpose === "title") {
+          if (state.titleUsageStalls) await new Promise<void>(() => {});
+
+          if (state.titleUsageFailures-- > 0) throw new Error("transient ledger failure");
+        }
+
         if (state.usageFails) throw new Error("usage hook unavailable");
 
         state.usage.push({ facts: event, requestId: event.requestId });
@@ -137,4 +149,7 @@ export function reset() {
   state.revoke = false;
   state.denyBudget = false;
   state.usageFails = false;
+  state.titleUsageFailures = 0;
+  state.titleUsageStalls = false;
+  state.usageAttempts = [];
 }

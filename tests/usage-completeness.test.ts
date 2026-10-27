@@ -9,7 +9,7 @@ import { fixture, reset, exports, api, call, text } from "./hooks.host.js";
 import { components } from "./fixture/api.js";
 import { requireReceipt } from "./receipt.js";
 import { LIMITS } from "../src/component/limits.js";
-import { sliceDeadlineMs, resolveRunSettings } from "../src/component/run_settings.js";
+import { RUN_LIMITS, sliceDeadlineMs, resolveRunSettings } from "../src/component/run_settings.js";
 import type { UsageEvent } from "../src/client/slots.js";
 import * as generation from "../src/client/turn/generation.js";
 import { opaqueKey } from "../src/client/keys.js";
@@ -414,6 +414,200 @@ async function waitFor(t: Test, check: () => boolean) {
     })
     .toBe(true);
 }
+
+/** The review probe's metadata/text/error sequence, held before finish for
+ * cancellation and timeout. A late close must not manufacture token evidence. */
+function interruptBeforeFinish(
+  hold: boolean,
+  metadata = true,
+  transport = false,
+  id = true,
+  fence = false,
+) {
+  let reached = false;
+  let release!: () => void;
+
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  fixture.providerStream = (stream) =>
+    stream.pipeThrough(
+      new TransformStream({
+        start(controller) {
+          if (metadata)
+            controller.enqueue({
+              type: "response-metadata",
+              ...(id ? { id: "gen-offline-billed" } : {}),
+              modelId: "provider-model",
+            });
+        },
+        async transform(part, controller) {
+          if (part.type !== "finish") {
+            controller.enqueue(part);
+
+            return;
+          }
+
+          reached = true;
+
+          if (hold) await gate;
+
+          if (transport) throw new Error("stream transport failed");
+
+          // A provider exceeding the admitted tool-call cap revokes the slice
+          // before finish, independently of the cancellation poll or deadline.
+          if (fence)
+            for (let n = 0; n <= RUN_LIMITS.toolsPerSlice; n++) {
+              controller.enqueue({
+                type: "tool-call",
+                toolCallId: `fenced-${n}`,
+                toolName: "managed",
+                input: "{}",
+              });
+            }
+
+          controller.enqueue({ type: "error", error: new Error("connection lost before finish") });
+        },
+      }),
+    );
+
+  return { reached: () => reached, release: () => release() };
+}
+
+it.each(["error", "transport", "timeout", "cancel", "fence"] as const)(
+  "metadata and text followed by %s reports one failed/aborted event with requestId and unknown usage",
+  async (stop) => {
+    fixture.run.Main = { modelTimeoutMs: 1_000, toolTimeoutMs: 1_000 };
+    const aborted = stop === "timeout" || stop === "cancel" || stop === "fence";
+
+    const held = interruptBeforeFinish(
+      stop === "timeout" || stop === "cancel",
+      true,
+      stop === "transport",
+      true,
+      stop === "fence",
+    );
+
+    const t = setup();
+    const receipt = await open(t);
+    const before = Date.now();
+
+    try {
+      await waitFor(t, held.reached);
+
+      if (stop === "cancel")
+        await owner(t).mutation(api.agents.cancel, { threadId: receipt.threadId });
+
+      if (aborted)
+        await t.action(async () => {
+          await vi.advanceTimersByTimeAsync(stop === "timeout" ? 1_001 : LIMITS.cancelPollMs);
+        });
+
+      await waitFor(t, () => events.length === 1);
+
+      expect(events[0]).toMatchObject({
+        requestId: "gen-offline-billed",
+        model: "provider-model",
+        status: aborted ? "aborted" : "failed",
+        messageId: null,
+      });
+
+      expect(events[0].usage).toBeUndefined();
+      expect(events[0]).not.toHaveProperty("usage");
+      expect(events[0].occurredAt).toBeGreaterThanOrEqual(before);
+      expect(events[0].key).toHaveLength(64);
+    } finally {
+      held.release();
+
+      await t.action(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      await drain(t);
+    }
+
+    expect(events).toHaveLength(1);
+    expect(fixture.calls).toHaveLength(1);
+    expect(await partial(t, receipt.threadId)).toBe(false);
+  },
+);
+
+it("response metadata without an id still reports one interrupted attempt with unknown usage", async () => {
+  interruptBeforeFinish(false, true, false, false);
+  const t = setup();
+  const receipt = await open(t);
+
+  await drain(t);
+  expect(events).toHaveLength(1);
+  expect(events[0]).toMatchObject({ status: "failed", model: "provider-model" });
+  expect(events[0].requestId).toBeUndefined();
+  expect(events[0].usage).toBeUndefined();
+  expect(await partial(t, receipt.threadId)).toBe(false);
+});
+
+it("pre-finish evidence retries the same key and timestamp without rerunning the model", async () => {
+  interruptBeforeFinish(false);
+  const attempts: UsageEvent[] = [];
+
+  fixture.slots.usage = {
+    record: async (_ctx, event) => {
+      attempts.push(event);
+
+      if (attempts.length < LIMITS.usageRecordAttempts) throw new Error("transient");
+
+      events.push(event);
+    },
+  };
+
+  const t = setup();
+  const receipt = await open(t);
+
+  await drain(t);
+  expect(attempts).toHaveLength(LIMITS.usageRecordAttempts);
+  expect(attempts.every((event) => event === attempts[0])).toBe(true);
+  expect(events).toHaveLength(1);
+  expect(events[0].requestId).toBe("gen-offline-billed");
+  expect(events[0].usage).toBeUndefined();
+  expect(fixture.calls).toHaveLength(1);
+  expect(await partial(t, receipt.threadId)).toBe(false);
+});
+
+it("a stream error without response metadata emits no event or invented tokens", async () => {
+  interruptBeforeFinish(false, false);
+  const t = setup();
+  const receipt = await open(t);
+
+  await drain(t);
+  expect(events).toHaveLength(0);
+  expect(await partial(t, receipt.threadId)).toBe(true);
+  expect(fixture.calls).toHaveLength(1);
+});
+
+it("response metadata followed by finish enriches one event with usage and the native key", async () => {
+  fixture.generationIds = true;
+  const t = setup();
+
+  await open(t);
+  await drain(t);
+  expect(events).toHaveLength(1);
+
+  expect(events[0]).toMatchObject({
+    status: "success",
+    requestId: "generation:Main:1",
+    usage: { promptTokens: 3, completionTokens: 10 },
+  });
+
+  expect(events[0].messageId).toBeTruthy();
+
+  const [saved] = await t.query(components.agent.messages.getMessagesByIds, {
+    messageIds: [events[0].messageId!],
+  });
+
+  expect(events[0].key).toBe(
+    await opaqueKey("model", events[0].threadId, events[0].messageId!, saved!.stepOrder),
+  );
+});
 
 it.each(["cancel", "timeout"] as const)(
   "a %s after stream usage reports the aborted step once with null messageId",

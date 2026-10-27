@@ -32,6 +32,7 @@ vi.mock("ai", async (original) => {
 
 import { fixture, reset, registration, exports, api } from "./hooks.host.js";
 import { requireReceipt } from "./receipt.js";
+import { LIMITS } from "../src/component/limits.js";
 const modules = import.meta.glob(["./fixture/**/*.ts", "./fixture/**/*.js"]);
 
 function setup() {
@@ -89,6 +90,102 @@ function task(outputs: string[], repair?: 0 | 1) {
 beforeEach(() => {
   reset();
   vi.useFakeTimers();
+});
+
+it.each(["once", "always", "stall"])(
+  "a runTask hook failing %s retries one event with bounded attempts and never reruns the model",
+  async (failure) => {
+    const t = setup();
+    const { model, definition } = task(['{"category":"yes"}']);
+    const attempts: UsageEvent[] = [];
+    const records: UsageEvent[] = [];
+    let result: unknown;
+
+    fixture.slots.usage = {
+      record: async (_ctx, event) => {
+        if (event.purpose !== "hook") return;
+
+        attempts.push(event);
+
+        if (failure === "stall") await new Promise<void>(() => {});
+
+        if (failure === "always" || attempts.length === 1) throw new Error("ledger unavailable");
+
+        records.push(event);
+      },
+    };
+
+    fixture.hooks.beforeTurn = async (hc) => {
+      result = await runTask(hc, definition, { text: "hello" });
+    };
+
+    const receipt = await t
+      .withIdentity({ subject: "alice" })
+      .mutation(api.agents.open, { agent: "Main", prompt: "hello", requestKey: "usage" })
+      .then(requireReceipt);
+
+    const before = Date.now();
+
+    await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100), 3000);
+    expect(result).toEqual({ status: "done", value: { category: "yes" } });
+    expect(model.calls).toHaveLength(1);
+    expect(attempts).toHaveLength(failure === "once" ? 2 : LIMITS.usageRecordAttempts);
+    expect(attempts.every((event) => event === attempts[0])).toBe(true);
+    expect(attempts[0].status).toBe("success");
+    expect(attempts[0].occurredAt).toBeGreaterThanOrEqual(before);
+    expect(records).toHaveLength(failure === "once" ? 1 : 0);
+
+    const runId = (
+      await t
+        .withIdentity({ subject: "alice" })
+        .query(api.agents.activity, { threadId: receipt.threadId })
+    ).runId!;
+
+    expect(await t.query(components.agevex.turns.slices.usageReporting, { runId })).toBe(
+      failure !== "once",
+    );
+  },
+);
+
+it("cancelling during runTask usage delivery fences retries and marks partial without model replay", async () => {
+  const t = setup();
+  const { model, definition } = task(['{"category":"yes"}']);
+  const attempts: UsageEvent[] = [];
+
+  fixture.slots.usage = {
+    record: async (_ctx, event) => {
+      if (event.purpose !== "hook") return;
+
+      attempts.push(event);
+
+      await t
+        .withIdentity({ subject: "alice" })
+        .mutation(api.agents.cancel, { threadId: event.threadId });
+
+      throw new Error("cancelled during delivery");
+    },
+  };
+
+  fixture.hooks.beforeTurn = async (hc) => {
+    await runTask(hc, definition, { text: "hello" });
+  };
+
+  const receipt = await t
+    .withIdentity({ subject: "alice" })
+    .mutation(api.agents.open, { agent: "Main", prompt: "hello", requestKey: "cancel-usage" })
+    .then(requireReceipt);
+
+  await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(100), 3000);
+  expect(attempts).toHaveLength(1);
+  expect(model.calls).toHaveLength(1);
+
+  const runId = (
+    await t
+      .withIdentity({ subject: "alice" })
+      .query(api.agents.activity, { threadId: receipt.threadId })
+  ).runId!;
+
+  expect(await t.query(components.agevex.turns.slices.usageReporting, { runId })).toBe(true);
 });
 
 afterEach(() => {
