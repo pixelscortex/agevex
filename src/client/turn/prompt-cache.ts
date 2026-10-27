@@ -137,6 +137,30 @@ function hasHint(options: ProviderOptions | undefined, provider: CacheProvider):
   });
 }
 
+/** Tool-result outputs carry their own hints (Anthropic dist ~2522-2535). */
+function outputHints(part: object): (ProviderOptions | undefined)[] {
+  if (!("output" in part) || typeof part.output !== "object" || part.output === null) return [];
+
+  const output = part.output as { providerOptions?: ProviderOptions; value?: unknown };
+
+  const nested = Array.isArray(output.value)
+    ? output.value.map(
+        (item: { providerOptions?: ProviderOptions } | null) => item?.providerOptions,
+      )
+    : [];
+
+  return [output.providerOptions, ...nested];
+}
+
+/** OpenRouter model settings send top-level cache_control (dist ~4324). */
+function modelHint(model: LanguageModel, provider: CacheProvider): boolean {
+  if (provider !== "openrouter" || typeof model === "string") return false;
+
+  const settings = (model as { settings?: { cache_control?: unknown } }).settings;
+
+  return settings?.cache_control != null;
+}
+
 /** Inspect hint locations, never arbitrary user text, tool inputs or result data. */
 function hasAppHints(request: CacheRequest, provider: CacheProvider): boolean {
   const instructions =
@@ -147,6 +171,7 @@ function hasAppHints(request: CacheRequest, provider: CacheProvider): boolean {
         : [request.instructions];
 
   return (
+    modelHint(request.model, provider) ||
     hasHint(request.providerOptions, provider) ||
     Object.values(request.tools ?? {}).some((tool) => hasHint(tool.providerOptions, provider)) ||
     [...instructions, ...request.messages].some(
@@ -154,7 +179,10 @@ function hasAppHints(request: CacheRequest, provider: CacheProvider): boolean {
         hasHint(message.providerOptions, provider) ||
         (Array.isArray(message.content) &&
           message.content.some((part) =>
-            hasHint("providerOptions" in part ? part.providerOptions : undefined, provider),
+            [
+              "providerOptions" in part ? part.providerOptions : undefined,
+              ...outputHints(part),
+            ].some((options) => hasHint(options, provider)),
           )),
     )
   );

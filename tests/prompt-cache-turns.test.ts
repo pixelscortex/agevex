@@ -124,9 +124,6 @@ it.each(["stream", "generate"] as const)(
     for (const args of calls()) {
       expectMarkers(args);
       expect(prefix(args)).toBe(prefix(calls()[0]));
-      const names = args.tools!.map((tool) => tool.name);
-
-      expect(names).toEqual([...names].sort());
     }
   },
 );

@@ -93,7 +93,16 @@ it.each(["openrouter", "anthropic"] as const)(
   },
 );
 
-const locations = ["instructions", "system", "message", "part", "call", "tool"] as const;
+const locations = [
+  "instructions",
+  "system",
+  "message",
+  "part",
+  "call",
+  "tool",
+  "tool output",
+  "tool output content",
+] as const;
 
 it.each(locations)("an app hint on %s owns caching for the whole call", (location) => {
   for (const provider of ["openrouter", "anthropic"] as const) {
@@ -130,6 +139,27 @@ it.each(locations)("an app hint on %s owns caching for the whole call", (locatio
 
         if (location === "call") request.providerOptions = hint;
 
+        if (location === "tool output" || location === "tool output content")
+          request.messages = [
+            {
+              role: "tool",
+              content: [
+                {
+                  type: "tool-result",
+                  toolCallId: "call",
+                  toolName: "echo",
+                  output:
+                    location === "tool output"
+                      ? { type: "text", value: "ok", providerOptions: hint }
+                      : {
+                          type: "content",
+                          value: [{ type: "text", text: "ok", providerOptions: hint }],
+                        },
+                } as never,
+              ],
+            },
+          ];
+
         if (location === "tool")
           request.tools = {
             owned: { inputSchema: jsonSchema({ type: "object" }), providerOptions: hint },
@@ -164,5 +194,19 @@ it("no instructions or empty content never introduces a new message or content b
 
   expect(
     claudeCacheOptions({ model: model("anthropic"), messages: [{ role: "user", content: [] }] }),
+  ).toEqual({});
+});
+
+it("OpenRouter model-level cache_control owns caching for the whole call", () => {
+  const owned = Object.assign(model(), {
+    settings: { cache_control: { type: "ephemeral", ttl: "1h" } },
+  });
+
+  expect(
+    claudeCacheOptions({
+      model: owned,
+      instructions: "stable",
+      messages: [{ role: "user", content: "hi" }],
+    }),
   ).toEqual({});
 });
