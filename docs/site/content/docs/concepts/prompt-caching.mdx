@@ -39,6 +39,11 @@ prefix. Switching models in `beforeTurn` loses cache reuse; sliding history
 windows and pauses longer than five minutes can also lose hits. Opting out
 removes agevex's markers; it does not disable provider implicit caching.
 
+If you set cache hints yourself (call or agent `providerOptions`, messages,
+tools, or the OpenRouter model's `cache_control`/`extraBody`), agevex adds none
+for that call. If your model is wrapped with middleware that sets caching,
+agevex cannot see it: set `experimental: { claude: { cache: false } }`.
+
 Cache hits require a sufficiently long prefix. Anthropic's model-specific minima
 include 1,024 tokens for Sonnet 4.5/4.6, 4,096 for Opus 4.5/4.6 and Haiku 4.5,
 and 2,048 for Haiku 3.5. Shorter prompts silently miss. Cache writes can cost

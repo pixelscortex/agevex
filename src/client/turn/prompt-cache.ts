@@ -133,7 +133,11 @@ function hasHint(options: ProviderOptions | undefined, provider: CacheProvider):
   return namespaces.some((name) => {
     const value = options?.[name];
 
-    return value != null && ("cacheControl" in value || "cache_control" in value);
+    return (
+      typeof value === "object" &&
+      value !== null &&
+      ("cacheControl" in value || "cache_control" in value)
+    );
   });
 }
 
@@ -141,24 +145,39 @@ function hasHint(options: ProviderOptions | undefined, provider: CacheProvider):
 function outputHints(part: object): (ProviderOptions | undefined)[] {
   if (!("output" in part) || typeof part.output !== "object" || part.output === null) return [];
 
-  const output = part.output as { providerOptions?: ProviderOptions; value?: unknown };
+  const output = part.output as {
+    type?: string;
+    providerOptions?: ProviderOptions;
+    value?: unknown;
+  };
 
-  const nested = Array.isArray(output.value)
-    ? output.value.map(
-        (item: { providerOptions?: ProviderOptions } | null) => item?.providerOptions,
-      )
-    : [];
+  // Only `content` outputs hold parts; json/error-json values are app data.
+  const nested =
+    output.type === "content" && Array.isArray(output.value)
+      ? output.value.map(
+          (item: { providerOptions?: ProviderOptions } | null) => item?.providerOptions,
+        )
+      : [];
 
   return [output.providerOptions, ...nested];
 }
 
-/** OpenRouter model settings send top-level cache_control (dist ~4324). */
+type CacheBody = { cache_control?: unknown; extraBody?: { cache_control?: unknown } };
+
+/**
+ * OpenRouter model settings and extra bodies send top-level cache_control
+ * (dist ~4324-4325). A wrapped model hides these; such apps opt out instead.
+ */
 function modelHint(model: LanguageModel, provider: CacheProvider): boolean {
   if (provider !== "openrouter" || typeof model === "string") return false;
 
-  const settings = (model as { settings?: { cache_control?: unknown } }).settings;
+  const { settings, config } = model as { settings?: CacheBody; config?: CacheBody };
 
-  return settings?.cache_control != null;
+  return (
+    settings?.cache_control != null ||
+    settings?.extraBody?.cache_control != null ||
+    config?.extraBody?.cache_control != null
+  );
 }
 
 /** Inspect hint locations, never arbitrary user text, tool inputs or result data. */

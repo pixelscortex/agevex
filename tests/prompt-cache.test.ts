@@ -210,3 +210,46 @@ it("OpenRouter model-level cache_control owns caching for the whole call", () =>
     }),
   ).toEqual({});
 });
+
+it.each([
+  ["model extraBody", { settings: { extraBody: { cache_control: { type: "ephemeral" } } } }],
+  ["provider extraBody", { config: { extraBody: { cache_control: { type: "ephemeral" } } } }],
+])("OpenRouter %s cache_control owns caching for the whole call", (_name, extra) => {
+  expect(
+    claudeCacheOptions({
+      model: Object.assign(model(), extra),
+      instructions: "stable",
+      messages: [{ role: "user", content: "hi" }],
+    }),
+  ).toEqual({});
+});
+
+it.each(["json", "error-json"] as const)(
+  "%s tool data that looks like hints is app data, never a hint or a crash",
+  (type) => {
+    for (const provider of ["openrouter", "anthropic"] as const) {
+      const result = claudeCacheOptions({
+        model: model(provider),
+        instructions: "stable",
+        messages: [
+          {
+            role: "tool",
+            content: [
+              {
+                type: "tool-result",
+                toolCallId: "call",
+                toolName: "echo",
+                output: {
+                  type,
+                  value: [{ providerOptions: { anthropic: "plain data", openrouter: null } }],
+                },
+              } as never,
+            ],
+          },
+        ],
+      });
+
+      expect(result.instructions).toBeDefined();
+    }
+  },
+);
